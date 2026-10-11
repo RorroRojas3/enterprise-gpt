@@ -18,20 +18,8 @@ import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
 import { SidebarProjectConversations } from './project-conversations';
 
 /**
- * One favourite project in the sidebar, and its conversations when expanded (US-910).
- *
- * Three controls sit side by side rather than nested, for the reason
- * `ConversationRow` records: an interactive element inside an `<a>` is invalid HTML and
- * splits the accessible name. The anchor opens the project, the disclosure button opens
- * the node, and the kebab opens the menu — each with its own name.
- *
- * The kebab's three actions all belong to `ProjectActionsStore`, whose dialogs are
- * already mounted once in the shell that hosts this sidebar, so the row only says which
- * project is meant. Unfavourite is not optimistic; see that store's `toggleFavorite`.
- *
- * Expansion is owned by the parent rather than held here, so collapsing the whole
- * section and re-expanding it does not silently reopen every node — and so the sidebar
- * can keep one `Set` instead of one signal per row.
+ * Link, disclosure and kebab sit side by side, as interactive content inside an `<a>` is invalid.
+ * Expansion is owned by the parent, so collapsing the section does not reopen every node.
  */
 @Component({
   selector: 'app-sidebar-project-row',
@@ -56,11 +44,7 @@ export class SidebarProjectRow {
   /** Whether this node's conversations are showing. Owned by `SidebarFavorites`. */
   readonly expanded = model.required<boolean>();
 
-  /**
-   * Unfavourite was chosen. Announced rather than performed, because the row it was
-   * invoked from is what the action removes: the parent has to know before the server
-   * confirms, so focus has somewhere to go when this `<li>` is destroyed.
-   */
+  /** Announced, not performed: the parent must be ready to move focus when this row goes. */
   readonly unfavorited = output<void>();
 
   /** Delete was chosen. Announced for the same reason as {@link unfavorited}. */
@@ -71,18 +55,10 @@ export class SidebarProjectRow {
 
   protected readonly link = computed(() => [PROJECTS_ROUTE, this.project().id]);
 
-  /**
-   * `aria-controls` only while the panel it names exists. A collapsed node has no
-   * nested list in the DOM, and pointing at an absent id is an invalid attribute value
-   * rather than a harmless one.
-   */
+  /** Bound to `aria-controls` only while expanded: an absent id is invalid, not harmless. */
   protected readonly panelId = computed(() => `sidebar-project-${this.project().id}`);
 
-  /**
-   * Names the disclosure without repeating the project name the row already shows —
-   * `aria-expanded` carries the state, so the label must not also spell it out, or the
-   * control announces its condition twice.
-   */
+  /** Spells out no open/closed state, which `aria-expanded` already announces. */
   protected readonly disclosureLabel = computed(() => `Conversations in ${this.project().name}`);
 
   protected toggle(): void {

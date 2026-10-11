@@ -8,10 +8,8 @@ namespace Enterprise.Gpt.Entity.Transcripts.Models;
 /// tool, MCP call and agent underneath them.
 /// </summary>
 /// <remarks>
-/// Deliberately not the same split as the identically named columns on
-/// <see cref="ConversationUsage"/>, which hold the assistant's share alone and keep the tool share
-/// separate. The transcript is what a reader sees beside a message, and the number that belongs
-/// there is what the turn cost; the breakdown lives in the relational audit trail.
+/// Unlike the same-named <see cref="ConversationUsage"/> columns (assistant share only), these include
+/// tools: a reader sees what the turn cost, and the breakdown lives in the relational audit trail.
 /// </remarks>
 public sealed record TranscriptMessageUsage
 {

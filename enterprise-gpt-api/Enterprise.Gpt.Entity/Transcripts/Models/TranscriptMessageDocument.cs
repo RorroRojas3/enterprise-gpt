@@ -8,13 +8,11 @@ namespace Enterprise.Gpt.Entity.Transcripts.Models;
 /// A single message in a conversation's transcript.
 /// </summary>
 /// <remarks>
-/// Carries no sequence field of any kind: ordering is <c>dateCreated</c> alone, which is legitimate
-/// because a turn's user and assistant messages are stamped at genuinely different moments and the
-/// write clamps the second to at least one tick after the first.
+/// No sequence field: ordering is <c>dateCreated</c> alone, and the write clamps the assistant message to
+/// at least one tick after the user's.
 /// </remarks>
 public sealed record TranscriptMessageDocument
 {
-    /// <summary>Gets the message's identifier.</summary>
     [JsonPropertyName("id")]
     public string Id { get; init; } = null!;
 
@@ -26,7 +24,6 @@ public sealed record TranscriptMessageDocument
     [JsonPropertyName("userId")]
     public Guid UserId { get; init; }
 
-    /// <summary>Gets the conversation the message belongs to.</summary>
     [JsonPropertyName("conversationId")]
     public Guid ConversationId { get; init; }
 
@@ -34,15 +31,12 @@ public sealed record TranscriptMessageDocument
     [JsonPropertyName("type")]
     public string Type { get; init; } = TranscriptDocumentTypes.Message;
 
-    /// <summary>Gets who produced the message.</summary>
     /// <remarks>
-    /// Serialized as a string rather than the enum's integer, matching the streaming contract and
-    /// keeping an exported document readable.
+    /// Serialized as a string, matching the streaming contract and keeping exports readable.
     /// </remarks>
     [JsonPropertyName("role")]
     public ChatRoles Role { get; init; }
 
-    /// <summary>Gets the message's text.</summary>
     [JsonPropertyName("content")]
     public string Content { get; init; } = string.Empty;
 
@@ -51,9 +45,7 @@ public sealed record TranscriptMessageDocument
     /// was unavailable.
     /// </summary>
     /// <remarks>
-    /// An export-fidelity artefact rather than a byte-identical mirror of what the client shows:
-    /// the client renders through its own markdown stack, and the two differ in whitespace and
-    /// syntax-highlighting markup.
+    /// For export fidelity; not byte-identical to the client's own markdown rendering.
     /// </remarks>
     [JsonPropertyName("htmlContent")]
     public string? HtmlContent { get; init; }
@@ -62,11 +54,8 @@ public sealed record TranscriptMessageDocument
     /// Gets what this message contributes to the prompt on every future turn.
     /// </summary>
     /// <remarks>
-    /// A pure function of the message's own text, so it is deterministic, recomputable and
-    /// comparable across roles. On an assistant message it deliberately excludes tool spend: only
-    /// the answer text is transcribed and replayed, so folding in tool tokens would describe a
-    /// prompt that never gets sent. It will therefore not equal <c>usage.outputTokens</c>, and that
-    /// is correct.
+    /// A pure function of the message text. Excludes tool spend, since only the answer text is replayed,
+    /// so it will not equal <c>usage.outputTokens</c>.
     /// </remarks>
     [JsonPropertyName("tokens")]
     public long Tokens { get; init; }
@@ -80,9 +69,7 @@ public sealed record TranscriptMessageDocument
     /// model produced.
     /// </summary>
     /// <remarks>
-    /// The deployment name rather than the catalog's display label: the transcript is append-only,
-    /// so the value recorded here has to keep its meaning after a model is renamed, and it is the
-    /// deployment that identifies what actually served and billed the turn.
+    /// The deployment name, not the display label, so this append-only record survives a model rename.
     /// </remarks>
     [JsonPropertyName("model")]
     public string? Model { get; init; }
@@ -99,13 +86,8 @@ public sealed record TranscriptMessageDocument
     /// been rated, or the rating was withdrawn.
     /// </summary>
     /// <remarks>
-    /// The rating a reader sees, and the source the transcript response projects from.
-    /// The relational <c>MessageFeedback</c> row beside it is a projection for reporting, not the
-    /// other way round: this is what comes back on a reload, so this is what a rating has to reach.
-    /// <para>
-    /// Set only on an assistant message — the write path rejects every other role — and written by
-    /// a patch long after the document was created, unlike every other property here.
-    /// </para>
+    /// The source of truth a reload reads; the relational <c>MessageFeedback</c> row is a reporting
+    /// projection. Assistant messages only, and patched long after the document was created.
     /// </remarks>
     [JsonPropertyName("feedback")]
     public TranscriptMessageFeedback? Feedback { get; init; }
@@ -114,18 +96,14 @@ public sealed record TranscriptMessageDocument
     /// Gets the files this message introduced, or an empty list when it introduced none.
     /// </summary>
     /// <remarks>
-    /// Identities and never credentials: a download link is minted on click, so a transcript that
-    /// leaked would carry nothing usable. A message written before this field existed deserializes to
-    /// an empty list, which is why no transcript migration runs for it.
+    /// Identities, never credentials: download links are minted on click. Older messages deserialize to
+    /// an empty list, so no migration runs.
     /// </remarks>
     [JsonPropertyName("attachments")]
     public IReadOnlyList<TranscriptMessageAttachment> Attachments { get; init; } = [];
 
-    /// <summary>Gets the moment the message was produced.</summary>
     /// <remarks>
-    /// The sort key for the whole transcript. A user message is stamped when its prompt was
-    /// received and an assistant message when its answer completed — genuinely different moments,
-    /// unlike the single timestamp the previous shape stamped on both.
+    /// The transcript's sort key: a user message is stamped on receipt, an assistant message on completion.
     /// </remarks>
     [JsonPropertyName("dateCreated")]
     public DateTimeOffset DateCreated { get; init; }
@@ -135,13 +113,6 @@ public sealed record TranscriptMessageDocument
     /// <summary>
     /// Creates a message document for a conversation.
     /// </summary>
-    /// <param name="userId">The object identifier of the conversation's owner.</param>
-    /// <param name="conversationId">The conversation the message belongs to.</param>
-    /// <param name="messageId">The message's identifier.</param>
-    /// <param name="role">Who produced the message.</param>
-    /// <param name="content">The message's text.</param>
-    /// <param name="createdAt">The moment the message was produced.</param>
-    /// <returns>The message, with its partition key already composed.</returns>
     /// <remarks>
     /// The only production construction site, so the partition key format cannot drift between the
     /// write path and the read path.

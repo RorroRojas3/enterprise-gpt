@@ -5,22 +5,10 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Enterprise.Gpt.Api.Filters;
 
-/// <summary>
-/// Endpoint filter factory that caps the request body size for an upload endpoint, rejecting anything
-/// larger with a 400 <see cref="ProblemDetails"/>.
-/// </summary>
+/// <summary>Caps an upload endpoint's request body, rejecting anything larger with a 400 problem.</summary>
 /// <remarks>
-/// <para>
-/// The server-wide Kestrel limit is far larger than any document this API accepts, and
-/// <c>[RequestSizeLimit]</c> is an MVC filter whose enforcement outside MVC is not guaranteed — so the
-/// limit is applied explicitly here instead.
-/// </para>
-/// <para>
-/// Two layers, because either alone is insufficient. The <c>Content-Length</c> check rejects the common
-/// case before a single byte is buffered, and with a message that says what the limit is. Lowering
-/// <see cref="IHttpMaxRequestBodySizeFeature"/> then covers a chunked upload that declares no length, so
-/// the server aborts the connection once the body actually exceeds the cap rather than buffering it all.
-/// </para>
+/// Explicit because <c>[RequestSizeLimit]</c> is not guaranteed outside MVC. <c>Content-Length</c> rejects the
+/// common case unbuffered, and lowering <see cref="IHttpMaxRequestBodySizeFeature"/> catches chunked uploads.
 /// </remarks>
 public static class MaxUploadSizeEndpointFilter
 {
@@ -37,12 +25,8 @@ public static class MaxUploadSizeEndpointFilter
 
     #region Public static methods
 
-    /// <summary>
-    /// Builds an endpoint filter that rejects request bodies larger than <paramref name="maxBytes"/>.
-    /// </summary>
-    /// <param name="maxBytes">The maximum accepted body size, in bytes.</param>
-    /// <returns>A filter delegate suitable for <c>AddEndpointFilter</c>.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="maxBytes"/> is not positive.</exception>
+    /// <summary>Builds a filter that rejects request bodies larger than <paramref name="maxBytes"/>.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxBytes"/> is not positive.</exception>
     public static Func<EndpointFilterInvocationContext, EndpointFilterDelegate, ValueTask<object?>> Require(long maxBytes)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxBytes);

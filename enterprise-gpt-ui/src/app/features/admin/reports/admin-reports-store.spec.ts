@@ -16,7 +16,7 @@ import { ReportsStore } from './admin-reports-store';
 
 const REPORTS_URL = `${TEST_API_BASE_URL}/api/reports/usage`;
 
-describe('ReportsStore (US-1302)', () => {
+describe('ReportsStore', () => {
   let backend: HttpTestingController;
   let store: InstanceType<typeof ReportsStore>;
   let range: ReturnType<typeof signal<UsageRange>>;
@@ -43,7 +43,7 @@ describe('ReportsStore (US-1302)', () => {
     backend.verify();
   });
 
-  /** Wires the query the way the screen's constructor does — one computation, both parameters. */
+  /** Binds the way the screen's constructor does: one computation, both parameters. */
   function bind(): void {
     TestBed.runInInjectionContext(() =>
       store.bindQuery(() => ({ range: range(), grouping: grouping() })),
@@ -67,8 +67,7 @@ describe('ReportsStore (US-1302)', () => {
     const request = expectReport();
     expect(request.request.params.get('groupBy')).toBe('user');
     expect(request.request.params.get('from')).toBeTruthy();
-    // Never a `to`: the end of the window is the server's own clock, which is the clock the
-    // rows were written by.
+    // Never a `to`: the window ends on the server's clock, which wrote the rows.
     expect(request.request.params.has('to')).toBe(false);
 
     request.flush(usageReportFixture({ groupBy: 'user' }));
@@ -158,8 +157,7 @@ describe('ReportsStore (US-1302)', () => {
     );
     await settle();
 
-    // The same sentence `Paginator` renders, so the live region and the visible footer cannot
-    // disagree; why the breakdown is short is a separate notice.
+    // Matches `Paginator`'s sentence; why the breakdown is short is a separate notice.
     expect(store.countSummary()).toBe('Showing 1–5 of 6 models');
     expect(store.truncationNotice()).toContain('Only the 6 heaviest models are listed');
   });
@@ -170,8 +168,7 @@ describe('ReportsStore (US-1302)', () => {
     expectReport().flush(usageReportFixture({ groups: one, topModels: one }));
     await settle();
 
-    // `Paginator.itemLabel` has no count to agree with, so both sides stay plural — otherwise the
-    // visible footer and the announced summary would differ on a one-row breakdown.
+    // `Paginator.itemLabel` has no count to agree with, so both sides stay plural.
     expect(store.countSummary()).toBe('Showing 1–1 of 1 models');
   });
 
@@ -196,8 +193,7 @@ describe('ReportsStore (US-1302)', () => {
     await settle();
     const pending = expectReport();
 
-    // Gated on `isFulfilled` this went false the moment the request started, and the screen fell
-    // through to the dashboard branch and painted four zero tiles for the length of it.
+    // Gated on `isFulfilled`, this would go false and paint zero tiles while the request runs.
     expect(store.isPending()).toBe(true);
     expect(store.isEmpty()).toBe(true);
 
@@ -216,8 +212,7 @@ describe('ReportsStore (US-1302)', () => {
     await settle();
     const pending = expectReport();
 
-    // The rows on screen still belong to the previous report, so the table's own header has to
-    // keep naming what they are until the next one replaces them.
+    // The rows on screen still belong to the previous report, so the header keeps naming them.
     expect(store.renderedGrouping()).toBe('model');
 
     pending.flush(usageReportFixture({ groupBy: 'user' }));
@@ -233,13 +228,9 @@ describe('ReportsStore (US-1302)', () => {
     TestBed.inject(Dispatcher).dispatch(sessionEvents.signedOut());
     await settle();
 
-    // Two separate guarantees, and the store composes both: `withResetOnSignOut` clears the state,
-    // and `takeUntil` cancels the request — without which the previous user's report would land on
-    // top of the cleared state a moment later. Clearing state is not cancelling work.
+    // `withResetOnSignOut` clears state; only `takeUntil` stops the old report landing on it.
     expect(store.report()).toBeNull();
     expect(store.isIdle()).toBe(true);
-    // The request itself is gone, not merely ignored — the previous user's report can never land
-    // on top of the cleared state, because there is nothing left to deliver it.
     expect(pending.cancelled).toBe(true);
   });
 

@@ -11,12 +11,9 @@ public static class McpCredentialRules
     /// <summary>
     /// Whether a credential is printable ASCII with no whitespace.
     /// </summary>
-    /// <param name="apiKey">The credential to test.</param>
-    /// <returns><see langword="true"/> when it can be sent as a bearer token.</returns>
     /// <remarks>
-    /// Stricter than <c>McpServerHeaderRules.IsWellFormedValue</c> in the one way that matters
-    /// here: a space would terminate the <c>Bearer</c> token on the wire, and no issuer puts
-    /// one inside a token, so it is always a paste that caught surrounding text.
+    /// Unlike header values, no spaces: one would end the <c>Bearer</c> token, and no issuer puts one in a
+    /// token, so it is always a paste that caught surrounding text.
     /// </remarks>
     public static bool IsWellFormed(string? apiKey)
     {

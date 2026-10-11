@@ -4,9 +4,8 @@ namespace Enterprise.Gpt.Common.Enums;
 /// Which table a retrievable document and its chunks live in.
 /// </summary>
 /// <remarks>
-/// Persisted nowhere: it exists only to keep the two structurally identical chunk tables apart once
-/// their rows have been unioned into a single candidate set, so a conversation document and a project
-/// document that happen to share a chunk index are never confused for one another.
+/// Never persisted: it keeps the two identical chunk tables apart once their rows are unioned into one
+/// candidate set, so equal chunk indexes from different documents are not confused.
 /// </remarks>
 public enum DocumentSources : byte
 {

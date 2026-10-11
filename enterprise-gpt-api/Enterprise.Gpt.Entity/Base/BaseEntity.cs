@@ -16,7 +16,6 @@ public interface IBaseEntity
 public abstract class BaseEntity<TKey> : IBaseEntity
     where TKey : struct, IEquatable<TKey>
 {
-    /// <summary>The row's key.</summary>
     public TKey Id { get; set; }
 
     /// <inheritdoc />

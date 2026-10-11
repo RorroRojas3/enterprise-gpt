@@ -5,17 +5,10 @@
   [busy]="actions.formBusy()"
   (closed)="actions.cancelForm()"
 >
-  <!--
-    novalidate: the schema rules own validation, and the browser's own required bubble
-    would fight frame 5f's inline message.
-  -->
+  <!-- novalidate: the schema owns validation, and the browser bubble would fight it. -->
   <form id="model-form" class="model-form" novalidate (submit)="submit($event)">
     @if (unmatched().length > 0) {
-      <!--
-        Frame `5h`'s failure banner, which frame `5f` does not draw but needs for the same
-        reason: a server message keyed to a property no control binds would otherwise be
-        discarded, and the save would appear to fail for no stated reason.
-      -->
+      <!-- Server messages no control carries, which would otherwise be silently dropped. -->
       <div class="model-form__summary" role="alert">
         @for (message of unmatched(); track $index) {
           <p class="model-form__error">{{ message }}</p>
@@ -26,10 +19,7 @@
     <div class="model-form__grid">
       <div class="model-form__field">
         <label class="form-label" for="model-form-provider">Provider</label>
-        <!--
-          The options are a client-side mirror of the seeded rows: there is no
-          `GET api/providers`, so nothing can be fetched to fill this.
-        -->
+        <!-- A client-side mirror of the seeded rows: no endpoint lists providers. -->
         <select
           id="model-form-provider"
           class="form-select"
@@ -54,10 +44,7 @@
                 <p class="model-form__error">{{ message }}</p>
               }
             }
-            <!-- The 404 `EnsureProviderExistsAsync` throws for a provider this deployment
-                 has deactivated. It carries no `errors` dictionary, so it cannot travel
-                 the `serverMessagesFor` path — but it is about this field just the same,
-                 and a toast would leave the reader guessing which control was wrong. -->
+            <!-- A deactivated provider's 404, shown here rather than as a toast. -->
             @if (providerNotFound(); as message) {
               <p class="model-form__error">{{ message }}</p>
             }
@@ -67,10 +54,7 @@
 
       <div class="model-form__field">
         <label class="form-label" for="model-form-name">Display name</label>
-        <!--
-          No literal maxlength: NG8022 — the [formField] directive owns the constraint
-          attributes and derives this one from the schema's maxLength rule.
-        -->
+        <!-- No literal maxlength: `[formField]` derives it from the schema (NG8022). -->
         <input
           id="model-form-name"
           class="form-control"
@@ -134,11 +118,7 @@
 
       <div class="model-form__field">
         <label class="form-label" for="model-form-context">Context window</label>
-        <!--
-          type="text" with inputmode, never type="number". The native numeric control
-          returns null for anything it cannot parse, which loses what the reader typed —
-          and frame `5f` draws the rejected `400000.5` still sitting in this field.
-        -->
+        <!-- Text, not type="number", which returns null for unparseable input and loses it. -->
         <input
           id="model-form-context"
           class="form-control font-mono"
@@ -239,8 +219,7 @@
         }
       </div>
 
-      <!-- Blank is unpriced, not free: a report that summed a blank as zero would
-           understate spend rather than report a gap it could name. -->
+      <!-- Blank is unpriced, not free: summing it as zero would understate spend. -->
       <p class="model-form__note model-form__field--wide" id="model-form-price-note">
         Leave a price blank if this deployment has none. Blank means unpriced, which usage reports
         show as unknown rather than as zero.
@@ -284,8 +263,7 @@
         />
         <label class="form-check-label" for="model-form-selectable">
           Visible in model picker
-          <!-- Not the same as retiring it: a hidden model still serves a turn that names
-               it by id, which is how the pinned document summarizer works. -->
+          <!-- Not retiring: a hidden model still serves a turn that names it by id. -->
           <span class="model-form__hint">
             Turn this off for an internal deployment users should never pick to chat with.
           </span>
@@ -309,9 +287,7 @@
           </span>
         </label>
         @if (defaultConflict(); as message) {
-          <!-- Its own alert rather than a `fieldErrors()` entry: `isDefault` is not a field
-               the server can fault per-field, so it has no entry there — and without this
-               the rule would disable Save while saying nothing. -->
+          <!-- `isDefault` has no `fieldErrors()` entry, so Save would otherwise block silently. -->
           <div class="model-form__errors" id="model-form-default-errors" role="alert">
             <p class="model-form__error">{{ message }}</p>
           </div>
@@ -320,10 +296,7 @@
     </div>
   </form>
 
-  <!--
-    modalFooter on each button, never on a wrapper div: the kit's footer is the flex row,
-    and a wrapper would collapse its gap once Angular strips the inter-element whitespace.
-  -->
+  <!-- modalFooter on each button: a wrapper would collapse the footer's flex gap. -->
   <button
     modalFooter
     class="btn btn-outline-secondary"
@@ -333,11 +306,7 @@
   >
     Cancel
   </button>
-  <!--
-    Outside the <form> element (the footer projects into the modal's slot), so the native
-    `form` attribute is what ties it back — and what makes Enter in a field perform this
-    button's submit.
-  -->
+  <!-- Projected outside the <form>, so the `form` attribute ties it back, Enter included. -->
   <button
     modalFooter
     class="btn btn-primary"

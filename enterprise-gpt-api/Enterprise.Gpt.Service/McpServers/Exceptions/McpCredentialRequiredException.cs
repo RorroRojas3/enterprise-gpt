@@ -12,18 +12,14 @@ namespace Enterprise.Gpt.Service.McpServers.Exceptions;
 /// Distinct from <see cref="McpServerUnavailableException"/> because the client responds oppositely:
 /// 502 offers Retry, while this asks the user for a credential no retry can produce.
 /// </remarks>
-/// <param name="mcpServerId">The id of the server the caller must supply a credential for.</param>
-/// <param name="serverName">The display name of that server.</param>
 public class McpCredentialRequiredException(Guid mcpServerId, string serverName)
     : ProblemException(
         HttpStatusCode.PreconditionRequired,
         ProblemCodes.McpCredentialRequired,
         $"MCP server '{serverName}' needs an API key you supply before it can be used.")
 {
-    /// <summary>Gets the id of the server the caller must supply a credential for.</summary>
     public Guid McpServerId { get; } = mcpServerId;
 
-    /// <summary>Gets the display name of that server.</summary>
     public string ServerName { get; } = serverName;
 
     /// <inheritdoc />

@@ -17,11 +17,6 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Documents.Summarization;
 
-/// <summary>
-/// Covers the seam between the engine and the money: that a stored summary is reused for nothing,
-/// that a miss is billed exactly once at the summarizer's own rate, and that a digest is billed but
-/// never stored.
-/// </summary>
 public sealed class DocumentSummaryServiceTests : IDisposable
 {
     private const string Summary = "The handbook explains the refund process.";
@@ -109,11 +104,8 @@ public sealed class DocumentSummaryServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The write must not ride the caller's context. It is shared with
-    /// <c>ConversationService.PersistTurnAsync</c>, and EF accepts changes only on a successful
-    /// save — so a failed write here would leave the summary and usage rows staged as
-    /// <c>Added</c> for the turn's own save to re-attempt, double-billing the run or failing the
-    /// turn's finalization after a fully streamed answer.
+    /// The write must not ride the caller's context, which the turn saves later: a failed write would stay
+    /// staged as <c>Added</c> for that save to re-attempt, double-billing or failing the turn's finalization.
     /// </summary>
     [Fact]
     public async Task GetOrCreateAsync_NoStoredSummary_StagesNothingOnTheCallersContext()
@@ -128,9 +120,8 @@ public sealed class DocumentSummaryServiceTests : IDisposable
     }
 
     /// <summary>
-    /// By the time the run returns, the money is already spent at the provider — and the token that
-    /// would abort the write is the same one a client disconnect or the tool deadline signals.
-    /// Finalization therefore runs uncancellable, exactly as the turn's own does.
+    /// The run is already paid for, and the token that would abort the write is the one a disconnect or
+    /// the tool deadline signals, so finalization runs uncancellable, as the turn's own does.
     /// </summary>
     [Fact]
     public async Task GetOrCreateAsync_TokenCancelledAsTheRunReturns_StillPersistsAndBills()

@@ -57,8 +57,7 @@ public class ConversationEndpointsTests
     {
         await Task.Yield();
 
-        // The guard is always taken; it exists so the compiler keeps the yield below reachable,
-        // which an async iterator has to contain to be one.
+        // Always taken; it keeps the yield reachable, which an async iterator needs to be one.
         if (exception is not null)
         {
             throw exception;
@@ -67,10 +66,6 @@ public class ConversationEndpointsTests
         yield break;
     }
 
-    /// <summary>
-    /// Splits a written body into its SSE frames and strips the <c>data:</c> prefix, so a test can
-    /// assert on payloads without restating the framing every time.
-    /// </summary>
     private static List<string> ReadFrames(HttpContext context)
     {
         return
@@ -112,9 +107,7 @@ public class ConversationEndpointsTests
             PageSize = 20,
             CurrentPage = 1
         };
-        // Named arguments throughout: the call takes four optional filters in a row, three of them
-        // commonly null, and a fifth added later would otherwise shift a value into the wrong slot
-        // with nothing failing to compile.
+        // Named arguments: adjacent optional filters, so a new one cannot silently shift a value.
         _conversationService.SearchConversationsAsync(
             name: "plan", skip: 0, take: 20, isFavorite: null, projectId: null,
             cancellationToken: Arg.Any<CancellationToken>()).Returns(expected);
@@ -417,10 +410,8 @@ public class ConversationEndpointsTests
         Assert.Contains("\"text\":\"hi\"", json);
     }
 
-    // The slot US-1101 puts the assistant message id in. Worth pinning at the wire rather than only
-    // at the service: the payload is serialized through a source-generated context that writes
-    // exactly the properties it knows, so a property the generator has not been told about is
-    // silently dropped rather than failing to compile.
+    // The assistant message id's slot, pinned at the wire: the source-generated serializer context
+    // silently drops a property it has not been told about.
     [Fact]
     public async Task StreamConversationAsync_FinishedCarriesMetadata_WritesItAsAJsonObject()
     {
@@ -452,8 +443,7 @@ public class ConversationEndpointsTests
                 Assert.IsAssignableFrom<IReadOnlyDictionary<string, string>>(uiEvent.Metadata)));
     }
 
-    // A frame that sets nothing serializes exactly as it did before the slot existed, which is what
-    // makes the upgrade invisible to a client that ignores it.
+    // An unset slot is omitted, so a client that ignores it sees no change.
     [Fact]
     public async Task StreamConversationAsync_EventCarriesNoMetadata_OmitsTheKeyEntirely()
     {
@@ -488,9 +478,8 @@ public class ConversationEndpointsTests
         Assert.Equal("no-cache", context.Response.Headers.CacheControl.ToString());
     }
 
-    // The invariant the deferred-header design exists for: a turn that is rejected before its first
-    // fragment must leave the response clean so the exception handlers can write a JSON problem body
-    // rather than a 409 dressed as an event stream.
+    // A turn rejected before its first fragment must leave the response clean, so the exception
+    // handlers can write a JSON problem rather than a 409 dressed as an event stream.
     [Fact]
     public async Task StreamConversationAsync_StreamFaultsBeforeTheFirstFragment_LeavesTheResponseUntouched()
     {
@@ -509,10 +498,7 @@ public class ConversationEndpointsTests
     }
 
     #region Export
-    /// <summary>
-    /// The response is a rendered transcript, which is the most sensitive thing this API serves as a
-    /// file. Without this header a shared browser keeps it on disk long after the reader signs out.
-    /// </summary>
+    /// <summary>A rendered transcript must not linger in a shared browser's disk cache.</summary>
     [Fact]
     public async Task ExportConversationAsync_Always_SetsCacheControlNoStore()
     {
@@ -527,10 +513,7 @@ public class ConversationEndpointsTests
         Assert.Equal("no-store", context.Response.Headers.CacheControl);
     }
 
-    /// <summary>
-    /// Results.File writes the attachment disposition; this pins that the renderer's own file name is
-    /// what reaches it, since that name is what the browser saves and the client never supplies one.
-    /// </summary>
+    /// <summary>The renderer's file name is what the browser saves; the client never supplies one.</summary>
     [Fact]
     public async Task ExportConversationAsync_Always_ReturnsAFileNamedByTheRenderer()
     {
@@ -548,8 +531,7 @@ public class ConversationEndpointsTests
     }
 
     /// <summary>
-    /// The header is set after the service call, so a failure leaves the problem response to the
-    /// exception handler chain rather than stamping a file header on it.
+    /// Headers are set after the service call, so a failure's problem response carries none.
     /// </summary>
     [Fact]
     public async Task ExportConversationAsync_ServiceThrows_SetsNoHeaders()

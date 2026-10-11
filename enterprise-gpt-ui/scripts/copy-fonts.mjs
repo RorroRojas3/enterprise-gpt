@@ -1,13 +1,6 @@
 #!/usr/bin/env node
-// Copies the exact self-hosted font faces US-109 names out of node_modules into
-// public/fonts. FR-51 forbids any runtime request to a third-party origin, so
-// Google Fonts is not an option and the files have to ship from our own origin.
-//
-// A script rather than an `angular.json` asset glob for three reasons: the AC says
-// the faces are served *from public/fonts*, a glob leaves that directory empty; a
-// glob that matches nothing after an upstream rename ships zero fonts silently;
-// and the sprite build needs a script regardless, so one mechanism is cheaper than
-// two.
+// Self-hosts the font faces in public/fonts, since no runtime request may reach a third-party
+// origin. A script rather than an asset glob, so an upstream rename fails instead of shipping none.
 import { copyFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,11 +9,8 @@ const UI_ROOT = resolve(fileURLToPath(import.meta.url), '../..');
 const OUT_DIR = join(UI_ROOT, 'public', 'fonts');
 
 /**
- * `latin-ext` is carried for Inter alone. Inter renders user display names and
- * model output, where an accented character is a matter of time; Montserrat and
- * JetBrains Mono only ever render app copy and machine values. `unicode-range` in
- * _typography.scss means the extra files cost nothing until such a character
- * actually appears.
+ * Only Inter carries `latin-ext`: it renders user names and model output. `unicode-range` in
+ * _typography.scss keeps those files unloaded until an accented character appears.
  */
 const FAMILIES = [
   {

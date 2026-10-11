@@ -13,22 +13,9 @@ const RENDERED = 'md-diagram--rendered';
 const TYPESET = 'md-math--rendered';
 
 /**
- * Draws the diagrams and typesets the math in a rendered answer, loading the
- * libraries that do it only when there is something for them to do (US-605).
- *
- * A directive on the `<markdown>` element rather than work inside
- * `AssistantTurn`, because `MarkdownComponent.ready` is the only signal that the
- * output has actually been written — it assigns `innerHTML` a beat after change
- * detection returns — and its `ElementRef` is not public, so the only way to
- * have both is to sit on the same element.
- *
- * **Only the settled render carries this.** The streaming tail cannot: US-602's
- * `stripFenceInfo` removes its info strings, so a mid-stream mermaid fence has no
- * language left to match. The head could, but its content is replaced wholesale
- * every time a block closes, and re-laying-out an SVG per flush would fight both
- * the batch cadence and US-606's `ResizeObserver`. So a diagram reads as a
- * `mermaid`-labelled code block while the answer arrives and becomes a picture
- * when it settles — the same contract US-602 already set for highlighting.
+ * Draws diagrams and typesets math, loading the libraries only when needed. Sits on `<markdown>`
+ * because `ready` is the only signal its output is written. Settled renders only: the streaming
+ * tail strips fence info, and redrawing SVG per flush would fight the batch cadence.
  */
 @Directive({
   selector: 'markdown[appMarkdownExtras]',
@@ -51,22 +38,13 @@ export class MarkdownExtras {
       .ready.pipe(takeUntilDestroyed())
       .subscribe(() => void this._enhance());
 
-    // An SVG has its colours baked in, so unlike a code block it cannot re-tint
-    // when `data-bs-theme` flips — it has to be drawn again. That is only
-    // possible because the source `<pre>` is kept rather than removed, which
-    // makes it the render cache as well as the failure fallback.
-    //
-    // `afterRenderEffect`, not `effect`: this reads and writes the DOM, and a
-    // plain effect runs *before* Angular has updated it — so a flip landing in
-    // the same pass as a `[data]` change would query the previous tree.
+    // An SVG bakes its colours in, so a theme flip redraws it from the kept source `<pre>`.
+    // `afterRenderEffect`, so a flip landing with a `[data]` change queries the updated tree.
     afterRenderEffect(() => {
       this._theme.theme();
       const drawn = [...this._element.querySelectorAll(`.${RENDERED}`)];
-      // Nothing drawn yet is every case that is not a theme *change*: the effect
-      // runs once on creation, and doing the work then would load a renderer
-      // before there was anything for it to render. A flip while the first pass
-      // is still in flight is covered by the generation bump below, which makes
-      // that pass discard its results and this one draw them.
+      // Nothing drawn means no theme change yet; a flip during the first pass is caught by the
+      // generation bump, which makes that pass discard its results.
       if (drawn.length === 0) {
         return;
       }
@@ -98,8 +76,7 @@ export class MarkdownExtras {
         if (!expression.isConnected) {
           continue;
         }
-        // The source is what the tokenizer captured, before marked could rewrite
-        // it — which is the only place a LaTeX escape still exists.
+        // The tokenizer captured this before marked could rewrite its LaTeX escapes.
         expression.innerHTML =
           math?.render(
             expression.textContent ?? '',
@@ -121,10 +98,7 @@ export class MarkdownExtras {
       return;
     }
 
-    // Sequentially rather than all at once, so a long answer does not hold the
-    // main thread for the sum of its diagrams before showing any of them. The
-    // renderer serializes across directives itself, which is where Mermaid's
-    // shared module state actually lives.
+    // One at a time, so each diagram shows as it finishes rather than after the slowest.
     for (const wrapper of wrappers) {
       const source = wrapper.querySelector('pre > code')?.textContent ?? '';
       try {
@@ -150,22 +124,16 @@ export class MarkdownExtras {
 
     const figure = this._element.ownerDocument.createElement('figure');
     figure.className = 'md-diagram__figure';
-    // DOMPurify strips `role` from Mermaid's own output, so the SVG arrives as an
-    // unnamed graphic. Naming the figure — and hiding the loose `<text>` runs
-    // inside it — is what leaves a screen reader something other than a bag of
-    // fragments; the source stays reachable through the Copy control above it.
+    // DOMPurify strips Mermaid's `role`, so the figure is named and its loose `<text>` hidden;
+    // the source stays reachable through the Copy control.
     figure.setAttribute('role', 'img');
     figure.setAttribute('aria-label', DIAGRAM_LABEL);
-    // Sanitized through its own profile before it reaches the DOM. Mermaid's
-    // output is not markdown, so it never met `sanitizeChatMarkdown` — and it
-    // must not, since `svg` is absent from that profile by design.
+    // Its own profile: `sanitizeChatMarkdown` excludes `svg` by design.
     figure.append(sanitizeDiagramSvg(svg));
     figure.querySelector('svg')?.setAttribute('aria-hidden', 'true');
 
     wrapper.append(figure);
-    // The class is what hides the source and restyles the wrapper. Setting it
-    // last means a failure between here and the append leaves the block exactly
-    // as it was rather than showing an empty frame.
+    // Last: the class hides the source, so an earlier failure leaves the block as it was.
     wrapper.classList.add(RENDERED);
   }
 

@@ -13,29 +13,17 @@ public sealed class FakeDocumentStore : IDocumentStore
     private readonly ConcurrentDictionary<string, byte> _uploadedPaths = new();
     private readonly ConcurrentDictionary<string, byte> _uploadedKeys = new();
 
-    /// <summary>
-    /// Gets the blob paths (excluding the container) uploaded since the last reset.
-    /// </summary>
+    /// <summary>Blob paths uploaded since the last reset, without the container.</summary>
     public IReadOnlyCollection<string> UploadedPaths => [.. _uploadedPaths.Keys];
 
-    /// <summary>
-    /// Gets the blob paths uploaded since the last reset, each prefixed by its container.
-    /// </summary>
-    /// <remarks>
-    /// Separate from <see cref="UploadedPaths"/> because that one drops the container, and which of
-    /// the two containers a write landed in is exactly what a generated-document test asserts.
-    /// </remarks>
+    /// <summary>Uploaded paths prefixed by container, which generated-document tests assert on.</summary>
     public IReadOnlyCollection<string> UploadedKeys => [.. _uploadedKeys.Keys];
 
     /// <summary>
-    /// Whether a blob is still stored, which <see cref="UploadedPaths"/> cannot say: that one records
-    /// every upload ever made and a delete deliberately does not retract it.
+    /// Whether a blob is still stored; <see cref="UploadedPaths"/> deliberately keeps deleted uploads.
     /// </summary>
     public bool Exists(string container, string blob) => _blobs.ContainsKey($"{container}/{blob}");
 
-    /// <summary>
-    /// Clears all stored blobs.
-    /// </summary>
     public void Reset()
     {
         _blobs.Clear();
@@ -66,9 +54,8 @@ public sealed class FakeDocumentStore : IDocumentStore
 
     /// <inheritdoc />
     /// <remarks>
-    /// The response-header overrides are echoed back as <c>rscd</c> and <c>rsct</c> query values — the
-    /// names a real service SAS carries them under — so a test can assert the download link really does
-    /// rename the file rather than serving it under its storage key.
+    /// Echoes the header overrides as the <c>rscd</c>/<c>rsct</c> values a real SAS carries, so a test can
+    /// assert the download link renames the file.
     /// </remarks>
     public Uri? GenerateReadUri(string container, string blob, TimeSpan expiresIn,
         string? contentDisposition = null, string? contentType = null)

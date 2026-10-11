@@ -44,8 +44,6 @@ describe('TokenService', () => {
   });
 
   it('shares one acquisition between concurrent callers', async () => {
-    // A turn that fires a stream and two list requests in the same tick must not
-    // start three silent acquisitions racing to write the same cache entry.
     const acquireTokenSilent = vi.fn((_request: SilentRequest) =>
       Promise.resolve(fakeAuthResult()),
     );
@@ -57,8 +55,7 @@ describe('TokenService', () => {
   });
 
   it('re-acquires for a later caller, so a retried request never replays a rejected token', async () => {
-    // This is the property retryInterceptor depends on: the single-flight memo is
-    // scoped to one settle, not to the service's lifetime.
+    // The single-flight memo is scoped to one settle, not to the service's lifetime.
     const acquireTokenSilent = vi.fn((_request: SilentRequest) =>
       Promise.resolve(fakeAuthResult()),
     );
@@ -71,8 +68,6 @@ describe('TokenService', () => {
   });
 
   it('does not join an in-flight acquisition when a refresh is forced', async () => {
-    // forceRefresh exists because the cached token was rejected; joining a
-    // non-refreshing acquisition would hand back the token that just failed.
     const acquireTokenSilent = vi.fn((_request: SilentRequest) =>
       Promise.resolve(fakeAuthResult()),
     );
@@ -102,8 +97,7 @@ describe('TokenService', () => {
   });
 
   it('rejects without redirecting when nobody is signed in', async () => {
-    // A guard should have run first, so this is a programming error rather than a
-    // sign-in prompt.
+    // A guard should have run first, so this is a programming error, not a sign-in prompt.
     const acquireTokenRedirect = vi.fn(() => Promise.resolve());
     const tokens = service(signedOutMsal({ acquireTokenRedirect }));
 

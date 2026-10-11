@@ -21,8 +21,5 @@ public class TextChunkDto
     /// </summary>
     public int TokenCount { get; set; }
 
-    /// <summary>
-    /// The chunk text to embed.
-    /// </summary>
     public string Text { get; set; } = null!;
 }

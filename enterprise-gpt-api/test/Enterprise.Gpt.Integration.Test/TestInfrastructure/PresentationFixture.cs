@@ -10,12 +10,7 @@ namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 /// </summary>
 public static class PresentationFixture
 {
-    /// <summary>
-    /// Creates a presentation with the given number of slides, each carrying enough prose to produce
-    /// several chunks.
-    /// </summary>
-    /// <param name="slideCount">How many slides to generate.</param>
-    /// <returns>The bytes of the generated package.</returns>
+    /// <summary>Each slide carries enough prose to produce several chunks.</summary>
     public static byte[] Create(int slideCount)
     {
         using var stream = new MemoryStream();

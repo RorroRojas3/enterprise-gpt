@@ -2,63 +2,41 @@ using Microsoft.Extensions.Logging;
 
 namespace Enterprise.Gpt.Service.BackgroundJobs;
 
-/// <summary>
-/// Tracks the cancellation source of every queued and running background job, so a caller can call
-/// one off while it is still doing work.
-/// </summary>
+/// <summary>Tracks each queued or running job's cancellation source so a caller can cancel it.</summary>
 /// <remarks>
-/// Process-local, like the queue and the status store beside it: a job only exists on the instance
-/// that accepted its upload. See <c>docs/documents/ingestion.md</c> before making any of the three
-/// distributed.
+/// Process-local, like the queue and status store. See <c>docs/documents/ingestion.md</c> before distributing
+/// any of the three.
 /// </remarks>
 public interface IJobCancellationRegistry
 {
-    /// <summary>
-    /// Records a cancellation source for a job that is being enqueued.
-    /// </summary>
+    /// <summary>Records a cancellation source for a job that is being enqueued.</summary>
     /// <remarks>
-    /// Called at enqueue rather than when the job starts, so a job cancelled while it is still in the
-    /// queue — or while a full queue blocks the caller — has somewhere to record that.
+    /// At enqueue, so a job cancelled while queued, or while a full queue blocks the caller, has a record.
     /// </remarks>
-    /// <param name="jobId">The job identifier.</param>
     void Register(string jobId);
 
     /// <summary>
     /// Creates the token a job runs under, linking its own cancellation source to the host stopping token.
     /// </summary>
-    /// <remarks>
-    /// Linking happens inside the registry gate: reading a source and linking it in two steps would let
-    /// a concurrent cancel dispose it in between, and the link reads the source internals.
-    /// </remarks>
-    /// <param name="jobId">The job identifier.</param>
-    /// <param name="stoppingToken">The host stopping token.</param>
+    /// <remarks>Linked inside the gate so a concurrent cancel cannot dispose the source in between.</remarks>
     /// <returns>
     /// The linked source, which the caller owns and must dispose, or <see langword="null"/> when the
     /// job was cancelled before it started.
     /// </returns>
     CancellationTokenSource? CreateLinkedTokenSource(string jobId, CancellationToken stoppingToken);
 
-    /// <summary>
-    /// Requests cancellation of a queued or running job.
-    /// </summary>
-    /// <param name="jobId">The job identifier.</param>
+    /// <summary>Requests cancellation of a queued or running job.</summary>
     /// <returns><see langword="true"/> when a live registration was claimed and signalled.</returns>
     Task<bool> CancelAsync(string jobId);
 
-    /// <summary>
-    /// Drops a finished job registration.
-    /// </summary>
-    /// <param name="jobId">The job identifier.</param>
+    /// <summary>Drops a finished job registration.</summary>
     void Release(string jobId);
 }
 
-/// <summary>
-/// Process-local <see cref="IJobCancellationRegistry"/> backed by a dictionary of per-job
-/// cancellation sources.
-/// </summary>
+/// <inheritdoc />
 /// <remarks>
-/// Whoever removes an entry under the gate owns disposing it, and only cancelling and releasing
-/// remove — which is what keeps a source from ever being observed half-disposed.
+/// Whoever removes an entry under the gate disposes it, and only cancel and release remove, so a source is
+/// never observed half-disposed.
 /// </remarks>
 public sealed partial class JobCancellationRegistry(ILogger<JobCancellationRegistry> logger) : IJobCancellationRegistry, IDisposable
 {
@@ -103,9 +81,7 @@ public sealed partial class JobCancellationRegistry(ILogger<JobCancellationRegis
 
         lock (_gate)
         {
-            // A missing entry can only mean a cancel claimed it, because registration happens at
-            // enqueue and release happens when the job ends. That absence is the whole record of a
-            // job cancelled before it ever started.
+            // Registered at enqueue and released at job end, so a missing entry means a cancel claimed it.
             return _sources.TryGetValue(jobId, out var source)
                 ? CancellationTokenSource.CreateLinkedTokenSource(source.Token, stoppingToken)
                 : null;
@@ -129,9 +105,8 @@ public sealed partial class JobCancellationRegistry(ILogger<JobCancellationRegis
 
         try
         {
-            // Outside the gate, because cancelling runs the callbacks the pipeline registered — an
-            // HTTP abort, a command cancellation round trip — and none of that belongs under a lock
-            // every other cancel is waiting on.
+            // Outside the gate: cancelling runs pipeline callbacks (HTTP aborts, command cancellation) that
+            // must not hold up every other cancel.
             await claimed.CancelAsync().ConfigureAwait(false);
         }
         catch (Exception ex)

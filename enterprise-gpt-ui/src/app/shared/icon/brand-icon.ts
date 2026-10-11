@@ -9,19 +9,8 @@ import {
 import { BRAND_ICON_NAME_SET, BrandIconName } from './brand-icon-names';
 
 /**
- * One multi-colour brand mark from the sprite that
- * `scripts/build-icon-sprite.mjs` emits and `loadIconSprite()` injects.
- *
- * A sibling of {@link Icon} rather than a widening of it: `icon.scss` forces
- * `fill: currentColor`, which is exactly what a brand mark must not inherit, and
- * the two manifests stay independently checkable this way.
- *
- * Sized in `em` like every other icon here, so callers set size with
- * `font-size`.
- *
- * @example
- * <app-brand-icon name="brand-microsoft" />                    <!-- decorative -->
- * <app-brand-icon name="brand-context7" label="Context7" />    <!-- content -->
+ * A multi-colour brand mark from the sprite. A sibling of {@link Icon}, not a widening of it:
+ * `icon.scss` forces `fill: currentColor`, which a brand mark must not inherit.
  */
 @Component({
   selector: 'app-brand-icon',
@@ -34,9 +23,8 @@ export class BrandIcon {
   readonly name = input.required<BrandIconName>();
 
   /**
-   * Supplying a label promotes the mark from decoration to content. Leave it
-   * unset whenever it sits beside text that already names the thing — a labelled
-   * mark beside its own name is announced twice.
+   * Promotes the mark from decoration to content. Leave it unset beside text that already names
+   * the thing, or it is announced twice.
    */
   readonly label = input<string>();
 
@@ -45,9 +33,7 @@ export class BrandIcon {
 
   constructor() {
     if (isDevMode()) {
-      // The type covers every static reference. It cannot cover a name resolved
-      // at run time — which is exactly how `mcpBrandIcon` supplies this one —
-      // and a miss renders as an empty box with no error.
+      // Catches run-time names (`mcpBrandIcon`'s), which the type can't; a miss renders blank.
       effect(() => {
         const name: string = this.name();
         if (!BRAND_ICON_NAME_SET.has(name)) {

@@ -118,9 +118,8 @@ public sealed class JobCancellationRegistryTests : IDisposable
     [Fact]
     public async Task CancelAsync_RacingReleaseAndLinking_NeverObservesADisposedSource()
     {
-        // The failure this guards is an ObjectDisposedException from linking a source another thread
-        // disposed a moment earlier, which is why the registry links under its own gate rather than
-        // handing tokens out.
+        // Guards an ObjectDisposedException from linking a source another thread just disposed, which is
+        // why the registry links under its own gate rather than handing tokens out.
         await Parallel.ForAsync(0, 200, TestContext.Current.CancellationToken, async (i, ct) =>
         {
             var jobId = $"job-{i}";

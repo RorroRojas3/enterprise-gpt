@@ -53,16 +53,11 @@ public sealed class ConversationUsageToolCallConfiguration : BaseCreatedEntityCo
         // Usage reported for one MCP server over a period.
         builder.HasIndex(x => new { x.McpServerId, x.DateCreated });
 
-        // What one agent's model cost over a period, and the per-user ceiling that reads the same rows.
-        // Deferred until an agent existed to write a non-null ModelId, which the File Agent now does.
-        // Filtered, because SQL Server indexes NULL keys like any other: unfiltered, the largest table
-        // in the schema would pay a write per row for an index only agent rows are ever read from.
+        // One agent's model cost over a period, and the per-user ceiling. Filtered: only agent rows carry a
+        // ModelId, and NULL keys would cost a write per row on the largest table.
         builder.HasIndex(x => new { x.ModelId, x.DateCreated })
             .HasFilter("[ModelId] IS NOT NULL");
 
-        // None on Iteration either, deliberately. Attribution groups a single call's rows by it,
-        // and the (ConversationUsageId, Sequence) index above already seeks to those rows — the
-        // iteration is a filter over a handful of them, not a search key. A reporting query that
-        // grouped by iteration across many calls would be the thing that changes this.
+        // No Iteration index: attribution filters one call's rows, which (ConversationUsageId, Sequence) seeks.
     }
 }

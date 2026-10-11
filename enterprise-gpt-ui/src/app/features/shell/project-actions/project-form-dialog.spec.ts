@@ -19,7 +19,7 @@ const DUPLICATE_NAME_PROBLEM = {
   errors: { Name: ["A project named 'RFP Responses' already exists."] },
 };
 
-describe('ProjectFormDialog (US-903)', () => {
+describe('ProjectFormDialog', () => {
   let backend: HttpTestingController;
   let fixture: ComponentFixture<ProjectFormDialog>;
   let actions: InstanceType<typeof ProjectActionsStore>;
@@ -90,8 +90,7 @@ describe('ProjectFormDialog (US-903)', () => {
   it('re-seeds when the project arrives one round trip after the dialog opened', async () => {
     const summary = projectFixture({ name: 'Helios' });
 
-    // The grid's kebab has only the listing shape, which carries no `instructions`
-    // key at all, so the dialog opens on the click and fills in when the detail lands.
+    // The listing shape has no `instructions`, so the dialog opens now and fills in later.
     actions.beginEdit(summary);
     await fixture.whenStable();
 
@@ -111,8 +110,7 @@ describe('ProjectFormDialog (US-903)', () => {
     actions.beginCreate();
     await fixture.whenStable();
 
-    // NG8022: the [formField] directive owns the constraint attributes, so a literal
-    // `maxlength` in the template would not compile.
+    // NG8022: `[formField]` owns `maxlength`, so a literal one would not compile.
     expect(nameField().getAttribute('maxlength')).toBe(String(PROJECT_FIELD_LENGTHS.name));
   });
 
@@ -181,8 +179,7 @@ describe('ProjectFormDialog (US-903)', () => {
     actions.beginCreate();
     await fixture.whenStable();
 
-    // The component is mounted once and lives as long as the projects area, so a
-    // previous open must not leak into the next one.
+    // Mounted once in `Shell`, so a previous open must not leak into the next.
     expect(nameField().value).toBe('');
   });
 });

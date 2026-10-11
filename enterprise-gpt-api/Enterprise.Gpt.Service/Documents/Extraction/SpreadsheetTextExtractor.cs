@@ -47,19 +47,16 @@ public sealed partial class SpreadsheetTextExtractor(
     // What a shared string costs beyond its own characters, so a table of empty entries is still bounded.
     private const int StringEntryOverhead = 16;
 
-    // How much markup a character of cell text is allowed to arrive in. Element names, cell references
-    // and style attributes dominate a worksheet, so the package inflates well past the text it carries.
+    // Markup allowed per character of cell text; element names, references and styles dominate a worksheet.
     private const int MarkupBytesPerCharacter = 32;
 
-    // Package boilerplate — content types, relationships, the workbook part — costs a few kilobytes
-    // before a single cell is read, so the derived budget never falls below it.
+    // Package boilerplate costs a few kilobytes before any cell, so the derived budget never falls below this.
     private const long MinimumPackageBytes = 256 * 1024;
 
     private const int InflateBufferSize = 64 * 1024;
 
-    // What the same cells cost once stored: every populated one repeats its column's name, plus JSON
-    // punctuation. Eight times the text budget leaves an ordinary wide export room and still refuses a
-    // sheet whose headings alone would outweigh its data.
+    // Stored cells repeat their column name plus JSON punctuation; 8x the text budget fits a wide export
+    // but refuses a sheet whose headings outweigh its data.
     private const int CellCharactersPerTextCharacter = 8;
 
     private readonly ILogger<SpreadsheetTextExtractor> _logger = logger;
@@ -98,10 +95,8 @@ public sealed partial class SpreadsheetTextExtractor(
         IProgress<DocumentExtractionProgress>? progress,
         CancellationToken cancellationToken)
     {
-        // The whole parse is guarded, not just Open(). The Open XML SDK reads part XML lazily and parses
-        // typed attributes on first access, so a truncated worksheet, a malformed style index, or a sheet
-        // id pointing at a missing part all throw well after the package opens — and unguarded they would
-        // surface as an opaque "unexpected error" job failure instead of a 400 the caller can act on.
+        // The whole parse, not just Open(): the SDK reads parts and typed attributes lazily, so malformed
+        // input throws later and would otherwise fail the job opaquely instead of as a 400.
         try
         {
             return ExtractSheets(file, progress, cancellationToken);
@@ -137,8 +132,7 @@ public sealed partial class SpreadsheetTextExtractor(
         var workbookPart = document.WorkbookPart
             ?? throw new InvalidDataException("The package contains no workbook part.");
 
-        // Sheets are enumerated through the workbook's own Sheets list rather than WorksheetParts
-        // because only the former is in workbook order; part order is a package detail.
+        // The workbook's Sheets list, not WorksheetParts: only it is in workbook order.
         var sheets = workbookPart.Workbook?.Sheets?.Elements<Sheet>().ToList() ?? [];
 
         var sharedStrings = ReadSharedStrings(workbookPart, cancellationToken, out var characterBudget);
@@ -157,8 +151,7 @@ public sealed partial class SpreadsheetTextExtractor(
             var sheetNumber = i + 1;
             var relationshipId = sheets[i].Id?.Value;
 
-            // A chart or dialog sheet resolves to something other than a WorksheetPart and has no
-            // cell table, but it still consumes its ordinal so numbering matches the workbook.
+            // A chart or dialog sheet has no cell table but still consumes its ordinal.
             if (relationshipId is not null
                 && workbookPart.GetPartById(relationshipId) is WorksheetPart worksheetPart)
             {
@@ -204,9 +197,8 @@ public sealed partial class SpreadsheetTextExtractor(
         var columnCursor = 0;
         characters = SheetSegmentBuilder.SheetHeaderLength(sheetName);
 
-        // Cells are loaded one at a time rather than a row at a time: loading the row element would
-        // materialize every cell in it before the column ceiling could refuse any of them, which is what
-        // lets a few kilobytes of compressed markup cost hundreds of megabytes of heap.
+        // One cell at a time: loading a row materializes every cell before the column ceiling can refuse,
+        // letting a few kilobytes of compressed markup cost hundreds of megabytes.
         using var reader = OpenXmlReader.Create(worksheetPart);
 
         while (reader.Read())
@@ -236,8 +228,8 @@ public sealed partial class SpreadsheetTextExtractor(
             var columnIndex = GetColumnIndex(cell.CellReference?.Value, columnCursor);
             columnCursor = columnIndex + 1;
 
-            // Resolved before the ceiling is applied, so a formatting-only cell far to the right — which
-            // Excel persists routinely — does not refuse a workbook with three populated columns.
+            // Before the ceiling, so a far-right formatting-only cell (routine in Excel) does not refuse
+            // the workbook.
             var text = ResolveCellText(cell, sharedStrings, dateStyles, use1904);
             if (text.Length == 0)
             {
@@ -260,13 +252,7 @@ public sealed partial class SpreadsheetTextExtractor(
         return rows;
     }
 
-    /// <summary>
-    /// Takes a closed row, refusing at every ceiling before the row is kept.
-    /// </summary>
-    /// <remarks>
-    /// The row is copied down to its last populated cell, which is the shape the assembler and the
-    /// character accounting both assume.
-    /// </remarks>
+    // Trimmed to its last populated cell: the shape the assembler and character accounting assume.
     private void AddRow(
         List<string[]> rows,
         List<string> cells,
@@ -305,14 +291,8 @@ public sealed partial class SpreadsheetTextExtractor(
         }
     }
 
-    /// <summary>
-    /// Refuses a package that inflates past its budget, before the SDK reads any of it.
-    /// </summary>
-    /// <remarks>
-    /// A workbook is a deflate archive, so the accepted upload size bounds nothing on its own, and the
-    /// SDK materializes an element before its content can be measured. Real inflated bytes are counted
-    /// because a zip's declared entry length is attacker-controlled and never verified while inflating.
-    /// </remarks>
+    // Upload size bounds nothing for a deflate archive. Counts real inflated bytes before the SDK reads
+    // anything, because a zip's declared entry length is attacker-controlled.
     private void GuardPackageSize(byte[] content, CancellationToken cancellationToken)
     {
         var maxBytes = PackageBudget();
@@ -347,9 +327,6 @@ public sealed partial class SpreadsheetTextExtractor(
         }
     }
 
-    /// <summary>
-    /// Serialized cell characters one upload may materialize, derived from its text budget.
-    /// </summary>
     private int CellBudget()
     {
         return (int)Math.Min(int.MaxValue, (long)_options.MaxCharactersPerUpload * CellCharactersPerTextCharacter);
@@ -397,9 +374,6 @@ public sealed partial class SpreadsheetTextExtractor(
         return [.. values];
     }
 
-    /// <summary>
-    /// Maps each cell-format index to whether it renders its value as a date or a time.
-    /// </summary>
     private static bool[] ReadDateStyles(WorkbookPart workbookPart)
     {
         var stylesheet = workbookPart.WorkbookStylesPart?.Stylesheet;
@@ -517,8 +491,7 @@ public sealed partial class SpreadsheetTextExtractor(
                 return FormatIsoDate(value);
             }
 
-            // String is a formula's cached text result and Error is a literal such as #DIV/0!; both are
-            // already display text.
+            // A formula's cached text result, or an error literal such as #DIV/0!; both are display text.
             if (dataType == CellValues.String || dataType == CellValues.Error)
             {
                 return SheetSegmentBuilder.NormalizeCell(value);
@@ -530,8 +503,7 @@ public sealed partial class SpreadsheetTextExtractor(
             return string.Empty;
         }
 
-        // A number's stored text is already an invariant decimal string, so it is used verbatim rather
-        // than parsed and reformatted.
+        // A number's stored text is already invariant, so it is used verbatim.
         return IsDateStyled(cell, dateStyles)
             ? FormatSerialDate(value, use1904)
             : SheetSegmentBuilder.NormalizeCell(value);
@@ -587,14 +559,8 @@ public sealed partial class SpreadsheetTextExtractor(
             : date.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
     }
 
-    /// <summary>
-    /// Converts a cell reference such as <c>C5</c> to its zero-based column index.
-    /// </summary>
-    /// <remarks>
-    /// The SDK omits empty cells entirely, so without the reference a row with gaps would silently shift
-    /// every later cell into the wrong column. Some generators omit the reference, which is what
-    /// <paramref name="fallback"/> — the running position within the row — covers.
-    /// </remarks>
+    // Empty cells are omitted, so the reference keeps later cells in their columns. Some generators omit
+    // the reference too, hence the running-position fallback.
     private static int GetColumnIndex(string? cellReference, int fallback)
     {
         if (string.IsNullOrEmpty(cellReference))

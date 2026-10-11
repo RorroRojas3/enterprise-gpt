@@ -12,20 +12,9 @@
   background: var(--surface);
   box-shadow: 0 1px 3px rgba(11, 31, 51, 0.05);
 
-  // The card carries the focus indication for the borderless textarea — the same
-  // treatment Bootstrap gives a focused form control.
-  //
-  // Two changes here in US-1401, and the second follows from the first. The ring
-  // is `--focus-ring` rather than `--ring`, which is 45% alpha and composites to
-  // about 1.4:1 on `--surface`; and it is scoped with `:has()` to the *field*
-  // rather than firing on `:focus-within`. At 45% alpha a card ring under a
-  // focused button was invisible enough not to matter; solid, it would draw a
-  // second ring around the whole composer every time a keyboard user tabbed onto
-  // any of the six controls inside it — which is the opposite of "the card
-  // carries the indication for the textarea". Each control has its own ring.
-  //
-  // The border colour still follows `:focus-within`: that is the board's "this
-  // composer is active" affordance, not the focus indicator.
+  // The card draws the borderless textarea's focus ring, scoped with `:has()` because every inner
+  // control has its own and `:focus-within` would double them. `--focus-ring`, since `--ring`
+  // composites to about 1.4:1 here. The border is only the "composer is active" cue.
   &:focus-within {
     border-color: var(--accent);
   }
@@ -35,9 +24,7 @@
   }
 }
 
-// Frame 2a: the chips sit above the prompt box, wrapping onto as many rows as they
-// need. A list, because that is what it is — several files with a shared purpose —
-// and screen readers announce the count from it.
+// A list, so screen readers announce the count.
 .composer__chips {
   display: flex;
   flex-wrap: wrap;
@@ -51,9 +38,7 @@
   }
 }
 
-// Off-screen rather than `display: none`, which would make `.click()` a no-op in
-// some engines, and rather than `visibility: hidden`, which some skip for the same
-// reason. The visible control is the paperclip button beside it.
+// Off-screen: `display: none` or `visibility: hidden` makes `.click()` a no-op in some engines.
 .composer__file-input {
   position: absolute;
   width: 1px;
@@ -79,14 +64,8 @@
   }
 
   &:focus {
-    // The field is borderless and fills the card, so what indicates its focus is
-    // the card's `&:has(.composer__prompt:focus)` ring at the top of this file —
-    // **that rule, not `:focus-within`**, which since US-1401 sets only the border
-    // colour. An outline here would draw a second ring inside the first.
-    //
-    // The coupling is a class-name string in that selector, and `composer.spec.ts`
-    // pins it: renaming this class would otherwise remove the textarea's only
-    // indicator silently, with this hatch keeping `check:forbidden` green.
+    // The card's `:has(.composer__prompt:focus)` ring is this field's indicator, so an outline
+    // would double it. `composer.spec.ts` pins the class name, as a rename would drop it silently.
     // focus-check-ignore-next-line
     outline: none;
   }
@@ -139,9 +118,7 @@
   }
 }
 
-// Frames 1b/2g: send's in-flight state — a transparent 38px circle with a 2px
-// --brand ring around a drawn 11px square, not an icon glyph. The doubled
-// selectors outweigh `.btn`'s own hover/active styling.
+// The doubled selectors outweigh `.btn`'s own hover and active styling.
 .composer__action.composer__stop {
   border: 2px solid var(--brand);
   background: transparent;
@@ -166,27 +143,20 @@
   background: var(--brand);
 }
 
-// US-407: the auxiliary controls dim while a turn runs. The microphone (US-413), the
-// attach control (US-801) and the project pill (US-307) carry the class; download
-// (US-1502) adopts it when it lands, and inherits the dimming for free.
+// The auxiliary controls dim while a turn runs.
 .composer--streaming .composer__aux {
   opacity: 0.4;
 }
 
-// …except while the download control is being pointed at or focused, which is exactly
-// when its tooltip is on screen. The tooltip cannot be exempted on its own: `opacity`
-// composites the whole subtree into one group, so no descendant can raise itself back to
-// 1 — and the flyout is created through `Renderer2`, so it carries no encapsulation
-// attribute for a component-scoped selector to match in the first place (see `_kit.scss`).
-// Un-dimming the control itself is the only thing that works, and the sentence explaining
-// why the control is unavailable is the one thing worth reading at 100%.
+// …except while the download control is hovered or focused, when its tooltip shows. `opacity`
+// groups the whole subtree and the flyout has no encapsulation attribute, so only un-dimming the
+// control itself lets the tooltip read at full strength.
 .composer--streaming app-conversation-download-menu.composer__aux:hover,
 .composer--streaming app-conversation-download-menu.composer__aux:focus-within {
   opacity: 1;
 }
 
-// The project pill: 30px, fully rounded, between the paperclip and the model pill. The same box serves the static chip the project screen renders, which is
-// a <span> because there is nothing to open there.
+// Also the project screen's static chip, a <span> because there is nothing to open there.
 .composer__project {
   display: inline-flex;
   flex: 0 1 auto;
@@ -219,7 +189,6 @@
     outline-offset: 2px;
   }
 
-  // Assigned: the folder takes the brand tone, as the board draws it.
   &--assigned app-icon:first-child {
     color: var(--brand);
   }
@@ -244,7 +213,7 @@ app-icon.composer__project-caret {
   font-size: 9px;
 }
 
-// The 34px square every auxiliary control in the row uses — frames 2a and 2i.
+// The square every auxiliary control in the row uses.
 .composer__icon-button {
   display: flex;
   flex: 0 0 auto;
@@ -269,9 +238,7 @@ app-icon.composer__project-caret {
   }
 }
 
-// Frame 2i, recording: the pill takes the button's place. `ringpulse` is one of
-// the four keyframes the design defines — no fifth is added — and it drives
-// box-shadow, which is free here because the pill has none of its own.
+// `ringpulse` is one of the design's four keyframes; it can drive box-shadow, as the pill has none.
 .composer__mic-pill {
   display: flex;
   flex: 0 0 auto;
@@ -311,9 +278,8 @@ app-icon.composer__project-caret {
   text-wrap: balance;
 }
 
-// Below 768px this row wants about twice the width it has, and Send — last in it —
-// is what fell off the card. Every pill whose glyph already says what its label says
-// gives the label up; the model name is the one piece of text that survives.
+// The row is about twice too wide on a phone, pushing Send off the card, so every pill whose
+// glyph says what its label says gives the label up; the model name survives.
 @include bp.mobile {
   .composer__controls {
     gap: 5px;
@@ -324,8 +290,7 @@ app-icon.composer__project-caret {
     max-width: 100%;
   }
 
-  // Absent rather than dimmed: the narrow navbar renders this same menu, so the export
-  // stays one press away. The project screen's composer never offered one.
+  // Absent rather than dimmed: the narrow navbar renders this same menu.
   app-conversation-download-menu {
     display: none;
   }
@@ -338,9 +303,7 @@ app-icon.composer__project-caret {
     display: none;
   }
 
-  // The chip, not just its label: this arm is a plain <span> whose only content is that
-  // label, so hiding the text alone leaves a pill with nothing to read and nothing to
-  // announce — and the screen it renders on is the project's own, named in the header.
+  // The whole chip: its only content is the label, and the header already names the project.
   .composer__project--fixed {
     display: none;
   }

@@ -60,7 +60,6 @@ public sealed class BackgroundJobProcessorTests : IDisposable
         return jobId;
     }
 
-    /// <summary>Waits for a snapshot to reach a terminal state rather than sleeping a fixed span.</summary>
     private async Task<JobStatusSnapshot> WaitForTerminalAsync(string jobId)
     {
         var deadline = DateTimeOffset.UtcNow.AddSeconds(10);

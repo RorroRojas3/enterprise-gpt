@@ -42,24 +42,9 @@ import {
 } from './usage-format';
 
 /**
- * The administration usage reports tab, frames `5j` and `5k` (US-1302).
- *
- * **The URL is the source of truth for what is on screen** — `?range=` and `?group=`. Both
- * controls are views of it, and the only writer is {@link _applyQuery}: `withComponentInputBinding()`
- * binds the parameters to inputs, the inputs drive the store, and the back button restoring the
- * previous selection is then a property of the router rather than code here.
- *
- * Neither parameter can feed the loop back on itself. Both bind one-way, both are repaired
- * synchronously in their own transform — the sets are compile-time constants, so unlike the user
- * directory's `?permission=` there is nothing to ask the server and no repairing effect to write —
- * and nothing navigates except a reader's own gesture.
- *
- * **The route, the rail entry, the page title and the `<h1>` are all inherited from US-1209** and
- * none of them changes here. What changed is what fills the pane: `UnavailablePanel` is gone,
- * because `GET api/reports/usage` now exists.
- *
- * `ReportsStore` is provided **on this component**, which is what makes FR-41 structural — see
- * the store's own doc.
+ * `?range=` and `?group=` are the source of truth: bound inputs drive the store and
+ * {@link _applyQuery} is the only writer, so Back restores a selection with no code here.
+ * `ReportsStore` is provided on this component so every visit refetches.
  */
 @Component({
   selector: 'app-admin-reports',
@@ -101,12 +86,8 @@ export class AdminReports {
   private readonly _isMobile = injectMediaQuery(MOBILE_VIEWPORT);
 
   /**
-   * Drives the table's track set; the rest of the dashboard stacks in CSS.
-   *
-   * Derived from the two narrow queries rather than asserted with a positive
-   * `(min-width: 1024px)`, which is `breakpoints.ts`'s own rule: the test fake answers `false` for
-   * every query a spec has not set, so desktop has to be what "nothing configured" means or every
-   * existing spec would silently run against the narrow layout.
+   * Derived from the narrow queries, not a positive desktop query: the test fake answers `false`
+   * to unset queries, so desktop must be what "nothing configured" means.
    */
   private readonly isDesktop = computed(() => !this._isTablet() && !this._isMobile());
 
@@ -114,10 +95,8 @@ export class AdminReports {
   private readonly _route = inject(ActivatedRoute);
 
   /**
-   * The chip beside the range control: the window the server actually measured.
-   *
-   * Read off the response rather than recomputed from `?range=`, so it can never claim a window
-   * the figures below it were not taken from.
+   * The window the server measured, read off the response rather than `?range=` so it never
+   * claims a window the figures were not taken from.
    */
   protected readonly dateRange = computed(() => {
     const report = this.reports.report();
@@ -126,12 +105,8 @@ export class AdminReports {
   });
 
   /**
-   * "prior 30 days" — what the tiles' deltas are measured against.
-   *
-   * Derived from the window the response reports rather than from `?range=`, for the reason
-   * `renderedGrouping` exists: the control flips the instant it is clicked, and until the next
-   * report lands the tiles below still hold the previous period's deltas. A caption naming a range
-   * the figures were not taken from is worse than one that lags by a request.
+   * Derived from the response, not `?range=`: until the next report lands the tiles still hold
+   * the previous period's deltas, and a caption that lags beats one that is wrong.
    */
   protected readonly priorCaption = computed(() => {
     const report = this.reports.report();
@@ -163,9 +138,8 @@ export class AdminReports {
       {
         label: 'Estimated cost',
         value: formatCost(totals.estimatedCost),
-        // Null costs compare as zero rather than as "no data": a period nobody could price and a
-        // period that cost nothing are the same *change* from a prior period that was also
-        // unpriced, and the tile's own value already says which of the two this was.
+        // Null costs compare as zero: unpriced and free are the same change from an unpriced
+        // prior, and the tile's value already says which.
         delta: deltaPercent(totals.estimatedCost ?? 0, priorTotals.estimatedCost ?? 0),
       },
       {
@@ -181,18 +155,10 @@ export class AdminReports {
     ];
   });
 
-  /**
-   * The table's columns, with the first one named after the grouping the rows belong to.
-   *
-   * A `computed` rather than a field because the header changes, and reading the *rendered*
-   * grouping rather than the control's keeps the header honest while the next report is on the
-   * wire — the rows on screen still belong to the previous one.
-   */
+  /** Headed by the rendered grouping, not the control's, while the next report is in flight. */
   protected readonly columns = computed<readonly TableColumn<UsageGroupDto>[]>(() => {
-    // Frame `5j`'s own track set at desktop. Below it the six fixed columns alone are wider than
-    // the content pane, which pushes the name column to nothing and clips every row — so they
-    // become proportional and shrink together instead. Hiding columns was the other option and is
-    // worse: every one of them is a figure the table exists to compare.
+    // Below desktop the fixed tracks overflow the pane and crush the name column, so they go
+    // proportional; hiding columns would drop figures the table exists to compare.
     const numeric = this.isDesktop() ? ['70px', '90px', '90px', '70px', '90px', '90px'] : null;
     const at = (index: number): string => numeric?.[index] ?? 'minmax(0, 1fr)';
 
@@ -212,21 +178,14 @@ export class AdminReports {
     ];
   });
 
-  /**
-   * Whether the bar chart offers a way to see every model.
-   *
-   * Only when the table is showing something else. Under `group=model` the table already lists
-   * every model the range touched, so the link would be an affordance that changes nothing.
-   */
+  /** Under `group=model` the table already lists every model, so "View all" would do nothing. */
   protected readonly canViewAllModels = computed(
     () => this.reports.renderedGrouping() !== DEFAULT_USAGE_GROUPING,
   );
 
   /**
-   * The empty state names the range, which is criterion 5: a dashboard of zeroes is
-   * indistinguishable from a dashboard of a quiet month.
-   *
-   * Joined with "and" rather than the chip's en dash, because this one reads mid-sentence.
+   * Names the range, since a dashboard of zeroes looks like a quiet month. Joined with "and", not
+   * the chip's en dash, because it reads mid-sentence.
    */
   protected readonly emptyHeading = computed(() => {
     const report = this.reports.report();
@@ -247,9 +206,7 @@ export class AdminReports {
   protected readonly rowLabel = (group: UsageGroupDto): string => group.label;
 
   constructor() {
-    // The constructor is an injection context, which a signal-valued reactive method requires.
-    // Handing over a computation rather than the values is what makes a deep link issue one
-    // request carrying both parameters, rather than a default request followed by the real one.
+    // A computation, not values, so a deep link issues one request carrying both parameters.
     this.reports.bindQuery(() => ({ range: this.range(), grouping: this.group() }));
   }
 
@@ -263,11 +220,8 @@ export class AdminReports {
 
     this._applyQuery(
       { [GROUP_PARAM]: value === DEFAULT_USAGE_GROUPING ? null : value },
-      // The users tab's rule, and the whole of it: turning a grouping on or off is a transition and
-      // pushes, swapping one for another is a refinement and replaces. A closed `<select>` commits
-      // on every arrow key, so replacing the swaps costs a keyboard reader one entry for the whole
-      // walk instead of one per grouping passed — while the push at either end is what keeps Back
-      // able to undo the change at all.
+      // Turning a grouping on or off pushes; swapping one for another replaces, since a closed
+      // `<select>` commits on every arrow key and would flood history.
       value !== DEFAULT_USAGE_GROUPING && this.group() !== DEFAULT_USAGE_GROUPING,
     );
   }
@@ -294,12 +248,8 @@ export class AdminReports {
   }
 
   /**
-   * The single writer. Every control change is a navigation and nothing writes the store directly,
-   * which is what keeps the URL authoritative and the back button working without a line of code.
-   *
-   * `replaceUrl` has no default, so every call site has to decide: a new control that silently
-   * pushed would be the arrow-key flood again, and one that silently replaced would be a change
-   * Back cannot undo.
+   * The single writer. `replaceUrl` has no default so each call site decides: a silent push floods
+   * history on arrow keys, and a silent replace makes a change Back cannot undo.
    */
   private _applyQuery(queryParams: Params, replaceUrl: boolean): void {
     void this._router.navigate([], {

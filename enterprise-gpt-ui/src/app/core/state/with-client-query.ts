@@ -10,74 +10,26 @@ export interface ClientQueryState<K extends string> {
 }
 
 export interface ClientQueryConfig<T, K extends string> {
-  /**
-   * The text one row is matched against. Concatenate whatever fields the screen
-   * says it searches; matching is case-insensitive substring.
-   */
+  /** Text a row is matched against, as a case-insensitive substring. */
   readonly searchableText: (item: T) => string;
   /** Ascending comparators, one per offered sort key. */
   readonly comparators: Readonly<Record<K, (a: T, b: T) => number>>;
   /**
-   * Whether `source` is the complete matching set.
-   *
-   * A signal where it depends on load state — a drain that has not finished, or
-   * one that stopped at its ceiling, is not authoritative and must not offer sort.
-   * Note that `isFullyLoaded` alone reads `true` before the first fetch, so gate it
-   * on request status too: `computed(() => isFulfilled() && isFullyLoaded())`.
+   * Whether `source` is the complete set, which sorting requires. `isFullyLoaded` reads true
+   * before the first fetch, so gate it: `computed(() => isFulfilled() && isFullyLoaded())`.
    */
   readonly isAuthoritative: Signal<boolean> | boolean;
   /**
-   * Why the loaded set is incomplete, in the user's words — "Only the first 500
-   * projects have loaded." Rendered wherever the shortfall changes what the screen
-   * is telling the user: in place of a sort control, and beside a result count that
-   * was computed over part of the data. Naming the limit is the point; a silently
-   * disabled control reads as a bug, and an unqualified "No matches" is a lie.
-   *
-   * A signal where the sentence depends on what was loaded — a listing the caller
-   * narrowed server-side has a different shortfall to describe than the whole one.
+   * Why the loaded set is incomplete, in the user's words. Shown in place of the sort control
+   * and beside partial counts, since a silently disabled control reads as a bug.
    */
   readonly incompleteSetReason: string | Signal<string>;
 }
 
 /**
- * Client-side search and sort over a collection the store already holds.
- *
- * The three paginated list endpoints accept `sort=` and `dir=` since US-706, and the
- * screens over them order server-side rather than composing this. What is left for it is
- * every endpoint that accepts no order at all — the `/all` catalogue routes, and the
- * documents listing — where sorting is only ever correct over a set the client holds in
- * full. This feature makes that condition
- * explicit rather than implicit: when `isAuthoritative` is false the sort keys are
- * ignored and results stay in server order. Sorting only the page in hand is never
- * an option — "Load more" would then append a second sorted run beneath the first.
- *
- * Filtering is *not* suppressed on an incomplete set, because a filter over part of
- * the data is still useful where a sort over it is simply wrong. It is qualified
- * instead: `isResultPartial` says the count on screen was computed over less than
- * everything, so "No projects match" can be rendered as "No matches among the
- * projects loaded so far" rather than as a fact about the user's data.
- *
- * Composed through `withFeature` so it binds to any `Signal<readonly T[]>`,
- * whatever the host store calls it:
- *
- * ```ts
- * signalStore(
- *   withEntities<Project>(),
- *   withRequestStatus(),
- *   withOffsetPagination(),
- *   withFeature(({ entities, isFulfilled, isFullyLoaded }) =>
- *     withClientQuery(entities, {
- *       searchableText: (p) => p.name,
- *       comparators: { name: (a, b) => a.name.localeCompare(b.name) },
- *       // Both, not isFullyLoaded alone: it reads true before the first fetch, and
- *       // a sort control that appears over zero rows and then vanishes when the
- *       // first page lands is worse than one that was never offered.
- *       isAuthoritative: computed(() => isFulfilled() && isFullyLoaded()),
- *       incompleteSetReason: 'Only the first 500 projects have loaded.',
- *     }),
- *   ),
- * );
- * ```
+ * Client-side search and sort, composed via `withFeature`, for endpoints that accept no order.
+ * Sorting waits for `isAuthoritative`, since a sorted page breaks on "Load more". Filtering
+ * still runs on a partial set, and `isResultPartial` qualifies its count.
  */
 export function withClientQuery<T, K extends string>(
   source: Signal<readonly T[]>,
@@ -106,10 +58,7 @@ export function withClientQuery<T, K extends string>(
             );
       });
 
-      /**
-       * The result set was computed over less than everything that matches, so
-       * a count or an empty state built from it must say so.
-       */
+      /** Results cover only part of the data, so counts and empty states must say so. */
       const isResultPartial = computed(() => !canSort() && hasQuery());
 
       return {
@@ -126,8 +75,6 @@ export function withClientQuery<T, K extends string>(
 
           const compare = config.comparators[key];
           const sign = sortDirection() === 'desc' ? -1 : 1;
-          // Copied before sorting: `sort` is in place, and the source array is
-          // store state.
           return [...items].sort((a, b) => sign * compare(a, b));
         }),
         hasQuery,
@@ -140,11 +87,8 @@ export function withClientQuery<T, K extends string>(
 }
 
 /**
- * The part of {@link ClientQueryState} an updater reads, widened to `string`.
- *
- * Updaters are typed against this rather than against `ClientQueryState<K>`: a
- * host store's `sortKey` is its own key union, and an updater declaring the single
- * literal it was called with would not accept that state as its argument.
+ * {@link ClientQueryState} widened to `string`, so an updater typed on one literal key still
+ * accepts a host store's whole key union.
  */
 export interface SortReadableState {
   readonly sortKey: string | null;

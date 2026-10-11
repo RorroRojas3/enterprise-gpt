@@ -12,12 +12,8 @@ export type StatusTone =
   | 'provider-anthropic';
 
 /**
- * A coloured dot with its meaning beside it — provider dots in the model picker,
- * activity state in the admin tables.
- *
- * The label is required and visible by default. Colour is never the only channel
- * (WCAG 1.4.1): `labelHidden` moves the text to the screen-reader-only class rather
- * than removing it, so the meaning survives for someone who cannot see the hue.
+ * A coloured dot with its meaning beside it. Colour is never the only channel (WCAG 1.4.1):
+ * `labelHidden` makes the label screen-reader-only rather than removing it.
  */
 @Component({
   selector: 'app-status-dot',

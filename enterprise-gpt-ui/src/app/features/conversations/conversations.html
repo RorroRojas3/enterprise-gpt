@@ -1,11 +1,7 @@
 <h1 class="conversations__title font-display">Conversations</h1>
 
 <div class="conversations__toolbar">
-  <!-- Deliberately not the sidebar's "Search conversations": two fields with the
-       same accessible name are on screen together at this width, and a rotor
-       listing both would say nothing about which is which.
-
-       Frame 4a also draws a Select all control (US-704) here. -->
+  <!-- Named apart from the sidebar's "Search conversations" field, which is on screen too. -->
   <app-search-input
     class="conversations__search"
     label="Search conversations by name"
@@ -15,15 +11,8 @@
     (searched)="onSearched($event)"
   />
 
-  <!--
-    aria-pressed rather than a second label: the button's text never changes, so the
-    state has to be carried somewhere a screen reader reads.
-
-    Spelt the way the sidebar kebab and the chat header star already spell it, not the
-    board's US "Favorites". A reader hearing "Favorites" from this button and
-    "Unfavourite Helios" from the row star beside it is the worse of the two
-    inconsistencies, and every other favourite control in the app is British.
-  -->
+  <!-- aria-pressed, since the text never changes. British "Favourites", like every other
+       favourite control in the app. -->
   <button
     class="btn btn-outline-secondary btn-sm conversations__filter"
     type="button"
@@ -35,9 +24,8 @@
     Favourites
   </button>
 
-  <!-- Frame 4a puts select-all in the toolbar rather than the table header, so
-       `DataTable` is told not to render its own: two controls bound to one state is
-       a defect, and below the breakpoint there is no header row to hold one. -->
+  <!-- Select-all lives here, not in the table header (which mobile lacks), so `DataTable` is
+       told not to render a second one bound to the same state. -->
   <label class="conversations__select-all">
     <input
       class="form-check-input"
@@ -51,15 +39,8 @@
   </label>
 
   <!--
-    The sort select (US-706), which retires US-705's stated order: `GET
-    api/conversations/search` now accepts `sort=` and `dir=`, so an appended page is a
-    continuation of the same run rather than a second sorted run underneath the first —
-    the failure that made a control dishonest here.
-
-    The label is hidden rather than absent: "Newest first" reads as a value, not as what
-    the control does. The selection is bound on the options, never as `[value]` on the
-    select, or a deep link to `?sort=name` would request Alphabetical and display
-    "Newest first".
+    The label is hidden, not absent: "Newest first" reads as a value. Selected per option, not
+    via the select's `[value]`, or a `?sort=name` deep link would display "Newest first".
   -->
   <label class="conversations__sort">
     <span class="visually-hidden">Sort conversations</span>
@@ -73,13 +54,8 @@
   </label>
 
   <!--
-    aria-hidden because the same string is handed to the table's own live region
-    below, which announces it once when it changes. Duplicating it here would have a
-    screen reader read the count twice on every search.
-
-    Withheld before the first response ("Showing 0 of 0") and beside an error panel,
-    where it would keep reporting a result set the panel exists to stop showing. A
-    *narrowing* search keeps it, alongside the rows it still describes.
+    aria-hidden: the table's live region announces the same string. Withheld before the first
+    response and beside an error panel, where it would describe rows no longer shown.
   -->
   @if (!library.isFirstLoad() && !library.error()) {
     <p class="conversations__count" aria-hidden="true">{{ library.countSummary() }}</p>
@@ -87,9 +63,7 @@
 </div>
 
 @if (library.error(); as error) {
-  <!-- Instead of the table rather than beside it: the rows on screen belong to a
-       query that failed, so leaving them up would show a stale result set as if it
-       were the answer. -->
+  <!-- Instead of the table: the rows on screen belong to the query that failed. -->
   <app-error-panel
     [error]="error"
     [canRetry]="canRetry(error)"
@@ -115,11 +89,8 @@
       <a class="conversations__name" [routerLink]="[chatRoute, row.id]">{{ row.name }}</a>
     </ng-template>
 
-    <!--
-      US-307's project chip. Absent rather than an em dash for a standalone
-      conversation: "no project" is a real state, not missing data, and the model
-      column's dash means "the catalogue does not know this id".
-    -->
+    <!-- Absent rather than a dash for a standalone conversation: "no project" is a real state,
+         while the model column's dash means the catalogue doesn't know the id. -->
     <ng-template appTableCell="project" [appTableCellFor]="library.entities()" let-row>
       @if (projectName(row); as project) {
         <span class="conversations__project">
@@ -135,19 +106,8 @@
 
     <ng-template appTableCell="favorite" [appTableCellFor]="library.entities()" let-row>
       <!--
-        No aria-pressed: the label already carries the direction, and a control that
-        both names its action and reports a pressed state is announced twice over.
-
-        `aria-disabled`, not `disabled`: the native attribute blurs the button the
-        instant it is pressed, so a keyboard reader would land on `<body>` for the
-        whole round trip. `toggleFavorite` already refuses re-entry on the pending id,
-        so the guard is real either way.
-
-        The glyph flips on the server's confirmation rather than optimistically. The
-        library holds its own entities and the actions store cannot patch them, and a
-        row past the sidebar's first 50 is not in the list it *can* patch — so an
-        optimistic flip here would have no rollback behind it. The busy state is what
-        carries the feedback in the meantime.
+        No aria-pressed: the label carries the direction. aria-disabled, because `disabled` blurs
+        the button mid-press. The glyph waits for the server: an optimistic flip has no rollback.
       -->
       <button
         class="conversations__star"
@@ -161,11 +121,7 @@
       </button>
     </ng-template>
 
-    <!--
-      US-307's per-row kebab, offering the same five actions the sidebar row does and
-      routed through the same `ConversationActionsStore` flows — nothing reimplemented.
-      `aria-disabled`, never the native attribute, for the reason the star above states.
-    -->
+    <!-- The sidebar row's actions and flows; aria-disabled for the star's reason. -->
     <ng-template appTableCell="actions" [appTableCellFor]="library.entities()" let-row>
       <app-menu #rowMenu [label]="'Actions for ' + row.name">
         <button
@@ -224,7 +180,6 @@
 
     <div tableEmpty>
       @if (library.hasNoMatches()) {
-        <!-- Frame 4b: the ridgeline motif, the term named, and one clear action. -->
         <app-empty-state
           [heading]="noMatchHeading()"
           [headingLevel]="2"
@@ -240,8 +195,6 @@
           </button>
         </app-empty-state>
       } @else if (library.hasNoFavorites()) {
-        <!-- Frame 4b's treatment for a filter with no term to quote, which is a
-             different situation again and needs its own way out. -->
         <app-empty-state
           heading="No favourite conversations"
           [headingLevel]="2"
@@ -257,8 +210,6 @@
           </button>
         </app-empty-state>
       } @else {
-        <!-- The same treatment for the reader who has none at all, which is a
-             different situation and a different action. -->
         <app-empty-state
           heading="No conversations yet"
           [headingLevel]="2"
@@ -272,22 +223,13 @@
     </div>
 
     <!--
-      The `@if` sits *inside* the projected element, never around it: content
-      projection matches static nodes, and `@if` would wrap this in an `ng-template`
-      carrying no `tableFooter` attribute — silently dropping it, since `DataTable`
-      has no catch-all slot.
-
-      Gone rather than disabled once everything is loaded, which is US-702's third
-      criterion and the board's own note: a disabled control still reads as "there is
-      more, but not for you".
+      The `@if` sits inside the projected element; around it, the wrapping `ng-template` would
+      lack `tableFooter` and be dropped. Removed, not disabled, once all is loaded: a disabled
+      control still implies there is more.
     -->
     <div tableFooter class="conversations__more">
       @if (library.hasMore()) {
-        <!--
-          Both halves of `loadMore()`'s own guard, so the control cannot look
-          operable while a press would be a silent no-op — which is what it would be
-          during a narrowing search, where the rows and this button both stay up.
-        -->
+        <!-- Mirrors `loadMore()`'s guard, so it can't look operable while a press would no-op. -->
         <button
           class="btn btn-outline-secondary btn-sm"
           type="button"
@@ -306,13 +248,7 @@
   </app-data-table>
 }
 
-<!--
-  Outside the error branch: a failed *page* leaves the rows and the selection intact,
-  and a reader who had rows checked should still be able to act on them.
-
-  `BulkActionBar` supplies frame 4a's pill, the "N selected" copy and the Clear
-  action; only the destructive control is projected.
--->
+<!-- Outside the error branch: a failed page leaves the rows and selection to act on. -->
 <app-bulk-action-bar
   [count]="library.selectedCount()"
   [note]="library.selectAllNote()"
@@ -330,10 +266,7 @@
   (confirmed)="library.deleteSelected()"
 />
 
-<!--
-  One picker for the whole table, mounted outside it so a row re-render cannot destroy
-  the panel the reader is using. It is fed the row and the kebab captured at the gesture.
--->
+<!-- Mounted outside the table, so a row re-render cannot destroy the open panel. -->
 @if (pickerOpen() && pickerRow(); as row) {
   @if (pickerAnchor(); as anchor) {
     <app-project-picker [conversation]="row" [anchor]="anchor" [(open)]="pickerOpen" />

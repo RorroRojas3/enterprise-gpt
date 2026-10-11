@@ -10,10 +10,6 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Documents.Sheets;
 
-/// <summary>
-/// Covers the kill switch itself: a configuration reload has to reach the next turn, and a reload that
-/// does not validate must not be the thing that fails one.
-/// </summary>
 public sealed class SheetQueryOptionsProviderTests : IDisposable
 {
     private readonly FakeLogCollector _logs = new();
@@ -73,9 +69,8 @@ public sealed class SheetQueryOptionsProviderTests : IDisposable
     }
 
     /// <summary>
-    /// The reason this does not read through <c>IOptionsMonitor</c>: that one revalidates on the
-    /// configuration provider's own callback thread, so an invalid edit surfaces as an unhandled
-    /// exception where nothing can catch it rather than as an ignored reload.
+    /// Why this avoids <c>IOptionsMonitor</c>: it revalidates on the provider's callback thread, where an
+    /// invalid edit is an uncatchable exception rather than an ignored reload.
     /// </summary>
     [Fact]
     public void Reload_WithAnInvalidConfiguration_DoesNotThrowOnTheConfigurationCallback()
@@ -104,10 +99,6 @@ public sealed class SheetQueryOptionsProviderTests : IDisposable
         Assert.Equal(40, provider.Current.MaxGroups);
     }
 
-    /// <summary>
-    /// What the change-token registrations exist to be released: once disposed, the provider stops
-    /// following the configuration it was built over.
-    /// </summary>
     [Fact]
     public void Current_AfterDisposal_StopsFollowingReloads()
     {

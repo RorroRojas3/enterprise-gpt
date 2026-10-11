@@ -9,10 +9,8 @@ namespace Enterprise.Gpt.Entity.Base;
 public abstract class BaseModifiedByEntity<TKey> : BaseModifiedEntity<TKey>
     where TKey : struct, IEquatable<TKey>
 {
-    /// <summary>The user who created the row.</summary>
     public Guid CreatedById { get; set; }
 
-    /// <summary>The user who last changed the row.</summary>
     public Guid ModifiedById { get; set; }
 
     public User CreatedBy { get; set; } = null!;

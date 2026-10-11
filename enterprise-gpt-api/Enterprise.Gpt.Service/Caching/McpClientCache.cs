@@ -7,35 +7,23 @@ using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Service.Caching;
 
-/// <summary>
-/// A lease on a cached MCP entry. Holding a lease keeps the underlying client alive even
-/// if the entry is evicted; disposing releases it (the client is disposed once evicted and
-/// no leases remain).
-/// </summary>
+/// <summary>A lease on a cached MCP entry; the client outlives eviction until all leases dispose.</summary>
 public interface IMcpToolLease : IAsyncDisposable
 {
-    /// <summary>
-    /// Gets the tools of the leased entry.
-    /// </summary>
     IReadOnlyList<AITool> Tools { get; }
 }
 
-/// <summary>
-/// Singleton cache of live MCP clients and their tool lists. Entries are created once per
-/// key under concurrency (single-flight), never cached on failure, expire with the access
-/// token that backs them, and are disposed deterministically once evicted and unleased.
-/// Per-instance only: in a scaled-out deployment each instance holds its own connections.
-/// </summary>
+/// <summary>Per-instance singleton cache of live MCP clients and their tool lists.</summary>
+/// <remarks>
+/// Single-flight creation, failures never cached, entries expire with their access token, and a client is
+/// disposed once it is evicted and unleased.
+/// </remarks>
 public interface IMcpClientCache : IAsyncDisposable
 {
     /// <summary>
-    /// Returns a leased entry for the key, creating it via <paramref name="factory"/> on a
-    /// miss or when the cached entry has less than the configured remaining lifetime.
-    /// Exactly one factory runs per key under concurrency; failures are never cached.
+    /// Returns a leased entry, creating it via <paramref name="factory"/> on a miss or when the cached entry
+    /// has less than the configured remaining lifetime.
     /// </summary>
-    /// <param name="key">The cache key.</param>
-    /// <param name="factory">Creates the client and tool list on a miss.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>A lease the caller must dispose when done using the tools.</returns>
     Task<IMcpToolLease> GetOrCreateAsync(
         McpCacheKey key,
@@ -43,36 +31,23 @@ public interface IMcpClientCache : IAsyncDisposable
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Evicts every entry (all users and the shared entry) for the given server. Safe to
-    /// call while streams are in flight: leased clients are disposed after their last
-    /// lease releases.
+    /// Evicts every entry for a server; leased clients are disposed after their last lease releases.
     /// </summary>
-    /// <param name="mcpServerId">The MCP server whose entries to evict.</param>
     void InvalidateServer(Guid mcpServerId);
 
-    /// <summary>
-    /// Evicts one user's entry for the given server, leaving every other user's in place.
-    /// Safe to call while streams are in flight, as <see cref="InvalidateServer"/> is.
-    /// </summary>
-    /// <param name="mcpServerId">The MCP server whose entry to evict.</param>
-    /// <param name="userOid">The user's Entra object id.</param>
+    /// <summary>Evicts one user's entry for a server, as <see cref="InvalidateServer"/> does for all.</summary>
     /// <remarks>
-    /// A user-supplied credential carries no expiry, so its entry lives to the age cap. Without
-    /// this a replaced or removed key would keep talking to the server over the connection the
-    /// old one opened.
+    /// A user-supplied credential has no expiry, so without this a replaced key keeps the old connection
+    /// until the age cap.
     /// </remarks>
     void InvalidateServerForUser(Guid mcpServerId, Guid userOid);
 }
 
-/// <summary>
-/// Default <see cref="IMcpClientCache"/> built on a
-/// <c>ConcurrentDictionary&lt;McpCacheKey, Lazy&lt;Task&lt;McpCacheEntry&gt;&gt;&gt;</c> rather than
-/// <c>IMemoryCache</c>/<c>HybridCache</c>: entries hold live, non-serializable MCP clients
-/// that need single-flight creation, deterministic refcounted disposal, and per-server
-/// invalidation — none of which the general-purpose caches model. The key space is tiny
-/// (users × servers), so no size management is needed. A background sweep disposes
-/// expired, unleased entries; the container disposes the cache itself on shutdown.
-/// </summary>
+/// <inheritdoc />
+/// <remarks>
+/// Lazy tasks in a dictionary rather than <c>IMemoryCache</c>/<c>HybridCache</c>, which model neither
+/// single-flight creation, refcounted disposal nor per-server invalidation. The key space is tiny.
+/// </remarks>
 public sealed partial class McpClientCache : IMcpClientCache
 {
     // Retries cover benign races only (a co-waiter's creator canceling, an entry evicted
@@ -115,15 +90,12 @@ public sealed partial class McpClientCache : IMcpClientCache
             McpCacheEntry entry;
             try
             {
-                // WaitAsync lets this caller stop waiting on its own cancellation without
-                // affecting co-waiters awaiting the same in-flight creation.
+                // WaitAsync so this caller can stop waiting without cancelling co-waiters.
                 entry = await lazy.Value.WaitAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                // Only drop the entry when the underlying creation actually failed. When
-                // this caller was merely waiting (WaitAsync) on someone else's in-flight
-                // factory, that factory may still complete and serve future requests.
+                // Drop the entry only if creation itself failed; another caller's factory may still complete.
                 if (lazy.Value.IsCompleted && !lazy.Value.IsCompletedSuccessfully)
                 {
                     RemoveIfCurrent(key, lazy);
@@ -150,9 +122,8 @@ public sealed partial class McpClientCache : IMcpClientCache
                 throw;
             }
 
-            // The freshness gate applies to previously cached entries only. A freshly
-            // created entry is always served — even when the identity provider returned a
-            // short-lived token — otherwise it would be evicted and recreated forever.
+            // Only cached entries are freshness-gated: a new one is always served, or a short-lived token
+            // would be evicted and recreated forever.
             if (!created && entry.EffectiveExpiry - _timeProvider.GetUtcNow() < _options.MinRemainingLifetimeForStream)
             {
                 if (RemoveIfCurrent(key, lazy))
@@ -180,9 +151,7 @@ public sealed partial class McpClientCache : IMcpClientCache
                 continue;
             }
 
-            // If the server was invalidated while this entry was being created, the entry
-            // is no longer in the dictionary. Mark it evicted so the client is disposed
-            // once this (last) lease releases instead of leaking.
+            // Invalidated during creation: mark it evicted so the client is disposed when this lease releases.
             if (!_entries.TryGetValue(key, out var current) || !ReferenceEquals(current, lazy))
             {
                 EvictEntry(entry);
@@ -245,10 +214,7 @@ public sealed partial class McpClientCache : IMcpClientCache
         }
     }
 
-    /// <summary>
-    /// A cached client with its tools, expiry, and lease state. Lease transitions are
-    /// small lock-protected critical sections; exactly one path ever disposes the client.
-    /// </summary>
+    // Lease transitions are lock-protected, and exactly one path ever disposes the client.
     private sealed class McpCacheEntry(McpCacheEntrySource source, DateTimeOffset effectiveExpiry)
     {
         private readonly object _sync = new();
@@ -276,11 +242,7 @@ public sealed partial class McpClientCache : IMcpClientCache
             }
         }
 
-        /// <summary>
-        /// Marks the entry evicted. Returns <see langword="true"/> when the caller must
-        /// dispose the client now (no leases outstanding); otherwise disposal happens when
-        /// the last lease releases.
-        /// </summary>
+        // True when the caller must dispose the client now; otherwise the last lease release does.
         public bool MarkEvicted()
         {
             lock (_sync)
@@ -296,10 +258,7 @@ public sealed partial class McpClientCache : IMcpClientCache
             }
         }
 
-        /// <summary>
-        /// Releases one lease. Returns <see langword="true"/> when the caller must dispose
-        /// the client now (entry evicted and this was the last lease).
-        /// </summary>
+        // True when the caller must dispose the client now (evicted, and this was the last lease).
         public bool ReleaseLease()
         {
             lock (_sync)
@@ -335,10 +294,6 @@ public sealed partial class McpClientCache : IMcpClientCache
 
     #region Private methods
 
-    /// <summary>
-    /// Releases one lease; called by <see cref="McpToolLease.DisposeAsync"/>. Disposes the
-    /// client when the entry is evicted and this was the last lease.
-    /// </summary>
     private async ValueTask ReleaseLeaseAsync(McpCacheEntry entry)
     {
         if (entry.ReleaseLease())

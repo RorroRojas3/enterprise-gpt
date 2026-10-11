@@ -85,7 +85,7 @@ public sealed class ProjectEndpointsIntegrationTests(IntegrationTestFixture fixt
     [Fact]
     public async Task SearchProjects_TakeOfZero_IsClampedRatherThanReturningServerError()
     {
-        // Straight off the query string: this used to divide by zero computing CurrentPage.
+        // Straight off the query string; take = 0 would divide by zero computing CurrentPage.
         await _fixture.AddProjectAsync("it-paging", cancellationToken: TestContext.Current.CancellationToken);
         using var client = _fixture.Factory.CreateUserClient();
 

@@ -6,11 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DropOverlay } from './drop-overlay';
 import { FileDropTarget } from './file-drop-target';
 
-/**
- * Stands in for the composer, which is US-401's to build. It carries the two halves of
- * US-204 that must move together: the `@if`-gated attach control and the drop zone,
- * both bound to the same permission value.
- */
+/** Stands in for the composer: an `@if`-gated attach control and a drop zone on one permission. */
 @Component({
   selector: 'app-drop-host',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -136,8 +132,7 @@ describe('FileDropTarget', () => {
     await fixture.whenStable();
     expect(overlay(host)).not.toBeNull();
 
-    // Sign-out is the way this happens in production — US-205 resets SessionStore,
-    // canUploadFiles() flips, and the zone must not be left lit up and listening.
+    // In production this is sign-out: SessionStore resets and canUploadFiles() flips.
     fixture.componentInstance.canUpload.set(false);
     await fixture.whenStable();
 
@@ -148,11 +143,8 @@ describe('FileDropTarget', () => {
     expect(fixture.componentInstance.dropped).not.toHaveBeenCalled();
   });
 
-  // US-204's second criterion — an administrator without `Upload File` may not upload —
-  // is not testable here and deliberately so: the directive takes a plain boolean and
-  // has no access to permissions, which is what makes the check visible at every call
-  // site. The property lives on `SessionStore.canUploadFiles` and is asserted in
-  // `session-store.spec.ts`, against a real administrator whose grants omit Upload File.
+  // The directive only sees a boolean; an administrator without Upload File is covered by
+  // `SessionStore.canUploadFiles` in `session-store.spec.ts`.
 });
 
 describe('providePreventDropNavigation', () => {
@@ -163,9 +155,7 @@ describe('providePreventDropNavigation', () => {
     await TestBed.inject(ApplicationInitStatus).donePromise;
   });
 
-  // Dispatched on document.body rather than through a live drop target: the directive
-  // calls stopPropagation on a drop it has handled, so routing this through one would
-  // make the suppressor look broken when it is doing exactly the right thing.
+  // On document.body: a live drop target stops propagation of the drops it handles.
   it('prevents a file dropped outside any drop target from replacing the app', () => {
     const event = dispatchDrag(document.body, 'drop', fileDrag(textFile('brief.txt')));
 

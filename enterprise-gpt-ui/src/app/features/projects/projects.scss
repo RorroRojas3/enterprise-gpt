@@ -1,6 +1,5 @@
 @use 'breakpoints' as bp;
 
-// Frame 4c's column: the title, a toolbar, then the card grid.
 :host {
   display: flex;
   flex-direction: column;
@@ -8,8 +7,7 @@
   padding: 26px 34px;
 }
 
-// The board's gutters are drawn at 1440px, and at 360px they would spend 68px of the
-// viewport on nothing.
+// Desktop gutters would spend 68px of a 360px viewport on nothing.
 @include bp.mobile {
   :host {
     padding: 18px 14px;
@@ -22,9 +20,7 @@
   font-weight: 700;
 }
 
-// Wraps rather than overflowing: the board draws one row at 1440px, but only the
-// search field can shrink, and US-902's sort select shares the row (WCAG SC 1.4.10
-// Reflow).
+// Wraps rather than overflowing: only the search field can shrink (SC 1.4.10 Reflow).
 .projects__toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -32,15 +28,13 @@
   gap: 12px;
 }
 
-// The board's 280px field.
 .projects__search {
   flex: 0 1 280px;
   min-width: 180px;
 }
 
-// The board's 190px select. It does not shrink because the label around it is the flex
-// item and its `min-width: auto` resolves to this width — its longest option is
-// "Favourites first", and a narrower track ellipsises the value the control displays.
+// Never shrinks: the label is the flex item, whose `min-width: auto` resolves to this width,
+// and anything narrower ellipsises "Favourites first".
 .projects__sort .form-select {
   width: 190px;
   height: 38px;
@@ -48,8 +42,7 @@
   font-size: 13px;
 }
 
-// `margin-left: auto` in the board; `margin-inline-start` so a wrapped row still puts
-// it at the end rather than stranded mid-line.
+// Keeps the button at the row's end, wrapped or not.
 .projects__new {
   margin-inline-start: auto;
   display: inline-flex;
@@ -58,8 +51,7 @@
   white-space: nowrap;
 }
 
-// Centred beneath the grid, and collapsed entirely once the control removes itself so
-// the wrapper's own gap does not leave a gutter under the last row of cards.
+// Collapsed once the control removes itself, so the host's gap leaves no gutter under the cards.
 .projects__more {
   display: flex;
   justify-content: center;
@@ -69,14 +61,8 @@
   }
 }
 
-// Frame `4c`'s three-up card grid — which the screen has never actually had. The
-// template asked for it with `row g-3` and `col-12 col-md-6 col-xl-4`, and none of
-// those classes is defined: `_bootstrap-components.scss` omits `bootstrap/scss/grid`
-// on purpose, at 10.8 kB, with a comment promising this rule as the replacement.
-//
-// `min(280px, 100%)` rather than the bare 280px that comment names: a hard 280px track
-// minimum overflows its container below roughly a 308px viewport, which is exactly the
-// horizontal scrollbar US-1403's last criterion is about.
+// Replaces Bootstrap's grid, which `_bootstrap-components.scss` omits. `min(280px, 100%)`
+// because a bare 280px track overflows below a roughly 308px viewport.
 .projects__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
@@ -84,9 +70,8 @@
   margin: 0;
 }
 
-// Stands in for a card, not for a line of text: the grid's row height comes from the
-// tallest card, so a skeleton shorter than one would make the whole grid jump when the
-// first drain lands.
+// Card-sized: row height comes from the tallest card, so a shorter skeleton would make the
+// grid jump when the first page lands.
 .projects__skeleton {
   display: flex;
   flex-direction: column;
@@ -97,12 +82,8 @@
   border-radius: 12px;
 }
 
-// `.shell__main` is `overflow: hidden`, so a routed screen that does not scroll itself
-// is *clipped* below the fold rather than scrolled — silently, and at every width. Only
-// the chat route escaped it, because `.chat__body` is its own scroll container.
-//
-// `min-height: 0` is required for the same reason `shell.scss` needs `min-width: 0`: a
-// flex item will not shrink below its content, so `overflow-y` alone would never engage.
+// `.shell__main` is `overflow: hidden`, so a routed screen must scroll itself; `min-height: 0`
+// lets this flex item shrink below its content so `overflow-y` engages.
 :host {
   min-height: 0;
   overflow-y: auto;

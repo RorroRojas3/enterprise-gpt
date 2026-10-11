@@ -83,12 +83,6 @@ afterEach(() => {
 });
 
 describe('retryInterceptor', () => {
-  /**
-   * The opt-out exists for one reason: a `responseType: 'blob'` request's error body is a
-   * `Blob` that `parseProblemDetails` rejects, so an application-typed 503 — which must
-   * never be replayed — is indistinguishable from a gateway 503, which should be. Three
-   * blind round trips delay an actionable message by seconds and cannot succeed.
-   */
   it('does not retry a GET that opted out, even on a retriable status', async () => {
     const { attempts, caught } = await run(
       getWithoutRetry(),

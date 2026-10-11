@@ -6,9 +6,6 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Common.Constants;
 
-/// <summary>
-/// Holds the two invariants the built-in permission ids are only useful under.
-/// </summary>
 public sealed class PermissionIdsTests : IDisposable
 {
     private readonly SqliteDbContextFixture _fixture = new();
@@ -16,9 +13,8 @@ public sealed class PermissionIdsTests : IDisposable
     public void Dispose() => _fixture.Dispose();
 
     /// <summary>
-    /// <c>PermissionService.EnsurePermissionIsCustom</c> reads <c>Names</c> to decide what an
-    /// administrator may not edit, and only ids used in an endpoint filter are forced into it at map
-    /// time — so a built-in gated in a service instead would otherwise become renamable unnoticed.
+    /// <c>PermissionService.EnsurePermissionIsCustom</c> reads <c>Names</c>, and only filter-gated ids are
+    /// forced into it, so a built-in gated in a service would become renamable unnoticed.
     /// </summary>
     [Fact]
     public void Names_EveryBuiltInId_HasADisplayName()

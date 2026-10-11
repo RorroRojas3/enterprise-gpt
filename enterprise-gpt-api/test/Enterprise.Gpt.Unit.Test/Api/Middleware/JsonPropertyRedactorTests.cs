@@ -93,9 +93,8 @@ public sealed class JsonPropertyRedactorTests
     [InlineData("""{"name":"acme","client-secret":"abc""")]
     public void Redact_TruncatedJsonNamingASensitiveProperty_DropsTheWholePayload(string body)
     {
-        // A body cut at the byte cap is nearly always invalid JSON, so this fallback is a routine path
-        // rather than a rare one — and it has to recognize the same snake_case spellings the structured
-        // path does, or a truncated secret would be logged in full.
+        // A body cut at the byte cap is usually invalid JSON, so this fallback is routine and must match
+        // the same snake_case spellings, or a truncated secret is logged in full.
         var result = _redactor.Redact(body, "application/json");
 
         Assert.Equal(JsonPropertyRedactor.UnparseableMarker, result);

@@ -9,10 +9,7 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Documents.Extraction;
 
-/// <summary>
-/// Covers the shaping both spreadsheet formats share, at the boundaries their own fixtures cannot
-/// reach cheaply — a token-bound window, a sheet at the column ceiling, an oversized row.
-/// </summary>
+/// <summary>Shared shaping at the boundaries the per-format fixtures cannot reach cheaply.</summary>
 public sealed class SheetAssemblerTests
 {
     [Fact]

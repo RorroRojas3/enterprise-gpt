@@ -23,9 +23,8 @@ public sealed class FileAgentSkillsTests
     [Fact]
     public void Discover_TheBuildOutput_FindsEverySkillTheAgentExpects()
     {
-        // The csproj ships these with a glob rather than one entry per file, so this is what stands in
-        // for the per-file copy rules the prompt templates use: a skill that stops shipping fails here
-        // rather than on the first request that needed it.
+        // The csproj ships skills by glob, so this stands in for per-file copy rules: a skill that stops
+        // shipping fails here rather than on the first request needing it.
         Assert.Equal(_expected, FileAgentSkills.Discover(FileAgentSkills.DeployedRoot));
     }
 
@@ -125,9 +124,8 @@ public sealed class FileAgentSkillsTests
     [Fact]
     public void Solution_RegistersExactlyOneSkillScriptRunner_AndItRefuses()
     {
-        // The package will not build a file-skill provider with no runner at all, so "none is
-        // registered" is unreachable and this is the guard that replaces it: one call site, and the
-        // runner it passes cannot execute anything.
+        // The package will not build a file-skill provider without a runner, so this guards instead: one
+        // call site, whose runner cannot execute anything.
         Assert.Equal(
             [Path.Combine("Enterprise.Gpt.Service", "Agents", "FileAgentSkills.cs")],
             SolutionSource.FilesContaining("RefuseScriptAsync)"));

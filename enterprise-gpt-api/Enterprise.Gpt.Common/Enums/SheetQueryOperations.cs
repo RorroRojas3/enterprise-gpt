@@ -12,10 +12,8 @@ public enum SheetQueryOperations
     /// <summary>Mean of a column's numeric values.</summary>
     Avg = 2,
 
-    /// <summary>Smallest value in a column.</summary>
     Min = 3,
 
-    /// <summary>Largest value in a column.</summary>
     Max = 4,
 
     /// <summary>Number of matching rows, or of rows with a value in a named column.</summary>

@@ -8,26 +8,18 @@ using Microsoft.AspNetCore.Http.HttpResults;
 namespace Enterprise.Gpt.Api.Endpoints;
 
 /// <summary>
-/// Minimal API endpoints for MCP server management. Replaces the former <c>McpsController</c>.
-/// The user-facing listing returns only servers the caller holds a permission for; the
-/// administrative listing and all mutations are gated on the built-in Administrator permission
-/// via <see cref="PermissionEndpointFilter"/>.
+/// MCP server routes; the user-facing listing returns only servers the caller holds a permission for.
 /// </summary>
 public static class McpEndpoints
 {
     #region Public static methods
 
-    /// <summary>
-    /// Maps the <c>api/mcps</c> endpoint group.
-    /// </summary>
-    /// <param name="app">The route builder to map the group onto.</param>
-    /// <returns>The same <paramref name="app"/> for chaining.</returns>
+    /// <summary>Maps the <c>api/mcps</c> endpoint group.</summary>
     public static IEndpointRouteBuilder MapMcpEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("api/mcps")
             .RequireAuthorization()
             .WithTags("Mcps")
-            // Every route in the group is authorized, so the challenge applies uniformly.
             .ProducesProblem(StatusCodes.Status401Unauthorized);
 
         group.MapGet("", GetPermittedMcpServersAsync);
@@ -56,10 +48,8 @@ public static class McpEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
-        // No permission filter, unlike every route above: these act on the caller's own
-        // credential, and the gate is the server's own grant, enforced in the service the way
-        // McpToolProvider enforces it — from the database, so a revoked grant takes effect on
-        // the next request.
+        // No permission filter: these act on the caller's own credential, and the service checks the server's
+        // grant from the database, as McpToolProvider does, so a revocation applies on the next request.
         group.MapPut("{id:guid}/credential", SaveMcpCredentialAsync)
             .AddEndpointFilter<ValidationEndpointFilter<SaveMcpCredentialActionDto>>()
             .ProducesValidationProblem()
@@ -88,8 +78,6 @@ public static class McpEndpoints
         return TypedResults.Ok(response);
     }
 
-    // Not-found paths throw NotFoundException in the service and surface as 404
-    // through the exception-handler chain, matching the model endpoints' contract.
     internal static async Task<Ok<McpServerDto>> GetMcpServerAsync(
         Guid id, IMcpServerService mcpServerService, CancellationToken cancellationToken)
     {

@@ -1,13 +1,9 @@
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 
 /// <summary>
-/// A sheet to insert directly, with its cells given as ordinary dictionaries.
+/// A sheet written straight to the tables, so a query test's expected answer matches the stored values.
+/// A column a row omits is stored absent, as ingestion stores an empty cell.
 /// </summary>
-/// <remarks>
-/// Written straight to the tables rather than run through the extractor, because a query test needs the
-/// stored values to be the ones it computed its expected answer from. A column a row leaves out is
-/// stored absent, exactly as ingestion writes an empty cell.
-/// </remarks>
 public sealed record SeedSheet(
     int SheetIndex,
     string Name,

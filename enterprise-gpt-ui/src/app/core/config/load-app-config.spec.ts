@@ -43,7 +43,6 @@ describe('loadAppConfig', () => {
     await loadAppConfig();
 
     const [, init] = fetchSpy.mock.calls[0] as unknown as [URL, RequestInit];
-    // A cached config is how one environment ends up pointed at another.
     expect(init.cache).toBe('no-store');
     expect(init.credentials).toBe('omit');
     // Asserted as presence rather than by exercising the ten-second timeout.

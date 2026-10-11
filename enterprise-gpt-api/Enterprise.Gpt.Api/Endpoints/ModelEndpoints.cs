@@ -8,26 +8,18 @@ using Microsoft.AspNetCore.Http.HttpResults;
 namespace Enterprise.Gpt.Api.Endpoints;
 
 /// <summary>
-/// Minimal API endpoints for model management. Replaces the former <c>ModelsController</c>.
-/// Read endpoints are available to every authenticated user; mutations and the
-/// active+inactive listing are gated on the built-in Administrator permission via
-/// <see cref="PermissionEndpointFilter"/>.
+/// Model catalog routes: reads for any authenticated user, mutations and the full listing for admins.
 /// </summary>
 public static class ModelEndpoints
 {
     #region Public static methods
 
-    /// <summary>
-    /// Maps the <c>api/models</c> endpoint group.
-    /// </summary>
-    /// <param name="app">The route builder to map the group onto.</param>
-    /// <returns>The same <paramref name="app"/> for chaining.</returns>
+    /// <summary>Maps the <c>api/models</c> endpoint group.</summary>
     public static IEndpointRouteBuilder MapModelEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("api/models")
             .RequireAuthorization()
             .WithTags("Models")
-            // Every route in the group is authorized, so the challenge applies uniformly.
             .ProducesProblem(StatusCodes.Status401Unauthorized);
 
         group.MapGet("", GetModelsAsync);
@@ -75,8 +67,6 @@ public static class ModelEndpoints
         return TypedResults.Ok(response);
     }
 
-    // Not-found paths throw NotFoundException in the service and surface as 404
-    // through the exception-handler chain, matching the controller-era contract.
     internal static async Task<Ok<ModelDto>> GetModelAsync(
         Guid id, IModelService modelService, CancellationToken cancellationToken)
     {

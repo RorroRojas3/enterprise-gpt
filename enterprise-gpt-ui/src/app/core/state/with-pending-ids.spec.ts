@@ -95,9 +95,8 @@ describe('withPendingIds', () => {
         (el) => (el as HTMLElement).textContent,
       );
 
-    // whenStable rather than detectChanges: the latter drives a tick directly, so
-    // it would still pass on a write that never notified the scheduler — which is
-    // half of what this test exists to catch under zoneless.
+    // whenStable, not detectChanges: a direct tick would pass even on a write that never
+    // notified the zoneless scheduler.
     await fixture.whenStable();
     expect(text()).toEqual(['a', 'b', 'c']);
 

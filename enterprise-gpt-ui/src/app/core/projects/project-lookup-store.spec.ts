@@ -18,7 +18,7 @@ import { ProjectLookupStore } from './project-lookup-store';
 
 const PROJECTS_URL = `${TEST_API_BASE_URL}/api/projects`;
 
-describe('ProjectLookupStore (US-307)', () => {
+describe('ProjectLookupStore', () => {
   let backend: HttpTestingController;
   let store: InstanceType<typeof ProjectLookupStore>;
 
@@ -57,8 +57,6 @@ describe('ProjectLookupStore (US-307)', () => {
   }
 
   it('requests nothing until the bootstrap releases it', () => {
-    // The sentinel is what keeps the request from going out before a token exists —
-    // `SessionBootstrap` calls `ensureLoaded` only after `POST api/users/me` resolves.
     flush();
 
     backend.expectNone((request) => request.url === PROJECTS_URL);
@@ -73,10 +71,7 @@ describe('ProjectLookupStore (US-307)', () => {
     expect(request.request.params.get('skip')).toBe('0');
     // No term ever: this list is not filtered on the server, unlike the grid's.
     expect(request.request.params.has('name')).toBe(false);
-    // Starred first (US-706). This is the whole mechanism behind the sidebar's
-    // *Favourite projects* section being complete within the ceiling rather than
-    // best-effort: without it, a favourite past the 500th most recently created project
-    // is simply never held, and nothing on screen says so.
+    // Starred first, which keeps the sidebar's favourites complete within the ceiling.
     expect(request.request.params.get('sort')).toBe('favorite');
     expect(request.request.params.get('dir')).toBe('desc');
 
@@ -106,8 +101,7 @@ describe('ProjectLookupStore (US-307)', () => {
 
     const second = expectRequest();
     expect(second.request.params.get('skip')).toBe(String(PROJECT_PAGE_SIZE));
-    // On every page, not just the first: the server orders each request independently, so
-    // a page fetched without it would splice a differently-ordered run into the set.
+    // On every page: the server orders each request independently.
     expect(second.request.params.get('sort')).toBe('favorite');
     expect(second.request.params.get('dir')).toBe('desc');
     second.flush(
@@ -141,8 +135,6 @@ describe('ProjectLookupStore (US-307)', () => {
   });
 
   it('resolves a project id to its name, and an unknown id to null', () => {
-    // The chip's whole contract: `ConversationDto` carries the id and no name, and a
-    // project past the ceiling has to read as "cannot name it", never as "none".
     const project = projectFixture({ name: 'Data Platform Migration' });
     load([project]);
 
@@ -174,9 +166,6 @@ describe('ProjectLookupStore (US-307)', () => {
   });
 
   it('keeps the pages already drained when a later one fails', () => {
-    // Unlike the grid, which replaces itself with an error panel: this is a lookup, and
-    // a chip that can name the first hundred projects beats one that names none. The
-    // picker is what hides the partial list behind the error.
     store.ensureLoaded();
     flush();
 
@@ -202,15 +191,12 @@ describe('ProjectLookupStore (US-307)', () => {
       TestBed.inject(Dispatcher).dispatch(projectEvents.created(created));
       flush();
 
-      // The head, because the server orders by dateCreated descending — and the
-      // picker's "New project" depends on the row existing before its continuation runs.
+      // The picker's "New project" needs the row to exist before its continuation runs.
       expect(store.projects().map((p) => p.id)).toEqual([created.id, existing.id]);
       expect(store.nameOf()(created.id)).toBe('Q3 Board Deck');
     });
 
     it('adopts a rename without evicting the row', () => {
-      // No term filters this list, so unlike the grid a rename can never drop a project
-      // out of it — which is what keeps the chip readable after an edit.
       const project = projectFixture({ name: 'Old' });
       load([project]);
 
@@ -236,8 +222,6 @@ describe('ProjectLookupStore (US-307)', () => {
   });
 
   it('exposes the starred projects in the server order, and only those', () => {
-    // Derived rather than fetched: a second `?isFavorite=true` store would be a second
-    // copy of rows already held here, to be kept in step on every write.
     const starred = projectFixture({ name: 'Helios', isFavorite: true });
     const plain = projectFixture({ name: 'Hiring' });
     const alsoStarred = projectFixture({ name: 'RFP', isFavorite: true });
@@ -296,8 +280,8 @@ describe('ProjectLookupStore (US-307)', () => {
   });
 
   it('cancels a drain in flight when the user signs out', () => {
-    // `withResetOnSignOut` clears state and does not cancel work: without the
-    // takeUntil, this page would land on the emptied store as the next user's list.
+    // `withResetOnSignOut` clears state but cancels no work; without `takeUntil` this page
+    // would land as the next user's list.
     store.ensureLoaded();
     flush();
     const request = expectRequest();

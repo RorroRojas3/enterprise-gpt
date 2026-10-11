@@ -7,17 +7,13 @@ namespace Enterprise.Gpt.Service.Conversations.Chat;
 /// the calling flow opened.
 /// </summary>
 /// <remarks>
-/// Registered as a singleton and picked up automatically: <c>UseToolTracking()</c> appends every
-/// <see cref="IChatProgressObserver"/> in the container to its options when the chat client is
-/// built. It is stateless by design — everything per-request lives on the ambient scope.
+/// A stateless singleton; <c>UseToolTracking()</c> picks up every <see cref="IChatProgressObserver"/>
+/// in the container.
 /// </remarks>
 public sealed class ChatUsageObserver : IChatProgressObserver
 {
     /// <inheritdoc />
-    /// <remarks>
-    /// Nothing to do: progress reaches the client in-band, as synthetic content on the streamed
-    /// response, and none of it is persisted.
-    /// </remarks>
+    /// <remarks>Progress reaches the client in-band on the stream and is not persisted.</remarks>
     public void OnProgress(ChatProgressUpdate update)
     {
     }
@@ -25,8 +21,7 @@ public sealed class ChatUsageObserver : IChatProgressObserver
     /// <inheritdoc />
     public void OnRequestCompleted(ChatUsageReport report)
     {
-        // A request issued outside any scope — a document-pipeline call, or a unit test — has
-        // nowhere to report to and is not an error.
+        // Requests outside any scope (document pipeline, unit tests) have nowhere to report to.
         ChatUsageScope.Current?.Complete(report);
     }
 }

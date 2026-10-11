@@ -11,9 +11,8 @@ namespace Enterprise.Gpt.Integration.Test.Health;
 /// without a bearer token, and what an anonymous caller is told when a dependency is down.
 /// </summary>
 /// <remarks>
-/// Nothing here asserts a readiness <em>status</em>: this host runs SQL Server for real and points
-/// Cosmos at the emulator address, which may or may not be listening on the machine running the suite.
-/// The contract that holds either way is the shape of the answer.
+/// No readiness <em>status</em> is asserted: Cosmos points at an emulator that may not be listening, so only
+/// the shape of the answer holds either way.
 /// </remarks>
 [Collection(IntegrationTestCollection.Name)]
 [Trait("Category", "Integration")]

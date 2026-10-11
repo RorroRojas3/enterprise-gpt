@@ -1,16 +1,6 @@
 #!/usr/bin/env node
-// Copies KaTeX's stylesheet and font faces out of node_modules into
-// public/vendor/katex, for US-605's math flag.
-//
-// Self-hosted because FR-51 forbids any runtime request to a third-party origin,
-// and copied rather than bundled because the stylesheet has to stay *out* of the
-// build: `styles.scss` is one eagerly-loaded bundle with ~2 kB of headroom under
-// its budget, and math is a flag most deployments leave off. The loader injects a
-// `<link>` at the moment the first expression appears instead.
-//
-// A script rather than an `angular.json` asset glob, for the reason copy-fonts.mjs
-// gives: a glob that matches nothing after an upstream rename ships zero files and
-// says nothing, and the failure would surface as unstyled math in production.
+// Self-hosts KaTeX outside the build: styles.scss has ~2 kB of budget headroom and math is
+// usually off, so the loader links the stylesheet on first use. A script, as in copy-fonts.mjs.
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,10 +28,8 @@ if (!existsSync(fontSource)) {
   die(`Not in node_modules: ${fontSource}`);
 }
 
-// woff2 only. KaTeX declares each face three times — woff2, woff, ttf — with a
-// `format()` hint on each, so a browser picks the first it supports and never
-// requests the other two. Shipping all three would quadruple the directory for
-// formats nothing this app supports would ever ask for.
+// woff2 only: KaTeX lists it first with a `format()` hint, so supported browsers never request
+// the woff or ttf fallbacks.
 const faces = readdirSync(fontSource).filter((name) => name.endsWith('.woff2'));
 if (faces.length === 0) {
   die(`No .woff2 faces under ${fontSource}`);

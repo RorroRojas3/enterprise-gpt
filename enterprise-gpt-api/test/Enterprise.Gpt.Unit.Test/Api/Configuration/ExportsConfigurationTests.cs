@@ -10,16 +10,9 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Api.Configuration;
 
-/// <summary>
-/// Which formats a deployment offers is observable behaviour — an absent renderer is a <c>503</c>
-/// carrying the <c>export-renderer-not-configured</c> type — so the configuration that decides it is
-/// worth pinning.
-/// </summary>
 /// <remarks>
-/// In the PDF collection because registering a usable PDF renderer assigns
-/// <c>GlobalFontSettings.FontResolver</c>, which is process-global. Every resolver here reads the
-/// same files so a race would not change any outcome, but a test that writes shared runtime state
-/// should not be doing it concurrently with the tests that read it.
+/// In the PDF collection: registering a PDF renderer writes the process-global
+/// <c>GlobalFontSettings.FontResolver</c>.
 /// </remarks>
 [Collection(PdfFontCollection.Name)]
 public sealed class ExportsConfigurationTests
@@ -35,15 +28,12 @@ public sealed class ExportsConfigurationTests
         ExportsConfiguration.AddExportRenderers(
             services,
             options,
-            // A resolver pointed at a directory that does not exist reports itself unusable only when
-            // the host has no platform fonts either, so "usable" is arranged by pointing at a real
-            // one — the factory seam is what makes both outcomes reachable on any machine.
+            // A missing directory reads as unusable only on hosts without platform fonts; the factory
+            // seam makes both outcomes reachable on any machine.
             _ => new ExportFontResolver(fontsUsable ? null : EmptyDirectory),
             () => templateExists);
 
-        // Resolved through the container rather than read off the descriptors: the registration is
-        // what the service consumes, and building it proves the renderers' own dependencies are
-        // satisfiable too.
+        // Resolved through the container, which also proves the renderers' dependencies are satisfiable.
         services.AddSingleton<IMarkdownBlockMapper, MarkdownBlockMapper>();
         using var provider = services.BuildServiceProvider();
 
@@ -75,10 +65,6 @@ public sealed class ExportsConfigurationTests
         Assert.DoesNotContain(format, formats);
     }
 
-    /// <summary>
-    /// Configuration is hand-written, so a value that differs from the wire token only in casing or
-    /// stray whitespace has to withdraw the format rather than silently do nothing.
-    /// </summary>
     [Theory]
     [InlineData("PDF")]
     [InlineData(" pdf ")]
@@ -90,10 +76,6 @@ public sealed class ExportsConfigurationTests
         Assert.DoesNotContain(ConversationExportFormats.Pdf, formats);
     }
 
-    /// <summary>
-    /// The condition the typed 503 exists for: a deployment that can run everything else
-    /// but cannot draw a glyph.
-    /// </summary>
     [Fact]
     public void AddExportRenderers_NoUsableFont_RegistersEveryFormatExceptPdf()
     {
@@ -108,8 +90,8 @@ public sealed class ExportsConfigurationTests
     }
 
     /// <summary>
-    /// The template loads from a static initializer and the renderers resolve as a collection, so a
-    /// missing file would otherwise fault the first export of every format, not just HTML.
+    /// The template loads in a static initializer and renderers resolve as a collection, so a missing
+    /// file would otherwise fault every format's first export.
     /// </summary>
     [Fact]
     public void AddExportRenderers_MissingTemplate_WithholdsOnlyHtml()

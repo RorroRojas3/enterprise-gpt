@@ -6,19 +6,10 @@ using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Api.Middleware;
 
-/// <summary>
-/// Registers <see cref="RequestLoggingMiddleware"/> and the services it depends on.
-/// </summary>
 internal static class RequestLoggingRegistration
 {
     #region Public static methods
 
-    /// <summary>
-    /// Binds and validates <see cref="RequestLoggingOptions"/> and registers the default body redactor.
-    /// </summary>
-    /// <param name="services">The service collection to register into.</param>
-    /// <param name="configuration">Supplies the <c>RequestLogging</c> section.</param>
-    /// <returns>The same <paramref name="services"/> for chaining.</returns>
     internal static IServiceCollection AddEnterpriseGptRequestLogging(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<IValidator<RequestLoggingOptions>, RequestLoggingOptionsValidator>();
@@ -28,10 +19,8 @@ internal static class RequestLoggingRegistration
             // extending it — see the remarks on RequestLoggingOptions.
             .PostConfigure(options => options.ApplyListDefaults())
             .ValidateWithFluentValidation()
-            // Validated at startup because the alternative diagnostics are all worse. A non-positive
-            // threshold silently marks every request slow; an unrooted path or a null list entry throws
-            // from the middleware's own field initialisers, which run once when the pipeline is built and
-            // surface as a container activation failure rather than as a message naming the setting.
+            // A non-positive threshold silently marks every request slow, and a bad path or list entry would
+            // throw from the middleware's field initialisers as an activation failure naming no setting.
             .ValidateOnStart();
 
         // TryAdd so an application that registers its own redactor first keeps it.
@@ -41,15 +30,8 @@ internal static class RequestLoggingRegistration
         return services;
     }
 
-    /// <summary>
-    /// Adds <see cref="RequestLoggingMiddleware"/> to the pipeline unless it is disabled by configuration.
-    /// </summary>
-    /// <param name="app">The application pipeline to add to.</param>
-    /// <returns>The same <paramref name="app"/> for chaining.</returns>
     /// <remarks>
-    /// A disabled access log is left out of the pipeline rather than short-circuited inside the
-    /// middleware, so it costs nothing per request. The trade-off is that the switch is read once, at
-    /// startup.
+    /// Left out of the pipeline when disabled, so it costs nothing per request; the switch is read once.
     /// </remarks>
     internal static IApplicationBuilder UseEnterpriseGptRequestLogging(this IApplicationBuilder app)
     {

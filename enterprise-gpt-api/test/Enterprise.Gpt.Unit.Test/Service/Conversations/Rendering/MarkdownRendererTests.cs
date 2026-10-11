@@ -5,9 +5,8 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Service.Conversations.Rendering;
 
 /// <summary>
-/// The rendered HTML is stored and re-served, and its input is attacker-influenceable: model output
-/// is shaped by uploaded documents and MCP tool results, and user prompts go through the same path.
-/// These are security tests, not formatting tests.
+/// The rendered HTML is stored and re-served from attacker-influenceable input (model output shaped by
+/// documents and tool results, and user prompts), so these are security tests.
 /// </summary>
 public sealed class MarkdownRendererTests
 {

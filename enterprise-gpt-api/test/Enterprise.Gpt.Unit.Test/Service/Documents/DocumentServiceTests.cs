@@ -59,8 +59,8 @@ public sealed class DocumentServiceTests : IDisposable
     public DocumentServiceTests()
     {
         _tokenService.GetOid().Returns(KnownIds.SeedUserId);
-        // A substitute returns false by default, which now means "a cancel claimed the terminal slot
-        // first" — so without this every ingestion test would unwind as a cancelled job.
+        // A substitute's default false means "a cancel claimed the terminal slot first", which would
+        // unwind every ingestion test as a cancelled job.
         _jobStatusStore.Complete(Arg.Any<string>(), Arg.Any<Guid>(), Arg.Any<string>()).Returns(true);
         _extractorFactory.Resolve(Arg.Any<FileExtensions>()).Returns(_extractor);
 
@@ -328,8 +328,8 @@ public sealed class DocumentServiceTests : IDisposable
     [Fact]
     public async Task CreateConversationDocumentAsync_ValidDocument_StoresTheBlobUnderTheDocumentIdNotTheFileName()
     {
-        // Uploading the same file name into the same conversation twice is legitimate; a name-keyed path
-        // made the second upload collide with the first and fail the job.
+        // Uploading the same file name into the same conversation twice is legitimate, so the storage
+        // key must not derive from the name.
         var conversation = await AddConversationAsync();
         SetUpPipeline(chunkCount: 1);
 
@@ -1187,10 +1187,8 @@ public sealed class DocumentServiceTests : IDisposable
     [Fact]
     public async Task GetConversationDocumentDownloadAsync_ContentType_ComesFromTheExtensionNotTheDeclaredMimeType()
     {
-        // Nothing validates the MimeType column — it is whatever the client sent at upload time — and the
-        // value is signed into the link as the header storage will actually return. Serving an uploader's
-        // chosen media type back would leave the attachment disposition as the only thing preventing
-        // stored XSS. The extension is derived server-side and validated, so it is the trustworthy half.
+        // MimeType is unvalidated client input signed into the link, so serving it back would leave the
+        // attachment disposition as the only stored-XSS guard. The extension is validated server-side.
         SetUpSigning();
         var conversation = await AddConversationAsync();
         var document = await AddConversationDocumentAsync(conversation, name: "report.pdf", mimeType: "text/html");

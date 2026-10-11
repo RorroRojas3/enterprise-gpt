@@ -12,25 +12,13 @@ namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 /// be exercised without a Cosmos DB account or the emulator.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Documents are stored whole, keyed by partition key and id. A batch's creates are applied — which
-/// is what makes a header readable after the turn that wrote it — but patch operations are ignored,
-/// because the JSON-patch semantics Cosmos applies are exactly what a fake gets subtly wrong, and no
-/// test here reads a patched value back.
-/// </para>
-/// <para>
-/// <see cref="QueryAsync"/> throws on purpose. Ordered, filtered, multi-document queries are the
-/// thing this fake cannot prove, and returning an empty page would let a read-path test pass
-/// without reading anything. Those assertions belong to the emulator-backed tests instead.
-/// </para>
+/// Patches are ignored and <see cref="QueryAsync"/> throws rather than return an empty page a read test
+/// could pass on: JSON-patch semantics and ordered queries are proved against the emulator instead.
 /// </remarks>
 public sealed class FakeTranscriptStore : ITranscriptStore
 {
     private readonly ConcurrentDictionary<string, object> _items = new();
 
-    /// <summary>
-    /// Clears every stored document.
-    /// </summary>
     public void Reset()
     {
         _items.Clear();
@@ -61,8 +49,7 @@ public sealed class FakeTranscriptStore : ITranscriptStore
         IReadOnlyList<PatchOperation> operations,
         CancellationToken cancellationToken)
     {
-        // Mirrors the real store's guard so an over-long patch fails here rather than only in
-        // production, where Cosmos rejects the request outright.
+        // Mirrors the real store's guard so an over-long patch fails here, not only in production.
         ArgumentOutOfRangeException.ThrowIfGreaterThan(operations.Count, CosmosTranscriptStore.MaxPatchOperations);
 
         return Task.FromResult(_items.ContainsKey(Key(id, partitionKey)));
@@ -82,8 +69,7 @@ public sealed class FakeTranscriptStore : ITranscriptStore
         ArgumentOutOfRangeException.ThrowIfZero(batch.Operations.Count);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(batch.Operations.Count, TranscriptBatch.MaxOperations);
 
-        // Applied only once every operation has been inspected, so a batch that would fail leaves
-        // nothing behind — the atomicity the production path depends on.
+        // Applied only after every operation is checked, so a failing batch leaves nothing behind.
         for (var index = 0; index < batch.Operations.Count; index++)
         {
             var operation = batch.Operations[index];

@@ -21,7 +21,6 @@ export const DEFAULT_RETRY_POLICY: RetryPolicy = {
   random: Math.random,
 };
 
-/** Overridable retry configuration. */
 export const RETRY_POLICY = new InjectionToken<RetryPolicy>('RETRY_POLICY', {
   providedIn: 'root',
   factory: () => DEFAULT_RETRY_POLICY,
@@ -30,22 +29,9 @@ export const RETRY_POLICY = new InjectionToken<RetryPolicy>('RETRY_POLICY', {
 const RETRIABLE_STATUSES: readonly number[] = [502, 503, 504];
 
 /**
- * Whether a failure is worth retrying.
- *
- * Gateway statuses and outright transport failures are; everything else is not.
- * Two exclusions carry weight:
- *
- * - **409 `conversation-busy`** is never retried at any interval. A turn is
- *   already running; retrying races the user's other tab.
- * - **A 503 carrying an application problem type** — `provider-not-configured`,
- *   `storage-not-configured`, `export-renderer-not-configured` — is a deterministic
- *   deployment state, not transient
- *   load. Retrying buys three round trips of nothing and delays an actionable
- *   message by seconds.
- *
- * The caller is responsible for restricting this to idempotent requests.
- *
- * @param error The normalized error.
+ * Gateway statuses and transport failures only. A 409 `conversation-busy` would race the user's
+ * other tab, and a typed 503 is a deployment state no retry changes. Callers restrict this to
+ * idempotent requests.
  */
 export function isTransientRetriable(error: AppError): boolean {
   if (error.kind === 'network') {
@@ -64,13 +50,10 @@ export function isTransientRetriable(error: AppError): boolean {
 }
 
 /**
- * Full-jitter backoff: a uniform draw from `[0, min(cap, base * 2^attempt))`.
- *
- * Jitter is the point — synchronized clients retrying on the same schedule are
- * what turns a recovering server back into an overloaded one.
+ * Full-jitter backoff, a uniform draw from `[0, min(cap, base * 2^attempt))`, so clients never
+ * retry in lockstep against a recovering server.
  *
  * @param attempt Zero-based retry index.
- * @param policy The active policy.
  */
 export function computeBackoffDelay(attempt: number, policy: RetryPolicy): number {
   const window = Math.min(policy.capMs, policy.baseDelayMs * 2 ** Math.max(0, attempt));
@@ -78,35 +61,16 @@ export function computeBackoffDelay(attempt: number, policy: RetryPolicy): numbe
   return Math.floor(policy.random() * window);
 }
 
-/** What the authentication layer should do with a failure. */
 export type AuthErrorDecision = 'refresh' | 'passthrough';
 
-/**
- * Whether a failure warrants acquiring a fresh token.
- *
- * Only a bare 401 does. `forbidden` and `permission-required` are 403s and must
- * never enter the refresh path — the token is fine, the grant is not, and no
- * number of refreshes can change that.
- *
- * Shipped as a standalone decision because the authentication interceptor arrives
- * later; it consults this rather than re-deriving the rule.
- *
- * @param error The normalized error.
- */
+/** Only a bare 401 refreshes the token; a 403 means the grant is wrong, which no refresh fixes. */
 export function authErrorDecision(error: AppError): AuthErrorDecision {
   return AUTH_DECISIONS[error.kind] === 'refresh' && error.status === 401
     ? 'refresh'
     : 'passthrough';
 }
 
-/**
- * Every arm's refresh behaviour, exhaustively.
- *
- * The `satisfies` is the guarantee: adding a member to {@link AppErrorKind}
- * without deciding whether it may trigger a token refresh is a compile error.
- * Exported so a spec can assert the key set too, which is what makes a new arm
- * fail the suite rather than only the compiler.
- */
+/** Exported so a spec asserts the key set: a new arm fails the suite as well as the compiler. */
 export const AUTH_DECISIONS = {
   'validation-error': 'passthrough',
   'upload-too-large': 'passthrough',
@@ -115,7 +79,7 @@ export const AUTH_DECISIONS = {
   'permission-required': 'passthrough',
   'conversation-busy': 'passthrough',
   'mcp-server-unavailable': 'passthrough',
-  // 428s. They ask the user for a credential, which no token refresh supplies.
+  // 428s ask the user for a credential, which no token refresh supplies.
   'mcp-credential-required': 'passthrough',
   'mcp-credential-rejected': 'passthrough',
   'provider-not-configured': 'passthrough',

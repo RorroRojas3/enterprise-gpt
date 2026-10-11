@@ -4,20 +4,13 @@ using Microsoft.Extensions.Logging;
 
 namespace Enterprise.Gpt.Service.Agents;
 
-/// <summary>
-/// Moves files in and out of the hosted code interpreter.
-/// </summary>
+/// <summary>Moves files in and out of the hosted code interpreter.</summary>
 /// <remarks>
-/// The mechanism here was established against a live deployment rather than from documentation, and
-/// two of its findings are load-bearing. Raw bytes on <see cref="HostedCodeInterpreterTool.Inputs"/>
-/// are <em>silently discarded</em> by the Responses bridge, so an input has to be uploaded to the
-/// Files API first and referenced by id. And a produced file was surfaced on the message's citation
-/// annotations rather than on the code interpreter's own result content, so the harvest walks every
-/// channel that can carry one instead of the single documented one. See
+/// The Responses bridge silently drops raw bytes on <see cref="HostedCodeInterpreterTool.Inputs"/>, so inputs
+/// go through the Files API; outputs can arrive on citations, so the harvest walks every channel. See
 /// <c>docs/tools/file-agent.md</c>.
 /// </remarks>
-// The hosted-file surface is still marked experimental in Microsoft.Extensions.AI 10.9.0. Suppressed
-// on this one file rather than project-wide, so a second experimental API cannot slip in behind it.
+// Hosted files are experimental in Microsoft.Extensions.AI 10.9.0; suppressed per file, not project-wide.
 #pragma warning disable MEAI001
 internal sealed partial class FileAgentSandbox(IHostedFileClient files, ILogger logger)
 {
@@ -98,9 +91,8 @@ internal sealed partial class FileAgentSandbox(IHostedFileClient files, ILogger 
     private static string? ContainerIdOf(AdditionalPropertiesDictionary? properties) =>
         properties is not null && properties.TryGetValue("container_id", out var value) ? value?.ToString() : null;
 
-    // Reflection because the SDK model behind the annotation is not on OpenAI 2.12.0's public surface,
-    // and CitationAnnotation has no member for a container. The property is public on a non-public
-    // type, which reflection reads and a cast cannot.
+    // Reflection: the annotation's SDK model is non-public in OpenAI 2.12.0, and CitationAnnotation
+    // exposes no container.
     private static string? ContainerIdOf(object? rawRepresentation) =>
         rawRepresentation?.GetType().GetProperty("ContainerId")?.GetValue(rawRepresentation) as string;
 
@@ -109,7 +101,6 @@ internal sealed partial class FileAgentSandbox(IHostedFileClient files, ILogger 
     #region Public static methods
 
     /// <summary>Finds every file a completed run produced.</summary>
-    /// <param name="messages">The run's own messages.</param>
     /// <returns>Each artifact once, in the order the response mentions it.</returns>
     public static IReadOnlyList<SandboxArtifact> Harvest(IEnumerable<ChatMessage> messages)
     {
@@ -150,10 +141,8 @@ internal sealed partial class FileAgentSandbox(IHostedFileClient files, ILogger 
             }
         }
 
-        // One file legitimately appears on more than one channel, and the channels do not agree on
-        // what they carry: a citation may name no file, and an artifact seen before the container id
-        // appeared carries no scope — which is what sends its download to the wrong API. So the
-        // sightings are merged rather than deduped to whichever came first.
+        // A file can appear on several channels carrying different parts (a missing name, or no scope, which
+        // sends its download to the wrong API), so sightings are merged rather than first-wins.
         return
         [
             .. artifacts

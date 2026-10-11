@@ -6,8 +6,7 @@ namespace Enterprise.Gpt.Entity.Transcripts.Models;
 /// One file an assistant message introduced.
 /// </summary>
 /// <remarks>
-/// Deliberately a copy of the identity fields rather than a document id alone: a reload has to draw
-/// the chip before anything is fetched, and a name and a size are what it draws.
+/// Copies the identity fields, not just the id, so a reload can draw the chip before fetching anything.
 /// </remarks>
 public sealed record TranscriptMessageAttachment
 {
@@ -15,7 +14,6 @@ public sealed record TranscriptMessageAttachment
     [JsonPropertyName("id")]
     public Guid Id { get; init; }
 
-    /// <summary>Gets the file name to save it under.</summary>
     [JsonPropertyName("name")]
     public string Name { get; init; } = null!;
 

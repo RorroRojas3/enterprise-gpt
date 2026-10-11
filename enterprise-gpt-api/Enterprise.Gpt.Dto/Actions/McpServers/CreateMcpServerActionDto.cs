@@ -23,10 +23,7 @@ public record CreateMcpServerActionDto
     /// Extra request headers to send on every call to this server, such as the remote Azure
     /// DevOps server's <c>X-MCP-Toolsets</c>; <see langword="null"/> or empty for none.
     /// </summary>
-    /// <remarks>
-    /// Both verbs take a full representation, so an update that omits this clears the stored
-    /// set — the same rule every other field on this DTO follows.
-    /// </remarks>
+    /// <remarks>Full representation: an update that omits this clears the stored set.</remarks>
     public IReadOnlyDictionary<string, string>? Headers { get; init; }
 }
 
@@ -52,27 +49,19 @@ public class CreateMcpServerActionDtoValidator : AbstractValidator<CreateMcpServ
             .MaximumLength(McpServerLimits.ScopeMaxLength)
             .When(x => x.AuthType == McpAuthTypes.EntraIdOnBehalfOf)
             .WithMessage($"Scope is required when the auth type is {nameof(McpAuthTypes.EntraIdOnBehalfOf)}.");
-        // Stated as "every type but one" rather than as an arm per type: a scope is
-        // meaningless outside the on-behalf-of flow, so a fourth auth type must inherit the
-        // refusal rather than silently escape it by not being listed.
+        // "Every type but one", so a new auth type inherits the refusal instead of escaping it.
         RuleFor(x => x.Scope)
             .Empty()
             .When(x => x.AuthType != McpAuthTypes.EntraIdOnBehalfOf)
             .WithMessage($"Scope is only used by the {nameof(McpAuthTypes.EntraIdOnBehalfOf)} auth type and must be empty for the others.");
-        // A slug, not an enum: the artwork lives in the client, so shipping a new icon must
-        // not require a server deploy. A key the client does not recognise degrades to its
-        // generic glyph, which is why an unknown-but-well-formed value is accepted here.
-        // `is not null` rather than `IsNullOrEmpty`: an empty string would otherwise be
-        // stored as '' beside the NULLs meaning the same thing, and `IconKey IS NULL` and
-        // `iconKey === null` would disagree about the same row. Null clears the icon.
+        // A slug, not an enum, so a new client icon needs no server deploy; unknown keys get a generic glyph.
+        // Empty is rejected rather than stored as '' beside the NULLs meaning the same; null clears the icon.
         RuleFor(x => x.IconKey)
             .MaximumLength(McpServerLimits.IconKeyMaxLength)
             .Matches(IconKeyPattern)
             .When(x => x.IconKey is not null)
             .WithMessage("IconKey must be a lowercase slug such as 'microsoft'.");
-        // Custom rather than a chain of Must rules: the rules are shared with the other
-        // validator and with the column width, and this reports every problem in the set on
-        // its own line under one `Headers` key instead of collapsing them into the first.
+        // Custom so every problem gets its own line under one `Headers` key, not just the first.
         RuleFor(x => x.Headers)
             .Custom((headers, context) =>
             {

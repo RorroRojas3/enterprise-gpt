@@ -70,9 +70,8 @@ public sealed class FileAgentSandboxTests
     [Fact]
     public void Harvest_AnArtifactSeenBeforeTheContainerIs_StillCarriesIt()
     {
-        // The container is stamped on after the walk. Without that, an artifact found first would
-        // carry no scope — and a scopeless download resolves against the standard Files API, which
-        // cannot see a file the sandbox wrote.
+        // The container is stamped on after the walk; a scopeless download resolves against the standard
+        // Files API, which cannot see a file the sandbox wrote.
         var cited = new ChatMessage(ChatRole.Assistant, "Done.");
         cited.Contents[0].Annotations = [new CitationAnnotation { FileId = FileId, Title = "notes.md" }];
 

@@ -4,19 +4,15 @@ namespace Enterprise.Gpt.Dto.Reports;
 /// Aggregate figures for one period or one group.
 /// </summary>
 /// <remarks>
-/// The token columns are reported separately and are <em>not</em> interchangeable. The three rules
-/// <c>docs/conversations/usage-and-reporting.md</c> states apply verbatim to anything computed
-/// from this type: the assistant's own turns and its tools are counted apart and summed only in
-/// <see cref="TotalTokens"/>; <see cref="ContextTokens"/> is an estimate that sits beside the
-/// billed columns and is never added to them; and nothing here is derived from per-turn or
-/// per-tool-call rows, which would double-count what is already rolled up.
+/// The token columns are not interchangeable; the rules in <c>docs/conversations/usage-and-reporting.md</c>
+/// apply. Assistant and tool tokens are summed only in <see cref="TotalTokens"/>, <see cref="ContextTokens"/>
+/// is never added to billed columns, and nothing derives from per-turn or per-tool-call rows (double count).
 /// </remarks>
 public record UsageReportTotalsDto
 {
     /// <summary>Model calls in the period, of every kind and every outcome.</summary>
     /// <remarks>
-    /// Always the sum of <see cref="CompletedTurns"/>, <see cref="CancelledTurns"/> and
-    /// <see cref="FailedTurns"/>, because every call carries exactly one outcome.
+    /// Always <see cref="CompletedTurns"/> + <see cref="CancelledTurns"/> + <see cref="FailedTurns"/>.
     /// </remarks>
     public long Turns { get; init; }
 
@@ -33,9 +29,8 @@ public record UsageReportTotalsDto
     /// The subset of <see cref="Turns"/> that named a conversation rather than answering a prompt.
     /// </summary>
     /// <remarks>
-    /// Roughly one per conversation created, so an outlier count means first turns that keep
-    /// failing rather than an accounting bug. Carried alongside rather than subtracted: these
-    /// tokens were billed, and a report that hid them would understate the invoice.
+    /// Roughly one per new conversation; an outlier means first turns keep failing. Included in
+    /// <see cref="Turns"/> rather than subtracted, because these tokens were billed.
     /// </remarks>
     public long NamingTurns { get; init; }
 
@@ -58,10 +53,8 @@ public record UsageReportTotalsDto
     /// as zero.
     /// </summary>
     /// <remarks>
-    /// Reported beside <see cref="TotalTokens"/> and never inside it. This is an estimate of what
-    /// the conversation history costs to replay, not a charge, and the two are supposed to
-    /// disagree — the more tools a period ran, the further apart they sit, because tool calls,
-    /// tool results and reasoning are all billed and never transcribed.
+    /// A replay-cost estimate, never added to <see cref="TotalTokens"/>; the two diverge as tool calls,
+    /// tool results and reasoning are billed but never transcribed.
     /// </remarks>
     public long ContextTokens { get; init; }
 
@@ -70,18 +63,8 @@ public record UsageReportTotalsDto
     /// when nothing in it was priced.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// Null rather than zero, which is the difference between nothing having been spent and
-    /// nothing having been priceable. Calls missing either price contribute nothing and are
-    /// counted in <see cref="UnpricedTurns"/>, so a non-zero count there means this figure is a
-    /// floor.
-    /// </para>
-    /// <para>
-    /// An approximation by construction, for two reasons that cannot be closed from this data:
-    /// tool tokens are priced at the rate of the model that drove the turn, because nothing
-    /// records which model ran inside a tool; and cached input bills at a discount the catalog has
-    /// no column for, so a heavily cached period is overstated.
-    /// </para>
+    /// A floor when <see cref="UnpricedTurns"/> is non-zero. Approximate: tool tokens use the driving
+    /// model's rate and cached-input discounts are not modelled, so heavily cached periods overstate.
     /// </remarks>
     public decimal? EstimatedCost { get; init; }
 
@@ -89,9 +72,7 @@ public record UsageReportTotalsDto
     /// Calls that carried no price and so contributed nothing to <see cref="EstimatedCost"/>.
     /// </summary>
     /// <remarks>
-    /// Part of the answer rather than diagnostics: it is the only thing that distinguishes a cheap
-    /// period from an unpriced one. The fix is a price on the catalog row, which applies from then
-    /// on and never retroactively.
+    /// Distinguishes a cheap period from an unpriced one. A catalog price applies only going forward.
     /// </remarks>
     public long UnpricedTurns { get; init; }
 
@@ -100,8 +81,7 @@ public record UsageReportTotalsDto
 
     /// <summary>Distinct conversations at least one call in the period was charged to.</summary>
     /// <remarks>
-    /// Conversations that were <em>used</em> in the period, which is not the same as conversations
-    /// created in it — an older thread picked up again counts here.
+    /// Conversations <em>used</em> in the period, not created in it.
     /// </remarks>
     public int Conversations { get; init; }
 }

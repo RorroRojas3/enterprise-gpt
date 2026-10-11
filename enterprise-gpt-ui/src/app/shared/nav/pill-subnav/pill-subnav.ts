@@ -6,22 +6,11 @@ export interface PillItem {
   readonly label: string;
   readonly link: readonly unknown[] | string;
 
-  /**
-   * A smaller run beside the label, as the project detail tab strip draws it (frame
-   * `4e`). Withheld while `null` rather than shown as zero: "Files 0" on a project that
-   * has four is worse than no count at all, which is the rule the wide strip already
-   * follows.
-   */
+  /** Withheld while `null`, not shown as zero: "Files 0" on a project with four is worse. */
   readonly count?: number | null;
 }
 
-/**
- * The horizontal pill navigation the admin area uses below 768px — frame `5m`.
- *
- * Pills are 44px tall rather than the board's ~31px. The board's own caption asks for
- * 44px targets at this breakpoint, so this is the design's intent rather than a
- * departure from it.
- */
+/** The admin area's pill navigation below 768px, with 44px touch targets. */
 @Component({
   selector: 'app-pill-subnav',
   changeDetection: ChangeDetectionStrategy.OnPush,

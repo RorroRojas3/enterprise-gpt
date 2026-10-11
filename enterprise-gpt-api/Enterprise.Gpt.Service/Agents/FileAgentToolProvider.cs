@@ -20,83 +20,48 @@ using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Service.Agents;
 
-/// <summary>
-/// The File Agent, leased for the life of one turn.
-/// </summary>
-/// <remarks>
-/// Disposal releases what the run borrowed — the sandbox uploads it made, and the skill provider it
-/// built — so a lease that is not disposed leaks quota rather than merely memory.
-/// </remarks>
+/// <summary>The File Agent, leased for the life of one turn.</summary>
+/// <remarks>Disposal releases the sandbox uploads, so an undisposed lease leaks file quota.</remarks>
 public interface IFileAgentToolLease : IAsyncDisposable
 {
     /// <summary>Gets the agent, wrapped as one tracked tool for the assistant's tool list.</summary>
     AITool Tool { get; }
 
     /// <summary>Gets the catalog row the agent ran on, as it stood when the turn borrowed it.</summary>
-    /// <remarks>
-    /// Read when the turn's usage is recorded: an agent tool-call row is the only kind that can name
-    /// the model behind it, and this is what it names.
-    /// </remarks>
+    /// <remarks>Recorded on the agent tool-call row, the only usage row that names its model.</remarks>
     FileAgentModel Model { get; }
 
     /// <summary>
     /// Gets the files the agent produced and stored during this turn, in the order it produced them.
     /// </summary>
-    /// <remarks>
-    /// Read when the turn is recorded, which happens inside the lease's own scope. Empty until the
-    /// agent actually runs, and empty for a run that produced nothing.
-    /// </remarks>
     IReadOnlyList<MessageAttachmentDto> GeneratedDocuments { get; }
 
     /// <summary>Withdraws every file this turn stored, for a turn that will not deliver them.</summary>
     /// <remarks>
-    /// Called when a turn is stopped or fails: the transcript references a generated file only on a
-    /// completed turn, so a row left behind by an abandoned one is a file the user is shown and no
-    /// message introduced. Leaves <see cref="GeneratedDocuments"/> empty, and never throws.
+    /// The transcript references generated files only on a completed turn, so leftovers would be orphans.
+    /// Leaves <see cref="GeneratedDocuments"/> empty, and never throws.
     /// </remarks>
     Task DiscardGeneratedAsync();
 }
 
-/// <summary>
-/// Composes the File Agent for a turn.
-/// </summary>
-/// <remarks>
-/// Declared here and implemented in <c>Enterprise.Gpt.Api</c>: the agent is built on
-/// <c>Microsoft.Agents.AI</c>, which this project deliberately does not reference. The shape mirrors
-/// <see cref="IMcpToolProvider"/> for the same reason it exists — a turn borrows a tool and gives it
-/// back.
-/// </remarks>
+/// <summary>Composes the File Agent for a turn.</summary>
+/// <remarks>Mirrors <see cref="IMcpToolProvider"/>: a turn borrows a tool and gives it back.</remarks>
 public interface IFileAgentToolProvider
 {
-    /// <summary>
-    /// Builds the agent for one turn.
-    /// </summary>
-    /// <param name="conversationId">The conversation the turn belongs to.</param>
-    /// <param name="userId">The caller, whose ownership decides which files the agent may read.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
-    /// <returns>The tool plus a disposable bounding its lifetime to the turn.</returns>
+    /// <summary>Builds the agent for one turn; the caller's ownership decides which files it reads.</summary>
     /// <exception cref="Exceptions.FileAgentNotConfiguredException">
-    /// The pinned model row is absent, deactivated, or on a provider that cannot carry a hosted code
-    /// interpreter.
+    /// The pinned model row is absent, deactivated, or on a provider without a hosted code interpreter.
     /// </exception>
-    /// <exception cref="ProviderNotConfiguredException">
-    /// This deployment has no chat client for the agent.
-    /// </exception>
+    /// <exception cref="ProviderNotConfiguredException">No chat client is registered for the agent.</exception>
     Task<IFileAgentToolLease> AcquireAsync(Guid conversationId, Guid userId, CancellationToken cancellationToken);
 }
 
-/// <summary>
-/// Composes the File Agent for one turn and hands it to <c>ConversationService</c> as a single
-/// tracked tool.
-/// </summary>
+/// <inheritdoc />
 /// <remarks>
-/// The agent is reached through agent-level middleware, because <c>WithTracking</c>'s string-in/
-/// string-out bridge hides the response a produced file's identity appears on. See
-/// <c>docs/tools/file-agent.md</c> for that choice, and for why the
-/// agent's client is its own.
+/// Agent-level middleware, because <c>WithTracking</c>'s string bridge hides the response that identifies
+/// produced files. See <c>docs/tools/file-agent.md</c>.
 /// </remarks>
-// The hosted-file client is still marked experimental in Microsoft.Extensions.AI 10.9.0. Suppressed
-// on this one file, as in FileAgentSandbox, rather than project-wide.
+// Hosted files are experimental in Microsoft.Extensions.AI 10.9.0; suppressed per file, not project-wide.
 #pragma warning disable MEAI001
 public sealed partial class FileAgentToolProvider(
     ILoggerFactory loggerFactory,
@@ -142,8 +107,7 @@ public sealed partial class FileAgentToolProvider(
 
         var logger = _loggerFactory.CreateLogger<FileAgentToolProvider>();
 
-        // The skills filter needs the run's instruction, which does not exist until the model writes
-        // one — so the provider reads it through this rather than being handed a string now.
+        // The model writes the instruction later, so the skills filter reads it through this.
         var instruction = new RunInstruction();
 
         var lease = new FileAgentToolLease(
@@ -166,9 +130,8 @@ public sealed partial class FileAgentToolProvider(
                 userId,
                 logger);
 
-            // The tool instance is per turn and shared across the run's calls. Mutating its Inputs is
-            // safe only because AllowConcurrentInvocation is false on both clients, so at most one
-            // call is in flight at a time.
+            // Shared across the turn's calls; mutating Inputs is safe only because AllowConcurrentInvocation
+            // is false on both clients.
             var codeInterpreter = new HostedCodeInterpreterTool { Inputs = run.Inputs };
 
             var agent = new ChatClientAgent(
@@ -185,9 +148,8 @@ public sealed partial class FileAgentToolProvider(
                     },
                     AIContextProviders = [lease.Skills],
 
-                    // The client handed in is already a full pipeline. Left false, the agent's own
-                    // middleware would write this turn's tools onto that shared client's function
-                    // invoker, where the next turn would inherit them.
+                    // Already a full pipeline; false would write this turn's tools onto the shared
+                    // client's function invoker for the next turn to inherit.
                     UseProvidedChatClientAsIs = true
                 },
                 _loggerFactory);
@@ -202,15 +164,13 @@ public sealed partial class FileAgentToolProvider(
                         Name = FileAgentToolNames.Agent,
                         Description = ToolDescription,
 
-                        // Runs inside the tracked scope, after the middleware above has stored
-                        // whatever the run produced, so what the assistant reads back is the outcome
-                        // rather than only the agent's own prose.
+                        // Runs after the middleware stored the output, so the assistant reads the
+                        // outcome, not just the agent's prose.
                         MarshalResult = (result, _, _) => new ValueTask<object?>(run.Describe(result))
                     },
 
-                    // True because this agent's client carries no tool tracking of its own. With one,
-                    // the nested pipeline would roll its usage up on its own and reporting it here
-                    // would double every agent token.
+                    // The agent's client has no tracking of its own; if it did, this would double every
+                    // agent token.
                     trackUsage: true);
 
             return lease;
@@ -252,8 +212,7 @@ public sealed partial class FileAgentToolProvider(
         /// <inheritdoc />
         public async Task DiscardGeneratedAsync()
         {
-            // Copied and cleared first, so a caller that reads GeneratedDocuments after this sees the
-            // turn's real answer — nothing — whatever the withdrawals themselves do.
+            // Cleared first, so GeneratedDocuments reads empty whatever the withdrawals do.
             List<StoredArtifact> withdrawing = [.. Stored];
             Stored.Clear();
 
@@ -314,8 +273,8 @@ public sealed partial class FileAgentToolProvider(
         private readonly List<string> _refusals = [];
         private readonly List<string> _rejectedArtifacts = [];
 
-        // A turn may call the agent twice — "a docx and a deck" — and both this object and the lease's
-        // file list outlive one call, so without this the second call reports the first call's files.
+        // A turn may call the agent twice and the lease's file list outlives a call, so each call reports
+        // only what it stored.
         private int _storedBeforeThisRun;
 
         /// <summary>The hosted files the sandbox mounts, mutated in place before each run.</summary>
@@ -332,16 +291,14 @@ public sealed partial class FileAgentToolProvider(
             var instruction = string.Join(
                 ' ', conversation.Where(message => message.Role == ChatRole.User).Select(message => message.Text));
 
-            // Before the inner run, so the skills provider's filter — which advertises only the
-            // formats this instruction names — sees it when the run consults it.
+            // Before the inner run, so the skills filter sees it.
             _instruction.Text = instruction;
 
             _refusals.Clear();
             _rejectedArtifacts.Clear();
             _storedBeforeThisRun = _lease.Stored.Count;
 
-            // Bounds the whole invocation, sandbox round trips included, independently of the outer
-            // turn's own limits. Linked, so a cancelled turn still stops this promptly.
+            // Bounds the whole invocation independently of the turn; linked so a cancelled turn still stops it.
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(TimeSpan.FromSeconds(_options.ToolTimeoutSeconds));
 
@@ -382,9 +339,8 @@ public sealed partial class FileAgentToolProvider(
             }
             catch (Exception exception)
             {
-                // Replaced rather than rethrown: the outer client's IncludeDetailedErrors writes this
-                // message into the chat history, and a SQL or storage exception carries a server, a
-                // container and a blob path with it.
+                // Replaced, not rethrown: IncludeDetailedErrors writes this into the chat history, and SQL or
+                // storage exceptions name servers, containers and blob paths.
                 var failure = FileAgentFailures.Unexpected();
                 outcome = Fail(failure);
 
@@ -399,20 +355,12 @@ public sealed partial class FileAgentToolProvider(
             }
         }
 
-        /// <summary>
-        /// Turns the run's outcome into what the assistant reads back.
-        /// </summary>
-        /// <remarks>
-        /// Reached only for a run that returned rather than threw, so the "no file" wording here
-        /// belongs to a refusal the agent made — an unsupported conversion, an ambiguous name — and
-        /// never to a run that failed to produce one, which throws instead.
-        /// </remarks>
+        // Reached only for a run that returned, so "no file" here is a refusal; failed runs throw instead.
         public string Describe(object? agentText)
         {
             var text = agentText?.ToString() ?? string.Empty;
 
-            // Both lists, because a run that saved one file and rejected another would otherwise tell
-            // the model about the one and leave the user wondering about the other.
+            // Both lists, so a run that saved one file and rejected another mentions both.
             List<string> unsaved = [.. _rejectedArtifacts, .. _refusals];
             var refusals = unsaved.Count == 0 ? string.Empty : $" {string.Join(" ", unsaved)}";
             List<StoredArtifact> stored = [.. _lease.Stored.Skip(_storedBeforeThisRun)];
@@ -422,8 +370,7 @@ public sealed partial class FileAgentToolProvider(
                 return $"{text}\n\n[No file was saved.{refusals} Do not describe a file as though the user has one.]";
             }
 
-            // The measured shape rather than the requested one, so an answer that quotes it is stating
-            // what the file actually holds.
+            // The measured shape, not the requested one, so a quoting answer states what the file holds.
             var names = string.Join(", ", stored.Select(artifact => $"{artifact.File.Name} ({artifact.Shape})"));
 
             return $"{text}\n\n[Saved and attached to your answer: {names}.{refusals}]";
@@ -445,9 +392,8 @@ public sealed partial class FileAgentToolProvider(
 
             if (FileAgentPreflight.Evaluate(resolution, instruction, _conversionMatrix) is { } refusal)
             {
-                // Answered rather than failed: the agent saying "I cannot do that, and here is why" is
-                // a correct answer, and turning it into a failed tool call would make a clean refusal
-                // look like a broken one. The outcome tag is what keeps the two apart in telemetry.
+                // Answered rather than failed, so a clean refusal does not look like a broken tool call;
+                // the outcome tag separates them in telemetry.
                 ChatProgress.Report(refusal.SubStatus);
 
                 return (new AgentResponse(new ChatMessage(ChatRole.Assistant, refusal.Text)), refusal.Outcome);
@@ -458,9 +404,8 @@ public sealed partial class FileAgentToolProvider(
             var attempts = _options.MaxVerificationRetries + 1;
             var reachedSandbox = false;
 
-            // Both survive the per-attempt clear below. Without them a run whose first attempt failed
-            // its check and whose second produced nothing at all reports "no file produced" — and,
-            // with only the flag, reports the right outcome with none of what did not match.
+            // Survive the per-attempt clear, so a failed check followed by an empty attempt still reports
+            // verification failure and what did not match.
             var anyRejected = false;
             var rejection = string.Empty;
 
@@ -482,9 +427,7 @@ public sealed partial class FileAgentToolProvider(
                     rejection = Detail();
                 }
 
-                // Only a failed check earns another attempt. A run that produced nothing at all would
-                // produce nothing again for the same reason, and paying for a second sandbox session
-                // to find that out is the cost this guard avoids.
+                // Only a failed check earns a retry; a run that produced nothing would likely do so again.
                 if (_rejectedArtifacts.Count == 0 || attempt + 1 >= attempts)
                 {
                     break;
@@ -497,8 +440,7 @@ public sealed partial class FileAgentToolProvider(
                     new ChatMessage(ChatRole.User, RetryInstruction())
                 ];
 
-                // Both, so the next attempt is described on its own terms: an oversized file from this
-                // one is not something to tell the user about once the retry has produced a good one.
+                // So the next attempt is described on its own terms.
                 _rejectedArtifacts.Clear();
                 _refusals.Clear();
             }
@@ -580,9 +522,6 @@ public sealed partial class FileAgentToolProvider(
             }
         }
 
-        /// <summary>
-        /// Downloads, checks and stores what the run produced.
-        /// </summary>
         /// <returns><see langword="true"/> when at least one artifact was verified and stored.</returns>
         private async Task<bool> StoreAsync(AgentResponse response, CancellationToken cancellationToken)
         {
@@ -606,9 +545,7 @@ public sealed partial class FileAgentToolProvider(
             {
                 if (artifact.Name is not { Length: > 0 } name)
                 {
-                    // No name means no extension, and the store keeps only the seven formats it can
-                    // name. Refused here so the reason names the real problem rather than the
-                    // placeholder a fallback would have invented.
+                    // No name means no extension; refused here so the reason names the real problem.
                     _refusals.Add("One file could not be saved because the sandbox gave it no name.");
                     continue;
                 }
@@ -622,9 +559,8 @@ public sealed partial class FileAgentToolProvider(
         private async Task<bool> StoreOneAsync(
             SandboxArtifact artifact, string name, CancellationToken cancellationToken)
         {
-            // A constant, with the file name on the ephemeral sub-status instead: a nested scope becomes
-            // a ToolCallUsage child, and the audit row it writes keeps its ToolName for ever, where a
-            // progress line is never persisted.
+            // A constant label: the scope's ToolName is persisted on a usage row, while the sub-status
+            // carrying the file name is not.
             using var scope = ChatProgress.BeginToolScope(Step("Checking the file"), owner: null);
 
             ChatProgress.Report($"Checking {Path.GetFileName(name)}");
@@ -633,13 +569,11 @@ public sealed partial class FileAgentToolProvider(
             {
                 var bytes = await _lease.Sandbox.DownloadAsync(artifact, cancellationToken).ConfigureAwait(false);
 
-                // Before the store, never after: an artifact that does not re-open must not become a
-                // row and a chip, and re-opening the bytes on their way to storage checks the file the
-                // user will actually download rather than a copy left in the container.
+                // Before the store, so an artifact that does not re-open never becomes a row, and the
+                // check covers the exact bytes the user will download.
                 var checkResult = _verifier.Verify(name, bytes);
 
-                // Clamped to the seven this platform produces: the extension comes off a name the model
-                // chose, and a metric dimension is retained, high-cardinality storage.
+                // Clamped: the extension is model-chosen and a metric dimension must stay low-cardinality.
                 var extension = Path.GetExtension(name).TrimStart('.').ToLowerInvariant();
 
                 ChatMetrics.RecordFileAgentVerification(
@@ -665,8 +599,7 @@ public sealed partial class FileAgentToolProvider(
             }
             catch (ValidationException exception)
             {
-                // The store's own sanitized sentence — over the size ceiling, or a format this
-                // platform does not keep.
+                // The store's own sanitized reason (too large, or an unsupported format).
                 _refusals.Add(exception.Errors.FirstOrDefault()?.ErrorMessage ?? exception.Message);
                 scope.Fail();
 
@@ -674,16 +607,14 @@ public sealed partial class FileAgentToolProvider(
             }
             catch (OperationCanceledException)
             {
-                // Its own arm, ahead of the filter below: without it the handle is disposed un-failed
-                // and the step reports — and persists — as succeeded on a turn the user stopped.
+                // Its own arm, or the step would persist as succeeded on a turn the user stopped.
                 scope.Fail();
                 throw;
             }
             catch (Exception exception)
             {
-                // Per artifact rather than per run: a file already stored is already on its way
-                // to the answer's chips, so failing the whole call here would tell the model
-                // nothing was saved while the user is looking at one that was.
+                // Per artifact: failing the call would tell the model nothing was saved while an
+                // already-stored file is shown to the user.
                 LogCouldNotStoreArtifact(_logger, exception, _conversationId);
                 _refusals.Add($"'{name}' could not be saved.");
                 scope.Fail();
@@ -692,7 +623,6 @@ public sealed partial class FileAgentToolProvider(
             }
         }
 
-        /// <summary>Everything this attempt could not save, in one sentence.</summary>
         private string Detail() => string.Join(" ", _rejectedArtifacts.Concat(_refusals));
 
         /// <summary>Reports a failure's line to the card and returns its outcome, so both agree.</summary>
@@ -703,19 +633,13 @@ public sealed partial class FileAgentToolProvider(
             return failure.Outcome;
         }
 
-        /// <summary>The sentence that sends a failed check back for another attempt.</summary>
         private string RetryInstruction() =>
             $"The file you produced did not pass the check that runs before anything is saved: "
             + $"{string.Join(" ", _rejectedArtifacts)} Fix the code that wrote it and produce the file again. "
             + "Do not answer until it opens cleanly.";
 
-        /// <summary>Classifies a run that stored nothing, which is always a failure by this point.</summary>
-        /// <param name="reachedSandbox">Whether any attempt opened a code interpreter session rather than answering in prose alone; logged, so a run that never ran code can be told from one whose code wrote nothing.</param>
-        /// <param name="anyRejected">Whether any attempt produced an artifact that failed its check.</param>
-        /// <param name="rejection">
-        /// What that check said, carried past the retry loop's own clear — the final attempt may have
-        /// produced nothing at all, leaving the lists empty and the story with it.
-        /// </param>
+        // Classifies a run that stored nothing. reachedSandbox is logged to tell a run that never ran code
+        // from one whose code wrote nothing.
         private FileAgentRunFailure Unproduced(bool reachedSandbox, bool anyRejected, string rejection)
         {
             var detail = Detail();
@@ -731,16 +655,10 @@ public sealed partial class FileAgentToolProvider(
             return new FileAgentRunFailure(FileAgentFailures.NoFileProduced(detail));
         }
 
-        /// <summary>One step of the run, as its own card beneath the agent's.</summary>
-        /// <param name="label">
-        /// Prose, and in <c>Name</c> rather than only <c>DisplayName</c>: the card reads its label off
-        /// <c>Name</c>, and only the status line the tracker composes uses <c>DisplayName</c>. A code
-        /// identifier in <c>Name</c> would put "run_code" on screen.
-        /// </param>
+        // One step of the run, as its own card. Prose in Name too: the card renders Name, not DisplayName.
         private static ToolDescriptor Step(string label) =>
             new() { Name = label, DisplayName = label, Kind = ToolKind.Agent };
 
-        /// <summary>Whether the run actually opened a sandbox session, rather than answering from prose alone.</summary>
         private static bool ReachedSandbox(AgentResponse response) =>
             response.Messages
                 .SelectMany(message => message.Contents)
@@ -766,14 +684,8 @@ public sealed partial class FileAgentToolProvider(
         #endregion
     }
 
-    /// <summary>
-    /// A terminal outcome, carried out of the run's own frames so one place decides how it is reported.
-    /// </summary>
-    /// <remarks>
-    /// Internal to this file and never observed by a caller: <see cref="FileAgentRun.RunAsync"/>
-    /// converts it into the sanitized <see cref="InvalidOperationException"/> the tool contract uses,
-    /// having first tagged the outcome and reported the line the activity card shows.
-    /// </remarks>
+    // A terminal outcome carried out of the run's frames; FileAgentRun.RunAsync converts it into the
+    // sanitized InvalidOperationException the tool contract uses.
     private sealed class FileAgentRunFailure(FileAgentFailure failure) : Exception(failure.Message)
     {
         public FileAgentFailure Failure { get; } = failure;

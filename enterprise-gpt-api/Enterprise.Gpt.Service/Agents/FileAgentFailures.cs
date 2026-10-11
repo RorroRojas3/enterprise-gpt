@@ -2,13 +2,10 @@ using Enterprise.Gpt.Service.Agents.Models;
 
 namespace Enterprise.Gpt.Service.Agents;
 
-/// <summary>
-/// The wording of every way a run can fail.
-/// </summary>
+/// <summary>The wording of every way a run can fail.</summary>
 /// <remarks>
-/// Here rather than at the throw sites so the four are visibly distinct and can be asserted so: a
-/// reader of the timeline has to be able to tell an artifact that would not open from a run that never
-/// made one, and a single "something went wrong" for all four is the defect this exists to prevent.
+/// Kept together so the four stay distinct and testable: the timeline must tell an artifact that would not
+/// open from a run that never made one.
 /// </remarks>
 public static class FileAgentFailures
 {
@@ -21,8 +18,6 @@ public static class FileAgentFailures
     #region Public static methods
 
     /// <summary>The run reached the sandbox, answered, and produced nothing.</summary>
-    /// <param name="detail">Anything the run wants to add, or empty.</param>
-    /// <returns>The failure.</returns>
     public static FileAgentFailure NoFileProduced(string detail = "") =>
         new(
             FileAgentOutcomes.NoFileProduced,
@@ -31,8 +26,6 @@ public static class FileAgentFailures
             "No file was produced");
 
     /// <summary>Every artifact failed to re-open, and the retry bound is spent.</summary>
-    /// <param name="detail">What did not open, in the verifier's own words.</param>
-    /// <returns>The failure.</returns>
     public static FileAgentFailure VerificationFailed(string detail) =>
         new(
             FileAgentOutcomes.VerificationFailed,
@@ -42,8 +35,6 @@ public static class FileAgentFailures
             "The file did not open when checked");
 
     /// <summary>The run exceeded its own wall-clock bound.</summary>
-    /// <param name="seconds">The bound, named so the right knob gets turned.</param>
-    /// <returns>The failure.</returns>
     public static FileAgentFailure TimedOut(int seconds) =>
         new(
             FileAgentOutcomes.TimedOut,
@@ -52,7 +43,6 @@ public static class FileAgentFailures
             "Stopped at the time limit");
 
     /// <summary>Anything else threw.</summary>
-    /// <returns>The failure.</returns>
     /// <remarks>
     /// Carries nothing of the exception: this message reaches the model's context, and a storage or
     /// database failure names an account, a container and a path.

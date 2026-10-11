@@ -6,10 +6,7 @@ namespace Enterprise.Gpt.Unit.Test.Service.Documents.Summarization;
 
 public sealed class MapUnitSplitterTests
 {
-    /// <summary>
-    /// One token per whitespace-separated word. Deterministic, so a unit's measured size is exactly
-    /// what the test arranged rather than whatever a real encoding happens to produce.
-    /// </summary>
+    // One token per word, so a unit's measured size is exactly what the test arranged.
     private sealed class WordTokenEstimator : ITokenEstimator
     {
         public long CountTokens(string? text, string? deploymentName) =>
@@ -37,9 +34,8 @@ public sealed class MapUnitSplitterTests
     #region Sizing
 
     /// <summary>
-    /// The regression guard for the mistake this splitter exists to avoid. Reusing the 512-token
-    /// retrieval chunker would turn a document a shade over budget into hundreds of map calls
-    /// instead of two.
+    /// Reusing the 512-token retrieval chunker would turn a document a shade over budget into hundreds of
+    /// map calls instead of two.
     /// </summary>
     [Fact]
     public void Split_TextJustOverTheBudget_ReturnsTwoUnitsNotHundreds()
@@ -142,9 +138,8 @@ public sealed class MapUnitSplitterTests
     }
 
     /// <summary>
-    /// The one input with no interior boundary at all. Measured per character rather than per word,
-    /// because a word-counting estimator makes an unbroken run one token and never reaches the
-    /// length-slicing path this test exists to cover.
+    /// Measured per character: a word-counting estimator makes an unbroken run one token and never reaches
+    /// the length-slicing path.
     /// </summary>
     [Fact]
     public void Split_ASingleWordLargerThanTheBudget_SlicesItByLength()

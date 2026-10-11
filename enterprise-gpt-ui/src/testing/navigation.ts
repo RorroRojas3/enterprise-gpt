@@ -8,13 +8,7 @@ export type FakeNavigation = {
   readonly reload: ReturnType<typeof vi.fn<() => void>>;
 };
 
-/**
- * Provides a recording {@link HardNavigation}.
- *
- * jsdom's `Location` is not patchable, so a spec that let the real service through
- * would emit a "Not implemented: navigation" from the virtual console and assert
- * nothing.
- */
+/** A recording {@link HardNavigation}, since jsdom's `Location` cannot be patched. */
 export function provideFakeNavigation(): Provider & { useValue: FakeNavigation } {
   return {
     provide: HardNavigation,

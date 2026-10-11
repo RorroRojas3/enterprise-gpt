@@ -5,16 +5,10 @@ using FluentValidation;
 
 namespace Enterprise.Gpt.Api.Configuration;
 
-/// <summary>
-/// Registers usage reporting.
-/// </summary>
 internal static class ReportsConfiguration
 {
     #region Public static methods
 
-    /// <summary>
-    /// Registers the report service and its range and grouping bounds.
-    /// </summary>
     internal static IServiceCollection AddReports(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<IValidator<ReportOptions>, ReportOptionsValidator>();

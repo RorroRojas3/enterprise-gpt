@@ -22,8 +22,7 @@ describe('describeUploadRejection', () => {
   });
 
   it('states the file size alone for a bare 413, inventing no limit', () => {
-    // Kestrel's own response, from a chunked upload that declared no length: it
-    // carries no maxBytes, and quoting a made-up cap would be worse than omitting it.
+    // Kestrel's own 413 carries no maxBytes, and a made-up cap would be worse than none.
     const rejection = describeUploadRejection(
       errorFrom(FRAMEWORK_PROBLEM_FIXTURES.payloadTooLarge),
       HUGE,
@@ -48,8 +47,7 @@ describe('describeUploadRejection', () => {
   });
 
   it('passes the validator’s own words through, which name the actual problem', () => {
-    // `userMessage` would say "correct the highlighted fields", pointing at fields
-    // this surface does not have.
+    // `userMessage` would point at form fields this surface does not have.
     const rejection = describeUploadRejection(errorFrom(PROBLEM_FIXTURES.validationError), {
       name: 'notes.txt',
       size: 0,

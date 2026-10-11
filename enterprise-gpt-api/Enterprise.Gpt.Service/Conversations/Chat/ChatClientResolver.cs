@@ -10,30 +10,19 @@ namespace Enterprise.Gpt.Service.Conversations.Chat;
 /// </summary>
 public interface IChatClientResolver
 {
-    /// <summary>
-    /// Resolves the <see cref="IChatClient"/> registered for a provider.
-    /// </summary>
-    /// <param name="providerId">The <c>Core.Ref.Provider</c> identifier carried by the model.</param>
-    /// <returns>The chat client registered under that provider's service key.</returns>
+    /// <summary>Resolves the <see cref="IChatClient"/> registered for a provider.</summary>
     /// <remarks>
-    /// A provider with no service key and a provider whose client is switched off by configuration
-    /// are one condition to a caller: this deployment cannot serve the model. Telling them apart in
-    /// the response would only leak deployment detail the caller can do nothing about.
+    /// An unknown provider and a client disabled by configuration are deliberately one condition:
+    /// telling them apart would only leak deployment detail.
     /// </remarks>
-    /// <exception cref="ProviderNotConfiguredException">
-    /// The provider has no service key, or its client is not registered in this deployment.
-    /// </exception>
+    /// <exception cref="ProviderNotConfiguredException">The provider has no service key or client.</exception>
     IChatClient Resolve(Guid providerId);
 }
 
-/// <summary>
-/// Resolves provider-specific chat clients out of the keyed service registrations.
-/// </summary>
+/// <summary>Resolves provider-specific chat clients from the keyed service registrations.</summary>
 /// <remarks>
-/// Registered as a singleton, so the captured provider is the root container and the clients it
-/// hands back are the keyed singletons themselves — nothing scoped is captured.
+/// A singleton over the root container that hands back keyed singletons, so nothing scoped is captured.
 /// </remarks>
-/// <param name="serviceProvider">The container the keyed chat clients are registered in.</param>
 public sealed class ChatClientResolver(IServiceProvider serviceProvider) : IChatClientResolver
 {
     private readonly IServiceProvider _serviceProvider = serviceProvider;

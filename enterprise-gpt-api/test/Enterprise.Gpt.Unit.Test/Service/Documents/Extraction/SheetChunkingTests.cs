@@ -9,10 +9,6 @@ using SheetSpec = Enterprise.Gpt.Unit.Test.TestInfrastructure.WorkbookBuilder.Sh
 
 namespace Enterprise.Gpt.Unit.Test.Service.Documents.Extraction;
 
-/// <summary>
-/// Covers what row windows are for: surviving the unmodified chunker with their header attached, and
-/// breaking on row boundaries when a window is too large to survive whole.
-/// </summary>
 public sealed class SheetChunkingTests
 {
     private const string HeaderLine = "SKU | Region | Revenue | Quarter";
@@ -34,10 +30,8 @@ public sealed class SheetChunkingTests
     [Fact]
     public async Task Chunk_WindowLargerThanTheChunkBudget_BreaksOnRowBoundaries()
     {
-        // The extractor sizes windows against the chunker it was given; a smaller budget here forces the
-        // degraded path, where the chunker's sentence boundary — which breaks on a newline — is the only
-        // thing keeping a row's own cells together. Overlap is off because its token-level tail is a
-        // separate, accepted behaviour that seeds a chunk with part of a row by design.
+        // A smaller budget forces the degraded path, where only the chunker's newline boundary keeps a row's
+        // cells together. Overlap is off: its token-level tail splitting a row is accepted by design.
         var segments = await ExtractAsync(200);
         var rows = Rows(segments);
 

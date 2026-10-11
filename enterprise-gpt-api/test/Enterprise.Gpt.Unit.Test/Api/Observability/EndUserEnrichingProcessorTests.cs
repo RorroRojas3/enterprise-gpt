@@ -7,10 +7,6 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Api.Observability;
 
-/// <summary>
-/// Covers the caller identity stamped onto server spans, and the three cases that must leave a span
-/// untouched.
-/// </summary>
 public sealed class EndUserEnrichingProcessorTests : IDisposable
 {
     private const string OidClaimType = "http://schemas.microsoft.com/identity/claims/objectidentifier";
@@ -20,9 +16,8 @@ public sealed class EndUserEnrichingProcessorTests : IDisposable
 
     private static readonly ActivitySource Source = new(SourceName);
 
-    // Without a listener the source is unsampled and every StartActivity call yields null. Matched by
-    // name rather than by reference: AddActivityListener walks the sources that already exist, and a
-    // static field read from inside the callback can construct this one mid-walk and never match it.
+    // Without a listener the source is unsampled. Matched by name: a static field read inside the
+    // callback can construct the source mid-walk and never match it.
     private readonly ActivityListener _listener = new()
     {
         ShouldListenTo = source => source.Name == SourceName,

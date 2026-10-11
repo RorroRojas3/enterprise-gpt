@@ -65,9 +65,6 @@ describe('authInterceptor', () => {
   });
 
   it('leaves a request to another origin untouched', async () => {
-    // The token is a bearer credential for our API alone. An interceptor that
-    // attached it to every request would hand it to any third-party host a later
-    // feature calls, and to config.json and the icon sprite besides.
     const response = firstValueFrom(http.get('https://example.test/thing'));
     await settle();
 
@@ -122,8 +119,6 @@ describe('authInterceptor', () => {
   });
 
   it('never refreshes on a 403, whose token is fine and whose grant is not', async () => {
-    // No number of refreshes turns a missing grant into a present one, so entering
-    // that path would spin forever.
     const response = firstValueFrom(http.get(API_URL)).catch((error: unknown) => error);
     await settle();
 
@@ -137,10 +132,7 @@ describe('authInterceptor', () => {
   });
 
   it('re-acquires a token for every retried attempt', async () => {
-    // The contract retry.interceptor.ts has documented since US-103: retry sits
-    // outside authentication, so a replayed request carries a token acquired for that
-    // attempt rather than the one that already failed. It holds only because
-    // authorize() defers the acquisition until subscription — a bare from(promise)
+    // Holds only because authorize() defers acquisition to subscription; a bare from(promise)
     // would replay one settled token three times.
     const response = firstValueFrom(http.get(API_URL));
     await settle();

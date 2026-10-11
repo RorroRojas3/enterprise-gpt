@@ -19,10 +19,9 @@ import { DEFAULT_USER_PAGE_SIZE } from './admin-users-route';
 
 const USERS_URL = `${TEST_API_BASE_URL}/api/users`;
 
-/** A permission id as the catalog would hand one to the filter. */
 const PERMISSION_ID = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
 
-describe('AdminUsersStore (US-1201)', () => {
+describe('AdminUsersStore', () => {
   let backend: HttpTestingController;
   let store: InstanceType<typeof AdminUsersStore>;
   let term: ReturnType<typeof signal<string>>;
@@ -52,7 +51,7 @@ describe('AdminUsersStore (US-1201)', () => {
     backend.verify();
   });
 
-  /** Wires the query the way the screen's constructor does — one computation, four inputs. */
+  /** Binds the query as the screen's constructor does: one computation, four inputs. */
   function bind(): void {
     TestBed.runInInjectionContext(() =>
       store.bindQuery(() => ({
@@ -91,7 +90,7 @@ describe('AdminUsersStore (US-1201)', () => {
     expect(store.isFulfilled()).toBe(true);
   });
 
-  it('sends permissionId only when the filter is on (US-1206)', async () => {
+  it('sends permissionId only when the filter is on', async () => {
     bind();
 
     const unfiltered = expectSearch();
@@ -112,13 +111,12 @@ describe('AdminUsersStore (US-1201)', () => {
     );
     await settle();
 
-    // The pager reads the filtered total, because the server applied the filter before
-    // counting — the whole point of US-1205 over a client-side narrowing.
+    // The server filters before counting, so the pager reads the filtered total.
     expect(store.totalCount()).toBe(4);
     expect(store.countSummary()).toBe('Showing 1–4 of 4 users');
   });
 
-  it('keeps the permission filter across a retry (US-1206)', async () => {
+  it('keeps the permission filter across a retry', async () => {
     permissionId.set(PERMISSION_ID);
     bind();
     expectSearch().flush(FRAMEWORK_PROBLEM_FIXTURES.serverError, {
@@ -141,7 +139,7 @@ describe('AdminUsersStore (US-1201)', () => {
     expect(store.error()).toBeNull();
   });
 
-  it('withholds the request while the query is unresolved, then sends it (US-1206)', async () => {
+  it('withholds the request while the query is unresolved, then sends it', async () => {
     const ready = signal(false);
     TestBed.runInInjectionContext(() =>
       store.bindQuery(() =>
@@ -152,8 +150,7 @@ describe('AdminUsersStore (US-1201)', () => {
     );
     TestBed.tick();
 
-    // Not "sent unfiltered and corrected afterwards": a link naming a permission would
-    // otherwise put the whole directory on screen for a paint before narrowing it.
+    // Sending unfiltered first would flash the whole directory before narrowing it.
     backend.expectNone((request) => request.url === USERS_URL);
     expect(store.isIdle()).toBe(true);
 
@@ -170,7 +167,7 @@ describe('AdminUsersStore (US-1201)', () => {
     expect(store.isFulfilled()).toBe(true);
   });
 
-  it('blames the permission, not an empty search box, when nothing holds it (US-1206)', async () => {
+  it('blames the permission, not an empty search box, when nothing holds it', async () => {
     permissionId.set(PERMISSION_ID);
     bind();
     expectSearch().flush(userPage([], { totalCount: 0, pageSize: DEFAULT_USER_PAGE_SIZE }));
@@ -306,8 +303,6 @@ describe('AdminUsersStore (US-1201)', () => {
     );
     await settle();
 
-    // The order is last name then first name, so where the new row belongs is the
-    // server's decision — and on any other page it must not appear at all.
     TestBed.inject(Dispatcher).dispatch(adminEvents.userCreated(directoryUserFixture()));
     await settle();
 
@@ -353,8 +348,7 @@ describe('AdminUsersStore (US-1201)', () => {
     expect(store.entities()).toHaveLength(1);
     expect(store.totalCount()).toBe(1);
 
-    // The screen's own flow removes the row before the event fires, so this arm has to be
-    // a no-op rather than decrementing the total a second time.
+    // The screen's own flow removes the row before the event fires, so this must be a no-op.
     dispatcher.dispatch(adminEvents.userDeactivated(row.id));
     await settle();
     expect(store.totalCount()).toBe(1);

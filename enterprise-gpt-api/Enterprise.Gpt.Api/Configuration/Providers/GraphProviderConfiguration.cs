@@ -5,16 +5,10 @@ using Microsoft.Graph;
 
 namespace Enterprise.Gpt.Api.Configuration.Providers;
 
-/// <summary>
-/// Registers the Microsoft Graph client used to provision users.
-/// </summary>
 internal static class GraphProviderConfiguration
 {
     #region Public static methods
 
-    /// <summary>
-    /// Registers the client, authenticated as this application with its client secret.
-    /// </summary>
     internal static IServiceCollection AddGraphProvider(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions<AzureAdOptions>()

@@ -10,8 +10,7 @@ using Enterprise.Gpt.Service.Documents.Extraction.Models;
 using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-// CsvHelper ships a ValidationException of its own; the 400 this extractor raises is the
-// FluentValidation one every other extractor raises.
+// CsvHelper has its own ValidationException; extractors raise FluentValidation's.
 using ValidationException = FluentValidation.ValidationException;
 
 namespace Enterprise.Gpt.Service.Documents.Extraction;
@@ -20,9 +19,8 @@ namespace Enterprise.Gpt.Service.Documents.Extraction;
 /// Reads delimited text (<c>.csv</c>) files locally, as a single-sheet workbook.
 /// </summary>
 /// <remarks>
-/// Rows are read through <see cref="CsvParser"/> rather than a record reader, so every line reaches
-/// the grid intact and which one is a header is decided once, by
-/// <see cref="SheetAssembler"/>, on the same terms as a worksheet's.
+/// Read with <see cref="CsvParser"/>, not a record reader, so <see cref="SheetAssembler"/> picks the header
+/// on the same terms as a worksheet's.
 /// </remarks>
 public sealed partial class CsvTextExtractor(
     ILogger<CsvTextExtractor> logger,
@@ -33,13 +31,10 @@ public sealed partial class CsvTextExtractor(
 
     private static readonly char[] _candidateDelimiters = [',', ';', '\t'];
 
-    // How much of the file the delimiter is resolved from. Enough lines to rank candidates without
-    // walking a large file twice.
     private const int DelimiterSampleLength = 64 * 1024;
 
-    // What the same cells cost once stored: every populated one repeats its column's name, plus JSON
-    // punctuation. Eight times the text budget leaves an ordinary wide export room and still refuses a
-    // sheet whose headings alone would outweigh its data.
+    // Stored cells repeat their column name plus JSON punctuation; 8x the text budget fits a wide export
+    // but refuses a sheet whose headings outweigh its data.
     private const int CellCharactersPerTextCharacter = 8;
 
     private readonly ILogger<CsvTextExtractor> _logger = logger;
@@ -105,8 +100,7 @@ public sealed partial class CsvTextExtractor(
         var text = DecodeText(file.Content);
         var delimiter = ResolveDelimiter(text);
 
-        // The shape is checked before the parser runs because CsvParser buffers a whole record before its
-        // field count can be read, so one pathological line would allocate for every field in it first.
+        // Before parsing: CsvParser buffers a whole record before its field count is readable.
         GuardShape(text, delimiter, sheetName, cancellationToken);
 
         using var reader = new StringReader(text);
@@ -138,8 +132,7 @@ public sealed partial class CsvTextExtractor(
                 continue;
             }
 
-            // The whole file is one sheet, and the upload ceiling is never below the per-sheet one,
-            // so this is the only row ceiling a CSV can reach.
+            // The only row ceiling a CSV reaches: one sheet, and the upload ceiling is never below this one.
             if (rows.Count == _options.MaxRowsPerSheet)
             {
                 throw SheetSegmentBuilder.RowLimitExceeded(sheetName, _options.MaxRowsPerSheet);
@@ -172,9 +165,6 @@ public sealed partial class CsvTextExtractor(
         return new SheetExtractionResult(assembly.Segments, [assembly.Structure]);
     }
 
-    /// <summary>
-    /// Serialized cell characters one upload may materialize, derived from its text budget.
-    /// </summary>
     private int CellBudget()
     {
         return (int)Math.Min(int.MaxValue, (long)_options.MaxCharactersPerUpload * CellCharactersPerTextCharacter);
@@ -184,18 +174,14 @@ public sealed partial class CsvTextExtractor(
     {
         using var stream = new MemoryStream(content, writable: false);
 
-        // UTF-8 is the fallback rather than the assumption: a byte-order mark for UTF-16/UTF-32 wins,
-        // which is what Notepad and most Windows editors emit.
+        // UTF-8 is only the fallback; a UTF-16/32 BOM (as Windows editors emit) wins.
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
 
         return reader.ReadToEnd();
     }
 
-    /// <remarks>
-    /// <c>BadDataFound</c> is cleared so a stray quote in an unquoted field keeps its raw text instead of
-    /// refusing the upload: an inch mark or a nickname in quotes is ordinary in an exported CSV, and
-    /// losing a whole file to one is worse than reading that cell verbatim.
-    /// </remarks>
+    // BadDataFound cleared so a stray quote (an inch mark, a quoted nickname) is read verbatim rather than
+    // refusing the whole file.
     private static CsvConfiguration BuildConfiguration(char delimiter)
     {
         return new CsvConfiguration(CultureInfo.InvariantCulture)
@@ -205,14 +191,8 @@ public sealed partial class CsvTextExtractor(
         };
     }
 
-    /// <summary>
-    /// Picks the candidate delimiter present on the most lines of the file's opening sample.
-    /// </summary>
-    /// <remarks>
-    /// Resolved here rather than through the library's own detector, which prefers the culture's list
-    /// separator over the strongest candidate: a semicolon-delimited export whose decimal commas appear
-    /// on every line would resolve to a comma and split silently into the wrong columns.
-    /// </remarks>
+    // Not the library's detector, which prefers the culture's list separator: a semicolon export with
+    // decimal commas on every line would silently split on commas.
     private static char ResolveDelimiter(string text)
     {
         var lineHits = new int[_candidateDelimiters.Length];
@@ -250,8 +230,7 @@ public sealed partial class CsvTextExtractor(
             }
         }
 
-        // The sample is cut at an arbitrary offset, so its last line is only ranked when the file ended
-        // there rather than when the window did.
+        // The last line counts only if the file, not the sample window, ended there.
         if (length == text.Length)
         {
             Accumulate(counts, lineHits, totals);
@@ -283,9 +262,6 @@ public sealed partial class CsvTextExtractor(
         }
     }
 
-    /// <summary>
-    /// Refuses a file whose records exceed a ceiling, before any of it is buffered.
-    /// </summary>
     private void GuardShape(string text, char delimiter, string sheetName, CancellationToken cancellationToken)
     {
         var fields = 1;

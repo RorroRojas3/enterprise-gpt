@@ -16,8 +16,7 @@ describe('traceLine', () => {
   });
 
   it('says so plainly when there is no trace id', () => {
-    // A 499 carries no body at all, and the trace id is body-only — the API's CORS
-    // policy exposes no header to read it from.
+    // A 499 has no body, and the trace id is body-only (CORS exposes no header for it).
     expect(traceLine(errorFrom(null, 499))).toBe('No trace ID was returned.');
   });
 
@@ -79,7 +78,6 @@ describe('userMessage', () => {
 
 describe('shouldNotify', () => {
   it('stays silent when the user pressed Stop', () => {
-    // Toasting a cancellation tells the user their own deliberate action failed.
     expect(shouldNotify(toAppError(new DOMException('stop', 'AbortError')))).toBe(false);
   });
 
@@ -110,7 +108,6 @@ describe('shouldNotify', () => {
 
 describe('canRetry', () => {
   it.each([
-    // The whole point of the 409, and what US-408's panel offers.
     ['conversation-busy', PROBLEM_FIXTURES.conversationBusy, 409],
     ['mcp-server-unavailable', PROBLEM_FIXTURES.mcpServerUnavailable, 502],
     ['a server error', FRAMEWORK_PROBLEM_FIXTURES.serverError, 500],

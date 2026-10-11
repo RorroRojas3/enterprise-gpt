@@ -10,9 +10,7 @@ using Xunit;
 namespace Enterprise.Gpt.Integration.Test.Conversations;
 
 /// <summary>
-/// Proves the storage foundation against a real Cosmos DB emulator. Transactional batch atomicity
-/// and ordered cross-document queries are exactly what the in-memory fakes cannot prove, and the
-/// cutover destroys every existing transcript, so this is what makes that step safe to take.
+/// Proves batch atomicity and ordered queries on the Cosmos emulator, which the in-memory fakes cannot.
 /// </summary>
 [Collection(CosmosEmulatorCollection.Name)]
 [Trait("Category", "Integration")]
@@ -68,10 +66,7 @@ public sealed class TranscriptStoreIntegrationTests(CosmosEmulatorFixture fixtur
         return (userId, conversationId, partition);
     }
 
-    /// <summary>
-    /// The success criterion the whole project exists for: the largest document a conversation
-    /// produces is bounded by its largest single message, not by how many messages it holds.
-    /// </summary>
+    /// <summary>Document size is bounded by the largest message, not by the message count.</summary>
     [Fact]
     public async Task Write_FiveThousandMessages_KeepsEveryDocumentBoundedAndReadsThemInOrder()
     {
@@ -102,8 +97,7 @@ public sealed class TranscriptStoreIntegrationTests(CosmosEmulatorFixture fixtur
         Assert.Equal("Message 0", read[0].Content);
         Assert.Equal($"Message {MessageCount - 1}", read[^1].Content);
 
-        // Every document is its own message plus a small envelope, so item size does not grow with
-        // message count — which is what the previous shape could not say.
+        // Each document is one message plus a small envelope, so item size does not grow with message count.
         var sizes = await ReadDocumentSizesAsync(conversationId, partition, cancellationToken);
         Assert.All(sizes, size => Assert.True(size < 2048, $"a message document was {size} bytes"));
     }
@@ -129,8 +123,7 @@ public sealed class TranscriptStoreIntegrationTests(CosmosEmulatorFixture fixtur
     }
 
     /// <summary>
-    /// The atomicity the header's counters depend on: if the batch that creates a turn's messages
-    /// can partially land, <c>messageCount</c> becomes advisory rather than exact.
+    /// The header's counters depend on this: a partially landed batch would make <c>messageCount</c> advisory.
     /// </summary>
     [Fact]
     public async Task ExecuteBatch_WhenTheSecondOperationViolatesAUniqueId_LeavesNothingBehind()
@@ -169,9 +162,7 @@ public sealed class TranscriptStoreIntegrationTests(CosmosEmulatorFixture fixtur
             MessageQuery(Guid.NewGuid()), default, 10, null, cancellationToken));
     }
 
-    /// <summary>
-    /// The descending variant the paged read endpoint issues, with its <c>before</c> cursor.
-    /// </summary>
+    /// <summary>The descending query the paged read endpoint issues, with its <c>before</c> cursor.</summary>
     [Fact]
     public async Task Query_WithABeforeCursor_ReturnsOnlyEarlierMessagesNewestFirst()
     {
@@ -198,10 +189,7 @@ public sealed class TranscriptStoreIntegrationTests(CosmosEmulatorFixture fixtur
             page.Items.Select(x => x.DateCreated));
     }
 
-    /// <summary>
-    /// The same query with a null cursor must return everything, since the read path passes null
-    /// for an unpaged request.
-    /// </summary>
+    /// <summary>The read path passes a null cursor for an unpaged request, so it must return everything.</summary>
     [Fact]
     public async Task Query_WithANullBeforeCursor_ReturnsEveryMessage()
     {
@@ -221,8 +209,7 @@ public sealed class TranscriptStoreIntegrationTests(CosmosEmulatorFixture fixtur
     }
 
     /// <summary>
-    /// A foreign conversation id composes a partition key that addresses nothing, so a missed
-    /// ownership check in code cannot expose another user's transcript.
+    /// Another user's partition key addresses nothing, so a missed ownership check cannot expose a transcript.
     /// </summary>
     [Fact]
     public async Task Read_WithAnotherUsersPartitionKey_FindsNothing()
@@ -281,8 +268,7 @@ public sealed class TranscriptStoreIntegrationTests(CosmosEmulatorFixture fixtur
     }
 
     /// <summary>
-    /// A document written by this application must round-trip through the configured serializer with
-    /// its attribute-driven names, string enums and fixed-width timestamps intact.
+    /// The configured serializer must keep attribute-driven names, string enums and fixed-width timestamps.
     /// </summary>
     [Fact]
     public async Task Write_MessageDocument_RoundTripsEveryProperty()
@@ -320,11 +306,7 @@ public sealed class TranscriptStoreIntegrationTests(CosmosEmulatorFixture fixtur
         Assert.Equal(PartitionKeys.For(userId, conversationId), read.Pk);
     }
 
-    /// <summary>
-    /// The feedback patch against real Cosmos JSON-patch semantics, which is the half the in-memory
-    /// store deliberately cannot prove: it ignores patch operations. Set writes the block, Remove
-    /// takes it away again, and neither disturbs the message.
-    /// </summary>
+    /// <summary>The feedback patch against real JSON-patch semantics, which the in-memory store ignores.</summary>
     [Fact]
     public async Task PatchItem_Feedback_SetsThenRemovesTheBlockWithoutTouchingTheMessage()
     {
@@ -355,14 +337,11 @@ public sealed class TranscriptStoreIntegrationTests(CosmosEmulatorFixture fixtur
 
         Assert.Equal(MessageFeedbackRatings.Up, rated?.Feedback?.Rating);
         Assert.Equal(ratedAt.UtcTicks, rated?.Feedback?.DateModified.UtcTicks);
-        // The patch is surgical: the message it hangs off is untouched, which is the whole reason
-        // the write path patches rather than replacing the document.
+        // Patching rather than replacing leaves the message itself untouched.
         Assert.Equal(written.Content, rated?.Content);
         Assert.Equal(written.DateCreated.UtcTicks, rated?.DateCreated.UtcTicks);
 
-        // Set to null is how the service withdraws, and this is the assertion that says it works:
-        // a JSON null deserializes back into a null Feedback, which the transcript projection
-        // reports as no rating at all.
+        // Set-to-null is how the service withdraws: a JSON null must read back as a null Feedback.
         await _fixture.Store.PatchItemAsync(
             written.Id, partition,
             [PatchOperation.Set<TranscriptMessageFeedback?>("/feedback", null)],
@@ -374,8 +353,7 @@ public sealed class TranscriptStoreIntegrationTests(CosmosEmulatorFixture fixtur
         Assert.Null(withdrawn?.Feedback);
         Assert.Equal(written.Content, withdrawn?.Content);
 
-        // And withdrawing again is a no-op rather than a failure, which is what makes two racing
-        // withdrawals safe. Set carries no precondition on the current value.
+        // Withdrawing again is a no-op rather than a failure, so racing withdrawals are safe.
         var again = await _fixture.Store.PatchItemAsync(
             written.Id, partition,
             [PatchOperation.Set<TranscriptMessageFeedback?>("/feedback", null)],

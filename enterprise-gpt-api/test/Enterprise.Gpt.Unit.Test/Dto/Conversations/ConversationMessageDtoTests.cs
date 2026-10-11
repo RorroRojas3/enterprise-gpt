@@ -6,11 +6,8 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Dto.Conversations;
 
 /// <summary>
-/// The HTTP shape of a transcript message, which is a contract clients match on rather than a
-/// formatting preference. The API registers no global string-enum converter — one would turn
-/// <c>role</c> from a number into a string and break every client reading it — so each enum that
-/// belongs on the wire as a string has to say so on its own property, and a converter dropped from
-/// one of them is a silent breaking change.
+/// The API has no global string-enum converter (it would turn <c>role</c> into a string), so each string
+/// enum on the wire carries its own, and dropping one is a silent breaking change.
 /// </summary>
 public sealed class ConversationMessageDtoTests
 {
@@ -33,9 +30,8 @@ public sealed class ConversationMessageDtoTests
     }
 
     /// <summary>
-    /// PascalCase, from the converter's parameterless form, which writes the member names as
-    /// declared. The transcript document underneath stores the same verdict camel-cased; the two
-    /// are separate contracts and neither may be inferred from the other.
+    /// PascalCase from the parameterless converter. The transcript document stores the verdict
+    /// camel-cased; the two are separate contracts.
     /// </summary>
     [Fact]
     public void Feedback_Serializes_WithAPascalCasedRatingString()

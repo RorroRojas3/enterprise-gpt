@@ -25,10 +25,8 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
 
     /// <inheritdoc />
     /// <remarks>
-    /// Resets on the way out as well as in. Unlike the other endpoint suites, these tests mutate
-    /// the shared <see cref="TestUsers"/> identities themselves — deactivating them and rewriting
-    /// their profiles — and a left-behind soft delete makes every later grant in the collection
-    /// fail with "User not found."
+    /// Also resets on the way out: these tests mutate the shared <see cref="TestUsers"/>, and a left-behind
+    /// soft delete makes every later grant in the collection fail with "User not found."
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
@@ -47,8 +45,7 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
     }
 
     /// <summary>
-    /// Creates a client for an identity that has no database row yet, so <c>me</c> takes the
-    /// provisioning path. <see cref="TestAuthHandler"/> accepts a raw GUID as the user header.
+    /// A client for an identity with no database row yet, so <c>me</c> takes the provisioning path.
     /// </summary>
     private HttpClient CreateNewIdentityClient(Guid oid)
     {
@@ -305,10 +302,8 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
     [Fact]
     public async Task GetUsers_SortedByName_UsesTheDatabaseCollationRatherThanAnOrdinalCompare()
     {
-        // Only this tier can pin it. The unit tests run on SQLite, whose default BINARY collation is
-        // case-sensitive ordinal and would put every capitalised surname ahead of every lowercase
-        // one; SQL Server's default is case-insensitive, so "de Vries" interleaves with "De Vries".
-        // A client that re-sorted a page with `localeCompare` would disagree with either.
+        // Only this tier can pin it: SQLite's BINARY collation puts capitalised surnames first, while
+        // SQL Server's case-insensitive default interleaves "de Vries" with "De Vries".
         await _fixture.AddUserAsync("Ada", "de Vries", "ada@it-collate.example", cancellationToken: TestContext.Current.CancellationToken);
         await _fixture.AddUserAsync("Bea", "Dawson", "bea@it-collate.example", cancellationToken: TestContext.Current.CancellationToken);
         await _fixture.AddUserAsync("Cal", "De Wilde", "cal@it-collate.example", cancellationToken: TestContext.Current.CancellationToken);

@@ -135,8 +135,8 @@ public sealed class ConversationExportServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The stored rendering is not read at all any more, so a message written before server-side
-    /// rendering existed has to export exactly as one written after it.
+    /// The stored rendering is never read, so a message from before server-side rendering exports
+    /// exactly as a newer one.
     /// </summary>
     [Fact]
     public async Task ExportConversationAsync_Html_IgnoresTheStoredRendering()
@@ -172,13 +172,9 @@ public sealed class ConversationExportServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Substitution is one pass, so a value spliced in is never scanned again.
+    /// Substitution is one pass: a spliced-in name holding a placeholder (which HTML-encoding leaves
+    /// intact) would otherwise splice the whole transcript into the title.
     /// </summary>
-    /// <remarks>
-    /// HTML-encoding leaves a placeholder untouched — it holds no encodable character — so a name
-    /// like this reaching a second <c>Replace</c> would splice the whole transcript into the
-    /// document's own title.
-    /// </remarks>
     [Theory]
     [InlineData("{{MESSAGES}}")]
     [InlineData("{{DATE}}")]
@@ -328,9 +324,8 @@ public sealed class ConversationExportServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Reading the package back proves it is a zip with the right parts; this proves Word will accept
-    /// it. The styles and the numbering definitions are hand-built, and the schema is strict about the
-    /// order of their children — a mistake there produces a file that opens here and that Word refuses.
+    /// The styles and numbering are hand-built and the schema is strict about child order, so a file can
+    /// open here and still be refused by Word.
     /// </summary>
     [Fact]
     public async Task ExportConversationAsync_Docx_IsSchemaValid()
@@ -441,10 +436,8 @@ public sealed class ConversationExportServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The format is one this API supports, but the deployment registered no renderer for it — a PDF
-    /// with no usable font, or a format withdrawn by <c>Export:DisabledFormats</c>. It must not
-    /// collapse into the validation 400, which would tell a client to change a request that is
-    /// correct, nor into a 500, which would tell it to retry.
+    /// A supported format with no registered renderer (no usable PDF font, or <c>Export:DisabledFormats</c>)
+    /// must be neither the validation 400 nor a retryable 500.
     /// </summary>
     [Fact]
     public async Task ExportConversationAsync_SupportedFormatWithNoRenderer_ThrowsExportRendererNotConfigured()
@@ -459,9 +452,8 @@ public sealed class ConversationExportServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Ownership is checked after the format, so a caller sending a bad format learns that rather
-    /// than being told the conversation does not exist — but a renderer that is merely unregistered
-    /// must not leak the existence of someone else's conversation.
+    /// Ownership is checked after the format, but a merely unregistered renderer must not leak the
+    /// existence of someone else's conversation.
     /// </summary>
     [Fact]
     public async Task ExportConversationAsync_UnregisteredFormat_ThrowsBeforeReadingTheTranscript()
@@ -476,10 +468,8 @@ public sealed class ConversationExportServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The registry is documented as last-wins so a deployment can override one format's renderer
-    /// without removing the original. `ToDictionary` would instead throw on the duplicate — inside a
-    /// scoped service's constructor, on every export request, surfacing as a 400 with a LINQ message
-    /// in the body.
+    /// The registry is last-wins so a deployment can override one format's renderer; <c>ToDictionary</c>
+    /// would throw on the duplicate on every export request.
     /// </summary>
     [Fact]
     public async Task ExportConversationAsync_TwoRenderersForOneFormat_UsesTheLastRegistered()
@@ -495,9 +485,8 @@ public sealed class ConversationExportServiceTests : IDisposable
     }
 
     /// <summary>
-    /// A Tool document is a model-to-model artefact, not a prompt or an answer, and the label a
-    /// message gets is a two-way choice — so without an allowlist it would be exported as an assistant
-    /// answer that never existed.
+    /// A Tool document is model-to-model and labels are a two-way choice, so without an allowlist it
+    /// would export as an assistant answer that never existed.
     /// </summary>
     [Fact]
     public async Task ExportConversationAsync_ToolMessage_IsExcludedLikeASystemMessage()
@@ -517,9 +506,8 @@ public sealed class ConversationExportServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The template's placeholders are substituted before the transcript is spliced in. Doing it the
-    /// other way round leaves the title and date replacements running over message text, which a
-    /// model chooses — so an answer mentioning the placeholder had it rewritten silently.
+    /// Placeholders are substituted before the transcript is spliced in; the other order silently
+    /// rewrote any placeholder an answer happened to mention.
     /// </summary>
     [Fact]
     public async Task ExportConversationAsync_MessageContainingATemplatePlaceholder_IsLeftAlone()

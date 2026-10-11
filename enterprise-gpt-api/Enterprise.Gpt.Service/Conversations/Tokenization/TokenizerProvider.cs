@@ -10,20 +10,9 @@ namespace Enterprise.Gpt.Service.Conversations.Tokenization;
 /// Resolves and caches the tiktoken vocabulary used to count a deployment's text.
 /// </summary>
 /// <remarks>
-/// <para>
-/// A singleton shared by every provider's estimator. Building a tokenizer loads and indexes a large
-/// vocabulary, so it must not happen per request — and holding one cache rather than one per
-/// provider is what stops the same vocabulary being loaded four times over.
-/// </para>
-/// <para>
-/// Selection mirrors the document chunker: ask the library for the deployment name's own encoding
-/// first, and fall back when it does not recognize the name. Azure OpenAI addresses models by
-/// deployment name, which is chosen by whoever created the deployment and is usually not a model
-/// identifier at all.
-/// </para>
+/// One shared singleton because building a tokenizer loads a large vocabulary. Like the document chunker,
+/// it falls back from the deployment name's encoding because Azure deployment names are rarely model ids.
 /// </remarks>
-/// <param name="options">The estimator settings, read for the fallback encoding.</param>
-/// <param name="logger">The logger.</param>
 public sealed partial class TokenizerProvider(IOptions<TokenEstimationOptions> options, ILogger<TokenizerProvider> logger)
 {
     private readonly ConcurrentDictionary<string, Tokenizer> _byDeployment = new(StringComparer.OrdinalIgnoreCase);
@@ -33,13 +22,8 @@ public sealed partial class TokenizerProvider(IOptions<TokenEstimationOptions> o
     /// <summary>
     /// Gets the tokenizer for a deployment, building and caching it on first use.
     /// </summary>
-    /// <param name="deploymentName">
-    /// The provider-side model or deployment identifier, or <see langword="null"/> when unknown.
-    /// </param>
-    /// <returns>A tokenizer. Never <see langword="null"/>.</returns>
     /// <exception cref="InvalidOperationException">
-    /// Thrown when even the configured fallback encoding cannot be built, which means the
-    /// vocabulary package for it is not referenced.
+    /// The fallback encoding cannot be built because its vocabulary package is not referenced.
     /// </exception>
     public Tokenizer Get(string? deploymentName)
     {

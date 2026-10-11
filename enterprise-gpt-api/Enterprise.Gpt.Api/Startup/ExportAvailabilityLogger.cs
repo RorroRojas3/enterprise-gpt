@@ -11,23 +11,9 @@ namespace Enterprise.Gpt.Api.Startup;
 /// Reports, once at startup, which conversation export formats this deployment can actually serve.
 /// </summary>
 /// <remarks>
-/// <para>
-/// A hosted service rather than logging from composition, and that is the whole point of the type.
-/// The decisions are made while the container is still being built, before any logging pipeline
-/// exists; writing them there means either a throwaway <c>LoggerFactory</c> — which owns a console
-/// provider and its thread, and has nothing to dispose it — or output that reaches the console
-/// provider only and never Application Insights, which is where an operator debugging a
-/// <c>503 /problems/export-renderer-not-configured</c> actually looks.
-/// </para>
-/// <para>
-/// It re-derives the reason rather than being told it: a format that is absent <em>and</em> named in
-/// <c>Export:DisabledFormats</c> was withdrawn deliberately, and one that is absent without being
-/// named could not be built — which today means PDF with no usable font, or HTML with no template.
-/// </para>
+/// A hosted service because composition runs before the logging pipeline exists, and the operator
+/// debugging a <c>503 /problems/export-renderer-not-configured</c> looks in Application Insights.
 /// </remarks>
-/// <param name="renderers">The renderers that were registered.</param>
-/// <param name="options">The bound export options.</param>
-/// <param name="logger">The logger.</param>
 internal sealed partial class ExportAvailabilityLogger(
     IEnumerable<IConversationExportRenderer> renderers,
     IOptions<ExportOptions> options,
@@ -63,9 +49,8 @@ internal sealed partial class ExportAvailabilityLogger(
             LogExportFormatsAvailable(_logger, names);
         }
 
-        // Warning rather than Information: every entry here is a route that answers 503, and an
-        // operator who did not intend one wants to see it without going looking. The font case
-        // is the one that is usually unintentional — see Service/Exports/Fonts/README.md.
+        // Warning: every entry is a route answering 503. The font case is usually unintentional; see
+        // Service/Exports/Fonts/README.md.
         if (unavailable.Count > 0 && _logger.IsEnabled(LogLevel.Warning))
         {
             var names = string.Join(", ", unavailable);

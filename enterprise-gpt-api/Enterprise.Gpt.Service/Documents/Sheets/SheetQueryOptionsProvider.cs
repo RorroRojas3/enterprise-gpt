@@ -9,23 +9,19 @@ namespace Enterprise.Gpt.Service.Documents.Sheets;
 /// Serves the spreadsheet lookup's configuration as it stands now.
 /// </summary>
 /// <remarks>
-/// Consumers are scoped, so reading this in a constructor gives one turn a single consistent snapshot
-/// and the next turn a fresh one — which is what makes <c>SheetQuery:Enabled</c> a kill switch rather
-/// than a redeploy.
+/// Read it in a scoped constructor: one snapshot per turn is what makes <c>SheetQuery:Enabled</c> a kill
+/// switch rather than a redeploy.
 /// </remarks>
 public interface ISheetQueryOptionsProvider
 {
-    /// <summary>
-    /// Gets the most recently reloaded configuration that validated.
-    /// </summary>
+    /// <summary>The most recent reloaded configuration that validated.</summary>
     SheetQueryOptions Current { get; }
 }
 
 /// <inheritdoc />
 /// <remarks>
-/// Deliberately not built on <see cref="IOptionsMonitor{TOptions}"/>, which revalidates on the
-/// configuration provider's own callback thread where nothing can catch a bad reload; see
-/// <c>docs/documents/sheet-query.md</c>.
+/// Not built on <see cref="IOptionsMonitor{TOptions}"/>, which revalidates on the provider's callback thread
+/// where a bad reload cannot be caught; see <c>docs/documents/sheet-query.md</c>.
 /// </remarks>
 public sealed partial class SheetQueryOptionsProvider : ISheetQueryOptionsProvider, IDisposable
 {
@@ -35,12 +31,6 @@ public sealed partial class SheetQueryOptionsProvider : ISheetQueryOptionsProvid
 
     private volatile SheetQueryOptions _current;
 
-    /// <summary>
-    /// Initializes the provider with the configuration startup validation already accepted.
-    /// </summary>
-    /// <param name="factory">Builds and validates an instance the way the registered options pipeline does.</param>
-    /// <param name="sources">The change tokens the bound configuration section signals a reload through.</param>
-    /// <param name="logger">Logger for a reload that had to be ignored.</param>
     public SheetQueryOptionsProvider(
         IOptionsFactory<SheetQueryOptions> factory,
         IEnumerable<IOptionsChangeTokenSource<SheetQueryOptions>> sources,

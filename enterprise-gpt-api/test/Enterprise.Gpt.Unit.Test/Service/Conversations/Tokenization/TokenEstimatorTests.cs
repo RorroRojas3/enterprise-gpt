@@ -27,9 +27,8 @@ public sealed class TokenEstimatorTests
     }
 
     /// <summary>
-    /// The vocabulary the modern OpenAI families use. The <c>Cl100kBase</c> package alone cannot
-    /// count them, so this pins that the data package is actually referenced rather than merely
-    /// requested.
+    /// The <c>Cl100kBase</c> package alone cannot count the modern OpenAI vocabulary, so this pins that
+    /// the data package is actually referenced.
     /// </summary>
     [Fact]
     public void CreateForEncoding_O200kBase_IsAvailable()

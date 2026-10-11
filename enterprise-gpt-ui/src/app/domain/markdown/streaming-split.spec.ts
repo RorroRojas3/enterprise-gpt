@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { splitStreamingMarkdown, stripFenceInfo } from './streaming-split';
 
-describe('splitStreamingMarkdown (US-602)', () => {
+describe('splitStreamingMarkdown', () => {
   it('puts everything in the tail when no boundary has arrived', () => {
     expect(splitStreamingMarkdown('Still the first paragraph')).toEqual({
       head: '',
@@ -22,16 +22,13 @@ describe('splitStreamingMarkdown (US-602)', () => {
   });
 
   it('waits for the line after a trailing blank line before committing to it', () => {
-    // The next line could turn out to be indented, which would make this a bad
-    // place to split — so the boundary is not taken until it is known. Deferring
-    // is what keeps the head from ever having to give ground.
+    // The next line could be indented, so the boundary waits until it is known.
     expect(splitStreamingMarkdown('P1\n\n')).toEqual({ head: '', tail: 'P1\n\n' });
     expect(splitStreamingMarkdown('P1\n\nP')).toEqual({ head: 'P1\n\n', tail: 'P' });
   });
 
   it('returns instead of hanging when the text opens on a blank line', () => {
-    // `lastIndexOf` clamps a negative start to 0, so a rejected boundary at 0
-    // used to re-select itself forever.
+    // `lastIndexOf` clamps a negative start to 0, so a refused boundary at 0 could loop.
     expect(splitStreamingMarkdown('\n\n    code')).toEqual({ head: '', tail: '\n\n    code' });
     expect(splitStreamingMarkdown('\n\ntext')).toEqual({ head: '\n\n', tail: 'text' });
   });
@@ -86,8 +83,7 @@ describe('splitStreamingMarkdown (US-602)', () => {
     });
 
     it('starts a block again after the fence closes, even with no blank line', () => {
-      // Without this the boundary would fall back to the last blank line — of
-      // which there is none here — and the head would collapse to nothing.
+      // There is no blank line to fall back to, so the head would collapse to nothing.
       const text = 'Here is an example:\n```js\nconst a = 1;\n```\nDone.';
 
       expect(splitStreamingMarkdown(text)).toEqual({
@@ -126,8 +122,7 @@ describe('splitStreamingMarkdown (US-602)', () => {
 
   describe('indented continuations', () => {
     it('refuses a boundary whose next line is indented', () => {
-      // The two sides are parsed separately and marked re-bases indentation, so
-      // an indented tail would render as prose instead of as an indented block.
+      // marked re-bases each half's indentation, so an indented tail would render as prose.
       const text = 'Example:\n\n    code line one\n    code line two';
 
       expect(splitStreamingMarkdown(text)).toEqual({ head: '', tail: text });
@@ -143,13 +138,11 @@ describe('splitStreamingMarkdown (US-602)', () => {
   describe('the head only ever grows', () => {
     const sources = [
       'One\n\nTwo\n\n```ts\nconst a = 1;\n```\n\nThree',
-      // No blank line before the fence, and none anywhere: the shape that used
-      // to collapse the head to nothing the moment the fence closed.
+      // No blank line anywhere: the head must not collapse when the fence closes.
       'Here is an example:\n```js\nconst a = 1;\n```\nDone.',
       'Prose first.\n\nThen:\n```sh\nnpm run build\n```\nAnd after.',
       '~~~python\nprint(1)\n~~~\ntail text',
-      // Indented continuations: the shapes where a boundary is accepted while
-      // the next line is still empty and would be withdrawn once it arrives.
+      // Indented continuations: a boundary must not be taken before the next line arrives.
       'Steps:\n\n  - Nested\n  - Also nested\n\nAfter the list.',
       'Example:\n\n    code line one\n    code line two\n\nProse again.',
       '\n\n    opens on a blank line',
@@ -173,7 +166,7 @@ describe('splitStreamingMarkdown (US-602)', () => {
   });
 });
 
-describe('stripFenceInfo (US-602)', () => {
+describe('stripFenceInfo', () => {
   it('removes the language from a fence', () => {
     expect(stripFenceInfo('```ts\nconst a = 1;')).toBe('```\nconst a = 1;');
   });

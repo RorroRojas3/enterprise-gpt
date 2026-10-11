@@ -23,86 +23,58 @@ namespace Enterprise.Gpt.Service.Users;
 
 public interface IUserService
 {
-    /// <summary>
-    /// Returns the calling user's profile, provisioning it from Microsoft Graph on first
-    /// sign-in. A newly provisioned user receives exactly the permissions flagged
-    /// <see cref="Permission.IsDefault"/>; anything beyond that is granted by an
-    /// administrator. A user an administrator pre-created keys on the same object id, so they
-    /// take the existing-user path and keep their pre-assigned permissions.
-    /// </summary>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The user's profile and whether this call created it.</returns>
+    /// <summary>Returns the caller's profile, provisioning it from Microsoft Graph on first sign-in.</summary>
+    /// <remarks>
+    /// A new user gets exactly the <see cref="Permission.IsDefault"/> permissions. A pre-created user shares the
+    /// object id, so they take the existing-user path and keep their pre-assigned grants.
+    /// </remarks>
     /// <exception cref="ForbiddenException">The caller's account has been deactivated.</exception>
-    /// <exception cref="NotFoundException">The directory has no user for the caller's object id, or that directory user has no email address.</exception>
+    /// <exception cref="NotFoundException">
+    /// The directory has no user for the caller's object id, or that user has no email address.
+    /// </exception>
     Task<(UserDto User, bool Created)> GetOrCreateCurrentUserAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Searches active users by name or email, ordered by last name then first name unless an
-    /// order is requested.
+    /// Searches active users by name or email fragment, by last then first name unless an order is requested.
     /// </summary>
-    /// <param name="name">An optional fragment matched against first name, last name, and email.</param>
-    /// <param name="skip">The number of users to skip.</param>
-    /// <param name="take">The page size.</param>
-    /// <param name="permissionId">
-    /// Optionally narrows the page to users holding an active grant of that permission. Applied
-    /// before the count, so the total describes the filtered directory rather than the whole one.
-    /// </param>
-    /// <param name="sort">An optional field to order by — one of <see cref="UserSortKeyNames.Supported"/>.</param>
-    /// <param name="dir">An optional direction, <c>asc</c> or <c>desc</c>.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>A page of matching users.</returns>
+    /// <remarks>
+    /// <paramref name="permissionId"/> filters before the count, so the total describes the filtered directory.
+    /// </remarks>
     /// <exception cref="ValidationException">
     /// <paramref name="permissionId"/> names no active permission, or <paramref name="sort"/> or
-    /// <paramref name="dir"/> names something this listing does not accept.
+    /// <paramref name="dir"/> is not accepted by this listing.
     /// </exception>
     Task<PaginatedResponseDto<UserDto>> SearchUsersAsync(string? name, int skip = 0, int take = 20, Guid? permissionId = null, string? sort = null, string? dir = null, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Gets a single active user by id.
-    /// </summary>
-    /// <param name="id">The user id, which is the Entra ID object id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The matching user.</returns>
+    /// <summary>Gets an active user by id, which is their Entra object id.</summary>
     /// <exception cref="NotFoundException">No active user with <paramref name="id"/> exists.</exception>
     Task<UserDto> GetUserAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Provisions a user ahead of their first sign-in from their email address, resolving the
-    /// object id and display name from Microsoft Graph. The user receives the requested
-    /// permissions plus every default permission.
+    /// Pre-provisions a user by email, resolving object id and name from Graph, with the requested permissions
+    /// plus every default.
     /// </summary>
-    /// <param name="request">The creation request carrying the email and permissions to assign.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The created user.</returns>
     /// <exception cref="ValidationException">An active user with that email already exists.</exception>
-    /// <exception cref="NotFoundException">The directory has no user with that email, the directory user has no email address, or a requested permission does not exist.</exception>
+    /// <exception cref="NotFoundException">
+    /// The directory has no user (or no address) for that email, or a requested permission does not exist.
+    /// </exception>
     Task<UserDto> CreateUserAsync(CreateUserActionDto request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Updates a user's profile and replaces their permission set with
-    /// <see cref="UpdateUserActionDto.PermissionIds"/>. Grants absent from the request are
-    /// revoked, new ones are added, and unchanged ones keep their original audit columns.
+    /// Updates a user's profile and replaces their grants with <see cref="UpdateUserActionDto.PermissionIds"/>;
+    /// unchanged grants keep their original audit columns.
     /// </summary>
-    /// <param name="id">The id of the user to update.</param>
-    /// <param name="request">The update request.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The updated user.</returns>
     /// <exception cref="ValidationException">The caller would revoke their own Administrator permission.</exception>
-    /// <exception cref="NotFoundException">No active user with <paramref name="id"/> exists, or a requested permission does not exist.</exception>
+    /// <exception cref="NotFoundException">
+    /// No active user with <paramref name="id"/> exists, or a requested permission does not exist.
+    /// </exception>
     Task<UserDto> UpdateUserAsync(Guid id, UpdateUserActionDto request, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Soft-deletes a user together with every active grant they hold, in one atomic save.
-    /// <para>
-    /// This removes administrative access and blocks future sign-in through
-    /// <see cref="GetOrCreateCurrentUserAsync"/>, but it is not a full session revocation:
-    /// endpoints that only read the object id off the bearer token — conversations, documents,
-    /// and chat — keep serving the holder of an already-issued token until it expires.
-    /// Disable or delete the account in Entra ID to cut access off immediately.
-    /// </para>
-    /// </summary>
-    /// <param name="id">The id of the user to deactivate.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <summary>Soft-deletes a user and every active grant they hold, in one atomic save.</summary>
+    /// <remarks>
+    /// Not a session revocation: routes that only read the token's object id keep serving an issued token until
+    /// it expires. Disable the account in Entra ID to cut access immediately.
+    /// </remarks>
     /// <exception cref="ValidationException">The caller is attempting to deactivate themselves.</exception>
     /// <exception cref="NotFoundException">No active user with <paramref name="id"/> exists.</exception>
     Task DeactivateUserAsync(Guid id, CancellationToken cancellationToken = default);
@@ -116,8 +88,7 @@ public partial class UserService(ILogger<UserService> logger,
     TimeProvider timeProvider) : IUserService
 {
     /// <summary>
-    /// The wire-visible key a rejected <c>?permissionId=</c> is reported under: the query-parameter
-    /// name the caller sent, not a <c>nameof</c>, because that is the token a filter control owns.
+    /// The wire key for a rejected <c>?permissionId=</c>: the parameter name a filter control owns.
     /// </summary>
     private const string PermissionIdProperty = "permissionId";
 
@@ -145,9 +116,8 @@ public partial class UserService(ILogger<UserService> logger,
                 existing = await FindCurrentUserAsync(oid, cancellationToken) ?? existing;
             }
 
-            // Populating here is what the cache exists for: the UI posts this endpoint on every
-            // bootstrap, so the entry is warm before any gated route is hit. Must run after the
-            // reconcile re-read so it reflects newly granted defaults.
+            // The UI posts this on every bootstrap, so this warms the cache; it must follow the
+            // reconcile re-read so newly granted defaults are included.
             _permissionCache.Set(oid, stamp, existing.Permissions.Select(p => p.Id));
 
             return (existing, Created: false);
@@ -171,9 +141,8 @@ public partial class UserService(ILogger<UserService> logger,
 
         foreach (var permission in defaultPermissions)
         {
-            // The audit columns point at the user being created. EF orders the User insert
-            // ahead of its grants in the same SaveChangesAsync, so the self-referencing
-            // CreatedById/ModifiedById foreign keys resolve.
+            // Self-granted: EF inserts the User before its grants in one save, so the
+            // CreatedById/ModifiedById foreign keys to it resolve.
             AddGrant(newUser, permission, grantedBy: oid);
         }
 
@@ -185,10 +154,8 @@ public partial class UserService(ILogger<UserService> logger,
         }
         catch (DbUpdateException)
         {
-            // The UI posts this endpoint on every bootstrap and MSAL can emit more than one
-            // "signed in" notification per session, so two first-sign-in calls can race past
-            // the existence check above and both insert the same primary key. The loser
-            // re-reads the winner's row instead of surfacing a duplicate-key 500.
+            // Bootstrap calls (and repeated MSAL sign-in events) can race past the existence check
+            // and both insert; the loser re-reads the winner's row instead of returning a 500.
             _ctx.ChangeTracker.Clear();
             var raced = await FindCurrentUserAsync(oid, cancellationToken);
             if (raced is null)
@@ -212,8 +179,7 @@ public partial class UserService(ILogger<UserService> logger,
     /// <inheritdoc />
     public async Task<PaginatedResponseDto<UserDto>> SearchUsersAsync(string? name, int skip = 0, int take = 20, Guid? permissionId = null, string? sort = null, string? dir = null, CancellationToken cancellationToken = default)
     {
-        // Resolved before any database work, so a misspelled sort field costs a round trip to
-        // nothing rather than a page the caller then has to distrust.
+        // Resolved before any database work, so a misspelt sort field costs no query.
         SortSelection<UserSortKeys>? order = SortParameters.IsDefaultOrder(sort, dir)
             ? null
             : UserSortKeyNames.Resolve(sort, dir);
@@ -239,9 +205,8 @@ public partial class UserService(ILogger<UserService> logger,
                 || EF.Functions.Like(x.Email, $"%{name}%"));
         }
 
-        // Before the count, so TotalCount describes the filtered directory and the numbered pager
-        // above it stays honest. The grant carries its own DateDeactivated, so a revoked grant
-        // has to be excluded here as well as in the projection that renders the badges.
+        // Before the count, so TotalCount describes the filtered directory. A revoked grant must not
+        // match here, just as it is hidden in the badge projection.
         if (permissionId.HasValue)
         {
             query = query.Where(x => x.UserPermissions
@@ -287,10 +252,8 @@ public partial class UserService(ILogger<UserService> logger,
             throw new NotFoundException("The directory returned a user without a usable object id.");
         }
 
-        // Active grants are loaded so the revive path below can skip permissions the user
-        // already holds. Rows deactivated before grants cascaded with their user can still
-        // carry live grants, and re-granting one would violate the filtered unique index on
-        // (UserId, PermissionId) WHERE DateDeactivated IS NULL.
+        // Grants are loaded so the revive path skips ones already held: rows deactivated before grants
+        // cascaded can still carry live grants, and re-granting would violate the filtered unique index.
         var existing = await _ctx.Users
             .Include(u => u.UserPermissions)
                 .ThenInclude(p => p.Permission)
@@ -334,9 +297,8 @@ public partial class UserService(ILogger<UserService> logger,
 
         await _ctx.SaveChangesOrConflictAsync($"User '{oid}' was changed by another request. Reload it and try again.", cancellationToken);
 
-        // Invalidated rather than Set: the revive path assembles this set by diffing, and a cold
-        // entry that reloads on the target user's next request is strictly safer. It also clears
-        // any empty-set entry a probing request cached before the user was pre-created.
+        // Invalidated rather than Set: safer than trusting the revive diff, and it clears any empty
+        // set cached for this user before they were pre-created.
         _permissionCache.Invalidate(oid);
 
         LogUserPreCreated(_logger, oid, granted, adminOid);
@@ -380,8 +342,6 @@ public partial class UserService(ILogger<UserService> logger,
             AddGrant(user, permission, grantedBy: oid);
         }
 
-        // Tracked entities throughout, so the profile edit and the whole permission diff land
-        // in one atomic save.
         await _ctx.SaveChangesOrConflictAsync($"User '{id}' was changed by another request. Reload it and try again.", cancellationToken);
 
         _permissionCache.Invalidate(id);
@@ -413,9 +373,8 @@ public partial class UserService(ILogger<UserService> logger,
 
         user.DateDeactivated = date;
 
-        // Grants must deactivate with the user: authorization runs purely on Core.UserPermission
-        // and never checks whether the user is still active, so leaving a deactivated
-        // administrator's grant alive would leave them with full admin access.
+        // Grants must deactivate with the user: authorization reads only Core.UserPermission, so a
+        // live grant would leave a deactivated administrator with full admin access.
         foreach (var grant in user.UserPermissions)
         {
             grant.DateDeactivated = date;
@@ -433,15 +392,9 @@ public partial class UserService(ILogger<UserService> logger,
 
     #region Private methods
 
-    /// <summary>
-    /// Refuses a <c>?permissionId=</c> naming no active permission.
-    /// </summary>
     /// <remarks>
-    /// A <see cref="ValidationException"/> rather than the <see cref="NotFoundException"/> every
-    /// other permission-existence check in this service raises, and deliberately: a 404 on a list
-    /// route says the directory itself is gone, while a filter control can render a 400 that names
-    /// the parameter it owns. Deactivated permissions are refused with absent ones, because the
-    /// filter is offered from <c>GET api/permissions</c>, which returns neither.
+    /// A 400 rather than this service's usual 404, so a filter control can show it against its own parameter.
+    /// Deactivated permissions are refused too, since <c>GET api/permissions</c> never offers them.
     /// </remarks>
     private async Task EnsurePermissionIsFilterableAsync(Guid permissionId, CancellationToken cancellationToken)
     {
@@ -460,10 +413,8 @@ public partial class UserService(ILogger<UserService> logger,
     }
 
     /// <remarks>
-    /// The string comparison is the database collation's, not the CLR's — case-insensitive on a
-    /// SQL Server default and ordinal on the SQLite the unit tests run against, so "de Vries" and
-    /// "De Vries" interleave in production and do not under test. A client must not re-sort a page
-    /// with <c>localeCompare</c> and expect to agree with it.
+    /// Ordering follows the database collation (case-insensitive on SQL Server, ordinal on the SQLite unit
+    /// tests), so a client re-sorting with <c>localeCompare</c> will not agree with it.
     /// </remarks>
     private static IOrderedQueryable<User> OrderUsers(
         IQueryable<User> query,
@@ -471,9 +422,8 @@ public partial class UserService(ILogger<UserService> logger,
     {
         if (order is not { } requested)
         {
-            // Left exactly as it was before this listing accepted an order, tie-break and all —
-            // which is to say without one. Adding Id here would reorder namesakes, and clients
-            // written against this route are promised it unchanged.
+            // The original ordering, deliberately without a tie-break: adding Id would reorder
+            // namesakes, and existing clients are promised it unchanged.
             return query
                 .OrderBy(x => x.LastName)
                 .ThenBy(x => x.FirstName);
@@ -492,23 +442,18 @@ public partial class UserService(ILogger<UserService> logger,
                 : query.OrderByDescending(x => x.LastName).ThenByDescending(x => x.FirstName)
         };
 
-        // Every requested order gets a tie-break the default cannot be given: two people can
-        // share a surname, an inbox alias or a provisioning tick, and a client paging through the
-        // directory needs the row at a page boundary to be the same row every time. It follows
-        // the requested direction, or a listing whose rows are all tied on the primary key would
-        // return the same page for both directions and the control would look inert.
+        // Requested orders get an Id tie-break so page boundaries are stable. It follows the requested
+        // direction, or rows all tied on the sort key would return the same page both ways.
         return requested.IsAscending
             ? ordered.ThenBy(x => x.Id)
             : ordered.ThenByDescending(x => x.Id);
     }
 
-    /// <summary>
-    /// Returns the caller's profile, or <see langword="null"/> when they have no row yet and
-    /// must be provisioned. Deactivated accounts are rejected rather than reported as absent:
-    /// the row still occupies the primary key, so treating it as absent would make the caller
-    /// re-insert their own object id and fail the save with a duplicate key.
-    /// </summary>
-    /// <exception cref="ForbiddenException">The caller's account has been deactivated.</exception>
+    /// <summary>Returns the caller's profile, or <see langword="null"/> when they must be provisioned.</summary>
+    /// <remarks>
+    /// A deactivated row still holds the primary key, so it is rejected rather than reported absent, which would
+    /// make the caller re-insert its own object id.
+    /// </remarks>
     private async Task<UserDto?> FindCurrentUserAsync(Guid oid, CancellationToken cancellationToken)
     {
         var existing = await _ctx.Users
@@ -522,9 +467,7 @@ public partial class UserService(ILogger<UserService> logger,
             return existing;
         }
 
-        // No active row. The extra probe only runs on that miss, keeping the every-page-load
-        // path to a single query, and it is what separates "never signed in" from
-        // "deactivated" — the latter still occupies the primary key.
+        // Probed only on a miss, keeping the every-page-load path to one query.
         var isDeactivated = await _ctx.Users
             .AsNoTracking()
             .AnyAsync(u => u.Id == oid, cancellationToken);
@@ -534,26 +477,10 @@ public partial class UserService(ILogger<UserService> logger,
             : null;
     }
 
-    /// <summary>
-    /// Grants any default permission the caller is missing, and reports whether anything changed.
-    /// </summary>
+    /// <summary>Grants any never-held default permission; reports whether anything changed.</summary>
     /// <remarks>
-    /// <para>
-    /// <c>IsDefault</c> is only consulted when a user is provisioned, so a default permission added
-    /// after a user's first sign-in would never reach them. Reconciling here — on an endpoint the client
-    /// already calls at every bootstrap — makes the grant model self-healing without a startup sweep or
-    /// a one-off data migration, and covers both new built-ins and defaults an administrator creates.
-    /// </para>
-    /// <para>
-    /// Only permissions that were <em>never</em> granted are filled in. The check deliberately ignores
-    /// whether an existing grant is still active: a revoked grant leaves a soft-deleted row behind, and
-    /// treating that as missing would silently reinstate a permission an administrator took away.
-    /// </para>
-    /// <para>
-    /// The cost is one extra query per bootstrap, which is a deliberate trade against the alternative
-    /// of users silently lacking permissions they should hold. It is an <c>EXISTS</c> over the indexed
-    /// grant foreign key and returns nothing in the steady state.
-    /// </para>
+    /// Provisioning alone would never deliver defaults added after a user's first sign-in. A revoked grant counts
+    /// as held, so an administrator's revocation is never silently reinstated.
     /// </remarks>
     private async Task<bool> ReconcileDefaultPermissionsAsync(Guid oid, CancellationToken cancellationToken)
     {
@@ -584,11 +511,8 @@ public partial class UserService(ILogger<UserService> logger,
         }
         catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
         {
-            // Two bootstraps racing can both see the same grant missing; the filtered unique index on
-            // (UserId, PermissionId) fails the loser. The winner inserted the row, which is the outcome
-            // either caller wanted, so this is logged and swallowed rather than surfaced as a 500.
-            // Narrowed to the duplicate-key case on purpose: a timeout, a deadlock or a broken foreign
-            // key are real faults and must not be reported as a benign race.
+            // Racing bootstraps can insert the same grant; the unique index fails the loser, whose row the
+            // winner already wrote. Only duplicate keys are swallowed: other faults are real.
             foreach (var entry in _ctx.ChangeTracker.Entries<UserPermission>().Where(e => e.State == EntityState.Added).ToList())
             {
                 entry.State = EntityState.Detached;
@@ -603,23 +527,15 @@ public partial class UserService(ILogger<UserService> logger,
         return true;
     }
 
-    /// <summary>
-    /// Indicates whether a save failed because it violated a unique index, as opposed to any other
-    /// database fault.
-    /// </summary>
     /// <remarks>
-    /// SQL Server reports 2601 for a unique index and 2627 for a unique constraint. Deliberately scoped
-    /// to that provider rather than pulling a second one into this project: anything else is treated as
-    /// a real fault and rethrown, which is the safe direction to be wrong in.
+    /// SQL Server only (2601 unique index, 2627 unique constraint); any other provider's error is rethrown, the
+    /// safe direction to be wrong in.
     /// </remarks>
     private static bool IsUniqueConstraintViolation(DbUpdateException exception)
     {
         return exception.InnerException is SqlException { Number: 2601 or 2627 };
     }
 
-    /// <summary>
-    /// The active default permissions the user has never held, counting a revoked grant as held.
-    /// </summary>
     /// <remarks>The filter is lifted so a revoked grant's soft-deleted row still blocks a re-grant.</remarks>
     private Task<List<Guid>> FindDefaultPermissionsNeverGrantedIncludingRevokedAsync(Guid oid, CancellationToken cancellationToken) =>
         _ctx.Permissions
@@ -630,14 +546,10 @@ public partial class UserService(ILogger<UserService> logger,
             .Select(p => p.Id)
             .ToListAsync(cancellationToken);
 
-    /// <summary>
-    /// Creates an active grant of <paramref name="permission"/> for <paramref name="user"/> and
-    /// tracks it as an insert. The explicit <c>Add</c> is required, not redundant: when the
-    /// user already exists, EF discovers the grant through the collection navigation and infers
-    /// its state from the key, which is populated here — so it would be treated as an update of
-    /// a row that does not exist and fail the save with a concurrency exception. The grant is
-    /// also attached to the navigation so the caller can map the result without re-querying.
-    /// </summary>
+    /// <remarks>
+    /// The explicit <c>Add</c> is required: for an existing user EF would infer an update from the set key and
+    /// fail the save with a concurrency exception.
+    /// </remarks>
     private void AddGrant(User user, Permission permission, Guid grantedBy)
     {
         var grant = new UserPermission
@@ -655,10 +567,8 @@ public partial class UserService(ILogger<UserService> logger,
     }
 
     /// <summary>
-    /// Loads the permissions for <paramref name="permissionIds"/>, optionally unioned with
-    /// every default permission, and throws when any requested id is missing or deactivated so
-    /// callers get a precise 404 instead of an opaque foreign-key violation at save time.
-    /// Entities are tracked so callers can assign them to the <c>Permission</c> navigation.
+    /// Loads the requested (and optionally default) permissions tracked, throwing a precise 404 for a missing or
+    /// deactivated id rather than an FK violation at save.
     /// </summary>
     private async Task<List<Permission>> ResolveGrantablePermissionsAsync(
         HashSet<Guid> permissionIds, bool includeDefaults, CancellationToken cancellationToken)
@@ -684,9 +594,7 @@ public partial class UserService(ILogger<UserService> logger,
     }
 
     /// <summary>
-    /// Throws when administrators would strip their own Administrator grant. Every admin route
-    /// authorizes against that single grant, so allowing it would let an administrator lock
-    /// themselves — and potentially the whole tenant — out of user and permission management.
+    /// Refuses a self-revocation of Administrator, since every admin route authorizes against that one grant.
     /// </summary>
     private static void EnsureAdministratorNotSelfRevoked(Guid targetUserId, Guid callerOid, User user, HashSet<Guid> requestedIds)
     {
@@ -707,11 +615,8 @@ public partial class UserService(ILogger<UserService> logger,
     }
 
     /// <summary>
-    /// Resolves the directory user's email, preferring <c>mail</c> over
-    /// <c>userPrincipalName</c>. Throws rather than persisting a null into the non-nullable
-    /// email column when the directory carries neither. The message names the object id
-    /// rather than the address, because both exception handlers log it and CLAUDE.md forbids
-    /// writing PII to the logs.
+    /// Prefers <c>mail</c> over <c>userPrincipalName</c> and throws when neither exists. The message names the
+    /// object id, not the address, because exception handlers log it and logs must not carry PII.
     /// </summary>
     private static string ResolveEmail(Microsoft.Graph.Models.User graphUser, Guid oid)
     {

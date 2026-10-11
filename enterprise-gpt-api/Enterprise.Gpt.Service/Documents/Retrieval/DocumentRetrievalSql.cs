@@ -6,53 +6,21 @@ namespace Enterprise.Gpt.Service.Documents.Retrieval;
 /// The hand-written T-SQL behind document retrieval.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Written by hand rather than as LINQ for two reasons that both cost real time per turn. EF Core 10
-/// materializes <c>SqlVector&lt;float&gt;</c> like any other property, so a LINQ query over the chunk
-/// entities would drag 6 KB of embedding per candidate row across the wire to reach a distance it never
-/// keeps; every statement here mentions <c>Embedding</c> only inside <c>VECTOR_DISTANCE</c>. And the
-/// candidate set is a <c>UNION ALL</c> of two structurally identical tables projected to one shape,
-/// which EF cannot express without materializing both sides.
-/// </para>
-/// <para>
-/// Search is exact k-nearest-neighbour, with no vector index, and deliberately so. The candidate set is
-/// always narrowed to one conversation — and at most one project — before any distance is computed,
-/// which keeps it orders of magnitude below the point where approximate search pays for itself.
-/// Approximate search is also still preview on Azure SQL Database, where a vector index has made its
-/// table read-only and the <c>ALLOW_STALE_VECTOR_INDEX</c> escape hatch stops maintaining the index —
-/// either of which breaks document upload. Newer index versions relax that, so this is worth
-/// re-evaluating when it reaches general availability; see <c>docs/documents/retrieval.md</c>. As it
-/// stands, nothing here needs the <c>PREVIEW_FEATURES</c> database-scoped configuration.
-/// </para>
-/// <para>
-/// <c>Index</c> is a reserved word and is always bracketed. Column names match property names exactly —
-/// there is no <c>HasColumnName</c> anywhere in the repository — and the tables live in the <c>Core</c>
-/// schema. Soft delete has no query filter in this model, so every level is filtered by hand: the chunk,
-/// its document, and the conversation or project that owns it.
-/// </para>
+/// Hand-written because EF would materialize the 6 KB embedding per row, and with no soft-delete query filter
+/// here every level is filtered by hand. No vector index, deliberately: candidates are already narrowed to one
+/// conversation and project, and a preview Azure SQL vector index makes its table read-only (or, under
+/// <c>ALLOW_STALE_VECTOR_INDEX</c>, stale), which breaks upload; revisit at general availability.
 /// </remarks>
 internal static class DocumentRetrievalSql
 {
-    /// <summary>
-    /// Prefix for the generated keyword-term parameters.
-    /// </summary>
     internal const string TermParameterPrefix = "@t";
 
-    /// <summary>
-    /// Prefixes for the generated chunk-key parameters of <see cref="BuildFetchChunks"/>.
-    /// </summary>
     internal const string DocumentParameterPrefix = "@d";
     internal const string SourceParameterPrefix = "@s";
     internal const string IndexParameterPrefix = "@i";
 
-    /// <summary>
-    /// The searchable chunk set for one conversation, as a derived table aliased <c>c</c>.
-    /// </summary>
-    /// <remarks>
-    /// The project half is gated on <c>@projectId IS NOT NULL</c> so a standalone conversation skips it
-    /// entirely rather than joining on a null. <c>Text</c> and <c>Embedding</c> are listed here but only
-    /// read when the enclosing statement actually projects them.
-    /// </remarks>
+    // Derived table aliased c. The project half is gated on @projectId IS NOT NULL so a standalone
+    // conversation skips it; Text and Embedding are read only when the outer statement projects them.
     private const string ScopedChunks = """
         (
             SELECT ch.[ConversationDocumentId] AS [DocumentId], CAST(0 AS tinyint) AS [Source],
@@ -80,8 +48,7 @@ internal static class DocumentRetrievalSql
     /// Exact k-nearest-neighbour search over the scoped chunks, closest first.
     /// </summary>
     /// <remarks>
-    /// <c>VECTOR_DISTANCE('cosine', …)</c> returns a distance in [0, 2] — smaller is closer — not a
-    /// similarity. The rows come back in relevance order, which is what the caller uses as the pass rank.
+    /// Cosine <c>VECTOR_DISTANCE</c> is a distance in [0, 2] (smaller is closer); row order is the pass rank.
     /// </remarks>
     internal static string DenseSearch { get; } = $"""
         SELECT TOP (@candidates)
@@ -100,24 +67,10 @@ internal static class DocumentRetrievalSql
     /// best first.
     /// </summary>
     /// <param name="termCount">The number of terms, each of which becomes one <c>@tN</c> parameter.</param>
-    /// <returns>The command text.</returns>
     /// <remarks>
-    /// <para>
-    /// Only the <em>number</em> of comparison arms varies with the query; the term values themselves are
-    /// never concatenated into the command text. Placeholders are generated from a counter and every
-    /// term is bound as a parameter, escaped for <c>LIKE</c> wildcards by the caller.
-    /// </para>
-    /// <para>
-    /// <c>LIKE</c> rather than <c>CONTAINS</c>/<c>FREETEXT</c>: full-text search is a separately
-    /// installed component that cannot be assumed present, and over a row set already narrowed to one
-    /// conversation this is the same cost class as the vector scan running beside it. The explicit
-    /// case- and accent-insensitive collation makes matching behave the same whatever collation the
-    /// database was created with, and costs nothing because there is no index on <c>Text</c> to lose.
-    /// </para>
-    /// <para>
-    /// Ties break towards the shorter chunk: when two chunks contain the same terms, the denser one is
-    /// the better evidence.
-    /// </para>
+    /// Only the arm count varies; term values are always bound parameters (LIKE-escaped by the caller). LIKE
+    /// because full-text cannot be assumed installed, under an explicit CI_AI collation; ties favour the
+    /// shorter, denser chunk.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="termCount"/> is not positive.</exception>
     internal static string BuildLexicalSearch(int termCount)
@@ -159,18 +112,9 @@ internal static class DocumentRetrievalSql
     /// Builds the read-back of specific chunks by key, including their text.
     /// </summary>
     /// <param name="keyCount">The number of chunk keys, each of which becomes three parameters.</param>
-    /// <returns>The command text.</returns>
     /// <remarks>
-    /// <para>
-    /// The caller has already expanded each match into the neighbouring chunk indices and de-duplicated
-    /// the result, so this is a set of exact <c>(DocumentId, Index)</c> seeks rather than a range scan.
-    /// Both chunk tables carry a unique filtered index on exactly that pair, which is what makes it one.
-    /// </para>
-    /// <para>
-    /// The ownership predicates are repeated here rather than trusted from the pass that produced the
-    /// keys: this statement takes identifiers as parameters, so it re-establishes on its own that every
-    /// row it returns belongs to the conversation — or its project — being answered.
-    /// </para>
+    /// Exact seeks on each table's unique filtered <c>(DocumentId, Index)</c> index. Ownership predicates are
+    /// repeated rather than trusted from the earlier pass, since the keys arrive as parameters.
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="keyCount"/> is not positive.</exception>
     internal static string BuildFetchChunks(int keyCount)

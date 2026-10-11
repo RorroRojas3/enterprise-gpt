@@ -9,8 +9,5 @@ namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 [CollectionDefinition(Name)]
 public class IntegrationTestCollection : ICollectionFixture<IntegrationTestFixture>
 {
-    /// <summary>
-    /// The collection name integration test classes join via <c>[Collection]</c>.
-    /// </summary>
     public const string Name = "Integration";
 }

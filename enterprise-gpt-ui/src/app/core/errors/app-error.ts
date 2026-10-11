@@ -1,8 +1,5 @@
 import { AnyProblemDetails } from './problem-details';
 
-/**
- * Fields carried by every {@link AppError}, whatever produced it.
- */
 export interface AppErrorBase {
   /** HTTP status, or 0 for a transport failure, an abort, or a client-side throw. */
   readonly status: number;
@@ -13,10 +10,7 @@ export interface AppErrorBase {
   readonly traceId: string | null;
   /** The request path from the problem body. Carries no query string. */
   readonly instance: string | null;
-  /**
-   * The URL the client actually requested. Held separately because `instance`
-   * omits the query string and so cannot reconstruct the failing request.
-   */
+  /** The URL actually requested, query string included, which `instance` omits. */
   readonly url: string | null;
   /** One user-facing line, suitable for a toast headline. */
   readonly message: string;
@@ -68,10 +62,8 @@ export interface McpServerUnavailableAppError extends AppErrorBase {
 }
 
 /**
- * A 428: a selected tool server needs an API key the user supplies and none is usable.
- *
- * Carries the id as well as the name so the client can open the key dialog for that
- * server rather than only naming it.
+ * A 428: a selected tool server needs a user-supplied API key and none is usable. The id lets
+ * the client open that server's key dialog.
  */
 export interface McpCredentialRequiredAppError extends AppErrorBase {
   readonly kind: 'mcp-credential-required';
@@ -97,12 +89,7 @@ export interface StorageNotConfiguredAppError extends AppErrorBase {
   readonly kind: 'storage-not-configured';
 }
 
-/**
- * A 503: this deployment has no renderer for the requested export format.
- *
- * Distinct from a transient 503 on purpose — no retry can change it, and the
- * client can say which format is unavailable rather than which control is.
- */
+/** A 503 no retry can fix: this deployment has no renderer for the requested export format. */
 export interface ExportRendererNotConfiguredAppError extends AppErrorBase {
   readonly kind: 'export-renderer-not-configured';
   /** The `?format=` token the request used. Empty when the server sent none. */
@@ -110,11 +97,8 @@ export interface ExportRendererNotConfiguredAppError extends AppErrorBase {
 }
 
 /**
- * Any HTTP failure with no application-specific problem type.
- *
- * Covers 401, a routing 404 (which carries the RFC 9110 link and means "no such
- * route", not "no such resource"), a bare 413 from Kestrel when a chunked upload
- * bypasses the size filter, 499, 500, and any 5xx without a type.
+ * Any HTTP failure without an application problem type: 401, a routing 404 ("no such route"),
+ * Kestrel's bare 413 for a chunked upload that bypasses the size filter, 499, and untyped 5xx.
  */
 export interface HttpAppError extends AppErrorBase {
   readonly kind: 'http';
@@ -136,15 +120,8 @@ export interface ClientAppError extends AppErrorBase {
 }
 
 /**
- * Every failure the client can observe, as one discriminated union.
- *
- * Two things are deliberately absent:
- *
- * - A truncated chat stream. A `text/event-stream` body that stops without a
- *   `Finished` event arrives as a successful 200, so it is a turn state the
- *   transcript renders as "cut off", not an error. Normalization never sees it.
- * - A `maxBytes` on a bare 413. Kestrel produces that response, not the upload
- *   filter, so it lands on {@link HttpAppError} and upload UI must handle both.
+ * Every failure the client can observe. A stream that stops before `Finished` is a 200 and a
+ * "cut off" turn, not an error; Kestrel's bare 413 is an {@link HttpAppError} with no `maxBytes`.
  */
 export type AppError =
   | ValidationAppError
@@ -164,16 +141,11 @@ export type AppError =
   | AbortedAppError
   | ClientAppError;
 
-/** The discriminant of {@link AppError}. */
 export type AppErrorKind = AppError['kind'];
 
 /**
- * Which arms come from an application-specific problem body.
- *
- * A positive table rather than a negation, and `satisfies` rather than an
- * annotation, so adding an arm to {@link AppError} without classifying it is a
- * compile error instead of a silent default. Downstream policy depends on this —
- * a misclassified arm changes whether it is retried.
+ * A total table, so a new {@link AppError} arm left unclassified fails to compile instead of
+ * defaulting; retry policy depends on the classification.
  */
 const PROBLEM_KINDS = {
   'validation-error': true,

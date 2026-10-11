@@ -12,16 +12,9 @@ using Xunit;
 namespace Enterprise.Gpt.Integration.Test.Documents;
 
 /// <summary>
-/// Covers the deterministic spreadsheet lookup against a real SQL Server 2025, which is the only place
-/// it can run: the unit-test fixture derives its own store type for the native <c>json</c> cells column
-/// and has no <c>JSON_VALUE</c> of SQL Server's shape, so every statement the tool builds is exercised
-/// here or nowhere.
+/// Covers the spreadsheet lookup on real SQL Server 2025: the unit-test fixture has no native <c>json</c> column
+/// or SQL Server-shaped <c>JSON_VALUE</c>, so every statement the tool builds is exercised here or nowhere.
 /// </summary>
-/// <remarks>
-/// The seeded sheet is small and its figures are round, so every expected value in the benchmark below
-/// was computed by hand from the table in <c>Benchmark()</c> rather than from a second implementation of
-/// the thing under test.
-/// </remarks>
 [Collection(IntegrationTestCollection.Name)]
 [Trait("Category", "Integration")]
 public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) : IAsyncLifetime
@@ -417,9 +410,8 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
     {
         var scope = await SeedTimesAsync();
 
-        // A cell holding only a time converts to datetime2 as 1900-01-01 plus that time; parsing the
-        // model's value against today's date instead would make every comparison miss. The cells all
-        // carry one format, but the value beside them is whatever the model wrote.
+        // A time-only cell converts to datetime2 as 1900-01-01 plus that time; parsing the model's
+        // value against today's date instead would make every comparison miss.
         var result = await QueryAsync(scope, "filter", filters: [Filter("Start", "gt", wanted)]);
 
         Assert.NotNull(result.Rows);
@@ -542,9 +534,7 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
 
     #region Helpers
 
-    /// <summary>
-    /// The benchmark sheet. Every expected value in this file was computed by hand from this table.
-    /// </summary>
+    /// <summary>The benchmark sheet; every expected value in this file was computed by hand from it.</summary>
     private static SeedSheet Benchmark() => new(
         SheetIndex: 1,
         Name: "Regional Revenue",
@@ -601,10 +591,7 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
             [new RetrievableDocument(documentId, DocumentSources.Conversation, "budget.xlsx")]);
     }
 
-    /// <summary>
-    /// A sheet whose date column holds only times, which is what the extractor's own format list makes a
-    /// shift or duration column infer as.
-    /// </summary>
+    /// <summary>A date column holding only times, as the extractor infers a shift or duration column.</summary>
     private async Task<DocumentRetrievalScope> SeedTimesAsync()
     {
         var conversationId = await _fixture.AddConversationAsync(

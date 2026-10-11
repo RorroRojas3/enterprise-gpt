@@ -4,9 +4,8 @@ namespace Enterprise.Gpt.Common.Enums;
 /// The value kind inferred for a spreadsheet column from a bounded sample of its own cells.
 /// </summary>
 /// <remarks>
-/// Inference is a hint for how a column is described and later compared, not a constraint on what a
-/// cell may hold: a column whose sampled cells disagree is <see cref="Text"/>, and every cell is
-/// stored as the text the reader sees either way.
+/// A hint for description and comparison, not a constraint: a column whose sampled cells disagree is
+/// <see cref="Text"/>, and every cell is stored as the text the reader sees.
 /// </remarks>
 public enum SheetColumnTypes
 {

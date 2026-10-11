@@ -20,7 +20,7 @@ import { ProjectStore } from './project-store';
 const CREATE_URL = `${TEST_API_BASE_URL}/api/conversations`;
 const PROJECT_ID = '11111111-5555-4666-8777-888888888888';
 
-describe('ProjectComposerHost (US-906)', () => {
+describe('ProjectComposerHost', () => {
   let backend: HttpTestingController;
   let host: InstanceType<typeof ProjectComposerHost>;
   let pending: InstanceType<typeof PendingPromptStore>;
@@ -35,9 +35,7 @@ describe('ProjectComposerHost (US-906)', () => {
 
     TestBed.configureTestingModule({
       providers: [
-        // A stub rather than the real store: instantiating one here would drag
-        // `DocumentUploadClient` and `TokenService` in behind it, and this spec
-        // deliberately stands clear of MSAL. Only the handoff is read.
+        // A stub: the real store drags in `DocumentUploadClient`, `TokenService` and MSAL.
         { provide: COMPOSER_UPLOADS, useValue: uploads as unknown as ComposerUploads },
         provideTestAppConfig(),
         provideHttpClient(),
@@ -75,8 +73,7 @@ describe('ProjectComposerHost (US-906)', () => {
     request.flush(created);
     TestBed.tick();
 
-    // The prompt travels in a store rather than in the URL: a prompt in the address
-    // bar is a prompt in the history, and in every referrer the page sends.
+    // In a store, not the URL, which would leak the prompt into history and referrers.
     expect(pending.claim(created.id)).toBe('Draft the cutover comms plan');
     expect(navigate).toHaveBeenCalledWith(['/chat', created.id]);
     expect(host.inFlight()).toBe(false);
@@ -92,8 +89,7 @@ describe('ProjectComposerHost (US-906)', () => {
     expectCreate().flush(created);
     TestBed.tick();
 
-    // The composer on this screen starts a conversation; its attachments belong to that
-    // conversation, and travel to the screen that can upload them against it.
+    // The attachments belong to the new conversation and travel to its screen.
     const attachments = TestBed.inject(PendingAttachmentsStore);
     expect(attachments.claim(created.id)).toEqual([attached]);
   });

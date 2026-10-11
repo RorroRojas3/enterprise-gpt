@@ -1,7 +1,6 @@
 @if (attachments().length > 0) {
-  <!-- `role="list"` because `list-style: none` strips list semantics in Safari. An empty one
-       would still be announced as a list, which is why this is guarded here as well as at
-       the call site. -->
+  <!-- `role="list"`: Safari drops list semantics under `list-style: none`. Guarded here too,
+       since an empty list is still announced. -->
   <ul class="generated-files" role="list" aria-label="Files the assistant made">
     @for (file of rows(); track file.id) {
       <li>

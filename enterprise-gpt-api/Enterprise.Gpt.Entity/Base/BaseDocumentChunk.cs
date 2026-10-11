@@ -29,14 +29,8 @@ public abstract class BaseDocumentChunk<TKey> : BaseModifiedEntity<TKey>
     /// </summary>
     public int TokenCount { get; set; }
 
-    /// <summary>
-    /// The chunk text that was embedded.
-    /// </summary>
     public string Text { get; set; } = null!;
 
-    /// <summary>
-    /// The embedding vector for <see cref="Text"/>.
-    /// </summary>
     /// <remarks>The dimension is fixed by the column type and must match the configured embedding model.</remarks>
     public SqlVector<float> Embedding { get; set; }
 }

@@ -125,10 +125,8 @@ public class GlobalExceptionHandlerTests
     }
 
     /// <summary>
-    /// The format is one this API supports and the deployment cannot render — a PDF with no font, or
-    /// a format withdrawn by configuration. It shares the 503 with the two arms above and for the
-    /// same reason, but carries its own type so a client offering three download formats can disable
-    /// the one rather than the control.
+    /// Shares the 503 with the arms above but carries its own type, so a client can disable the one
+    /// format rather than the whole download control.
     /// </summary>
     [Fact]
     public async Task TryHandleAsync_ExportRendererNotConfiguredException_Returns503WithTheFormat()

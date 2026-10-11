@@ -36,52 +36,24 @@ import { ConversationRow } from './conversation-row';
 import { SidebarFavorites } from './favorite-projects';
 
 /**
- * How the sidebar is being rendered.
- *
- * `overlay` is the 260px panel **without** its collapse chevron: inside frame `3e`'s
- * mobile drawer there is no collapsed state to go to, and the shell's own close button
- * already sits where the chevron would — one control that dismisses, not two that
- * disagree.
+ * `overlay` omits the collapse chevron: the mobile drawer has no collapsed state, and the shell's
+ * close button already sits there.
  */
 export type SidebarMode = 'expanded' | 'strip' | 'overlay';
 
-/** One entry in the sidebar's primary navigation. */
 interface NavItem {
   readonly label: string;
   readonly icon: IconName;
   readonly link: string;
-  /** Renders the shield glyph frame `3a` puts beside a permission-gated entry. */
+  /** Renders the shield glyph beside a permission-gated entry. */
   readonly restricted: boolean;
 }
 
-/** How many skeleton rows stand in for the list while the first page loads. */
 const SKELETON_ROWS = 6;
 
 /**
- * The persistent navigation of frames `3a` (260px) and `3b` (the 60px icon strip).
- *
- * **Only entries whose route exists are rendered.** The board draws five — Chat,
- * Conversations, Projects, Documents, Admin — and all five now exist. Each arrived
- * with its own epic, the way US-203 has the Admin entry absent rather than
- * shown-and-disabled for a non-administrator; Projects arrived with US-901 and
- * Documents with US-1002.
- *
- * The **Favorite projects** section between the nav and the list is US-910, and it
- * reads the *server* flag. Its own first criterion describes device-local pins in
- * `localStorage` under a "Pinned on this device" notice, for the case where US-909 had
- * not landed; that enabler shipped in the same batch, so the section never had a
- * device-local state to be in and the notice was never built. Pins were also the wrong
- * thing to keep there: `local-preferences.ts` holds facts about the browser, and a list
- * of project ids is a fact about the user.
- *
- * Its rows come from {@link ProjectLookupStore} rather than a request of their own —
- * that store already holds every project the user owns and already tracks every
- * server-confirmed change to one, so a second copy would be a second thing to keep in
- * step. It inherits that store's load ceiling with it.
- *
- * The two widths are separate template branches rather than one branch with things
- * hidden: a 44px square target with a tooltip is a different control from a 36px row
- * with a visible label, not the same control with its text removed.
+ * Admin is absent, not disabled, for non-administrators. The two widths are separate branches: a
+ * 44px tooltip target is a different control from a labelled 36px row.
  */
 @Component({
   selector: 'app-sidebar',
@@ -109,42 +81,29 @@ export class Sidebar {
   private readonly _injector = inject(Injector);
   private readonly _search = viewChild(SearchInput);
 
-  /**
-   * Only one of the two branches is ever in the DOM, so both chevrons carry this
-   * reference and at most one resolves. It exists so the control can be re-focused
-   * after a toggle destroys the one that was pressed.
-   */
+  /** Both chevrons carry it, one at a time; re-focused after a toggle destroys the pressed one. */
   private readonly _collapseControl = viewChild<ElementRef<HTMLButtonElement>>('collapseControl');
 
   /** The expanded branch's Favorite projects section; absent on the strip. */
   private readonly _favorites = viewChild(SidebarFavorites);
 
   /**
-   * **Controlled, not self-driving.** The sidebar used to read `UiStore` and write the
-   * persisted preference itself. It cannot any more: at tablet width the same chevron
-   * must open a transient overlay *without* touching that preference (frame `3g` calls
-   * the strip the viewport's default, not the user's choice), and only the shell knows
-   * the viewport. Keeping the policy here would mean the sidebar deciding a question it
-   * cannot see the inputs to.
+   * Controlled by the shell, which alone knows the viewport: at tablet width the chevron opens a
+   * transient overlay without touching the persisted preference.
    */
   readonly mode = input.required<SidebarMode>();
 
   /** Either chevron. What it means is the shell's to decide. */
   readonly toggled = output<void>();
 
-  /**
-   * A strip control asking to be expanded, whatever expanding means at this width.
-   *
-   * Named for its first caller and shared since: the search button and US-910's star
-   * both want the panel open, and what each does *after* that is its own business.
-   */
+  /** A strip control (search or star) asking to expand, whatever that means at this width. */
   readonly searchRequested = output<void>();
 
   protected readonly conversations = inject(ConversationListStore);
   protected readonly projects = inject(ProjectLookupStore);
   protected readonly collapsed = computed(() => this.mode() === 'strip');
 
-  /** Frame `3e` draws the shell's close button where this would sit. */
+  /** In the overlay, the shell's close button sits where this would. */
   protected readonly showCollapse = computed(() => this.mode() !== 'overlay');
   protected readonly chatRoute = CHAT_ROUTE;
   protected readonly skeletonRows = Array.from({ length: SKELETON_ROWS });
@@ -167,22 +126,14 @@ export class Sidebar {
       : []),
   ]);
 
-  /**
-   * The skeleton stands in only for the *first* page. A search that narrows an
-   * already-populated list keeps its rows on screen with the field marked busy,
-   * because replacing them with grey bars on every keystroke is the flicker this
-   * distinction exists to avoid.
-   */
+  /** First page only: a narrowing search keeps its rows rather than flickering to skeletons. */
   protected readonly isFirstLoad = computed(
     () => this.conversations.isPending() && this.conversations.entities().length === 0,
   );
 
   /**
-   * Toggling swaps two mutually exclusive branches, which destroys the button that was
-   * just pressed and drops focus to `<body>` — where the next Tab restarts at the top of
-   * the page. Focus therefore follows to the control that replaced it, after the render
-   * that creates it. Harmless at desktop and a dead end at tablet, where this chevron is
-   * how the overlay is dismissed.
+   * The toggle destroys the pressed button, so focus follows to its replacement after the render.
+   * At tablet width this chevron is how the overlay is dismissed.
    */
   protected toggle(): void {
     this.toggled.emit();
@@ -191,31 +142,18 @@ export class Sidebar {
     });
   }
 
-  /**
-   * The strip's search button. Expanding alone would leave the user to find and click
-   * the field they just asked for, so focus follows it — after the next render,
-   * because the field does not exist in the DOM until the expanded branch is drawn.
-   */
+  /** Focuses the field once the expanded branch has rendered it. */
   protected expandAndSearch(): void {
     this.searchRequested.emit();
     afterNextRender(() => this._search()?.focusField(), { injector: this._injector });
   }
 
-  /**
-   * Puts focus on whichever collapse control this width renders.
-   *
-   * Public because the shell needs it after dismissing the tablet overlay, and the
-   * alternative — the shell querying `.strip__button` by document order — picks a class
-   * shared by four other controls.
-   */
+  /** For the shell after dismissing the tablet overlay, instead of querying a shared class. */
   focusCollapseControl(): void {
     this._collapseControl()?.nativeElement.focus();
   }
 
-  /**
-   * Where focus goes when the favourites section removes itself under the reader — the
-   * nearest control above where it was. See `SidebarFavorites.lastFavoriteRemoved`.
-   */
+  /** Where focus goes when the favourites section removes itself: the nearest control above. */
   protected focusSearch(): void {
     this._search()?.focusField();
   }
@@ -224,12 +162,7 @@ export class Sidebar {
     this.conversations.search('');
   }
 
-  /**
-   * The strip's star. Expanding is the whole action — the tree is what the icon stands
-   * in for, so pressing it reveals the tree rather than navigating away from wherever
-   * the reader is. The section takes focus itself once it exists, for the reason
-   * {@link expandAndSearch} defers to the field it just revealed.
-   */
+  /** The strip's star reveals the tree rather than navigating; the section focuses itself. */
   protected expandToFavorites(): void {
     this.searchRequested.emit();
     afterNextRender(() => this._favorites()?.reveal(), { injector: this._injector });

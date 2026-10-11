@@ -13,29 +13,17 @@ namespace Enterprise.Gpt.Service.Agents;
 /// </summary>
 public interface IFileAgentModelResolver
 {
-    /// <summary>
-    /// Reads the model row named by <c>FileAgent:ModelId</c>.
-    /// </summary>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The row's current values.</returns>
+    /// <summary>Reads the model row named by <c>FileAgent:ModelId</c>.</summary>
     /// <remarks>
-    /// Read per call rather than cached, so an administrator repointing the row's deployment takes
-    /// effect on the next turn instead of at the next restart. A deactivated row is treated as
-    /// absent, so retiring the agent's model stands the agent down rather than silently billing
-    /// against a deployment an operator believes they withdrew.
+    /// Read per call so a repointed deployment applies next turn; a deactivated row stands the agent down.
     /// </remarks>
     /// <exception cref="FileAgentNotConfiguredException">
-    /// The configured id names no active row, or names one on a provider that cannot carry a hosted
-    /// code interpreter.
+    /// No active row has the configured id, or its provider cannot host a code interpreter.
     /// </exception>
     Task<FileAgentModel> ResolveAsync(CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// Resolves the File Agent's catalog row out of <c>Core.Ref.Model</c>.
-/// </summary>
-/// <param name="ctx">The database context.</param>
-/// <param name="options">The bound file-agent options.</param>
+/// <inheritdoc />
 public sealed class FileAgentModelResolver(
     EnterpriseGptDbContext ctx,
     IOptions<FileAgentOptions> options) : IFileAgentModelResolver
@@ -56,9 +44,8 @@ public sealed class FileAgentModelResolver(
             .ConfigureAwait(false)
             ?? throw new FileAgentNotConfiguredException(modelId);
 
-        // Checked here rather than left to fail at the provider, because the failure it would cause
-        // is silence: the Chat Completions bridge the other Azure provider uses drops a hosted tool
-        // instead of rejecting it, so a misrouted agent would run and simply never produce a file.
+        // Checked here because the provider would fail silently: the other Azure provider's Chat Completions
+        // bridge drops a hosted tool instead of rejecting it, so the agent would never produce a file.
         if (model.ProviderId != Providers.AzureOpenAI)
         {
             throw new FileAgentNotConfiguredException(

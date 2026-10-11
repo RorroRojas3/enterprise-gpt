@@ -8,40 +8,23 @@ namespace Enterprise.Gpt.Service.Documents.Sheets;
 /// The hand-written T-SQL behind the deterministic spreadsheet lookup.
 /// </summary>
 /// <remarks>
-/// Nothing the model supplies is ever concatenated into a command text: a column reaches a statement
-/// only as its already-resolved <see cref="SheetColumnTypes"/> choosing between pre-authored fragments,
-/// its name travels as a bound JSON-path parameter, and only the <em>number</em> of filter arms varies
-/// with the request. Soft delete has no query filter in this model, so the row, its sheet and the
-/// document that owns it are each filtered by hand in both arms. See <c>docs/documents/sheet-query.md</c>
-/// for why values are read with <c>TRY_CONVERT</c> rather than <c>JSON_VALUE … RETURNING</c>.
+/// No model text is concatenated: a column only picks a pre-authored fragment by its
+/// <see cref="SheetColumnTypes"/> and its name binds as a JSON-path parameter. Soft delete is filtered by
+/// hand at every level; see <c>docs/documents/sheet-query.md</c> for why values use <c>TRY_CONVERT</c>.
 /// </remarks>
 internal static class SheetQuerySql
 {
-    /// <summary>
-    /// Parameter carrying the JSON path of the column an aggregate is computed over.
-    /// </summary>
     internal const string ValuePathParameter = "@valuePath";
 
-    /// <summary>
-    /// Parameter carrying the JSON path of the grouping column.
-    /// </summary>
     internal const string GroupPathParameter = "@groupPath";
 
-    /// <summary>
-    /// Prefixes for the generated per-filter path and value parameters.
-    /// </summary>
     internal const string FilterPathPrefix = "@fp";
     internal const string FilterValuePrefix = "@fv";
 
     /// <summary>
-    /// The queryable rows of one sheet, as a derived table aliased <c>r</c>.
+    /// One sheet's queryable rows as derived table <c>r</c>. Ownership is re-checked here rather than
+    /// trusted from the pass that resolved <c>@sheetId</c>, since the id arrives as a parameter.
     /// </summary>
-    /// <remarks>
-    /// Ownership is re-established here from the conversation and project rather than trusted from the
-    /// pass that resolved <c>@sheetId</c>, because this statement takes that id as a parameter. The
-    /// project half is gated on <c>@projectId IS NOT NULL</c> first, so a standalone conversation skips
-    /// it entirely rather than joining on a null.
-    /// </remarks>
     private const string ScopedSheetRows = """
         (
             SELECT r.[RowIndex], r.[Cells]
@@ -69,14 +52,10 @@ internal static class SheetQuerySql
 
     #region Private methods
 
-    /// <summary>
-    /// The typed read of one cell, chosen by the column's own inferred type.
-    /// </summary>
     private static string ValueExpression(SheetColumnTypes type, string pathParameter) => type switch
     {
-        // Inference accepts a group separator, so a comma-formatted export infers as a number while
-        // CONVERT alone would yield NULL for it. A decimal-comma locale fails that same inference and
-        // lands as text, so stripping them here cannot corrupt one.
+        // Inference accepts group separators, so they are stripped; decimal-comma values infer as text and
+        // never reach this arm.
         SheetColumnTypes.Number => $"TRY_CONVERT(float, REPLACE(JSON_VALUE(r.[Cells], {pathParameter}), ',', ''))",
         SheetColumnTypes.Date => $"TRY_CONVERT(datetime2, JSON_VALUE(r.[Cells], {pathParameter}))",
 
@@ -84,22 +63,17 @@ internal static class SheetQuerySql
         _ => $"JSON_VALUE(r.[Cells], {pathParameter}) COLLATE Latin1_General_CI_AI"
     };
 
-    /// <summary>
-    /// The raw text of one cell, for the comparisons and counts that must not coerce it.
-    /// </summary>
     private static string RawExpression(string pathParameter) => $"JSON_VALUE(r.[Cells], {pathParameter})";
 
     /// <summary>
-    /// Counts rows that hold a value in the aggregated column at all, rather than rows whose value the
-    /// column's type could read — otherwise "how many rows have a status" would silently mean "how many
-    /// of them parse as one".
+    /// Counts rows with any value in the column, not rows its type can read, so "how many have a status"
+    /// does not silently mean "how many parse".
     /// </summary>
     private static string CountExpression(SheetColumnTypes? valueType) =>
         valueType is null ? "COUNT(*)" : $"COUNT({RawExpression(ValuePathParameter)})";
 
     /// <summary>
-    /// Counts the rows that actually contributed to the aggregate, so a total computed over fewer rows
-    /// than matched is reportable rather than silent.
+    /// Counts the rows that fed the aggregate, so a total over fewer rows than matched is reportable.
     /// </summary>
     private static string ValueRowsExpression(SheetQueryOperations operation, SheetColumnTypes? valueType) =>
         operation is SheetQueryOperations.Count || valueType is null
@@ -155,15 +129,13 @@ internal static class SheetQuerySql
 
         if (filter.Comparator is SheetFilterComparators.Contains)
         {
-            // Matched against the cell's own text whatever the column's type, so "contains 2026" works on
-            // a date column as readily as on a free-text one. The caller escapes the pattern's wildcards.
+            // Raw text whatever the type, so "contains 2026" works on dates; the caller escapes wildcards.
             return $"{RawExpression(path)} COLLATE Latin1_General_CI_AI LIKE {value} ESCAPE '\\'";
         }
 
         var expression = ValueExpression(filter.ColumnType, path);
 
-        // A row with no value in the column genuinely is not equal to the one named, and a bare <> would
-        // drop it on the NULL rather than keep it.
+        // An empty cell is not equal to the value, but a bare <> would drop it on the NULL.
         if (filter.Comparator is SheetFilterComparators.Neq)
         {
             return $"({expression} IS NULL OR {expression} <> {value})";
@@ -187,18 +159,12 @@ internal static class SheetQuerySql
     #region Public static methods
 
     /// <summary>
-    /// Builds an ungrouped aggregate over one sheet.
+    /// Builds an ungrouped aggregate; a <see langword="null"/> value type means a bare count.
     /// </summary>
-    /// <param name="operation">The aggregate to compute.</param>
-    /// <param name="valueType">The aggregated column's inferred type, or <see langword="null"/> for a bare count.</param>
-    /// <param name="filters">The shape of each filter, in order.</param>
-    /// <returns>The command text.</returns>
     /// <remarks>
-    /// Returns one row of three columns. <c>MatchedRows</c> and <c>ValueRows</c> are both reported so a
-    /// total that skipped cells its column's type could not read is never mistaken for a complete one.
+    /// Reports <c>MatchedRows</c> and <c>ValueRows</c> so a total that skipped unreadable cells is never
+    /// mistaken for a complete one.
     /// </remarks>
-    /// <exception cref="ArgumentNullException"><paramref name="filters"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="operation"/> is not an aggregate.</exception>
     internal static string BuildAggregate(
         SheetQueryOperations operation, SheetColumnTypes? valueType, IReadOnlyList<SheetFilterSpec> filters)
     {
@@ -214,18 +180,9 @@ internal static class SheetQuerySql
     }
 
     /// <summary>
-    /// Builds an aggregate grouped by a second column.
+    /// Builds an aggregate grouped by a second column, ordered by group key so the result and the group
+    /// cap's trimming are deterministic.
     /// </summary>
-    /// <param name="operation">The aggregate to compute.</param>
-    /// <param name="valueType">The aggregated column's inferred type, or <see langword="null"/> for a bare count.</param>
-    /// <param name="filters">The shape of each filter, in order.</param>
-    /// <returns>The command text.</returns>
-    /// <remarks>
-    /// Ordered by the group key rather than by the aggregate so the same question returns the same rows
-    /// in the same order, and so a result trimmed by the group cap is trimmed predictably.
-    /// </remarks>
-    /// <exception cref="ArgumentNullException"><paramref name="filters"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="operation"/> is not an aggregate.</exception>
     internal static string BuildGroupedAggregate(
         SheetQueryOperations operation, SheetColumnTypes? valueType, IReadOnlyList<SheetFilterSpec> filters)
     {
@@ -245,15 +202,9 @@ internal static class SheetQuerySql
     }
 
     /// <summary>
-    /// Builds the matching-row listing.
+    /// Builds the matching-row listing; <c>COUNT(*) OVER ()</c> carries the full match count, so truncation
+    /// is reported without a second round trip.
     /// </summary>
-    /// <param name="filters">The shape of each filter, in order.</param>
-    /// <returns>The command text.</returns>
-    /// <remarks>
-    /// <c>COUNT(*) OVER ()</c> carries the full match count on every returned row, so the cap can be
-    /// reported as a truncation instead of costing a second round trip to discover.
-    /// </remarks>
-    /// <exception cref="ArgumentNullException"><paramref name="filters"/> is <see langword="null"/>.</exception>
     internal static string BuildRowList(IReadOnlyList<SheetFilterSpec> filters)
     {
         ArgumentNullException.ThrowIfNull(filters);

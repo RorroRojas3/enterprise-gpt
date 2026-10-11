@@ -7,22 +7,11 @@ using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 
-/// <summary>
-/// Reads and validates the problem details body every failing endpoint in this API returns.
-/// </summary>
 public static class ProblemAssert
 {
-    /// <summary>
-    /// Asserts the response is an RFC 9457 problem with the expected status, and returns it.
-    /// </summary>
-    /// <param name="response">The response to read.</param>
-    /// <param name="expectedStatusCode">The status code the endpoint is expected to return.</param>
-    /// <returns>The parsed problem.</returns>
     /// <remarks>
-    /// Deserializes as <see cref="HttpValidationProblemDetails"/> unconditionally: it derives from
-    /// <see cref="ProblemDetails"/>, so a non-validation problem simply leaves
-    /// <see cref="HttpValidationProblemDetails.Errors"/> at the empty dictionary its constructor
-    /// allocates, and one code path covers both shapes.
+    /// Always reads <see cref="HttpValidationProblemDetails"/>, a <see cref="ProblemDetails"/> whose
+    /// <see cref="HttpValidationProblemDetails.Errors"/> a non-validation problem leaves empty.
     /// </remarks>
     public static async Task<ProblemResponse> ReadAsync(
         HttpResponseMessage response, HttpStatusCode expectedStatusCode)
@@ -37,8 +26,7 @@ public static class ProblemAssert
         Assert.False(string.IsNullOrWhiteSpace(problem.Type));
         Assert.False(string.IsNullOrWhiteSpace(problem.Title));
 
-        // Extension values arrive boxed as JsonElement because ProblemDetails collects them through
-        // [JsonExtensionData] over IDictionary<string, object?>.
+        // Extension values arrive boxed as JsonElement through [JsonExtensionData].
         var traceId = problem.Extensions.TryGetValue("traceId", out var value)
             && value is JsonElement { ValueKind: JsonValueKind.String } element
             ? element.GetString()
@@ -60,11 +48,6 @@ public static class ProblemAssert
             extensions);
     }
 
-    /// <summary>
-    /// Asserts the response is a 400 validation problem carrying at least one field error.
-    /// </summary>
-    /// <param name="response">The response to read.</param>
-    /// <returns>The parsed problem.</returns>
     public static async Task<ProblemResponse> ReadValidationAsync(HttpResponseMessage response)
     {
         var problem = await ReadAsync(response, HttpStatusCode.BadRequest);

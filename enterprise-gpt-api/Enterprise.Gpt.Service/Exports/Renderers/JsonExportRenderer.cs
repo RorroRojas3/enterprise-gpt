@@ -11,10 +11,8 @@ namespace Enterprise.Gpt.Service.Exports.Renderers;
 /// Serializes a conversation as JSON.
 /// </summary>
 /// <remarks>
-/// The stored documents, written with the Cosmos serializer options — so the exported property names
-/// are the stored ones and the export is the storage shape rather than a third representation of it.
-/// That is the whole contract of this format, which is why it is the one renderer that reads
-/// <see cref="ConversationExportDocument.Stored"/> instead of the reduced message view.
+/// The contract is the storage shape: <see cref="ConversationExportDocument.Stored"/> written with the
+/// Cosmos serializer options, so property names match the stored ones.
 /// </remarks>
 public sealed class JsonExportRenderer : IConversationExportRenderer
 {

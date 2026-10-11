@@ -5,25 +5,14 @@ using Enterprise.Gpt.Common.Constants;
 namespace Enterprise.Gpt.Api.Problems.Constants;
 
 /// <summary>
-/// The application-specific RFC 9457 problem types this API emits. A problem with no entry here
-/// carries no <c>type</c>, which is what lets ASP.NET Core fall back to the RFC 9110
-/// status-section link.
+/// The application-specific RFC 9457 problem types this API emits. A problem with no entry here carries
+/// no <c>type</c>, so ASP.NET Core falls back to the RFC 9110 status-section link.
 /// </summary>
 internal static class ProblemTypes
 {
-    /// <summary>
-    /// Prefix shared by every application-specific problem type URI.
-    /// </summary>
     /// <remarks>
-    /// <para>
-    /// A relative URI reference, which RFC 9457 §3.1.1 permits and which does not require the API to
-    /// own a documentation host. The trade-off is that resolution is base-URL dependent, so clients
-    /// must treat these as opaque identifiers rather than resolving them.
-    /// </para>
-    /// <para>
-    /// These URIs are identifiers, not links: clients match on them verbatim, so changing one is a
-    /// breaking API change.
-    /// </para>
+    /// A relative URI (RFC 9457 §3.1.1). Clients match these verbatim as opaque identifiers, so changing
+    /// one is a breaking API change.
     /// </remarks>
     public const string BaseUri = "/problems/";
 
@@ -52,10 +41,8 @@ internal static class ProblemTypes
         new($"{BaseUri}{ProblemCodes.ConversationBusy}", "Conversation is busy");
 
     /// <summary>
-    /// An MCP server could not be used: unreachable, or its on-behalf-of token could not be
-    /// acquired — a consent or Conditional Access requirement included, since these servers are
-    /// consented tenant-wide and a UI-required result is a registration fault rather than
-    /// something the caller can act on. Accompanied by a <c>serverName</c> extension.
+    /// An MCP server is unreachable or its on-behalf-of token could not be acquired; consent prompts count
+    /// too, as servers are consented tenant-wide. Accompanied by a <c>serverName</c> extension.
     /// </summary>
     public static readonly ProblemType McpServerUnavailable =
         new($"{BaseUri}{ProblemCodes.McpServerUnavailable}", "MCP server unavailable");
@@ -71,10 +58,7 @@ internal static class ProblemTypes
     /// An MCP server refused the API key the caller stored. Accompanied by <c>mcpServerId</c> and
     /// <c>serverName</c> extensions.
     /// </summary>
-    /// <remarks>
-    /// Separate from <see cref="McpCredentialRequired"/> only so the client can word the two
-    /// differently; both mean the user has to supply a key before the request can proceed.
-    /// </remarks>
+    /// <remarks>Split from <see cref="McpCredentialRequired"/> only so the client can word it apart.</remarks>
     public static readonly ProblemType McpCredentialRejected =
         new($"{BaseUri}{ProblemCodes.McpCredentialRejected}", "API key rejected");
 
@@ -93,10 +77,8 @@ internal static class ProblemTypes
         new($"{BaseUri}{ProblemCodes.StorageNotConfigured}", "Storage not configured");
 
     /// <summary>
-    /// A conversation export was asked for in a format this deployment has no renderer for — the
-    /// format is withdrawn by configuration, or PDF rendering found no usable font. Accompanied by a
-    /// <c>format</c> extension carrying the wire token, so a client offering several formats can
-    /// disable the one rather than the control.
+    /// No renderer for the requested export format (withdrawn by configuration, or no usable PDF font).
+    /// Accompanied by a <c>format</c> extension so a client can disable just that format.
     /// </summary>
     public static readonly ProblemType ExportRendererNotConfigured =
         new($"{BaseUri}{ProblemCodes.ExportRendererNotConfigured}", "Export format not available");

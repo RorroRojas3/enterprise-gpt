@@ -27,16 +27,12 @@ public interface IDocumentTextExtractorFactory
     /// <summary>
     /// Indicates whether any registered extractor can read <paramref name="extension"/>.
     /// </summary>
-    /// <param name="extension">The extension to test.</param>
-    /// <returns><see langword="true"/> when the extension is supported; otherwise <see langword="false"/>.</returns>
     bool IsSupported(FileExtensions extension);
 
     /// <summary>
     /// Returns the extractor for <paramref name="extension"/>.
     /// </summary>
-    /// <param name="extension">The extension to resolve.</param>
-    /// <returns>The matching <see cref="IDocumentTextExtractor"/>.</returns>
-    /// <exception cref="ValidationException">Thrown when no registered extractor supports the extension.</exception>
+    /// <exception cref="ValidationException">No registered extractor supports the extension.</exception>
     IDocumentTextExtractor Resolve(FileExtensions extension);
 }
 
@@ -45,14 +41,8 @@ public sealed partial class DocumentTextExtractorFactory : IDocumentTextExtracto
 {
     private readonly Dictionary<FileExtensions, IDocumentTextExtractor> _byExtension;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DocumentTextExtractorFactory"/> class.
-    /// </summary>
-    /// <param name="extractors">Every registered extractor.</param>
-    /// <param name="logger">Logger used to record the resolved format map at startup.</param>
     /// <exception cref="InvalidOperationException">
-    /// Thrown when two extractors claim the same extension. This is a wiring mistake rather than a
-    /// runtime condition, so it fails fast at construction instead of silently picking a winner.
+    /// Two extractors claim the same extension: a wiring mistake that fails fast rather than picking a winner.
     /// </exception>
     public DocumentTextExtractorFactory(IEnumerable<IDocumentTextExtractor> extractors, ILogger<DocumentTextExtractorFactory> logger)
     {

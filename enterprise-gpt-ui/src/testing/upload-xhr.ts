@@ -2,12 +2,8 @@ import { Provider } from '@angular/core';
 import { UPLOAD_XHR } from '../app/core/documents/upload-xhr.token';
 
 /**
- * A stand-in for one `XMLHttpRequest`.
- *
- * jsdom ships an `XMLHttpRequest` that would attempt a real request, and — more to the
- * point — offers no way to drive `upload.onprogress`, which is the whole reason the
- * upload transport is on XHR rather than `HttpClient` in the first place. Everything
- * the transport touches is implemented here and nothing else is.
+ * One fake `XMLHttpRequest`: jsdom's would send a real request and cannot drive
+ * `upload.onprogress`, the reason the transport uses XHR at all.
  */
 export class FakeUploadXhr {
   status = 0;
@@ -113,13 +109,7 @@ export class FakeUploadXhrQueue {
   }
 }
 
-/**
- * Provides a fake XHR factory for the upload transport, and hands back the queue.
- *
- * @example
- * const uploads = new FakeUploadXhrQueue();
- * TestBed.configureTestingModule({ providers: [provideFakeUploadXhr(uploads)] });
- */
+/** Provides the upload transport an XHR factory that records into `queue`. */
 export function provideFakeUploadXhr(queue: FakeUploadXhrQueue): Provider {
   return { provide: UPLOAD_XHR, useValue: () => queue.create() };
 }

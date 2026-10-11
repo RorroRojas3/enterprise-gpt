@@ -4,9 +4,8 @@ using Enterprise.Gpt.Entity.McpServers;
 namespace Enterprise.Gpt.Entity.Usage;
 
 /// <summary>
-/// An MCP server that was attached to a <see cref="ConversationUsage"/> call — selected by the
-/// client and successfully leased, so its tools were available to the model. Not a record of tool
-/// invocation: a server can be attached without the model calling any of its tools.
+/// An MCP server selected and leased for a <see cref="ConversationUsage"/> call. Not a record of tool
+/// invocation: the model may have called none of its tools.
 /// </summary>
 public class ConversationUsageMcpServer : BaseCreatedEntity<Guid>
 {

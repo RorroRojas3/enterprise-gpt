@@ -18,10 +18,8 @@ public sealed class SummarizationBudgetCalculatorTests
     }
 
     /// <summary>
-    /// The invariant the whole feature rests on. A window of zero or less is the seeded default for
-    /// a row nobody filled in, and the shared context-budget calculator reads exactly that value as
-    /// unbounded. Inheriting that reading here would send a multi-million-token document in one
-    /// call, so this test exists independently of any that happens to run against the corrected seed.
+    /// A window of zero or less is an unfilled row, which the shared context-budget calculator reads as
+    /// unbounded; inheriting that would send a multi-million-token document in one call.
     /// </summary>
     [Theory]
     [InlineData(0)]

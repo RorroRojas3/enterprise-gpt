@@ -4,10 +4,8 @@ namespace Enterprise.Gpt.Dto.Conversations;
 /// What a turn consumed, as it was recorded beside the assistant message it produced.
 /// </summary>
 /// <remarks>
-/// Carries the turn's totals rather than the assistant's share alone. The split between the
-/// assistant's own model turns and the tools underneath them lives in the relational audit
-/// trail, which is where a report reads it from; a reader looking at one message wants the one
-/// number that message cost.
+/// The turn's totals; the split between model turns and the tools beneath them lives in the relational
+/// audit trail that reports read.
 /// </remarks>
 public class ConversationMessageUsageDto
 {

@@ -13,27 +13,20 @@ using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Service.Reports;
 
-/// <summary>
-/// Reads aggregated usage out of the append-only <c>Core.ConversationUsage</c> audit trail.
-/// </summary>
+/// <summary>Reads aggregated usage out of the append-only <c>Core.ConversationUsage</c> audit trail.</summary>
 public interface IReportService
 {
-    /// <summary>
-    /// Aggregates every model call in a window, grouped one way, with the prior window beside it.
-    /// </summary>
+    /// <summary>Aggregates the model calls in a window, grouped one way, beside the prior window.</summary>
     /// <param name="from">
-    /// The inclusive start of the window, or <see langword="null"/> for thirty days before
-    /// <paramref name="to"/>.
+    /// Inclusive start, or <see langword="null"/> for thirty days before <paramref name="to"/>.
     /// </param>
-    /// <param name="to">The exclusive end of the window, or <see langword="null"/> for now.</param>
+    /// <param name="to">Exclusive end, or <see langword="null"/> for now.</param>
     /// <param name="groupBy">
-    /// The dimension to break the window down by, or <see langword="null"/> for the default. See
-    /// <see cref="UsageGroupKeyNames"/>.
+    /// A <see cref="UsageGroupKeyNames"/> token, or <see langword="null"/> for the default.
     /// </param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The report.</returns>
+    /// <param name="cancellationToken">Cancels the queries.</param>
     /// <exception cref="ValidationException">
-    /// <paramref name="from"/> is not before <paramref name="to"/>, the window is longer than
+    /// <paramref name="from"/> is not before <paramref name="to"/>, the window exceeds
     /// <c>Reports:MaxRangeDays</c>, or <paramref name="groupBy"/> names no accepted dimension.
     /// </exception>
     Task<UsageReportDto> GetUsageReportAsync(
@@ -45,19 +38,9 @@ public interface IReportService
 
 /// <inheritdoc />
 /// <remarks>
-/// <para>
-/// Every query here is a port of one in <c>docs/conversations/usage-and-reporting.md</c>, and
-/// the three rules stated above those queries are what shape this file: the assistant's own token
-/// columns and its tools' are summed apart and combined only in a total; the estimated
-/// <c>ContextTokens</c> sits beside the billed columns and is never added to them; and neither
-/// <c>Core.ConversationUsageTurn</c> nor <c>Core.ConversationUsageToolCall</c> is read at all,
-/// because turn rows partition the parent's columns and tool-call rows are already rolled up into
-/// it. Joining either would double-count.
-/// </para>
-/// <para>
-/// The window is half-open — <c>[from, to)</c> — so consecutive periods tile without a row falling
-/// into both, which is what makes the prior-period comparison arithmetic rather than an estimate.
-/// </para>
+/// Queries port <c>docs/conversations/usage-and-reporting.md</c>: assistant and tool tokens are summed apart,
+/// <c>ContextTokens</c> is never added to billed columns, and the turn and tool-call child tables are never read
+/// (joining either would double-count). The window is half-open, so consecutive periods tile exactly.
 /// </remarks>
 public partial class ReportService(
     EnterpriseGptDbContext ctx,
@@ -66,14 +49,13 @@ public partial class ReportService(
     TimeProvider timeProvider) : IReportService
 {
     /// <summary>
-    /// The <c>errors</c> key a rejected window is reported under. Both bounds are reported against
-    /// <c>from</c>, because a client with a range control adjusts the start rather than the end.
+    /// The <c>errors</c> key for a rejected window; both bounds use it because a range control moves the start.
     /// </summary>
     private const string FromProperty = "from";
 
     private static readonly TimeSpan DefaultWindow = TimeSpan.FromDays(30);
 
-    /// <summary>How many rows the "top models" chart draws. Frame <c>5j</c> draws ten.</summary>
+    /// <summary>How many rows the "top models" chart draws.</summary>
     private const int TopModelCount = 10;
 
     private readonly EnterpriseGptDbContext _ctx = ctx;
@@ -100,17 +82,9 @@ public partial class ReportService(
         var totals = await ReadTotalsAsync(current, cancellationToken);
         var priorTotals = await ReadTotalsAsync(prior, cancellationToken);
 
-        // Never truncated: the series is the horizontal axis of a chart, and a bounded window holds
-        // at most `MaxRangeDays` days.
-        //
-        // **These are UTC days only because every row is written UTC.** The three members below
-        // translate to DATEPART over a `datetimeoffset`, which reads the offset stored on the
-        // value rather than normalising it — so a row written with a non-UTC offset buckets to its
-        // own local day. Every writer is the audit interceptor on `TimeProvider.GetUtcNow()` today, and
-        // `BuildSeries` reports anything that lands outside the window rather than dropping it, so
-        // a future writer that breaks the assumption is loud instead of silently short.
-        // Normalising in SQL instead needs `DateTimeOffset.UtcDateTime` or `EF.Functions.DateTrunc`,
-        // both of which are EF Core 11 translations and unavailable here.
+        // Never truncated: a bounded window holds at most `MaxRangeDays` days. These are UTC days only
+        // because every row is written UTC; DATEPART buckets by the stored offset, normalising in SQL needs
+        // an EF Core 11 translation, and `BuildSeries` logs any bucket that strays outside the window.
         var days = await Aggregate(current.GroupBy(x => new { x.DateCreated.Year, x.DateCreated.Month, x.DateCreated.Day }))
             .ToListAsync(cancellationToken);
         var byDay = days.ToDictionary(
@@ -119,13 +93,11 @@ public partial class ReportService(
 
         var limit = _options.MaxGroups;
 
-        // One row past the limit, so truncation is detectable — and never fewer than the bar chart
-        // needs, because when the grouping is already by model that chart is served from this same
-        // list. An operator who sets MaxGroups below ten would otherwise get a five-bar "top 10".
+        // One past the limit to detect truncation, and never fewer than the top-models chart needs,
+        // since grouping by model serves that chart from this same list.
         var depth = Math.Max(limit, TopModelCount) + 1;
         var fetched = groupKey == UsageGroupKeys.Day
-            // The day breakdown is the series re-sorted. Asking the database for it twice would
-            // return the same rows in a different order for no benefit.
+            // The day breakdown is the series re-sorted, so it is not queried again.
             ? Rank(byDay.Select(entry => ToGroup(
                 entry.Value,
                 entry.Key.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
@@ -146,8 +118,7 @@ public partial class ReportService(
             Outcomes = totals.Outcomes,
             Series = BuildSeries(start, end, byDay),
             Groups = groups,
-            // Taken from what was fetched rather than from what survived truncation, so the chart
-            // always draws ten where ten exist.
+            // From what was fetched, not what survived truncation, so the chart draws ten where ten exist.
             TopModels = groupKey == UsageGroupKeys.Model
                 ? [.. fetched.Take(TopModelCount)]
                 : await ReadGroupsAsync(current, UsageGroupKeys.Model, TopModelCount, cancellationToken),
@@ -161,23 +132,16 @@ public partial class ReportService(
 
     #region Private methods
 
-    /// <summary>
-    /// Fills in whichever bounds the caller left out and refuses a window that cannot be reported.
-    /// </summary>
     /// <remarks>
-    /// Rejected rather than clamped, unlike the paging arguments elsewhere in this API. A caller who
-    /// asked for two years and silently received one would read the answer as two years of spend,
-    /// and nothing in the response would contradict them — whereas an over-long page of users is
-    /// obviously a page.
+    /// An over-long window is rejected, unlike paging arguments, because a silently shortened one reads as the
+    /// full period's spend.
     /// </remarks>
     private (DateTimeOffset Start, DateTimeOffset End) ResolveWindow(DateTimeOffset? from, DateTimeOffset? to)
     {
         var now = _timeProvider.GetUtcNow();
 
-        // Clamped rather than honoured. A window reaching into the future is inside the maximum and
-        // produces a long tail of dense zero days, which draws as a collapse in spending rather
-        // than as time that has not happened. The response echoes the clamped bound, which is what
-        // `To` is on the contract for.
+        // A future end is clamped, since trailing zero days would draw as a collapse in spending.
+        // The response echoes the clamped bound.
         var end = to is { } requested && requested < now ? requested : now;
         var start = from ?? end - DefaultWindow;
 
@@ -202,15 +166,9 @@ public partial class ReportService(
         return (start, end);
     }
 
-    /// <summary>
-    /// Reads one period's headline figures and its outcome split, from a single grouped query.
-    /// </summary>
     /// <remarks>
-    /// Grouping by outcome and kind rather than aggregating the period whole answers both at once:
-    /// there are at most six buckets, and folding them in memory is cheaper than a second scan of
-    /// a table nothing prunes. The two distinct counts cannot come from the same query — a count
-    /// of distinct users <em>per bucket</em> would double-count anyone whose turns did not all end
-    /// the same way.
+    /// One query grouped by outcome and kind (at most six buckets) yields both totals and the outcome split.
+    /// The distinct counts are separate queries because counting per bucket would double-count users.
     /// </remarks>
     private static async Task<PeriodTotals> ReadTotalsAsync(
         IQueryable<ConversationUsage> scoped, CancellationToken cancellationToken)
@@ -239,8 +197,7 @@ public partial class ReportService(
             Conversations = conversations
         };
 
-        // Only the outcomes that occurred. A zero row would draw a legend entry and a zero-length
-        // arc for something that did not happen.
+        // Only outcomes that occurred; a zero row would draw an empty legend entry and arc.
         var outcomes = buckets
             .GroupBy(row => row.Key.Status)
             .Select(group => new UsageOutcomeDto
@@ -254,22 +211,14 @@ public partial class ReportService(
 
         return new PeriodTotals(totals, outcomes);
 
-        // A bucket carries exactly one outcome, so this selects buckets rather than summing a
-        // conditional column. Not static: it reads `buckets`, whose element type is anonymous.
+        // Not static: it captures `buckets`, whose key type is anonymous.
         long TurnsWith(ConversationUsageStatuses status) =>
             buckets.Where(row => row.Key.Status == status).Sum(row => row.Turns);
     }
 
-    /// <summary>
-    /// Reads one period broken down by a dimension, heaviest first.
-    /// </summary>
     /// <remarks>
-    /// Each arm groups by the identifier <em>and</em> the label, so the label comes back without a
-    /// second lookup. That widens the aggregate key by the label columns — one string for a model
-    /// or a provider, three for a user — which is worth it at this cardinality and is the reason
-    /// the user arm is the widest of the three. The label is the catalog's current one while every
-    /// figure is the snapshot taken when each call ran; see <see cref="UsageGroupDto.Label"/> for
-    /// why those two are meant to disagree.
+    /// Each arm groups by identifier and label so the label needs no second lookup. Labels are the catalog's
+    /// current ones while figures are per-call snapshots; see <see cref="UsageGroupDto.Label"/>.
     /// </remarks>
     private static async Task<List<UsageGroupDto>> ReadGroupsAsync(
         IQueryable<ConversationUsage> scoped,
@@ -297,9 +246,8 @@ public partial class ReportService(
 
             case UsageGroupKeys.User:
                 {
-                    // The name is assembled here rather than in the query. `User.FullName` is an
-                    // unmapped getter, and concatenating in SQL would put a computed expression in the
-                    // GROUP BY for a value the four key columns already determine.
+                    // Name assembled in memory: `User.FullName` is unmapped, and concatenating in SQL
+                    // would add a computed expression to the GROUP BY.
                     var rows = await Heaviest(
                             Aggregate(scoped.GroupBy(x => new { x.UserId, x.User.FirstName, x.User.LastName, x.User.Email })),
                             take)
@@ -315,33 +263,23 @@ public partial class ReportService(
                     ];
                 }
 
-            // Days never reach here: the series already holds that aggregate, and asking for it a
-            // second time would return the same rows in a different order.
+            // Days never reach here: the series already holds that aggregate.
             default:
                 throw new ArgumentOutOfRangeException(nameof(key), key, "Unsupported usage grouping.");
         }
     }
 
-    /// <summary>
-    /// Expands the day buckets that have traffic into one entry per day in the window.
-    /// </summary>
-    /// <remarks>
-    /// Dense on purpose: a line drawn from a sparse series compresses quiet stretches, so the
-    /// shape of the chart stops being a function of time.
-    /// </remarks>
+    /// <remarks>One point per day in the window, because a sparse line would compress quiet stretches.</remarks>
     private List<UsageSeriesPointDto> BuildSeries<TKey>(
         DateTimeOffset start, DateTimeOffset end, Dictionary<DateOnly, AggregateRow<TKey>> byDay)
         where TKey : notnull
     {
         var first = DateOnly.FromDateTime(start.UtcDateTime);
-        // The window is half-open, so an end that lands exactly on midnight belongs to the day
-        // before it — the final tick inside the window is the one that names the last day.
+        // Half-open window: an end exactly on midnight belongs to the day before.
         var last = DateOnly.FromDateTime(end.AddTicks(-1).UtcDateTime);
 
-        // A bucket outside the window is a row this method is about to drop, and dropping it would
-        // make the series disagree with the totals in a spend report — with nothing on screen to
-        // say so. The only way to produce one is a row stored with a non-UTC offset, so this is
-        // where that assumption fails loudly instead of quietly.
+        // A bucket outside the window is about to be dropped, silently disagreeing with the totals.
+        // Only a row stored with a non-UTC offset produces one, so log it.
         var stray = byDay.Keys.Where(day => day < first || day > last).ToArray();
         if (stray.Length > 0 && _logger.IsEnabled(LogLevel.Warning))
         {
@@ -365,22 +303,12 @@ public partial class ReportService(
         return series;
     }
 
-    /// <summary>Orders a grouped set the way every consumer of it reads: heaviest first.</summary>
-    /// <remarks>
-    /// The turn count breaks a tie, because without one the order among equal-token groups is
-    /// whatever the engine returns. That is not cosmetic at the truncation boundary: it decides
-    /// *which* groups survive `MaxGroups`, so the same request could answer with a different set
-    /// of rows twice in a row.
-    /// </remarks>
+    /// <remarks>Turns break ties so the groups that survive the <c>MaxGroups</c> cut are deterministic.</remarks>
     private static IQueryable<AggregateRow<TKey>> Heaviest<TKey>(IQueryable<AggregateRow<TKey>> rows, int take)
         where TKey : notnull =>
         rows.OrderByDescending(row => row.TotalTokens).ThenByDescending(row => row.Turns).Take(take);
 
-    /// <summary>The in-memory counterpart, for the day breakdown the series already holds.</summary>
-    /// <remarks>
-    /// Ties break on the key rather than the turn count, which for days is the date — the one
-    /// ordering a reader would expect two equally busy days to fall into.
-    /// </remarks>
+    /// <summary>In-memory counterpart of <c>Heaviest</c> for the day breakdown; ties break on the date.</summary>
     private static List<UsageGroupDto> Rank(IEnumerable<UsageGroupDto> groups, int take) =>
     [
         .. groups
@@ -407,19 +335,10 @@ public partial class ReportService(
             UnpricedTurns = row.UnpricedTurns
         };
 
-    /// <summary>
-    /// The one projection every grouped query in this file shares.
-    /// </summary>
+    /// <summary>The one projection every grouped query here shares, so the arithmetic exists once.</summary>
     /// <remarks>
-    /// Generic over the grouping key so the aggregate arithmetic is written once. Getting it wrong
-    /// in one of five copies — summing tool tokens into the assistant column, or pricing an
-    /// unpriced call as zero — is the kind of defect that produces a plausible number nobody can
-    /// tell is wrong, which is exactly what this file exists to avoid.
-    /// <para>
-    /// The cost arithmetic is repeated here rather than read from
-    /// <c>ConversationUsage.EstimatedCost</c>, which is an unmapped getter: projecting it would
-    /// throw, because there is no column to translate it to.
-    /// </para>
+    /// Cost is recomputed because <c>ConversationUsage.EstimatedCost</c> is an unmapped getter and cannot be
+    /// projected.
     /// </remarks>
     private static IQueryable<AggregateRow<TKey>> Aggregate<TKey>(
         IQueryable<IGrouping<TKey, ConversationUsage>> grouped)
@@ -439,9 +358,8 @@ public partial class ReportService(
             ToolTokens = group.Sum(x => x.ToolInputTokens + x.ToolOutputTokens),
             TotalTokens = group.Sum(x =>
                 x.InputTokens + x.OutputTokens + x.ToolInputTokens + x.ToolOutputTokens),
-            // Zero for a turn that was never transcribed, which is every cancelled and failed one.
-            // Folding them in keeps this comparable with the billed columns beside it; it is never
-            // added to them.
+            // Null (counted as zero) for every untranscribed turn, i.e. each cancelled or failed one.
+            // Reported beside the billed columns, never added to them.
             ContextTokens = group.Sum(x => x.ContextTokens ?? 0L),
             PricedCost = group.Sum(x =>
                 x.InputPricePerMillionTokens != null && x.OutputPricePerMillionTokens != null
@@ -458,13 +376,8 @@ public partial class ReportService(
     #region Public static methods
 
     /// <summary>
-    /// Adds the cost of every group that could be priced, or <see langword="null"/> when none could.
+    /// Sums the priceable groups' cost, or <see langword="null"/> (not a zero that reads as free) when none are.
     /// </summary>
-    /// <remarks>
-    /// Null and zero mean different things here and the distinction survives the fold: a group
-    /// whose calls all lacked a price contributes nothing, and a period in which <em>no</em> group
-    /// could be priced answers null rather than a total that reads as free.
-    /// </remarks>
     internal static decimal? FoldCost<TKey>(IEnumerable<AggregateRow<TKey>> rows)
         where TKey : notnull
     {

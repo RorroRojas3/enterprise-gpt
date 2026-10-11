@@ -5,23 +5,14 @@
     <title>Enterprise GPT</title>
     <base href="/" />
     <!--
-      `viewport-fit=cover` is US-1403's, and it is not cosmetic: without it every
-      `env(safe-area-inset-*)` resolves to 0px, so the safe-area padding frame `1d`
-      asks for would be a no-op that looks implemented. With it the layout viewport
-      extends *under* the notch and the home indicator, which is why `_kit.scss`
-      exposes the four insets as tokens and the navbar, the composer, the transcript
-      gutters and the mobile drawer all consume them. Removing it silently un-pads
-      those four; removing their padding silently puts content under the notch.
+      Without `viewport-fit=cover` every `env(safe-area-inset-*)` is 0px, and the safe-area
+      padding of the navbar, composer, transcript and drawer silently does nothing.
     -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
     <!--
-      Only the two faces on the critical path: Inter 400 carries all body copy, and
-      Montserrat 600 is the first heading weight any user sees (the signing-in
-      interstitial, then the chat empty state). Every other face is fetched by the
-      browser when a rule first needs it. `crossorigin` is required even
-      same-origin — fonts are always fetched in CORS mode, and without it the
-      browser issues a second, unused request.
+      Only the critical-path faces: Inter 400 for body copy, Montserrat 600 for the first heading.
+      `crossorigin` even same-origin: fonts fetch in CORS mode, or the browser requests twice.
     -->
     <link
       rel="preload"
@@ -37,18 +28,9 @@
       type="font/woff2"
       crossorigin
     />
-    <!--
-      Styles for the startup and fatal shells are inline rather than in
-      styles.scss: they have to render when the stylesheet or the bundle never
-      loaded, which is the case they exist for.
-    -->
+    <!-- Inline so the startup and fatal shells render even if no stylesheet or bundle loads. -->
     <style>
-      /*
-        Fallback for the case the theme script below did not run at all. The two
-        colour pairs are --bs-body-bg / --bs-body-color per theme, duplicated here
-        because no stylesheet has loaded yet; scripts/check-tokens.mjs asserts they
-        stay equal to the tokens.
-      */
+      /* Fallback if the theme script never ran; scripts/check-tokens.mjs keeps it in step. */
       :root {
         color-scheme: light dark;
         background: #f7fafc;
@@ -104,12 +86,7 @@
       #app-shell[data-state='failed'] .on-starting {
         display: none;
       }
-      /*
-        The fatal shell is deliberately outside the theme system — system fonts, a
-        fixed palette, no brand. Now that :root can carry a dark scheme, it has to be
-        pinned or a UA-coloured card would follow the theme and contradict the design.
-        These are the board's own values.
-      */
+      /* The fatal shell sits outside the theme system, so it is pinned light. */
       #app-shell[data-state='failed'] {
         color-scheme: light;
         background: #f4f5f6;
@@ -127,16 +104,14 @@
       }
     </style>
     <script>
-      // Resolves the theme before first paint. It deliberately duplicates
-      // ThemeService and _tokens.scss: neither has loaded yet, which is the whole
-      // point. scripts/check-tokens.mjs asserts the key and both colours stay in step.
+      // Resolves the theme before first paint, ahead of ThemeService and _tokens.scss.
+      // scripts/check-tokens.mjs keeps the storage key and both colours in step.
       (function () {
         var stored = null;
         try {
           stored = localStorage.getItem('egpt.theme');
         } catch (e) {
-          // Private mode, blocked third-party storage and enterprise policies all
-          // throw on access rather than returning null.
+          // Private mode and storage policies throw on access rather than return null.
         }
         var dark =
           stored === 'dark' ||
@@ -145,9 +120,7 @@
             window.matchMedia('(prefers-color-scheme: dark)').matches);
         var root = document.documentElement;
         root.setAttribute('data-bs-theme', dark ? 'dark' : 'light');
-        // Without this the UA paints scrollbars, form controls and the default canvas
-        // from `color-scheme: light dark`, which follows the OS — so a user on a light
-        // OS with a stored dark preference still gets a light startup shell.
+        // Otherwise UA scrollbars and controls follow the OS, not the stored theme.
         root.style.colorScheme = dark ? 'dark' : 'light';
       })();
     </script>
@@ -156,19 +129,16 @@
     <app-root></app-root>
 
     <!--
-      Visible from first paint and removed by main.ts once the app bootstraps.
-      Starting hidden would leave a blank page whenever the bundle itself fails to
-      load — a hashed-filename mismatch, a CDN miss, a CSP block — because nothing
-      would be running to reveal it.
+      Visible from first paint; main.ts removes it. Starting hidden would leave a blank page when
+      the bundle fails to load, since nothing would run to reveal it.
     -->
     <div id="app-shell" data-state="starting">
       <div class="card">
         <h1 tabindex="-1" id="app-shell-heading">Starting Enterprise GPT…</h1>
         <div class="on-failed">
           <!--
-            The live region wraps the explanation only. Including the already-
-            focused heading would have it read twice, and a live region is no
-            place for an interactive control.
+            The live region wraps the explanation only: the focused heading would be read twice,
+            and a live region is no place for an interactive control.
           -->
           <div id="app-shell-status">
             <p>The application configuration could not be loaded, so the app has not started.</p>
@@ -188,13 +158,8 @@
     </noscript>
 
     <script>
-      // Watchdog for the one failure the application cannot report on its own: the
-      // bundle never ran. Cleared on either outcome.
-      //
-      // 60s, not 30s: since US-201 the shell also covers the sign-in handshake and the
-      // session bootstrap, so a cold API can legitimately keep it on screen for tens of
-      // seconds. Firing early would tell a user their app had failed while it was still
-      // starting.
+      // Watchdog for a bundle that never ran. 60s: the shell also covers sign-in and the session
+      // bootstrap, which a cold API can stretch to tens of seconds.
       window.__appShellWatchdog = setTimeout(function () {
         var shell = document.getElementById('app-shell');
         if (shell && shell.dataset.state === 'starting') {

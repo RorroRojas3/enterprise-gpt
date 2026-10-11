@@ -4,7 +4,8 @@ namespace Enterprise.Gpt.Common.Constants.Usage;
 /// Column widths of a recorded tool call.
 /// </summary>
 /// <remarks>
-/// The writer clips to these rather than failing: it runs after the answer has streamed, so an unusually long value must not lose the turn's accounting.
+/// The writer clips to these rather than failing: it runs after the answer has streamed, so a long value
+/// must not lose the turn's accounting.
 /// </remarks>
 public static class ConversationUsageToolCallLimits
 {

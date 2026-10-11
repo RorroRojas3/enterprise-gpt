@@ -6,26 +6,22 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Service.Documents.Sheets;
 
 /// <summary>
-/// Covers the generated sheet-query SQL. The statements cannot be executed here — SQLite derives its own
-/// store type for the <c>json</c> cells column and has no <c>JSON_VALUE</c> of SQL Server's shape — so
-/// what is asserted is the part decided in C#: that only the shape of a statement varies with the
-/// request, never its content, and that no column name ever reaches the command text.
+/// SQLite cannot run these statements, so this asserts what C# decides: only a statement's shape varies
+/// with the request, never its content, and no column name ever reaches the command text.
 /// </summary>
 public sealed class SheetQuerySqlTests
 {
     [Fact]
     public void GeneratedStatements_ContainNoLiteralValues()
     {
-        // The single check that matters most for review: the number of filter arms varies with the
-        // request, but nothing derived from the model's arguments is ever concatenated into the text.
-        // Every varying fragment is a parameter placeholder.
+        // The check that matters most: filter arms vary with the request, but every varying fragment is a
+        // parameter placeholder, never concatenated model arguments.
         foreach (var sql in AllStatements())
         {
             var quoted = sql.Split('\'');
 
-            // Odd-numbered segments are the contents of single-quoted literals. Only the fixed strings
-            // this module is allowed to write should appear there: the LIKE escape character, and the
-            // group separator a numeric read strips along with the empty string it is replaced by.
+            // Odd-numbered segments are single-quoted literals: only the LIKE escape character and the
+            // group separator a numeric read strips (and its empty replacement) may appear.
             for (var i = 1; i < quoted.Length; i += 2)
             {
                 Assert.Contains(quoted[i], ["\\", ",", ""], StringComparer.Ordinal);

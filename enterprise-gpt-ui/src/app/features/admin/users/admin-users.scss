@@ -33,9 +33,8 @@
   }
 }
 
-// Frame `5a` draws this at 200px. It shrinks rather than wrapping the toolbar early,
-// because the longest option is an administrator-authored permission name and a fixed
-// track would either truncate it or push the Add button off the row.
+// Shrinks rather than wrapping the toolbar early: a fixed track would truncate a long
+// administrator-authored permission name or push Add off the row.
 .admin-users__permission {
   display: block;
   min-width: 0;
@@ -46,14 +45,8 @@
     flex-basis: 100%;
   }
 
-  // The toolbar's metrics, not Bootstrap's. `.form-select` carries a 1rem font by
-  // default, which reads a size larger than the search field and the Add button either
-  // side of it — the same 38px / 10px / 13px the projects and conversations sort selects
-  // set, so the three read as one control across the app.
-  //
-  // `width: 100%` where those two set a fixed width, because this one shrinks: the track
-  // is the wrapper's flex basis (frame `5a`'s 200px), and a fixed width here would keep
-  // the select at 200px while the label around it narrowed.
+  // The toolbar's metrics, matching the app's other sort selects, not Bootstrap's 1rem.
+  // `width: 100%` rather than fixed, so the select shrinks with the wrapper's flex basis.
   .form-select {
     width: 100%;
     height: 38px;
@@ -114,8 +107,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  // Without this the flex row refuses to shrink below its content and the name never
-  // ellipsises — it widens the table instead.
+  // Lets the flex row shrink, so the name ellipsises instead of widening the table.
   min-width: 0;
 }
 
@@ -134,8 +126,7 @@
   font-weight: 400;
 }
 
-// Frame `5d`'s refusal, under the name rather than beside the button: the actions column
-// is 160px, and this sentence would wrap to four lines there.
+// Under the name, not beside the button: the 160px actions column would wrap it to four lines.
 .admin-users__refusal {
   display: flex;
   align-items: flex-start;
@@ -176,8 +167,7 @@
   justify-content: flex-end;
   gap: 6px;
 
-  // `CardRow` stretches what it is handed, and what it is handed is this wrapper — the
-  // buttons inside it are reached from here or not at all.
+  // `CardRow` stretches this wrapper, so the buttons can only be sized from here.
   @include bp.mobile {
     width: 100%;
 
@@ -194,9 +184,7 @@
     white-space: nowrap;
   }
 
-  // The row's own request is in flight. `aria-disabled` rather than the native attribute
-  // keeps the control focusable, so it needs a visual state of its own — otherwise a
-  // sighted reader sees a normal button that does nothing when pressed.
+  // The row's request is in flight; `aria-disabled` keeps it focusable, so it needs its own look.
   .btn[aria-disabled='true'] {
     opacity: 0.5;
     cursor: default;
@@ -211,8 +199,7 @@
   padding: 11px 4px 0;
 }
 
-// A card has the vertical room the table row never had, so the name wraps; the email
-// beneath it keeps its ellipsis, which is how the board draws that pair.
+// A card has vertical room, so the name wraps; the email beneath it keeps its ellipsis.
 @include bp.mobile {
   .admin-users__name {
     overflow: visible;

@@ -38,9 +38,7 @@
       </li>
     }
     <li class="donut__total">
-      <!-- The share the ring's centre draws, restated as text. That `<svg>` is `aria-hidden`, so
-           without this the combined figure — the one the panel is named after — exists nowhere a
-           screen reader can reach it. -->
+      <!-- The ring's centre figure restated as text, since the `<svg>` is `aria-hidden`. -->
       <span class="donut__wasted font-display"
         >{{ wastedPercent() }} · {{ wastedTokens() }} tokens</span
       >

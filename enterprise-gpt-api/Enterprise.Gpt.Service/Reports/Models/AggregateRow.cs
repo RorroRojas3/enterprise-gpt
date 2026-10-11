@@ -1,9 +1,6 @@
 namespace Enterprise.Gpt.Service.Reports.Models;
 
-/// <summary>
-/// One grouped row as the database returns it, before it is given a label.
-/// </summary>
-/// <typeparam name="TKey">The grouping key, usually an anonymous type of key columns.</typeparam>
+/// <summary>One grouped row as the database returns it, before it is given a label.</summary>
 internal sealed record AggregateRow<TKey>
     where TKey : notnull
 {
@@ -29,26 +26,14 @@ internal sealed record AggregateRow<TKey>
 
     public long ContextTokens { get; init; }
 
-    /// <summary>
-    /// What the priced calls in this group cost, as the database added them up.
-    /// </summary>
-    /// <remarks>
-    /// Not the figure to report. Read <see cref="EstimatedCost"/> instead, which restores the
-    /// distinction this one loses.
-    /// </remarks>
+    /// <summary>The database's sum of the priced calls; report <see cref="EstimatedCost"/> instead.</summary>
     public decimal? PricedCost { get; init; }
 
     public long UnpricedTurns { get; init; }
 
-    /// <summary>
-    /// What the group cost, or <see langword="null"/> when nothing in it could be priced.
-    /// </summary>
+    /// <summary>What the group cost, or <see langword="null"/> when nothing in it could be priced.</summary>
     /// <remarks>
-    /// Derived rather than read straight off the aggregate, because the provider does not preserve
-    /// the distinction on its own: SQL Server sums an all-NULL set to NULL, but EF wraps the
-    /// aggregate in a COALESCE that turns that into zero — and zero reads as free where the honest
-    /// answer is unpriceable. The comparison below restores it from a count the same query already
-    /// produced, so it costs no extra work and cannot disagree with what was summed.
+    /// Derived because EF wraps the SUM in a COALESCE, so an all-NULL (unpriceable) group would read as free.
     /// </remarks>
     public decimal? EstimatedCost => UnpricedTurns == Turns ? null : PricedCost;
 }

@@ -4,16 +4,10 @@ using Microsoft.Identity.Web;
 
 namespace Enterprise.Gpt.Api.Configuration;
 
-/// <summary>
-/// Registers Entra ID bearer authentication and on-behalf-of token acquisition.
-/// </summary>
 internal static class AuthenticationConfiguration
 {
     #region Public static methods
 
-    /// <summary>
-    /// Validates incoming tokens against the <c>AzureAd</c> section and caches downstream tokens in memory.
-    /// </summary>
     internal static IServiceCollection AddEnterpriseGptAuthentication(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

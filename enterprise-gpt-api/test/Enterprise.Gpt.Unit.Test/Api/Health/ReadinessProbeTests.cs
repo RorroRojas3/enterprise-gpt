@@ -58,9 +58,8 @@ public sealed class ReadinessProbeTests
     }
 
     /// <summary>
-    /// The probe is shared, so a caller that walks away — or a platform whose own timeout is shorter
-    /// than the registrations' — must not cancel the work everyone else is queued on, which would
-    /// leave the cache cold under exactly the conditions it exists for.
+    /// The probe is shared, so one caller's cancellation (or a shorter platform timeout) must not cancel
+    /// the work others are queued on and leave the cache cold.
     /// </summary>
     [Fact]
     public async Task CheckAsync_TheCallerCancelsMidProbe_StillFillsTheCache()

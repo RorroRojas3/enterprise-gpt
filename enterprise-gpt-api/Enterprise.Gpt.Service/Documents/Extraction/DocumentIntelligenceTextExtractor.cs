@@ -14,9 +14,7 @@ namespace Enterprise.Gpt.Service.Documents.Extraction;
 /// are OCR'd rather than yielding nothing.
 /// </summary>
 /// <remarks>
-/// Document Intelligence accepts <c>.pdf</c> and <c>.docx</c> directly. The binary <c>.doc</c> format is
-/// not an accepted input, so it is converted to <c>.docx</c> first and then follows the same path —
-/// which keeps a single OCR-backed route for every Word document rather than a second, weaker one.
+/// Binary <c>.doc</c> is not an accepted input, so it is converted to <c>.docx</c> first.
 /// </remarks>
 public sealed partial class DocumentIntelligenceTextExtractor(
     ILogger<DocumentIntelligenceTextExtractor> logger,
@@ -65,8 +63,7 @@ public sealed partial class DocumentIntelligenceTextExtractor(
         }
         catch (RequestFailedException ex) when (ex.Status is 400 or 415)
         {
-            // The service rejected the document itself (corrupt, password-protected, unsupported
-            // variant). That is the caller's problem to fix, so surface it as a 400 rather than a 500.
+            // The service rejected the document itself, which is the caller's to fix: a 400, not a 500.
             LogDocumentRejected(_logger, ex, ex.Status);
             throw new ValidationException(
             [
@@ -84,8 +81,7 @@ public sealed partial class DocumentIntelligenceTextExtractor(
             .Where(segment => !string.IsNullOrWhiteSpace(segment.Text))
             .ToList();
 
-        // Office inputs are not always paginated by the service. Falling back to the flat content keeps
-        // a Word document from silently producing zero chunks.
+        // Office inputs are not always paginated; fall back to flat content rather than zero chunks.
         if (segments.Count == 0 && !string.IsNullOrWhiteSpace(result.Content))
         {
             segments.Add(new DocumentSegmentDto { SourceNumber = null, Text = result.Content });

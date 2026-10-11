@@ -160,10 +160,7 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
     }
 
     /// <summary>
-    /// The transcript lives in Cosmos and the row lives in SQL, and the transcript cutover destroyed
-    /// every transcript while leaving every row. A conversation in that state has to open with an
-    /// empty transcript: it is visible in the sidebar, so answering 404 would strand a row the user
-    /// can see. A foreign or deactivated id still 404s — that is the case below.
+    /// A SQL row whose Cosmos transcript is missing opens empty rather than 404ing, since the sidebar shows it.
     /// </summary>
     [Fact]
     public async Task GetConversationMessages_NoTranscriptDocument_ReturnsAnEmptyTranscript()
@@ -194,9 +191,8 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
     }
 
     /// <summary>
-    /// The resume shape: the model comes off the conversation row, the MCP servers off the newest
-    /// chat turn in the usage audit. Both tables are exercised for real here — they exist only in
-    /// the model, so a mapping that SQLite tolerates but SQL Server rejects surfaces at this level.
+    /// The model comes off the conversation row and the MCP servers off the newest chat turn; run on SQL Server
+    /// because SQLite tolerates mappings it rejects.
     /// </summary>
     [Fact]
     public async Task GetConversation_AfterSeveralTurns_ReturnsTheNewestTurnsModelAndMcpServers()
@@ -270,7 +266,7 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
     [Fact]
     public async Task SearchConversations_TakeOfZero_IsClampedRatherThanReturningServerError()
     {
-        // Straight off the query string: this used to divide by zero computing CurrentPage.
+        // Straight off the query string; take = 0 would divide by zero computing CurrentPage.
         await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
         using var client = _fixture.Factory.CreateUserClient();
 
@@ -657,10 +653,8 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
 
     #region Message feedback
     /// <summary>
-    /// The route's happy path end to end: the transcript document is patched and the reporting row
-    /// lands beside it. Reading the rating back through <c>GET .../messages</c> is not asserted
-    /// here on purpose — that read goes through a transcript query, which the in-memory store
-    /// refuses to implement; the emulator-backed persistence tests own that half.
+    /// The read-back is left to the emulator tests, since the in-memory store does not implement transcript
+    /// queries.
     /// </summary>
     [Fact]
     public async Task SetMessageFeedback_OwnAssistantMessage_RecordsTheRating()
@@ -686,8 +680,8 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
     }
 
     /// <summary>
-    /// Re-rating replaces. The unique index on the projection is what makes a second row impossible,
-    /// so a regression here fails as a 500 rather than as a silent duplicate.
+    /// The projection's unique index makes a second row impossible, so a regression fails as a 500 rather
+    /// than as a duplicate.
     /// </summary>
     [Fact]
     public async Task SetMessageFeedback_RatedAgainWithTheOppositeValue_ReplacesRatherThanDuplicates()
@@ -713,15 +707,9 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
     }
 
     /// <summary>
-    /// Withdrawing leaves the row and nulls the verdict: the row is the record that this message was
-    /// considered, which reporting wants to keep.
+    /// The row is kept as the record that the message was considered; seeded already rated because the
+    /// in-memory store ignores patches, so an API rating would not reach the document.
     /// </summary>
-    /// <remarks>
-    /// The document is seeded already rated rather than rated through the API first, because the
-    /// in-memory transcript store ignores patch operations — so a rating made
-    /// here would not be on the document the withdrawal reads, and the withdrawal would correctly
-    /// conclude there was nothing to withdraw.
-    /// </remarks>
     [Fact]
     public async Task SetMessageFeedback_NullRatingOnARatedMessage_WithdrawsItAndKeepsTheRow()
     {
@@ -747,10 +735,7 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
         Assert.Null(row.Rating);
     }
 
-    /// <summary>
-    /// Someone else's conversation is a 404 rather than a 403, consistently with the rest of the
-    /// group, so the route cannot be used to confirm that a conversation or message exists.
-    /// </summary>
+    /// <summary>404 rather than 403, so the route cannot confirm that a conversation or message exists.</summary>
     [Fact]
     public async Task SetMessageFeedback_AnotherUsersConversation_ReturnsNotFound()
     {
@@ -785,10 +770,7 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
     }
 
     /// <summary>
-    /// A raw body rather than the DTO, because serializing the DTO would only prove the client and
-    /// the server agree with themselves. This pins acceptance of the documented string form — not
-    /// its casing, which System.Text.Json reads case-insensitively whatever this sends. The casing
-    /// that is a contract is the one on the way <em>out</em>, and
+    /// A raw body pins acceptance of the documented string form; outbound casing is the contract, and
     /// <c>ConversationMessageDtoTests</c> pins that.
     /// </summary>
     [Fact]
@@ -811,10 +793,7 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
         Assert.Equal(MessageFeedbackRatings.Down, row?.Rating);
     }
 
-    /// <summary>
-    /// A rating naming nothing the enum defines fails during binding, before any validator could
-    /// see it, so this 400 carries no errors dictionary.
-    /// </summary>
+    /// <summary>An unknown rating name fails during binding, so this 400 carries no errors dictionary.</summary>
     [Fact]
     public async Task SetMessageFeedback_UnparseableRating_ReturnsABindingFailure()
     {
@@ -835,10 +814,8 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
     }
 
     /// <summary>
-    /// The hole the validator closes, end to end: the string-enum converter accepts integers and
-    /// does not check them against the enum, so an integer nobody defined binds cleanly and would
-    /// otherwise be stored — and would then come back out of the transcript as a number, breaking
-    /// the string wire format for every client reading that field.
+    /// The string-enum converter binds undefined integers, which would be stored and read back as numbers;
+    /// the validator closes that hole.
     /// </summary>
     [Fact]
     public async Task SetMessageFeedback_RatingAsAnUndefinedInteger_ReturnsValidationProblemAndStoresNothing()
@@ -862,9 +839,7 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
     }
 
     /// <summary>
-    /// The header document lives in the same partition under the conversation's own id, so the one
-    /// id a caller can supply that resolves to a real document without being a message has to be
-    /// answered as the 404 it is.
+    /// The header shares the partition under the conversation id, so that id passed as a message id must 404.
     /// </summary>
     [Fact]
     public async Task SetMessageFeedback_ConversationIdPassedAsTheMessageId_ReturnsNotFound()

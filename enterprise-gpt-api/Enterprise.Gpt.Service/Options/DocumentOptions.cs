@@ -3,69 +3,37 @@ using FluentValidation;
 
 namespace Enterprise.Gpt.Service.Options;
 
-/// <summary>
-/// Tuning knobs for the document ingestion pipeline, bound from the <c>Documents</c> configuration
-/// section and validated at startup.
-/// </summary>
 /// <remarks>
-/// The set of accepted file extensions is deliberately <em>not</em> configurable: it is derived from
-/// the registered <see cref="IDocumentTextExtractor"/> implementations, so configuration can
-/// never advertise a format nothing knows how to read.
+/// Accepted extensions are deliberately not configurable: they derive from the registered
+/// <see cref="IDocumentTextExtractor"/> implementations, so configuration cannot advertise an unreadable
+/// format.
 /// </remarks>
 public sealed class DocumentOptions
 {
-    /// <summary>
-    /// Configuration section this type binds from.
-    /// </summary>
     public const string SectionName = "Documents";
 
-    /// <summary>
-    /// Largest upload accepted, in bytes. Default: 50 MB. Azure Document Intelligence caps paid-tier
-    /// (S0) inputs at 500 MB and free-tier (F0) inputs at 4 MB.
-    /// </summary>
+    /// <summary>Document Intelligence caps inputs at 500 MB on S0 and 4 MB on F0.</summary>
     public long MaxFileSizeBytes { get; set; } = 50L * 1024 * 1024;
 
     /// <summary>
-    /// Memory budget for uploads waiting to be processed, in bytes. Default: 512 MB.
+    /// Memory budget for queued uploads, each held whole until a worker takes it. Queue capacity derives from
+    /// it, so this bounds burst exposure; in-flight jobs are bounded by <c>BackgroundJobs:MaxConcurrent</c>.
     /// </summary>
-    /// <remarks>
-    /// Every queued item holds its whole file in memory until a worker picks it up, so this — not a
-    /// count of items — is what actually bounds the host's exposure to a burst of uploads. The queue's
-    /// capacity is derived as <see cref="MaxQueuedBytes"/> ÷ <see cref="MaxFileSizeBytes"/>, so the
-    /// worst case really is this many bytes; writers wait once it is full, pushing backpressure out to
-    /// the caller's request. In-flight jobs are additional and bounded separately by
-    /// <c>BackgroundJobs:MaxConcurrent</c>.
-    /// </remarks>
     public long MaxQueuedBytes { get; set; } = 512L * 1024 * 1024;
 
-    /// <summary>
-    /// Number of uploads that can wait in the queue, derived from the byte budget so the memory
-    /// ceiling is a property of the configuration rather than an assumption. Always at least one.
-    /// </summary>
     public int MaxQueueLength => (int)Math.Max(1, Math.Min(int.MaxValue, MaxQueuedBytes / Math.Max(1, MaxFileSizeBytes)));
 
-    /// <summary>
-    /// Number of chunks sent to the embedding model per request. Default: 64.
-    /// </summary>
     public int EmbeddingBatchSize { get; set; } = 64;
 
     /// <summary>
-    /// How long an issued document download link stays valid, in minutes. Default: 5.
+    /// Minutes, not hours, because the link is a bearer credential. Signing already back-dates the start for
+    /// clock skew, so the whole window is usable.
     /// </summary>
-    /// <remarks>
-    /// The link carries its own authorization, so anyone holding it can read the file until it
-    /// expires — which is why the window is minutes rather than hours. Signing already back-dates
-    /// the start by five minutes for clock skew, so the whole of this window is usable.
-    /// </remarks>
     public int DownloadUrlLifetimeMinutes { get; set; } = 5;
 
-    /// <summary>
-    /// Chunking parameters.
-    /// </summary>
     public ChunkingOptions Chunking { get; set; } = new();
 }
 
-/// <summary>Validates <see cref="DocumentOptions"/>.</summary>
 public sealed class DocumentOptionsValidator : AbstractValidator<DocumentOptions>
 {
     public DocumentOptionsValidator()

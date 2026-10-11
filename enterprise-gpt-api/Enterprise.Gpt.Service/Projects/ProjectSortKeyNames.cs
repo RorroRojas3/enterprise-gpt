@@ -4,14 +4,10 @@ using Enterprise.Gpt.Service.Sorting.Models;
 
 namespace Enterprise.Gpt.Service.Projects;
 
-/// <summary>
-/// The <c>?sort=</c> values <c>GET api/projects</c> accepts.
-/// </summary>
+/// <summary>The <c>?sort=</c> values <c>GET api/projects</c> accepts.</summary>
 public static class ProjectSortKeyNames
 {
-    /// <summary>
-    /// Gets the accepted values, in the order a rejection message lists them.
-    /// </summary>
+    /// <summary>In the order a rejection message lists them.</summary>
     public static IReadOnlyList<string> Supported { get; } = ["created", "updated", "name", "favorite"];
 
     private static readonly Dictionary<string, ProjectSortKeys> ByName =
@@ -23,9 +19,6 @@ public static class ProjectSortKeyNames
             ["favorite"] = ProjectSortKeys.Favorite
         };
 
-    /// <summary>
-    /// Gets the accepted values rendered for a validation message.
-    /// </summary>
     public static string SupportedList { get; } = string.Join(", ", Supported.Select(name => $"'{name}'"));
 
     #region Private methods
@@ -41,12 +34,7 @@ public static class ProjectSortKeyNames
 
     #region Public static methods
 
-    /// <summary>
-    /// Resolves the <c>?sort=</c> and <c>?dir=</c> pair a caller sent.
-    /// </summary>
-    /// <param name="sort">The requested field, or <see langword="null"/>.</param>
-    /// <param name="dir">The requested direction, or <see langword="null"/>.</param>
-    /// <returns>The ordering to apply.</returns>
+    /// <summary>Resolves the <c>?sort=</c> and <c>?dir=</c> pair a caller sent.</summary>
     /// <exception cref="FluentValidation.ValidationException">Either value is unrecognised.</exception>
     public static SortSelection<ProjectSortKeys> Resolve(string? sort, string? dir)
     {

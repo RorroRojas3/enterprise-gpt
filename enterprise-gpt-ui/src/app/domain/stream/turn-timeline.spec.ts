@@ -7,11 +7,7 @@ import {
 } from './andes/assistant-ui.contract';
 import { TurnTimeline, createInitialTimeline, foldTimeline } from './turn-timeline';
 
-/**
- * US-501: the ordering index beside the vendored fold. The fold owns activity
- * state; this structure owns only the order things arrived in — these specs
- * pin that split and the recorded-turn ordering criterion.
- */
+/** The fold owns activity state; the timeline owns only the order things arrived in. */
 describe('foldTimeline', () => {
   function foldBoth(events: ReturnType<typeof fullTurnEvents>): {
     snapshot: AssistantStatusSnapshot;
@@ -50,8 +46,7 @@ describe('foldTimeline', () => {
     const [head, activity, tail] = timeline.nodes;
     expect(activity).toEqual({ kind: 'activity', scopeId: 'mcp-1', parentScopeId: undefined });
 
-    // The offsets are the join to the snapshot's single accumulated string —
-    // the timeline holds no text of its own.
+    // The offsets join to the snapshot's single string; the timeline holds no text.
     const text = snapshot.text ?? '';
     expect(head).toEqual({ kind: 'text', start: 0, end: 23 });
     expect(text.slice(0, 23)).toBe('Checking the forecast. ');

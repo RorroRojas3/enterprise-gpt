@@ -6,9 +6,7 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Api.Configuration.Providers;
 
 /// <summary>
-/// Covers the callback that shapes an Azure AI Foundry turn, in isolation from the SDK bridge.
-/// <see cref="AzureAIFoundryChatClientBridgeTests"/> covers what actually reaches the wire; this
-/// covers the decisions the callback makes before it gets there.
+/// The callback's decisions in isolation; <see cref="AzureAIFoundryChatClientBridgeTests"/> covers the wire.
 /// </summary>
 public sealed class AzureAIFoundryDefaultsTests
 {
@@ -32,9 +30,7 @@ public sealed class AzureAIFoundryDefaultsTests
     [InlineData(true)]
     public void Create_Always_ClearsTheReasoningRequest(bool isReasoningEnabled)
     {
-        // Unconditional on purpose, and the `true` case is the one that matters: the catalog can flag
-        // a model on this provider as reasoning-enabled, and ConversationService will honour that by
-        // populating ChatOptions.Reasoning regardless of which provider serves the turn. This is the
+        // ConversationService sets Reasoning for a reasoning-flagged row on any provider; this is the
         // only place that combination is discarded.
         var options = CatalogOptions(isReasoningEnabled);
         options.Reasoning = new ReasoningOptions
@@ -49,10 +45,8 @@ public sealed class AzureAIFoundryDefaultsTests
     [Fact]
     public void Create_Always_LeavesTheConversationIdAlone()
     {
-        // The asymmetry with AzureOpenAIDefaults is deliberate, not an oversight. The Responses
-        // adapter reads ConversationId as previous_response_id and has to have it cleared; Chat
-        // Completions is stateless and the adapter has nowhere to put it, so there is nothing to
-        // clear. AzureAIFoundryChatClientBridgeTests pins that it stays off the wire regardless.
+        // Deliberately unlike AzureOpenAIDefaults: the Responses adapter reads ConversationId as
+        // previous_response_id, but Chat Completions has nowhere to put it.
         var options = CatalogOptions(isReasoningEnabled: false);
         options.ConversationId = "6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b";
 
@@ -62,8 +56,7 @@ public sealed class AzureAIFoundryDefaultsTests
     [Fact]
     public void Create_Always_LeavesTheModelIdAlone()
     {
-        // Every turn names its deployment from the catalog; the callback must not substitute the
-        // provider default.
+        // Every turn names its deployment from the catalog, never the provider default.
         Assert.Equal("model-from-catalog", Apply(CatalogOptions(isReasoningEnabled: false)).ModelId);
     }
 

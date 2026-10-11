@@ -4,16 +4,9 @@ import { Icon } from '@shared/icon/icon';
 import { formatDelta } from './usage-format';
 
 /**
- * One of frame `5j`'s four headline figures, with its change against the prior period.
- *
- * The delta is passed in already computed, because what counts as "up" differs per tile and the
- * arithmetic belongs beside the figures rather than inside a presentational component.
- *
- * **Direction is never carried by colour alone** (SC 1.4.1): the arrow glyph and the signed
- * percentage both state it, so the tone is reinforcement rather than the message. The board paints
- * every rise `--ok`, including a rise in cost — kept, because a usage report is read by someone
- * asking what changed, and re-encoding "more spend is bad" here would be this component inventing
- * a product opinion the boards do not hold.
+ * The delta arrives precomputed, since what counts as "up" differs per tile. Direction is never
+ * colour alone (SC 1.4.1), and every rise is `--ok`, cost included: "more spend is bad" is a
+ * product opinion this component should not invent.
  */
 @Component({
   selector: 'app-kpi-tile',
@@ -30,10 +23,8 @@ export class KpiTile {
   readonly delta = input.required<number | null>();
 
   /**
-   * The period the change is measured against, named without a preposition — "prior 30 days".
-   *
-   * The tile supplies the wording around it, because the two states need different sentences and
-   * a caller passing a whole phrase can only be right for one of them.
+   * Named without a preposition ("prior 30 days"): the tile supplies the wording, since its two
+   * states need different sentences.
    */
   readonly comparison = input.required<string>();
 
@@ -48,12 +39,6 @@ export class KpiTile {
     this.isUp() ? 'bi-arrow-up-right' : 'bi-arrow-down-right',
   );
 
-  /**
-   * Whether there is a prior period to compare against at all.
-   *
-   * False sends the template to a line saying so, rather than leaving the tile blank: a figure
-   * with no comparison beside it reads as a comparison that came back zero, which is the one
-   * thing it is not.
-   */
+  /** False shows a "nothing to compare" line, since a blank would read as a zero change. */
   protected readonly hasDelta = computed(() => this.delta() !== null);
 }

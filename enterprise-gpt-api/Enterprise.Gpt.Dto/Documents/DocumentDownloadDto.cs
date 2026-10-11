@@ -3,14 +3,11 @@ using System.Text.Json.Serialization;
 namespace Enterprise.Gpt.Dto.Documents;
 
 /// <summary>
-/// A short-lived, pre-authorized link to the original file behind a document. The API authorizes the
-/// caller and then hands out this link rather than proxying the bytes, so storage serves the download
-/// directly.
+/// A short-lived, pre-authorized link to a document's original file, so storage serves the download
+/// instead of the API proxying the bytes.
 /// </summary>
 /// <remarks>
-/// <see cref="DownloadUrl"/> is a bearer credential for its lifetime: anyone holding it can read the
-/// file without signing in. Treat it accordingly — do not log it, persist it, or put it anywhere it
-/// outlives <see cref="ExpiresAt"/>.
+/// <see cref="DownloadUrl"/> is a bearer credential until <see cref="ExpiresAt"/>: never log or persist it.
 /// </remarks>
 public class DocumentDownloadDto
 {
@@ -19,9 +16,7 @@ public class DocumentDownloadDto
     public string DownloadUrl { get; set; } = null!;
 
     /// <summary>
-    /// Gets or sets the original file name as uploaded. The link already carries this as a
-    /// <c>Content-Disposition</c> override, so a browser saves the file under this name without the
-    /// client having to supply it.
+    /// The original file name; the link already carries it as a <c>Content-Disposition</c> override.
     /// </summary>
     [JsonPropertyName("fileName")]
     public string FileName { get; set; } = null!;

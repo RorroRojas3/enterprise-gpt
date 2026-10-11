@@ -14,10 +14,7 @@ public static class SpreadsheetFixture
 {
     private static readonly string[] _regions = ["East", "West", "North", "South"];
 
-    /// <summary>
-    /// Creates a workbook with the given number of sheets, each carrying enough rows to produce several
-    /// chunks while staying well under the test host's upload ceiling.
-    /// </summary>
+    /// <summary>Enough rows per sheet for several chunks, yet under the test host's upload ceiling.</summary>
     public static byte[] CreateWorkbook(int sheetCount, int rowsPerSheet = 40)
     {
         using var stream = new MemoryStream();
@@ -49,9 +46,6 @@ public static class SpreadsheetFixture
         return stream.ToArray();
     }
 
-    /// <summary>
-    /// Creates a comma-delimited file with a header row and the given number of data rows.
-    /// </summary>
     public static byte[] CreateCsv(int rowCount = 60)
     {
         var builder = new StringBuilder("SKU,Region,Revenue,Quarter\n");

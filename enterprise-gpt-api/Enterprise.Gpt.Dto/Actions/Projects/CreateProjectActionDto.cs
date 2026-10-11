@@ -8,30 +8,19 @@ namespace Enterprise.Gpt.Dto.Actions.Projects;
 /// </summary>
 public record CreateProjectActionDto
 {
-    /// <summary>Gets the project name. Must be unique among the caller's active projects.</summary>
+    /// <summary>Must be unique among the caller's active projects.</summary>
     public string Name { get; init; } = null!;
 
-    /// <summary>Gets the optional free-text description.</summary>
     public string? Description { get; init; }
 
     /// <summary>
-    /// Gets the optional standing instructions applied to every conversation in the project.
+    /// Standing instructions sent as a system message on every turn of the project's conversations.
     /// </summary>
-    /// <remarks>
-    /// This text reaches the model as a system message on every turn, which is why it is length-capped
-    /// — see <see cref="ProjectLimits.InstructionsMaxLength"/>.
-    /// </remarks>
     public string? Instructions { get; init; }
 }
 
-/// <summary>
-/// Validates <see cref="CreateProjectActionDto"/>.
-/// </summary>
 public class CreateProjectActionDtoValidator : AbstractValidator<CreateProjectActionDto>
 {
-    /// <summary>
-    /// Initializes a new instance of the <see cref="CreateProjectActionDtoValidator"/> class.
-    /// </summary>
     public CreateProjectActionDtoValidator()
     {
         RuleFor(x => x.Name)

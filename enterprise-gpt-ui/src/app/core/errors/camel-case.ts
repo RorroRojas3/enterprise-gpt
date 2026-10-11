@@ -1,12 +1,6 @@
 /**
- * Reimplements `System.Text.Json.JsonNamingPolicy.CamelCase`.
- *
- * The API camel-cases DTO property names on the wire but writes dictionary keys
- * verbatim, so a validation problem's `errors` keys arrive PascalCase while the
- * form controls bound to those same properties are named camelCase. Matching them
- * means applying the server's own algorithm rather than a naive `toLowerCase` of
- * the first character, which would turn `IOStream` into `iOStream` where .NET
- * produces `ioStream`.
+ * Mirrors .NET's `JsonNamingPolicy.CamelCase`, since validation `errors` keys arrive PascalCase.
+ * Lowercasing only the first letter would give `iOStream` where .NET produces `ioStream`.
  *
  * @param name A single property-name segment.
  */

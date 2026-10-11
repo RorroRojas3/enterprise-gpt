@@ -10,23 +10,8 @@ import { ProjectActionsStore } from '@core/projects/project-actions-store';
 import { Modal } from '@shared/overlay/modal/modal';
 
 /**
- * The delete-project confirmation (US-903, frame `4c`'s kebab).
- *
- * Mounted once in `ProjectsLayout` beside the form dialog and driven by
- * `ProjectActionsStore`, so the grid's cards and a project's own header share one
- * instance. Destructive actions always confirm via modal, naming the thing — and red
- * lives only on a delete confirmation.
- *
- * **The body says what the API actually does.** `DeactivateProjectAsync` soft-deletes
- * the project and its documents, but sets `ProjectId` to null on every conversation it
- * held — they survive as standalone chats keeping their own transcripts and their own
- * uploads. A confirmation that said "and its conversations" would be asking the user to
- * agree to something that will not happen.
- *
- * Confirming removes the invoking card, so the modal's own focus return has nothing to
- * restore to. When that happens — focus fell to `<body>`, or is stranded inside this
- * closed dialog — it moves to `#main-content`, the one always-present programmatic
- * focus target.
+ * Mounted once in `Shell`, shared by every project invoker. The copy keeps conversations because
+ * the API releases them to standalone chats rather than deleting them.
  */
 @Component({
   selector: 'app-delete-project-dialog',
@@ -60,8 +45,8 @@ export class DeleteProjectDialog {
     }
     this.confirming = false;
 
-    // Checked only when focus actually fell through, so a user who clicked elsewhere
-    // mid-flight is not yanked back.
+    // The invoking card is gone, so the modal's focus return has no target. Only when focus
+    // actually fell through, so a user who clicked elsewhere is not yanked back.
     const active = this.document.activeElement;
     const fellThrough =
       active === null ||

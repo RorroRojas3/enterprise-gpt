@@ -10,14 +10,7 @@ namespace Enterprise.Gpt.Service.Documents;
 /// </summary>
 public static class ProjectDocumentMapper
 {
-    /// <summary>
-    /// LINQ projection from <see cref="ProjectDocument"/> to <see cref="ProjectDocumentDto"/> for use
-    /// inside <c>IQueryable.Select(...)</c>.
-    /// </summary>
-    /// <remarks>
-    /// Deliberately projects no chunk data: a document listing must never drag the embedding column
-    /// across the wire.
-    /// </remarks>
+    /// <summary>Server-side projection; omits chunk data so listings never load embeddings.</summary>
     public static Expression<Func<ProjectDocument, ProjectDocumentDto>> MapToProjectDocumentDtoExpression { get; } =
         document => new ProjectDocumentDto
         {
@@ -32,11 +25,6 @@ public static class ProjectDocumentMapper
 
     #region Public static methods
 
-    /// <summary>
-    /// Maps a materialized <see cref="ProjectDocument"/> entity to <see cref="ProjectDocumentDto"/>.
-    /// </summary>
-    /// <param name="document">The loaded document entity.</param>
-    /// <returns>The mapped DTO.</returns>
     public static ProjectDocumentDto MapToProjectDocumentDto(this ProjectDocument document)
     {
         return new ProjectDocumentDto

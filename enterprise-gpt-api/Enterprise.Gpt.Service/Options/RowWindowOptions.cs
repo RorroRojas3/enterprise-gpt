@@ -3,28 +3,19 @@ using FluentValidation;
 
 namespace Enterprise.Gpt.Service.Options;
 
-/// <summary>
-/// Sizing for the header-repeating row windows a sheet is emitted as, bound from the
-/// <c>Sheets:RowWindow</c> configuration section.
-/// </summary>
+/// <summary>Sizing for the header-repeating row windows a sheet is emitted as.</summary>
 public sealed class RowWindowOptions
 {
     /// <summary>
-    /// Share of the chunker's own token budget a window aims for. Default: 0.75.
+    /// Share of the chunker's budget a window aims for: under it, so the window stays one chunk with its
+    /// header instead of spilling into bare rows.
     /// </summary>
-    /// <remarks>
-    /// Comfortably under the budget so a window survives chunking as one indivisible unit and keeps
-    /// its header; at the budget it would regularly spill and degrade to bare rows.
-    /// </remarks>
     public double TargetTokenFraction { get; set; } = 0.75;
 
-    /// <summary>
-    /// Largest number of data rows in one window, whatever the token count. Default: 50.
-    /// </summary>
+    /// <summary>Data rows per window, whatever the token count.</summary>
     public int MaxRows { get; set; } = 50;
 }
 
-/// <summary>Validates <see cref="RowWindowOptions"/>.</summary>
 public sealed class RowWindowOptionsValidator : AbstractValidator<RowWindowOptions>
 {
     public RowWindowOptionsValidator()

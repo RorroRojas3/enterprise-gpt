@@ -2,20 +2,9 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 import { USAGE_RANGES, UsageRange } from './admin-reports-route';
 
 /**
- * The 7/30/90-day range control, frame `5j`'s segmented pill group.
- *
- * The board draws three `<span>`s. These are real `<button>`s in a `role="group"` carrying
- * `aria-pressed`, which is `design-system.md` §9's standing correction against the prototypes: a
- * control that changes what the page shows has to be reachable, pressable and announced as the
- * toggle it is.
- *
- * `aria-pressed` rather than a radio group, because each button is a toggle that is either the
- * active span or not — and a radio group would put the three on one tab stop, which is the right
- * shape for a form field and the wrong one for a toolbar of three visible choices.
- *
- * **There is no `busy` input.** A control that goes inert while its own request is in flight blurs
- * itself, which drops a keyboard reader back to the top of the document — and the store's
- * `switchMap` already discards the superseded request, so the disable bought nothing.
+ * `aria-pressed` buttons in a `role="group"`, not a radio group, which would put three visible
+ * choices on one tab stop. No `busy` input: going inert would blur the control and drop keyboard
+ * focus, and the store's `switchMap` already discards superseded requests.
  */
 @Component({
   selector: 'app-range-segmented',

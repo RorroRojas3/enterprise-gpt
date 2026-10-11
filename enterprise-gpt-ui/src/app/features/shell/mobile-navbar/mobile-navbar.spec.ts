@@ -4,14 +4,7 @@ import { ShellChrome } from '@core/ui/shell-chrome';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MobileNavbar } from './mobile-navbar';
 
-/**
- * The join between the two halves of the navbar slot.
- *
- * `chat.spec.ts` proves a screen hands a `TemplateRef` over, and `shell-responsive.spec.ts`
- * proves the shell renders a navbar — but nothing proved the navbar renders what was
- * handed to it. A regression there would leave both of those suites green and the phone
- * with a bar that shows the product name and no controls.
- */
+/** Proves the navbar renders what a screen hands it; the chat and shell specs stop short. */
 @Component({
   selector: 'app-navbar-host',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -26,7 +19,7 @@ class NavbarHost {
   opened = 0;
 }
 
-describe('MobileNavbar (US-1403)', () => {
+describe('MobileNavbar', () => {
   let chrome: ShellChrome;
 
   beforeEach(() => {
@@ -40,7 +33,7 @@ describe('MobileNavbar (US-1403)', () => {
     await fixture.whenStable();
     const element = fixture.nativeElement as HTMLElement;
 
-    // Frames 1d and 5m: the brand on chat, the area's name under /admin.
+    // The brand on chat, the area's name under /admin.
     expect(element.querySelector('.navbar__title')?.textContent?.trim()).toBe('Enterprise GPT');
 
     chrome.publish({ title: 'Admin' });
@@ -54,7 +47,7 @@ describe('MobileNavbar (US-1403)', () => {
     await fixture.whenStable();
     const element = fixture.nativeElement as HTMLElement;
 
-    // Frame 5m draws no trailing control at all, which is what `actions: null` is for.
+    // A screen with no trailing control is what `actions: null` is for.
     expect(element.querySelector('.navbar__actions')).toBeNull();
 
     chrome.publish({ actions: fixture.componentInstance.actions() });
@@ -75,9 +68,7 @@ describe('MobileNavbar (US-1403)', () => {
     const hamburger = element.querySelector<HTMLButtonElement>('.navbar__menu');
 
     expect(hamburger?.getAttribute('aria-label')).toBe('Open navigation');
-    // `aria-haspopup="dialog"` and deliberately no `aria-expanded`: what opens is a modal
-    // dialog in the top layer, which inerts this button rather than revealing a region
-    // beside it.
+    // No `aria-expanded`: a modal dialog inerts this button rather than revealing a region.
     expect(hamburger?.getAttribute('aria-haspopup')).toBe('dialog');
     expect(hamburger?.hasAttribute('aria-expanded')).toBe(false);
 
@@ -91,9 +82,7 @@ describe('MobileNavbar (US-1403)', () => {
     const fixture = TestBed.createComponent(NavbarHost);
     await fixture.whenStable();
 
-    // The routed screen below owns the document's only <h1> — on chat that is the
-    // conversation name, clipped at this width but still announced. Promoting brand text
-    // to a heading would give the page two.
+    // The routed screen owns the only <h1>; brand text as a heading would add a second.
     expect((fixture.nativeElement as HTMLElement).querySelectorAll('h1, h2, h3')).toHaveLength(0);
   });
 });

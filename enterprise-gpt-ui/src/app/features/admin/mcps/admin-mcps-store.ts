@@ -27,37 +27,15 @@ import {
 } from '@core/state/with-request-status';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 
-/**
- * The text one row is matched against — frame `5g`'s "Search servers".
- *
- * Name, description and URL, because all three are on the row and an administrator
- * looking for a server as often knows its host as its name. The search field's label
- * names all three, so nothing is searched that the reader was not told about.
- */
+/** Includes the URL because administrators often know a server by its host; the label says so. */
 function searchableText(server: McpServerDto): string {
   return `${server.name} ${server.description} ${server.url}`;
 }
 
 /**
- * The administration MCP server registry, from `GET api/mcps/all` (US-1208).
- *
- * **Regime C**, exactly as the model catalog is: the route is unpaginated and
- * Administrator-gated, so one request *is* the whole set and a filter over it is exact.
- * Two of `withClientQuery`'s four config values are shaped by that, and both for the
- * reasons `AdminModelsStore` records:
- *
- * - `isAuthoritative` is `isFulfilled() || entities().length > 0` rather than
- *   `isFulfilled` alone, because every mutation triggers a refetch that puts the store
- *   back into `pending` — and the rows on screen are still the whole registry while the
- *   next copy of it is on the wire.
- * - `incompleteSetReason` is unreachable, so it says what would have to have gone wrong
- *   rather than describing a state the screen can enter.
- *
- * There is no URL contract and no `bindQuery`: a client-side filter over a complete set
- * is screen state, not a shareable server query.
- *
- * The list refetches on every registry change rather than patching a row, which is
- * `adminEvents.mcpCatalogChanged` being void made concrete — see that event's doc.
+ * The admin MCP server registry. The route is unpaginated, so one request is the whole set and
+ * the filter is client-side screen state with no URL contract. `isAuthoritative` also accepts
+ * loaded rows because each mutation's refetch flips the store back to pending.
  */
 export const AdminMcpsStore = signalStore(
   withEntities<McpServerDto>(),
@@ -65,16 +43,15 @@ export const AdminMcpsStore = signalStore(
   withProps(() => ({
     _http: inject(HttpClient),
     // `mcps/all`, not `mcps`: the user-facing route filters to the caller's own grants
-    // and hides deactivated servers, and this table has to show both (frame `5g`).
+    // and hides deactivated servers, and this table has to show both.
     _url: inject(ApiUrl).build('mcps/all'),
     _signedOut$: injectSignedOut(),
   })),
   withFeature(({ entities, isFulfilled }) =>
     withClientQuery(entities, {
       searchableText,
-      // No control selects either of these yet — frame `5g` draws no sort — but the
-      // feature requires the map, and these are the two columns a sort would be offered
-      // on first. US-902's sibling story on this tab is then a template change.
+      // No control sorts yet, but the feature requires the map; these are the columns a
+      // sort would be offered on first.
       comparators: {
         name: (left: McpServerDto, right: McpServerDto) => left.name.localeCompare(right.name),
         url: (left: McpServerDto, right: McpServerDto) => left.url.localeCompare(right.url),
@@ -84,19 +61,9 @@ export const AdminMcpsStore = signalStore(
     }),
   ),
   withComputed(({ entities, results, hasQuery, isEmptyResult, isFulfilled, isPending }) => ({
-    /** Nothing on screen yet, so a skeleton is the honest thing to show. */
     isFirstLoad: computed(() => isPending() && entities().length === 0),
-    /** Loaded, and nothing is registered — distinct from "nothing matched". */
     isEmpty: computed(() => isFulfilled() && entities().length === 0),
-    /** Loaded, nothing matched, and a term is why — the empty state that can quote it. */
     hasNoMatches: computed(() => isFulfilled() && isEmptyResult() && hasQuery()),
-    /**
-     * The count, over the rows actually on screen.
-     *
-     * It states the filtered figure against the total rather than the total alone,
-     * because a client-side filter changes what the table is showing without changing
-     * what the server holds.
-     */
     countSummary: computed(() => {
       const total = entities().length;
       const shown = results().length;
@@ -112,9 +79,8 @@ export const AdminMcpsStore = signalStore(
     }),
   })),
   withMethods((store) => {
-    // No `debounceTime`: `SearchInput` already debounces 300 ms and emits only committed
-    // values. `switchMap` because a refetch can overlap the one a mutation just started,
-    // and only the newest answer may replace the rows.
+    // `switchMap`: a refetch can overlap the one a mutation just started, and only the
+    // newest answer may replace the rows.
     const _load = rxMethod<void>(
       pipe(
         tap(() => patchState(store, setPending())),
@@ -132,38 +98,26 @@ export const AdminMcpsStore = signalStore(
     );
 
     return {
-      /** Fetches the registry. Called once from the screen's constructor. */
       load(): void {
         _load();
       },
 
-      /**
-       * Applies the search field's committed term.
-       *
-       * A method rather than the screen calling `patchState` with `setQuery`: state stays
-       * protected, which is the rule every store here keeps.
-       */
       search(query: string): void {
         patchState(store, setQuery(query));
       },
 
-      /** Re-reads the registry after a failure, from `ErrorPanel`'s retry. */
       retry(): void {
         _load();
       },
 
-      /** Re-reads the registry. What every mutation does to this list. */
       refresh(): void {
         _load();
       },
     };
   }),
   withEventHandlers((store, events = inject(Events)) => [
-    // A refetch rather than a patch, and the same handler for all three verbs: the list
-    // is ordered by name so a new server's slot is the server's to decide, a 204 carries
-    // no `dateDeactivated` for the row that has to turn muted, and a rename also renames
-    // the linked permission. The registry is unpaginated and small, so this costs one
-    // request and is the only thing that can show any of them.
+    // Refetch rather than patch: the server orders rows, a 204 carries no `dateDeactivated`,
+    // and a rename also renames the linked permission. The registry is small.
     events.on(adminEvents.mcpCatalogChanged).pipe(tap(() => store.refresh())),
   ]),
   // Last, as the feature requires.

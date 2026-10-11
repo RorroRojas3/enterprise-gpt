@@ -1,16 +1,7 @@
 /**
- * The Bootstrap Icons glyphs this application ships, and the single source of
- * truth for three things: the sprite `scripts/build-icon-sprite.mjs` emits, the
- * `IconName` template type, and the build check in `scripts/check-icon-names.mjs`.
- *
- * The list tracks what the application actually renders: a glyph whose last consumer
- * goes away is removed, so the sprite never carries dead weight. Every name must exist
- * in bootstrap-icons 1.13.1, which is what the sprite build resolves against.
- *
- * The multi-colour brand marks are a separate lane — see `brand-icon-names.ts`.
- *
- * Adding a name here is not enough on its own — re-run `npm run assets:icons`, or
- * the glyph will be typed but absent from the sprite and render blank.
+ * The glyphs this app renders: the source of truth for the sprite, `IconName` and
+ * `scripts/check-icon-names.mjs`. Remove a glyph with its last consumer. New names must exist
+ * in bootstrap-icons 1.13.1 and need `npm run assets:icons`, or they are typed but render blank.
  */
 export const ICON_NAMES = [
   'bi-arrow-clockwise',
@@ -89,10 +80,8 @@ export const ICON_NAMES = [
 ] as const;
 
 /**
- * Every glyph in the sprite, as a literal union. `strictTemplates` rejects a
- * misspelled `<app-icon name="…">` at compile time because of this type; the build
- * check exists only for the references the type system cannot see, such as a raw
- * `class="bi bi-…"` in a template.
+ * A literal union, so `strictTemplates` rejects a misspelled `<app-icon name>`. The build check
+ * covers what types can't see, such as a raw `class="bi bi-…"`.
  */
 export type IconName = (typeof ICON_NAMES)[number];
 

@@ -6,13 +6,9 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Api.Observability;
 
 /// <summary>
-/// Pins that the shared pipeline step emits under the source the exporter subscribes to.
+/// Pins that the shared pipeline step emits under the source the exporter subscribes to; losing the name
+/// would silently drop every LLM span and token metric.
 /// </summary>
-/// <remarks>
-/// It cannot stop a sixth provider from calling <c>UseOpenTelemetry()</c> directly — only the extension
-/// existing makes that unlikely. What it catches is the extension itself losing the source name, which
-/// drops every LLM span and token metric with no build error and no runtime failure.
-/// </remarks>
 public sealed class ChatClientTelemetryTests : IDisposable
 {
     private readonly List<Activity> _activities = [];

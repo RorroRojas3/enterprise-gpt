@@ -1,25 +1,13 @@
 /**
- * The only place in the application that touches `localStorage`.
- *
- * US-205 requires that after sign-out the browser retains the user's theme and sidebar
- * preferences and **nothing else** — no conversation, project, document, or user data.
- * That invariant is impossible to review one call site at a time, so there is exactly
- * one call site, its keys are enumerated here, and `scripts/check-forbidden-apis.mjs`
- * fails the build on any `localStorage.setItem` outside this file.
- *
- * The rule that governs what may be added: `localStorage` survives sign-out by design,
- * so it holds only values that are **about the browser, not about the user** — how this
- * machine renders the app. Anything identifying, anything fetched from the API, and
- * anything a second person on a shared machine should not see belongs in
- * `sessionStorage` (where MSAL's token cache already lives) or in a store.
+ * The only `localStorage` call site (`scripts/check-forbidden-apis.mjs` enforces it). It survives
+ * sign-out, so it may hold only values about the browser, never about the user.
  */
 export const PREFERENCE_KEYS = {
   /**
-   * US-105. Duplicated in the pre-paint script in `index.html`, which runs before any
-   * module exists; `scripts/check-tokens.mjs` fails the build if the two drift.
+   * Duplicated in the pre-paint script in `index.html`, which runs before any module exists;
+   * `scripts/check-tokens.mjs` fails the build if the two drift.
    */
   theme: 'egpt.theme',
-  /** US-301's sidebar collapse state. Listed ahead of its story so the allowlist is complete. */
   sidebar: 'egpt.sidebar',
 } as const;
 

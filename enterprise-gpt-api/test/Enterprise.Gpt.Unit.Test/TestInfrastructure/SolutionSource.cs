@@ -7,20 +7,15 @@ namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
 /// <em>not</em> contain.
 /// </summary>
 /// <remarks>
-/// Located through <see cref="CallerFilePathAttribute"/> rather than the working directory, which a
-/// runner does not have to set. Meaningless off the machine that compiled the assembly, hence the
-/// existence check.
+/// Located via <see cref="CallerFilePathAttribute"/> because a runner need not set the working directory;
+/// meaningless off the machine that compiled the assembly, hence the existence check.
 /// </remarks>
 internal static class SolutionSource
 {
     /// <summary>
-    /// Enumerates the shipped C# files: build output excluded, and the test projects with it.
+    /// Absolute paths of the shipped C# files. Build output and tests are excluded: a guard naming what it
+    /// forbids would otherwise match itself.
     /// </summary>
-    /// <returns>Absolute paths.</returns>
-    /// <remarks>
-    /// Tests are excluded because a guard that names the thing it forbids would otherwise match
-    /// itself, and because a string in a test is not a call site in the product.
-    /// </remarks>
     /// <exception cref="InvalidOperationException">The source tree this assembly was built from is absent.</exception>
     public static IEnumerable<string> ProductionFiles()
     {
@@ -30,9 +25,7 @@ internal static class SolutionSource
             .Where(path => !Excluded(root, path, "obj") && !Excluded(root, path, "bin") && !Excluded(root, path, "test"));
     }
 
-    /// <summary>Finds every shipped C# file mentioning a string.</summary>
-    /// <param name="text">The text to search for.</param>
-    /// <returns>The solution-relative paths of the files that contain it.</returns>
+    /// <summary>Solution-relative paths of the shipped C# files containing <paramref name="text"/>.</summary>
     public static IReadOnlyList<string> FilesContaining(string text)
     {
         var root = Root();

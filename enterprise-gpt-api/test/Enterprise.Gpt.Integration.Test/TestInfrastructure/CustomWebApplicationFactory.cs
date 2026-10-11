@@ -15,38 +15,19 @@ using Microsoft.Extensions.Logging.Testing;
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 
 /// <summary>
-/// Hosts the real API pipeline for integration tests. Runs in the <c>Testing</c> environment
-/// (which skips the startup migration and Cosmos DB setup in <c>StartupBootstrapper</c>), points the
-/// DbContext at the Testcontainers SQL Server database, supplies well-formed fake configuration
-/// for the eagerly constructed Azure clients, and swaps the Entra ID JWT scheme for
-/// <see cref="TestAuthHandler"/>.
+/// Hosts the real API pipeline in the <c>Testing</c> environment (no startup migration or Cosmos DB
+/// setup) against the Testcontainers database, with <see cref="TestAuthHandler"/> in place of Entra ID.
 /// </summary>
-/// <param name="connectionString">Connection string of the containerized test database.</param>
 public class CustomWebApplicationFactory(string connectionString) : WebApplicationFactory<Program>
 {
     private readonly string _connectionString = connectionString;
 
-    /// <summary>
-    /// Gets the in-memory directory backing <see cref="IGraphService"/> for the whole run. Tests
-    /// register the directory users their scenario needs and reset it for isolation.
-    /// </summary>
     public FakeGraphService GraphService { get; } = new();
 
-    /// <summary>
-    /// Gets the in-memory blob store backing <see cref="IDocumentStore"/> for the whole run, so
-    /// upload tests can assert on the stored path without an Azure Storage account.
-    /// </summary>
     public FakeDocumentStore BlobStorage { get; } = new();
 
-    /// <summary>
-    /// Gets the stub embedding generator, so upload tests can assert that chunks are embedded in batches.
-    /// </summary>
     public FakeEmbeddingGenerator EmbeddingGenerator { get; } = new();
 
-    /// <summary>
-    /// Gets the in-memory store backing <see cref="ITranscriptStore"/> for the whole run, so
-    /// per-message transcript writes complete without a Cosmos DB account or the emulator.
-    /// </summary>
     public FakeTranscriptStore Transcripts { get; } = new();
 
     /// <inheritdoc />
@@ -54,11 +35,8 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
     {
         builder.UseEnvironment(HostEnvironments.Testing);
 
-        // UseSetting (not ConfigureAppConfiguration) so the values reach the
-        // WebApplicationBuilder's initial configuration — the composition reads several of these
-        // inline during startup, before factory-added configuration sources would apply.
-        // None of the Azure endpoints are ever called: the clients only need well-formed
-        // URIs/keys to construct, and the Model endpoints never resolve them.
+        // UseSetting, not ConfigureAppConfiguration: startup reads several of these inline, before
+        // factory-added sources apply. No Azure endpoint is called; the clients only need well-formed values.
         var settings = new Dictionary<string, string>
         {
             ["ConnectionStrings:DefaultConnection"] = _connectionString,
@@ -70,14 +48,10 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
             ["AzureOpenAI:ApiKey"] = "test-key",
             ["AzureOpenAI:DefaultModel"] = "test-model",
             ["AzureOpenAI:EmbeddingModel"] = "test-embedding",
-            // AzureAIFoundry is switched off rather than left unset: no keyed client is exactly
-            // the shape the resolver's 503 path expects. Disabling it explicitly is required
-            // because `appsettings.json` ships `Enabled: true` with an empty Url and no ApiKey,
-            // and WebApplicationFactory loads that file from the test output — leaving the
-            // section alone fails options validation at host startup, before any test runs.
+            // appsettings.json enables AzureAIFoundry with an empty Url, which fails options validation
+            // at startup. No keyed client is also the shape the resolver's 503 path expects.
             ["AzureAIFoundry:Enabled"] = "false",
-            // The AccountKey is the well-known public Cosmos DB emulator key, published in
-            // Microsoft's docs — not a secret, and nothing ever connects to it under test.
+            // The well-known public emulator key; not a secret, and nothing connects to it under test.
             ["CosmosDb:ConnectionString"] =
                 "AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==",
             ["CosmosDb:DatabaseId"] = "test-db",
@@ -96,9 +70,8 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
             ["Documents:Chunking:MaxTokens"] = "64",
             ["Documents:Chunking:OverlapTokens"] = "16",
             ["CorsOrigins:0"] = "https://localhost",
-            // appsettings.json already carries these, but each is a startup requirement and an
-            // edit to that file should not be able to break the whole suite silently. FileAgent:Enabled
-            // is deliberately absent: it is asserted against the value the repository actually ships.
+            // Startup requirements pinned so an appsettings.json edit cannot break the suite silently.
+            // FileAgent:Enabled is deliberately absent: tests assert the value the repository ships.
             ["Summarization:ModelId"] = "c36e22ed-262a-47a1-b2ba-06a38355ae0f",
             ["FileAgent:ModelId"] = "e8b961c6-1fb6-4050-a265-dc72e5eab622"
         };
@@ -116,10 +89,8 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
                 options.DefaultChallengeScheme = TestAuthHandler.SchemeName;
             }).AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
 
-            // Only the services that would otherwise make live network calls against the fake
-            // credentials above are substituted: Microsoft Graph for user provisioning, blob storage
-            // plus the embedding generator for document ingestion, and Cosmos DB for the conversation
-            // transcript. Extraction, chunking and relational persistence all run for real.
+            // Only services that would make live network calls are substituted; extraction, chunking
+            // and relational persistence run for real.
             services.RemoveAll<IGraphService>();
             services.AddSingleton<IGraphService>(GraphService);
 
@@ -134,49 +105,29 @@ public class CustomWebApplicationFactory(string connectionString) : WebApplicati
             services.RemoveAll<ITranscriptStore>();
             services.AddSingleton<ITranscriptStore>(Transcripts);
 
-            // Scoped to the access-log category on purpose: an unfiltered collector accumulates every
-            // record the whole suite produces — EF Core included — for the lifetime of the shared
-            // fixture, which is a slow memory leak in exchange for records no test reads.
+            // Scoped to the access-log category: an unfiltered collector would hold every record the
+            // suite produces, EF Core included, for the shared fixture's lifetime.
             services.AddFakeLogging(options =>
                 options.FilteredCategories = new HashSet<string> { typeof(RequestLoggingMiddleware).FullName! });
         });
     }
 
-    /// <summary>
-    /// Gets the access-log records written since the last reset.
-    /// </summary>
-    /// <returns>A snapshot of the collected records.</returns>
     public IReadOnlyList<FakeLogRecord> GetRequestLogs() =>
         Services.GetRequiredService<FakeLogCollector>().GetSnapshot();
 
-    /// <summary>
-    /// Discards the access-log records collected so far, so a test sees only its own.
-    /// </summary>
     public void ClearRequestLogs() =>
         Services.GetRequiredService<FakeLogCollector>().Clear();
 
-    /// <summary>
-    /// Creates a client authenticated as the seeded administrator.
-    /// </summary>
-    /// <returns>An <see cref="HttpClient"/> carrying the admin test-user header.</returns>
     public HttpClient CreateAdminClient()
     {
         return CreateClientForUser("admin");
     }
 
-    /// <summary>
-    /// Creates a client authenticated as the seeded non-admin user.
-    /// </summary>
-    /// <returns>An <see cref="HttpClient"/> carrying the regular test-user header.</returns>
     public HttpClient CreateUserClient()
     {
         return CreateClientForUser("user");
     }
 
-    /// <summary>
-    /// Creates a client with no identity, so protected endpoints respond 401.
-    /// </summary>
-    /// <returns>An unauthenticated <see cref="HttpClient"/>.</returns>
     public HttpClient CreateAnonymousClient()
     {
         return CreateClient();

@@ -9,20 +9,14 @@ using ProviderCatalog = Enterprise.Gpt.Common.Constants.Providers;
 
 namespace Enterprise.Gpt.Api.Configuration;
 
-/// <summary>
-/// Registers conversations: the turn service, its lock, markdown rendering and token estimation.
-/// </summary>
 internal static class ConversationsConfiguration
 {
     #region Public static methods
 
-    /// <summary>
-    /// Registers the conversation services and the per-provider token estimators.
-    /// </summary>
     internal static IServiceCollection AddConversations(this IServiceCollection services, IConfiguration configuration)
     {
-        // A negative overhead term or a nonsensical calibration multiplier silently corrupts every stored token
-        // count and, through the context budget built on them, shrinks what is replayed to the model.
+        // A bad overhead or calibration value silently corrupts every stored token count and, through the
+        // context budget, shrinks what is replayed to the model.
         services.AddSingleton<IValidator<TokenEstimationOptions>, TokenEstimationOptionsValidator>();
         services.AddOptions<TokenEstimationOptions>()
             .Bind(configuration.GetSection(TokenEstimationOptions.SectionName))

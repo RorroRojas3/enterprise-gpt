@@ -6,8 +6,7 @@ namespace Enterprise.Gpt.Service.Documents.Retrieval.Models;
 /// The result of one <c>document_search</c> call, serialized straight back to the model.
 /// </summary>
 /// <remarks>
-/// An empty result is a normal outcome, not a failure: a question the documents do not answer has to be
-/// answerable with "they do not say", and the model can only conclude that if the tool returns cleanly.
+/// An empty result is a normal outcome: the model can only conclude "they do not say" from a clean return.
 /// </remarks>
 public sealed class DocumentSearchResult
 {
@@ -37,13 +36,9 @@ public sealed class DocumentSearchResult
     public IReadOnlyList<RetrievedPassage> Results { get; set; } = [];
 
     /// <summary>
-    /// Gets or sets the names of the documents that were searched. Populated only when
-    /// <see cref="Results"/> is empty.
+    /// Gets or sets the names of the documents that were searched, only when <see cref="Results"/> is empty,
+    /// so the model can retry with different terms.
     /// </summary>
-    /// <remarks>
-    /// This is what lets the model recover from a bad query instead of asserting the documents are
-    /// silent: it can see what it could have searched and try different terms.
-    /// </remarks>
     [JsonPropertyOrder(4)]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? AvailableDocuments { get; set; }

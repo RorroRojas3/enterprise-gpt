@@ -18,19 +18,8 @@ import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
 import { ProjectPicker } from '@shared/projects/project-picker/project-picker';
 
 /**
- * One conversation in the sidebar list (frame `3a`).
- *
- * Its own component rather than markup inline in the sidebar because US-304, US-305
- * and US-306 hang the row kebab, the favourite toggle and per-row pending state off
- * exactly this element.
- *
- * Selection comes from `routerLinkActive` with `exact: true` rather than from an
- * input the sidebar computes: the router already knows which conversation is open,
- * and `ariaCurrentWhenActive` makes the visual state and the announced one the same
- * fact rather than two that can disagree.
- *
- * The kebab's actions go through `ConversationActionsStore`, whose dialogs are
- * mounted once in the shell — the row only says which conversation is meant.
+ * Selection comes from the router, not an input. The kebab's dialogs are mounted once in the
+ * shell; the row only names the conversation.
  */
 @Component({
   selector: 'app-conversation-row',
@@ -46,7 +35,7 @@ export class ConversationRow {
 
   readonly conversation = input.required<ConversationDto>();
 
-  /** Frame `2e`'s panel, opened from the kebab and anchored where the kebab was. */
+  /** The project picker, opened from the kebab and anchored where the kebab was. */
   protected readonly pickerOpen = signal(false);
   protected readonly pickerAnchor = signal<HTMLElement | null>(null);
 
@@ -59,12 +48,8 @@ export class ConversationRow {
   protected readonly exact = { exact: true } as const;
 
   /**
-   * Opens the picker where the kebab is.
-   *
-   * The anchor is captured at the gesture rather than bound in the template: the menu
-   * closes on this same click and returns focus to its trigger, and reading the trigger
-   * through a binding would evaluate it on the first change-detection pass, before the
-   * menu's view exists.
+   * Captures the anchor at the gesture: the menu closes on this click, and a template binding
+   * would read the trigger before the menu's view exists.
    */
   protected openPicker(): void {
     if (this.pending()) {

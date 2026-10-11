@@ -1,15 +1,8 @@
-<!--
-  Frame `Sidebar` lines 41-69: between the nav and the conversation list, separated by a
-  rule. The whole section is absent when the user has starred nothing — a heading over
-  nothing is a section that reads as broken.
--->
+<!-- Absent when nothing is starred: a heading over nothing reads as broken. -->
 @if (projects.hasFavorites()) {
   <section class="favorites" aria-labelledby="sidebar-favorites-heading">
     <h2 class="favorites__heading">
-      <!--
-        A real button owning real state, so `aria-expanded` is honest here — unlike on a
-        `routerLink`, which announces a state it neither owns nor can guarantee.
-      -->
+      <!-- A real button owning real state, so `aria-expanded` is honest here. -->
       <button
         #favoritesToggle
         class="favorites__toggle"
@@ -27,9 +20,7 @@
       </button>
     </h2>
 
-    <!--
-      Kept in the DOM while shut, so `aria-controls` above keeps naming something real.
-    -->
+    <!-- Kept in the DOM while shut, so `aria-controls` above keeps naming something real. -->
     <ul class="favorites__list" id="sidebar-favorites-list" [hidden]="!open()">
       @for (project of projects.favorites(); track project.id) {
         <li>

@@ -2,12 +2,8 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { Icon } from '@shared/icon/icon';
 
 /**
- * A permission grant, in the admin user list and detail drawer.
- *
- * `managedBy` marks a grant the administrator cannot revoke here — one that comes from
- * an MCP server, or a self-grant the server refuses to remove. The lock glyph is
- * decoration; the reason is spelled out for assistive technology, because "there is a
- * padlock" is not a reason.
+ * `managedBy` marks a grant that cannot be revoked here; the reason is spelled out for assistive
+ * technology, since the padlock is decoration.
  */
 @Component({
   selector: 'app-permission-badge',

@@ -63,8 +63,7 @@ describe('SupportedExtensionsStore', () => {
     backend.expectOne(URL).error(new ProgressEvent('error'));
     await loaded;
 
-    // Refusing every file because a side request failed would be worse than the
-    // round trip it saves: the server refuses it with a real reason (US-805).
+    // The server still refuses the file, with a real reason.
     expect(store.error()).not.toBeNull();
     expect(store.isSupported('demo.mov')).toBe(true);
     expect(store.accept()).toBe('');

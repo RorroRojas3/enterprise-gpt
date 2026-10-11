@@ -18,13 +18,7 @@ internal static class UsageReportTranslator
 {
     #region Private methods
 
-    /// <summary>
-    /// Builds one row per model turn the report broke the request into.
-    /// </summary>
-    /// <returns>
-    /// The rows, or an empty list for a request with no breakdown — a non-streamed call, whose
-    /// provider reports a single aggregate instead.
-    /// </returns>
+    /// <summary>One row per model turn; empty for a non-streamed call, which reports one aggregate.</summary>
     private static List<ConversationUsageTurn> BuildTurns(
         IReadOnlyList<AssistantTurnUsage> turns)
     {
@@ -49,19 +43,9 @@ internal static class UsageReportTranslator
     }
 
     /// <summary>
-    /// Adds up one count across every turn that reported it.
+    /// Sums a count across the turns that reported it, or <see langword="null"/> when none did. A partial
+    /// total beats discarding reported counts; the stored turn rows show whether it is complete.
     /// </summary>
-    /// <returns>
-    /// The sum, or <see langword="null"/> when no turn reported the count at all — which says the
-    /// provider was silent about it rather than that it was zero.
-    /// </returns>
-    /// <remarks>
-    /// A turn that reported nothing contributes nothing rather than blocking the sum, so when only
-    /// some turns report, the result is a <em>partial</em> total that no column distinguishes from
-    /// a complete one. That is the lesser evil: the alternative is discarding counts the provider
-    /// did report. A reader who needs to know whether a figure is complete has to compare against
-    /// the turn rows, which is why they are stored.
-    /// </remarks>
     private static long? SumReported(
         List<ConversationUsageTurn> turns,
         Func<ConversationUsageTurn, long?> selector)
@@ -80,10 +64,8 @@ internal static class UsageReportTranslator
     }
 
     /// <summary>
-    /// Builds the rows for one level of the tree, appending every row it creates — at this level
-    /// and below — to <paramref name="flattened"/>.
+    /// Builds one level's rows, also appending them and their descendants to <paramref name="flattened"/>.
     /// </summary>
-    /// <returns>Just this level's rows, for the caller to hang off its own children.</returns>
     private static List<ConversationUsageToolCall> BuildToolCalls(
         IReadOnlyList<ToolCallUsage> calls,
         int parentDepth,
@@ -104,8 +86,7 @@ internal static class UsageReportTranslator
             {
                 Sequence = index,
                 Depth = depth,
-                // A nested call reports the iteration of the outer turn that issued its enclosing
-                // root call, so this is copied rather than derived, and grouping by it has to
+                // A nested call carries its root call's outer-turn iteration, so grouping by it must
                 // restrict to depth zero or a subtree counts once per level.
                 Iteration = call.Iteration,
                 Kind = kind,
@@ -115,11 +96,8 @@ internal static class UsageReportTranslator
                 McpServerId = kind == ConversationToolKinds.McpTool
                     ? ResolveMcpServerId(call, prefixes)
                     : null,
-                // Only an agent this application composed can name the model behind it, and only for
-                // its own root call: an MCP server is opaque, a function that reports usage does not
-                // say what produced it, and an agent's own nested calls are the agent's tools rather
-                // than further model turns. Every other row still writes null, and that is not a gap
-                // to be filled later — it is the honest answer.
+                // Only a composed agent's own root call can name its model; null elsewhere is the
+                // honest answer (MCP servers are opaque, functions don't say), not a gap to fill.
                 ModelId = agentModel?.ModelId,
                 DeploymentName = Truncate(agentModel?.DeploymentName, ConversationUsageToolCallLimits.DeploymentNameMaxLength),
                 InputTokens = OwnTokens(call.Usage?.InputTokenCount, call.Children, child => child.Usage?.InputTokenCount),
@@ -130,8 +108,7 @@ internal static class UsageReportTranslator
                 Succeeded = call.Succeeded
             };
 
-            // Appended before its own children so the flat list stays in pre-order, which is the
-            // order a reader rebuilding the tree wants and the order the tests read it back in.
+            // Before its children, so the flat list stays in pre-order.
             rows.Add(row);
             flattened.Add(row);
 
@@ -142,14 +119,9 @@ internal static class UsageReportTranslator
     }
 
     /// <summary>
-    /// Matches an agent-kind call to the one agent this application composes.
+    /// Matches an agent-kind call to the File Agent. No resolved row yields null, not a guess: the column
+    /// is a foreign key and this write runs in a <c>finally</c> after the answer streamed.
     /// </summary>
-    /// <returns>
-    /// The catalog row, or <see langword="null"/> for every other call — and for a File Agent call on a
-    /// turn that carries no resolved row, which is a misconfiguration the startup validator should have
-    /// caught. Null rather than a guess: the column is a foreign key, and this write runs in a
-    /// <c>finally</c> after the answer has already streamed.
-    /// </returns>
     private static FileAgentModel? ResolveAgentModel(
         ToolCallUsage call, ConversationToolKinds kind, FileAgentModel? fileAgent) =>
         kind == ConversationToolKinds.Agent
@@ -161,11 +133,8 @@ internal static class UsageReportTranslator
     /// Reduces a reported rollup to what the invocation itself consumed.
     /// </summary>
     /// <remarks>
-    /// A null rollup means nothing was attributed, which is not the same as zero, so it stays null.
-    /// A null child rollup contributes nothing to the subtraction. The result is floored at zero:
-    /// the middleware computes the rollup as own-plus-children, so a negative could only come from
-    /// a defect upstream, and letting one reach a column other queries <c>SUM</c> would corrupt
-    /// totals far from where it originated.
+    /// A null rollup stays null (unattributed is not zero). Floored at zero so an upstream defect cannot
+    /// corrupt totals that other queries <c>SUM</c>.
     /// </remarks>
     private static long? OwnTokens(
         long? rollup,
@@ -197,11 +166,8 @@ internal static class UsageReportTranslator
             }
         }
 
-        // Fallback for a tool that reached the model by some other path. McpToolProvider now hands
-        // the tracking wrapper the catalog name, so a tool this application leased matches here
-        // exactly rather than by luck; anything reaching the model another way still reports
-        // whatever name its own wrapper carries, which is why the comparison stays case-insensitive
-        // and why a miss leaves the id null rather than guessing.
+        // Fallback for a tool that reached the model another way: its wrapper's name may differ in
+        // case, and a miss stays null rather than guessing.
         foreach (var (Id, Prefix, Name) in prefixes)
         {
             if (string.Equals(call.Source, Name, StringComparison.OrdinalIgnoreCase))
@@ -222,9 +188,8 @@ internal static class UsageReportTranslator
     };
 
     /// <summary>
-    /// Clips a value to its column width. The audit write runs in a <c>finally</c> after the answer
-    /// has already been streamed, so a tool advertising an unusually long name must not be able to
-    /// turn the whole turn's accounting into a truncation error.
+    /// Clips to column width: the audit write runs in a <c>finally</c> after streaming, so an overlong
+    /// tool name must not fail the turn's accounting.
     /// </summary>
     private static string? Truncate(string? value, int maxLength) =>
         value is null || value.Length <= maxLength ? value : value[..maxLength];
@@ -234,22 +199,9 @@ internal static class UsageReportTranslator
     #region Public static methods
 
     /// <summary>
-    /// Translates a completed request's usage report into the assistant/tool token split and the
-    /// tree of tool-call rows underneath it.
+    /// Translates a usage report into the assistant/tool token split and the tool-call row tree; a null
+    /// report yields an empty result.
     /// </summary>
-    /// <param name="report">
-    /// The report the middleware produced, or <see langword="null"/> when the request produced
-    /// none.
-    /// </param>
-    /// <param name="mcpServers">
-    /// The MCP servers leased for the request, used to attribute MCP tool calls back to a catalog
-    /// row.
-    /// </param>
-    /// <param name="fileAgent">
-    /// The File Agent's catalog row when the turn attached it, or <see langword="null"/> when it did
-    /// not — which is every turn that never offered the agent.
-    /// </param>
-    /// <returns>The token split and the tool-call rows; an empty result for a null report.</returns>
     public static TurnUsage Translate(
         ChatUsageReport? report,
         IReadOnlyList<McpServerReference> mcpServers,
@@ -272,8 +224,7 @@ internal static class UsageReportTranslator
         List<ConversationUsageToolCall> flattened = [];
         BuildToolCalls(report.ToolCalls, parentDepth: -1, prefixes, fileAgent, flattened);
 
-        // The top-level entries already roll their descendants up, so summing them is summing
-        // everything every tool consumed.
+        // Top-level entries already roll up their descendants.
         long toolInput = 0, toolOutput = 0;
         foreach (var call in report.ToolCalls)
         {
@@ -288,16 +239,8 @@ internal static class UsageReportTranslator
             OutputTokens: report.AssistantUsage.OutputTokenCount ?? 0,
             ToolInputTokens: toolInput,
             ToolOutputTokens: toolOutput,
-            // Summed from the turns rather than read off AssistantUsage, so this reports the same
-            // number whichever of the two the middleware ends up carrying.
-            //
-            // Both are null through Andes 0.7.0 whatever the provider reported. Its usage arithmetic
-            // copies input, output, total and the AdditionalCounts dictionary and nothing else, and
-            // every UsageDetails on the report — the assistant aggregate and each turn alike — is
-            // produced by that copy. These two counts became first-class properties on UsageDetails
-            // after it was written, so they are dropped in transit. The columns are written anyway:
-            // they are correct the day the middleware carries the values, and a null that means
-            // "not reported" is the same null either way.
+            // Summed from the turns so it matches whichever the middleware carries. Andes 0.7.0's usage
+            // copy drops both counts, so they stay null until it carries them; the columns are ready.
             CachedInputTokens: SumReported(turns, turn => turn.CachedInputTokens),
             ReasoningTokens: SumReported(turns, turn => turn.ReasoningTokens),
             ToolCalls: flattened,

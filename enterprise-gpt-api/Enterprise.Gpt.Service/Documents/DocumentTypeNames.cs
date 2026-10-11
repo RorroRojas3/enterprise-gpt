@@ -9,10 +9,7 @@ namespace Enterprise.Gpt.Service.Documents;
 /// <see cref="ConversationDocumentTypes"/>.
 /// </summary>
 /// <remarks>
-/// One table rather than a parse method and a separate display string, for the reason
-/// <c>ConversationExportFormatNames</c> records. The lookup is case-insensitive because a listing row
-/// carries <c>Generated</c> while the advertised token is <c>generated</c>, so a client that
-/// round-trips a row's own value still resolves.
+/// Case-insensitive so a client round-tripping a listing row's <c>Generated</c> still resolves.
 /// </remarks>
 public static class DocumentTypeNames
 {
@@ -41,14 +38,11 @@ public static class DocumentTypeNames
     #region Public static methods
 
     /// <summary>
-    /// Resolves a <c>?type=</c> value into the origin a listing should narrow to.
+    /// Resolves a <c>?type=</c> value into the origin a listing should narrow to; blank means every document.
     /// </summary>
-    /// <param name="type">The requested value, or <see langword="null"/> when the caller sent none.</param>
-    /// <returns>The origin to filter on, or <see langword="null"/> for every document.</returns>
     /// <exception cref="ValidationException">The value names no supported origin.</exception>
     /// <remarks>
-    /// Rejected rather than ignored: a caller who misspells the value would otherwise get a
-    /// correct-looking page holding documents they asked not to see. Blank is not a misspelling.
+    /// Rejected rather than ignored, so a misspelling never yields a correct-looking page.
     /// </remarks>
     public static ConversationDocumentTypes? Resolve(string? type)
     {

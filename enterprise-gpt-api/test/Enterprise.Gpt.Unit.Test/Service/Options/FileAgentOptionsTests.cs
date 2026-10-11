@@ -9,14 +9,9 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Service.Options;
 
 /// <summary>
-/// Covers the File Agent section against the same options pipeline the host builds, so a
-/// range or a required-value rule that contradicts the shipped defaults fails here rather than at
-/// host start.
+/// Runs the host's options pipeline: constructing <see cref="FileAgentOptions"/> never validates, so a rule
+/// contradicting the shipped defaults would pass here yet stop the API from booting.
 /// </summary>
-/// <remarks>
-/// Constructing <see cref="FileAgentOptions"/> directly never runs a validator, so one that rejects
-/// the committed configuration would pass every such test and still stop the API from booting.
-/// </remarks>
 public sealed class FileAgentOptionsTests
 {
     /// <remarks>
@@ -48,14 +43,9 @@ public sealed class FileAgentOptionsTests
     }
 
     /// <summary>
-    /// Asserted against the committed file, not only against the class default, which is where this
-    /// diverges from the summarizer's own settings test.
+    /// A run provisions a billed sandbox session, so the committed file keeps the feature off everywhere,
+    /// development included; enabling it is a per-environment override.
     /// </summary>
-    /// <remarks>
-    /// A run of this feature provisions a billed sandbox session, so it is off in every environment
-    /// including development; switching it on is a per-environment override, never something the
-    /// repository hands a developer by checkout.
-    /// </remarks>
     [Fact]
     public void Bind_TheShippedConfiguration_LeavesFileGenerationOff()
     {

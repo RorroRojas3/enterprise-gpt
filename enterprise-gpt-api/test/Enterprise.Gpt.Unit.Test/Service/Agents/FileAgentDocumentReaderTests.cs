@@ -14,10 +14,6 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Agents;
 
-/// <summary>
-/// Covers which of a conversation's files a run may work from, and which of the names in its
-/// instruction it must refuse to guess at.
-/// </summary>
 public sealed class FileAgentDocumentReaderTests : IDisposable
 {
     private readonly SqliteDbContextFixture _fixture = new();
@@ -106,9 +102,8 @@ public sealed class FileAgentDocumentReaderTests : IDisposable
         Assert.Single(resolution.Matched);
     }
 
-    // The token a file name yields is only its last whitespace-delimited segment, so demanding an exact
-    // match against the available names would report every file whose name has a space as missing — and
-    // the pre-flight refuses on an unresolved name before it ever looks at what matched.
+    // A file name's token is only its last whitespace-delimited segment, so an exact match would report
+    // every name with a space as missing, and the pre-flight refuses on an unresolved name.
     [Theory]
     [InlineData("final report.docx", "Convert final report.docx to markdown")]
     [InlineData("Q3 sales data.xlsx", "Turn Q3 sales data.xlsx into a pdf")]
@@ -125,8 +120,8 @@ public sealed class FileAgentDocumentReaderTests : IDisposable
         Assert.Equal(fileName, Assert.Single(resolution.Matched).Name);
     }
 
-    // The other half of the space fix. A token satisfied by an unrelated name it merely occurs inside
-    // would be neither matched nor refused, and the run would pay for a sandbox session with no files.
+    // A token found inside an unrelated name would be neither matched nor refused, and the run would pay
+    // for a sandbox session with no files.
     [Theory]
     [InlineData("quarterly-report.docx", "Convert report.docx to pdf")]
     [InlineData("2026_notes.txt", "Turn notes.txt into a Word document")]
@@ -170,9 +165,8 @@ public sealed class FileAgentDocumentReaderTests : IDisposable
         Assert.Empty(resolution.Matched);
     }
 
-    // How a create actually reaches the tool: the format named with its dot, bare or in the markdown
-    // the model writes it in, and the absolute sandbox path it saves to. None of those is a file that
-    // has to already exist, and reading one as a missing source refuses the request unrun.
+    // How a create reaches the tool: the format with its dot (bare or in markdown) and the sandbox path
+    // it saves to. None names an existing file, so none may refuse the request as a missing source.
     [Theory]
     [InlineData("Create a random Word document (.docx) with sample content")]
     [InlineData("Produce a **.docx** report on last quarter")]

@@ -2,18 +2,14 @@ using FluentValidation;
 
 namespace Enterprise.Gpt.Api.Options;
 
-/// <summary>
-/// Tuning for the Azure Monitor exporter, bound from the <c>AzureMonitor</c> configuration section.
-/// </summary>
+/// <summary>Tuning for the Azure Monitor exporter.</summary>
 internal sealed class TelemetryOptions
 {
-    /// <summary>The configuration section these options are bound from.</summary>
     internal const string SectionName = "AzureMonitor";
 
-    /// <summary>Connection string for the target Application Insights resource.</summary>
     /// <remarks>
-    /// It carries an ingestion key, so it belongs in an environment variable or user secrets, never in
-    /// <c>appsettings.json</c>. The flat <c>APPLICATIONINSIGHTS_CONNECTION_STRING</c> key wins over this one.
+    /// Carries an ingestion key, so it belongs in an environment variable or user secrets. The flat
+    /// <c>APPLICATIONINSIGHTS_CONNECTION_STRING</c> key wins over this one.
     /// </remarks>
     public string? ConnectionString { get; set; }
 
@@ -22,10 +18,8 @@ internal sealed class TelemetryOptions
 
     /// <summary>Ceiling on exported traces per second, or <see langword="null"/> to sample by ratio instead.</summary>
     /// <remarks>
-    /// The distro's own default, restated here so the sampling posture is a deployment decision rather than
-    /// a library default nobody chose. Clearing this and <see cref="SamplingRatio"/> both exports every trace.
-    /// Since <c>appsettings.json</c> ships a value, selecting ratio sampling means clearing this one with an
-    /// empty setting — <c>AzureMonitor__TracesPerSecond=</c>.
+    /// <c>appsettings.json</c> ships a value, so ratio sampling means clearing it with
+    /// <c>AzureMonitor__TracesPerSecond=</c>. Clearing both samplers exports every trace.
     /// </remarks>
     public double? TracesPerSecond { get; set; } = 5.0;
 
@@ -40,7 +34,6 @@ internal sealed class TelemetryOptions
     /// </remarks>
     public bool EnableTraceBasedLogsSampler { get; set; }
 
-    /// <summary>Whether the Live Metrics stream is enabled.</summary>
     public bool EnableLiveMetrics { get; set; } = true;
 
     /// <summary>Whether server spans carry the caller's Entra object id as <c>enduser.id</c>.</summary>

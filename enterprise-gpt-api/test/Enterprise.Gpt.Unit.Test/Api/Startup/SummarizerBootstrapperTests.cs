@@ -90,10 +90,7 @@ public sealed class SummarizerBootstrapperTests : IDisposable
         Assert.Equal(missingId, exception.ModelId);
     }
 
-    /// <summary>
-    /// The whole reason the bootstrapper resolves a chat client at all: without this the call is a
-    /// statement no test would miss if it were deleted.
-    /// </summary>
+    /// <summary>Without this, the bootstrapper's chat client resolution could be deleted unnoticed.</summary>
     [Fact]
     public async Task ValidateAsync_ProviderWithNoChatClient_ThrowsProviderNotConfigured()
     {

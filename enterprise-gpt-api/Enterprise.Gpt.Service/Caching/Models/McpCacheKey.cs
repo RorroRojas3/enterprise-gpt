@@ -10,22 +10,13 @@ public readonly record struct McpCacheKey(Guid McpServerId, Guid? UserOid)
 {
     #region Public static methods
 
-    /// <summary>
-    /// Creates a per-user key for servers authenticated on behalf of the user.
-    /// </summary>
-    /// <param name="mcpServerId">The MCP server id.</param>
-    /// <param name="userOid">The user's Entra object id.</param>
-    /// <returns>The per-user cache key.</returns>
+    /// <summary>Creates a per-user key for servers authenticated on behalf of the user.</summary>
     public static McpCacheKey ForUser(Guid mcpServerId, Guid userOid)
     {
         return new McpCacheKey(mcpServerId, userOid);
     }
 
-    /// <summary>
-    /// Creates a key shared across all users for servers that require no authentication.
-    /// </summary>
-    /// <param name="mcpServerId">The MCP server id.</param>
-    /// <returns>The shared cache key.</returns>
+    /// <summary>Creates a key shared across all users for servers that require no authentication.</summary>
     public static McpCacheKey Shared(Guid mcpServerId)
     {
         return new McpCacheKey(mcpServerId, null);

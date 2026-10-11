@@ -5,14 +5,12 @@
   min-width: 0;
 }
 
-// Most menu triggers are fixed 28px kebabs, so the `app-menu` host is only let go
-// slack here. `menu.scss` grants the same on the trigger inside it; both are links of
-// the one chain, and neither is redundant.
+// Most menu triggers are fixed 28px kebabs, so only this host gets slack; `menu.scss` grants the
+// same to the trigger inside it, and both links are needed.
 app-menu {
   min-width: 0;
 }
 
-// The frame's pill: 30px tall, fully rounded, on the raised surface.
 .model-menu__pill {
   display: inline-flex;
   align-items: center;
@@ -28,9 +26,8 @@ app-menu {
   white-space: nowrap;
 }
 
-// This pill and the project pill are the control row's two elastic items; below 768px
-// the project name is hidden, so all of the shrink lands here. Unconditional, because
-// the name comes from the catalog and no width is wide enough for every one of them.
+// One of the row's two elastic items, and the only one below 768px. Unconditional, because no
+// width fits every catalog name.
 .model-menu__pill-name {
   overflow: hidden;
   text-overflow: ellipsis;

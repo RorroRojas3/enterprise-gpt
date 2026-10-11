@@ -17,7 +17,6 @@ internal static class ProblemDetailsTestHelpers
     /// Builds the real <see cref="IProblemDetailsService"/> from the production registration, so the
     /// tests exercise <c>CustomizeProblemDetails</c> rather than a stub.
     /// </summary>
-    /// <returns>The configured service.</returns>
     internal static IProblemDetailsService CreateProblemDetailsService()
     {
         return new ServiceCollection()
@@ -27,12 +26,6 @@ internal static class ProblemDetailsTestHelpers
             .GetRequiredService<IProblemDetailsService>();
     }
 
-    /// <summary>
-    /// Creates a context with a readable response body and a request path, so <c>instance</c> has
-    /// something to report.
-    /// </summary>
-    /// <param name="path">The request path to report as the problem's instance.</param>
-    /// <returns>The context.</returns>
     internal static DefaultHttpContext CreateHttpContext(string path = "/api/test")
     {
         var httpContext = new DefaultHttpContext
@@ -43,25 +36,15 @@ internal static class ProblemDetailsTestHelpers
         return httpContext;
     }
 
-    /// <summary>
-    /// Marks the response as already started, so the handlers' short-circuit can be exercised.
-    /// </summary>
-    /// <param name="httpContext">The context to mark.</param>
     internal static void MarkResponseStarted(HttpContext httpContext)
     {
         httpContext.Features.Set<IHttpResponseFeature>(new StartedResponseFeature(httpContext.Response.Body));
     }
 
     /// <summary>
-    /// Reads back what the handler wrote to the response body.
+    /// Always reads <see cref="HttpValidationProblemDetails"/>: a non-validation problem just leaves
+    /// <c>Errors</c> empty, so one path covers both shapes.
     /// </summary>
-    /// <param name="httpContext">The context whose body to read.</param>
-    /// <returns>The deserialized problem.</returns>
-    /// <remarks>
-    /// Always deserializes as <see cref="HttpValidationProblemDetails"/>: it derives from
-    /// <see cref="Microsoft.AspNetCore.Mvc.ProblemDetails"/>, so a non-validation problem leaves <c>Errors</c> empty and one
-    /// path covers both shapes.
-    /// </remarks>
     internal static async Task<HttpValidationProblemDetails> ReadProblemAsync(HttpContext httpContext)
     {
         httpContext.Response.Body.Position = 0;
@@ -73,12 +56,6 @@ internal static class ProblemDetailsTestHelpers
         return problem;
     }
 
-    /// <summary>
-    /// Reads a string-valued extension member off a deserialized problem.
-    /// </summary>
-    /// <param name="problem">The problem to read from.</param>
-    /// <param name="key">The extension key.</param>
-    /// <returns>The value, or <see langword="null"/> when absent or not a string.</returns>
     internal static string? ReadExtension(HttpValidationProblemDetails problem, string key)
     {
         return problem.Extensions.TryGetValue(key, out var value)

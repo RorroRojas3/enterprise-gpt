@@ -1,26 +1,13 @@
-<!--
-  The header renders only once there is a project. A bar carrying a folder glyph, an
-  empty name and a kebab whose items act on nothing is worse than a skeleton, and the
-  same call US-308 makes about the chat header on an empty conversation.
--->
+<!-- Only once there is a project: a kebab that acts on nothing is worse than a skeleton. -->
 @if (project.project(); as current) {
   <header class="detail__header">
     <div class="detail__identity">
       <p class="detail__name-row">
         <app-icon class="detail__folder" name="bi-folder-fill" />
-        <!--
-          A button, not the board's bare text with a pointer cursor: it opens the edit
-          dialog, and a control that only a mouse can find is not one.
-        -->
         <button class="detail__name font-display" type="button" (click)="beginEdit()">
           {{ current.name }}
         </button>
-        <!--
-          Frame `4e`'s star, live since US-909. A real button rather than the board's
-          glyph, and no `aria-pressed`: the label already carries the direction, and a
-          control that both names its action and reports a pressed state is announced
-          twice over.
-        -->
+        <!-- No `aria-pressed`: the label already carries the direction. -->
         <button
           class="detail__favorite"
           type="button"
@@ -37,10 +24,7 @@
       }
     </div>
 
-    <!--
-      The same two items the grid's card kebab offers, routed through the same store and
-      the same dialogs. Frame `4e`'s star sits beside the name above, not in here.
-    -->
+    <!-- The grid card's two items, through the same store and dialogs. -->
     <app-menu [label]="'Actions for ' + current.name">
       <button
         appMenuItem
@@ -66,20 +50,14 @@
   </header>
 
   <!--
-    Above the tabs, because a prompt sent from it belongs to the project rather than to
-    whichever panel is open (frame `4e`). It is the same component the chat route
-    renders; what differs is `COMPOSER_HOST`, which here creates a conversation inside
-    the project and navigates to it rather than streaming in place.
+    The chat route's composer; here `COMPOSER_HOST` creates a conversation in the project and
+    navigates to it instead of streaming in place.
   -->
   <div class="detail__composer">
     <app-composer />
   </div>
 
-  <!--
-    Below 768px this becomes the pill strip the administration area already uses. The
-    links, their `aria-current` and the routes behind them are identical in both — see
-    the note on `isNarrow` for why this is a strip rather than frame `4e`'s accordion.
-  -->
+  <!-- Same links and routes in both; `isNarrow` explains why a strip, not accordions. -->
   @if (isNarrow()) {
     <app-pill-subnav [items]="pills()" ariaLabel="Project sections" />
   } @else {
@@ -103,9 +81,6 @@
             ariaCurrentWhenActive="page"
           >
             Files
-            <!-- The board renders the count as a smaller run beside the label. It is
-                 withheld until the panel has actually read the list, because "Files 0"
-                 on a project that has four is worse than no count at all. -->
             @if (filesCount() !== null) {
               <span class="detail__tab-count">{{ filesCount() }}</span>
             }
@@ -119,7 +94,6 @@
             ariaCurrentWhenActive="page"
           >
             Conversations
-            <!-- Withheld until read, for the reason the file count above is. -->
             @if (conversationsCount() !== null) {
               <span class="detail__tab-count">{{ conversationsCount() }}</span>
             }
@@ -137,8 +111,7 @@
   </div>
 }
 
-<!-- Outside the @if: the panel renders its own error state, and a failed detail
-     request must not leave the screen blank. -->
+<!-- Outside the @if: the panel renders its own error state, so a failed request is not blank. -->
 <div class="detail__panel">
   <router-outlet />
 </div>

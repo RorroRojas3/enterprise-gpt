@@ -15,26 +15,19 @@ namespace Enterprise.Gpt.Service.Documents.Sheets;
 /// Exposes the deterministic spreadsheet lookup to the assistant as a callable function.
 /// </summary>
 /// <remarks>
-/// Built per turn and closed over the corpus resolved for that turn, so a query can only ever reach a
-/// sheet the caller was already entitled to read. The model names a sheet, a column, an operation from a
-/// closed set and literal comparison values, and nothing else.
+/// Built per turn over that turn's resolved corpus, so a query only reaches sheets the caller can
+/// already read.
 /// </remarks>
 public static partial class SheetQueryTool
 {
-    /// <summary>
-    /// The name the model calls this tool by, and the name it appears under in the activity feed and the
-    /// usage audit.
-    /// </summary>
+    /// <summary>The name the model, the activity feed and the usage audit know this tool by.</summary>
     /// <remarks>
-    /// Chosen the same way <see cref="DocumentTool.ToolName"/> was: tool-call usage is attributed to an
-    /// MCP server by matching the longest <c>{server}_</c> prefix, so a name such as <c>query_sheet</c>
-    /// would be credited to a server called "query" if one ever existed.
+    /// Chosen like <see cref="DocumentTool.ToolName"/>: usage is attributed to an MCP server by the longest
+    /// <c>{server}_</c> prefix, so <c>query_sheet</c> would be credited to a server named "query".
     /// </remarks>
     public const string ToolName = "sheet_query";
 
-    /// <summary>
-    /// The error number SQL Server reports for a command timeout.
-    /// </summary>
+    /// <summary>The error number SQL Server reports for a command timeout.</summary>
     private const int SqlTimeoutError = -2;
 
     private const string ToolDescription =
@@ -44,10 +37,6 @@ public static partial class SheetQueryTool
             + "\"which rows\" — where " + DocumentTool.ToolName + " can only quote passages. Call it with no sheet "
             + "name first to see which sheets and columns exist.";
 
-    /// <summary>
-    /// Holds the per-turn state the function body needs, so the state is captured once rather than
-    /// resolved on every call.
-    /// </summary>
     private sealed partial class SheetQueryInvoker(
         DocumentRetrievalScope scope,
         ISheetQueryService sheetQueryService,
@@ -60,13 +49,9 @@ public static partial class SheetQueryTool
         private readonly ILogger _logger = logger;
         private readonly int _spreadsheetCount = CountSpreadsheets(scope);
 
-        /// <summary>
-        /// Computes an aggregate over one sheet, or lists the rows matching a set of conditions.
-        /// </summary>
         /// <remarks>
-        /// Progress is reported through the ambient <see cref="ChatProgress"/> reporter, which is the only
-        /// channel that reaches the activity feed: tool arguments and results are deliberately never
-        /// streamed, so neither a filter value nor a computed figure may appear in a progress message.
+        /// Tool arguments and results are deliberately never streamed, so no filter value or computed figure
+        /// may appear in a <see cref="ChatProgress"/> message.
         /// </remarks>
         public async Task<SheetQueryResult> QueryAsync(
             [Description("What to compute: sum, avg, min, max, count, or filter. Use filter to list the matching rows instead of computing a value.")]
@@ -85,13 +70,11 @@ public static partial class SheetQueryTool
                 ? "Reading 1 spreadsheet…"
                 : $"Reading {_spreadsheetCount} spreadsheets…");
 
-            // Bounds the whole invocation, where SheetQueryOptions.TimeoutSeconds bounds one statement
-            // inside it. Linked, so the turn being torn down still cancels promptly.
+            // Bounds the whole invocation; SheetQueryOptions.TimeoutSeconds bounds each statement in it.
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(TimeSpan.FromSeconds(_toolTimeoutSeconds));
 
-            // The parsed operation, never the string the result echoes back: that one is the model's own
-            // text and would put an unbounded value on a metric dimension.
+            // Parsed, not the model's echoed text, which would put an unbounded value on a metric dimension.
             var measured = SheetQueryService.TryParseOperation(operation, out var parsed)
                 ? parsed.ToString().ToLowerInvariant()
                 : "unknown";
@@ -112,8 +95,7 @@ public static partial class SheetQueryTool
                     _ => "Nothing to compute"
                 });
 
-                // A refusal never throws, and its note is not what distinguishes it: a query that ran
-                // carries one too when it matched nothing, hit a cap, or read a mistyped column.
+                // A refusal never throws, and a note does not mark one: queries that ran carry notes too.
                 ChatMetrics.RecordSheetQuery(
                     measured,
                     result.IsRefusal ? "refused" : "success",
@@ -125,17 +107,15 @@ public static partial class SheetQueryTool
             {
                 ChatMetrics.RecordSheetQuery(measured, outcome: "cancelled", Stopwatch.GetElapsedTime(started));
 
-                // The turn is being torn down; let cancellation stay cancellation rather than turning it
-                // into a tool error the model would try to work around.
+                // The turn is being torn down; a tool error would only invite the model to work around it.
                 throw;
             }
             catch (Exception ex) when (ex is OperationCanceledException or SqlException { Number: SqlTimeoutError })
             {
                 ChatMetrics.RecordSheetQuery(measured, outcome: "timed-out", Stopwatch.GetElapsedTime(started));
 
-                // Either the deadline above or the statement's own command timeout, whichever came first.
-                // Reported to the model rather than thrown at the turn, because a query that took too long
-                // is something the user can be told.
+                // Tool deadline or command timeout: reported to the model rather than failing the turn,
+                // because a query that took too long is something the user can be told.
                 LogSheetQueryTimedOut(_logger, ex, _scope.ConversationId, _toolTimeoutSeconds);
 
                 throw new InvalidOperationException(
@@ -146,9 +126,8 @@ public static partial class SheetQueryTool
             {
                 ChatMetrics.RecordSheetQuery(measured, outcome: "error", Stopwatch.GetElapsedTime(started));
 
-                // Function invocation is configured with detailed errors, so whatever is thrown here is
-                // handed to the model verbatim. The real exception goes to the log; the model gets a
-                // sentence it can act on and nothing about the database behind it.
+                // Detailed errors are on, so whatever is thrown reaches the model verbatim: log the real
+                // exception and give the model a sentence with nothing about the database.
                 LogSheetQueryFailed(_logger, ex, _scope.ConversationId);
 
                 throw new InvalidOperationException(
@@ -174,11 +153,6 @@ public static partial class SheetQueryTool
     /// <summary>
     /// Builds the sheet-query function for one turn.
     /// </summary>
-    /// <param name="scope">The corpus this turn may query, from <see cref="IDocumentRetrievalService.GetScopeAsync"/>.</param>
-    /// <param name="sheetQueryService">The service backing the tool.</param>
-    /// <param name="toolTimeoutSeconds">How long one whole invocation may run before it is abandoned.</param>
-    /// <param name="logger">Logger for failures that must not reach the model verbatim.</param>
-    /// <returns>The function to attach to <see cref="ChatOptions.Tools"/>.</returns>
     /// <exception cref="ArgumentNullException">Any reference argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="toolTimeoutSeconds"/> is not positive.</exception>
     public static AIFunction Create(
@@ -197,9 +171,6 @@ public static partial class SheetQueryTool
         return AIFunctionFactory.Create(invoker.QueryAsync, ToolName, ToolDescription);
     }
 
-    /// <summary>
-    /// Counts the spreadsheets in a scope, for a progress message that names no file.
-    /// </summary>
     internal static int CountSpreadsheets(DocumentRetrievalScope scope) => scope.Documents
         .Count(d => DocumentRetrievalService.SpreadsheetExtensions.Contains(Path.GetExtension(d.Name)));
 

@@ -14,9 +14,8 @@ public class SoftDeleteModelTests
     private static readonly IModel _model = CreateModel();
 
     /// <summary>
-    /// Required navigations into a filtered principal. Each inner-joins its dependent away once the principal is
-    /// deactivated, and EF only warns when the dependent is unfiltered, so every one here was reviewed: the
-    /// dependent is deactivated with its principal (the cascades run children first) or is never read without it.
+    /// Required navigations into a filtered principal, reviewed because EF warns only for unfiltered
+    /// dependents: each dependent is deactivated with its principal or never read without it.
     /// </summary>
     private static readonly string[] _reviewedRequiredNavigations =
     [

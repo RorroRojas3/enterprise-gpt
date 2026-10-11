@@ -20,8 +20,8 @@
   <p class="tools-menu__heading" aria-hidden="true">Tool servers</p>
 
   <!--
-    A disabled menu item, not <p> text: role="menu" allows only menuitem*
-    children, and a menu with zero items fails AXE and strands roving focus.
+    A disabled menu item, not <p>: role="menu" allows only menuitem children, and an empty menu
+    fails axe and strands the roving focus.
   -->
   @if (mcps.servers().length === 0) {
     <button appMenuItem type="button" aria-disabled="true" class="tools-menu__status">
@@ -30,11 +30,7 @@
   } @else {
     @for (server of mcps.servers(); track server.id) {
       @if (needsKey(server)) {
-        <!--
-          A menuitem, not a menuitemcheckbox: this row opens the key dialog rather
-          than toggling anything, and announcing a checked state it does not have
-          would promise the reader an action the click does not perform.
-        -->
+        <!-- A menuitem, not a menuitemcheckbox: it opens the key dialog and toggles nothing. -->
         <button
           appMenuItem
           type="button"
@@ -52,11 +48,8 @@
         </button>
       } @else {
         <!--
-          Two menu items on one visual line, not a control nested in a control: a
-          <button> inside a <button> is invalid HTML, and the menu's roving focus
-          collects `[appMenuItem]`, so a plain nested button would be unreachable by
-          keyboard. role="none" makes the wrapper transparent, leaving both buttons
-          direct children of the menu as far as assistive technology is concerned.
+          Two sibling menu items, not a nested button, which is invalid HTML and unreachable by the
+          roving focus. role="none" leaves both as direct menu children for assistive technology.
         -->
         <div class="tools-menu__row" role="none">
           <button

@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Switch } from './switch';
 
-describe('Switch (US-417)', () => {
+describe('Switch', () => {
   let fixture: ComponentFixture<Switch>;
 
   async function render(inputs: { checked: boolean }) {
@@ -22,9 +22,7 @@ describe('Switch (US-417)', () => {
   });
 
   it('exposes nothing to assistive technology', async () => {
-    // The invariant the whole component rests on: it is decoration, so it can sit
-    // inside a `role="menu"` panel where a real `<input role="switch">` cannot,
-    // and the element that owns the semantics is never shadowed by it.
+    // Decoration only, so it can sit inside a `role="menu"` panel where a real switch cannot.
     const track = await render({ checked: true });
 
     expect(track.getAttribute('aria-hidden')).toBe('true');

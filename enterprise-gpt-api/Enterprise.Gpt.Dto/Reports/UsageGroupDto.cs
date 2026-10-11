@@ -9,8 +9,7 @@ public record UsageGroupDto
     /// The group's stable identity: a model, provider or user id, or an ISO-8601 date.
     /// </summary>
     /// <remarks>
-    /// Distinct from <see cref="Label"/> so a client can key rows on something a rename cannot
-    /// move, and so two users who share a display name remain two rows.
+    /// Distinct from <see cref="Label"/> so rows survive renames and users sharing a name stay apart.
     /// </remarks>
     public string Key { get; init; } = null!;
 
@@ -18,10 +17,8 @@ public record UsageGroupDto
     /// What to call the group on screen.
     /// </summary>
     /// <remarks>
-    /// Read from the catalog, so it is what the model or provider is called <em>now</em> — while
-    /// every figure on this row comes from the snapshot taken when each call ran. A rename
-    /// therefore relabels history and a repricing never rewrites it, which is the pairing the
-    /// price and deployment-name snapshots exist to make possible.
+    /// The catalog's current name, while the figures come from per-call snapshots: a rename relabels
+    /// history, a repricing never rewrites it.
     /// </remarks>
     public string Label { get; init; } = null!;
 
@@ -29,9 +26,7 @@ public record UsageGroupDto
     /// A second line under <see cref="Label"/>, or <see langword="null"/> where there is none.
     /// </summary>
     /// <remarks>
-    /// Populated only when grouping by user, where it carries the email address: display names
-    /// collide, and spend attributed to the wrong person is worse than a label nobody reads. Every
-    /// other grouping has a label that is already unique.
+    /// Only set when grouping by user, carrying the email because display names collide.
     /// </remarks>
     public string? Sublabel { get; init; }
 

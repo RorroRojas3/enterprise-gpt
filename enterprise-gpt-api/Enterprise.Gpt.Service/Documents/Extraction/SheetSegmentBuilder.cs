@@ -12,8 +12,6 @@ namespace Enterprise.Gpt.Service.Documents.Extraction;
 /// </summary>
 internal static class SheetSegmentBuilder
 {
-    // Pipes rather than tabs because the only consumer of this text is a model reading a retrieved
-    // passage; nothing parses it back, so legibility is the whole criterion.
     internal const string SheetPrefix = "Sheet: ";
 
     /// <summary>
@@ -21,6 +19,7 @@ internal static class SheetSegmentBuilder
     /// </summary>
     public const int MaxNameLength = 256;
 
+    // Pipes, not tabs: only a model reads this text back, so legibility is the whole criterion.
     private const string CellSeparator = " | ";
 
     private static readonly SearchValues<char> _cellBreaks = SearchValues.Create("\r\n\t");
@@ -70,8 +69,8 @@ internal static class SheetSegmentBuilder
     /// Cuts a sheet or column name to what its column holds, never inside a surrogate pair.
     /// </summary>
     /// <remarks>
-    /// A workbook's own sheet names are attacker-controlled — Excel caps them at 31 characters but
-    /// the format does not — and an over-long one would fail at the insert rather than on read.
+    /// Sheet names are attacker-controlled (Excel caps them at 31 characters; the format does not), and an
+    /// over-long one would otherwise fail at the insert.
     /// </remarks>
     public static string TruncateName(string value, int length = MaxNameLength)
     {
@@ -83,9 +82,6 @@ internal static class SheetSegmentBuilder
         return value[..(char.IsHighSurrogate(value[length - 1]) ? length - 1 : length)];
     }
 
-    /// <summary>
-    /// Returns the index of the last populated cell, or -1 when the row is entirely empty.
-    /// </summary>
     public static int LastPopulatedIndex(IReadOnlyList<string> cells)
     {
         for (var i = cells.Count - 1; i >= 0; i--)
@@ -114,9 +110,7 @@ internal static class SheetSegmentBuilder
         builder.Append('\n');
     }
 
-    /// <summary>
-    /// Rendered length of a row, matching what <see cref="AppendRow"/> writes for the same cells.
-    /// </summary>
+    /// <summary>Rendered length of a row; must match what <see cref="AppendRow"/> writes.</summary>
     public static int RowLength(IReadOnlyList<string> cells, int lastIndex)
     {
         var length = 1;
@@ -129,9 +123,7 @@ internal static class SheetSegmentBuilder
         return length + (lastIndex * CellSeparator.Length);
     }
 
-    /// <summary>
-    /// Rendered length of the line <see cref="AppendSheetName"/> writes.
-    /// </summary>
+    /// <summary>Rendered length of the line; must match what <see cref="AppendSheetName"/> writes.</summary>
     public static int SheetHeaderLength(string sheetName)
     {
         return SheetPrefix.Length + sheetName.Length + 1;
@@ -141,8 +133,7 @@ internal static class SheetSegmentBuilder
     /// Trims a cell and folds any line break or tab inside it into a single space.
     /// </summary>
     /// <remarks>
-    /// One line is one row for everything downstream — the chunker's sentence boundary breaks on
-    /// <c>\n</c> — so a cell carrying its own newline would split its row across two chunks.
+    /// The chunker breaks on <c>\n</c>, so an embedded newline would split a row across two chunks.
     /// </remarks>
     public static string NormalizeCell(string? value)
     {

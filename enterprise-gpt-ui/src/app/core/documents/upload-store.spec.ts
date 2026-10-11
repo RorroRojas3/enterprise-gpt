@@ -22,7 +22,7 @@ const STATUS_URL = `${TEST_API_BASE_URL}/api/documents/upload-status/${JOB_ID}`;
 const CANCEL_URL = STATUS_URL;
 const SUPPORTED = ['.doc', '.docx', '.md', '.pdf', '.pptx', '.txt'];
 
-/** A file whose `size` is the 212 MB frame `4l` quotes back to the user. */
+/** A file whose `size` formats as 212 MB. */
 function oversizeFile(name: string): File {
   const file = textFile(name);
   Object.defineProperty(file, 'size', { value: 222_298_112 });
@@ -30,7 +30,6 @@ function oversizeFile(name: string): File {
   return file;
 }
 
-/** One poll of the status route, with the server's own defaults. */
 function jobStatus(overrides: Partial<JobStatusDto> = {}): JobStatusDto {
   return {
     id: JOB_ID,
@@ -54,8 +53,6 @@ describe('UploadStore', () => {
   let xhr: FakeUploadXhrQueue;
 
   beforeEach(async () => {
-    // The poll schedule is the thing under test in half of these, and a real 500ms
-    // wait per step would make the file take seconds to run.
     vi.useFakeTimers();
     xhr = new FakeUploadXhrQueue();
 
@@ -94,7 +91,7 @@ describe('UploadStore', () => {
     store.attach([textFile('notes.txt')]);
     await settle();
 
-    // Deferred: no conversation to post it to yet — Send is what creates one.
+    // Deferred: there is no conversation to post it to yet.
     expect(xhr.requests).toHaveLength(0);
     expect(state()).toEqual({ kind: 'uploading', percent: 0 });
     expect(store.blocksSend()).toBe(false);
@@ -128,7 +125,6 @@ describe('UploadStore', () => {
 
     store.bindConversation(OTHER_ID);
 
-    // The files described a draft on a conversation the user has left.
     expect(store.attachments()).toEqual([]);
     expect(xhr.last.aborted).toBe(true);
   });
@@ -141,8 +137,7 @@ describe('UploadStore', () => {
     const settled = firstValueFrom(store.settled$().pipe(timeout(50)));
     store.bindConversation(OTHER_ID);
 
-    // An emptied list is a settled one. Leaving this unsaid strands `TurnStore`'s
-    // gate inside `exhaustMap`, which then silently swallows every later send.
+    // Otherwise `TurnStore`'s gate strands inside `exhaustMap`, swallowing every later send.
     await expect(settled).resolves.toBeUndefined();
   });
 
@@ -157,12 +152,9 @@ describe('UploadStore', () => {
     ]);
     await settle();
 
-    // The origin allows six connections in total, shared with the SSE stream and
-    // the status polls; starting all five would queue the polls behind them.
     expect(xhr.requests).toHaveLength(3);
 
-    // A 202 does **not** free the slot: the budget spans transfer and ingest
-    // together, or fifty poll loops would simply accumulate behind three transfers.
+    // A 202 does not free the slot: the budget spans transfer and ingest together.
     xhr.requests[0]!.respond(202, { id: JOB_ID });
     await settle();
     expect(xhr.requests).toHaveLength(3);
@@ -197,12 +189,11 @@ describe('UploadStore', () => {
       kind: 'unsupported',
       reason: '.mov isn’t supported — DOC, DOCX, MD, PDF, PPTX, TXT',
     });
-    // Nothing is outstanding: a refused file will not change again, and holding
-    // Send for it would leave the user unable to send at all.
+    // A refused file counts as settled, or Send could never be pressed.
     expect(store.blocksSend()).toBe(false);
   });
 
-  it('reports a rejected upload on the chip and in a persistent toast (US-805)', async () => {
+  it('reports a rejected upload on the chip and in a persistent toast', async () => {
     store.bindConversation(CONVERSATION_ID);
     store.attach([oversizeFile('big-scan.pdf')]);
     await settle();
@@ -220,13 +211,12 @@ describe('UploadStore', () => {
     expect(toast?.detail).toBe('Files can be up to 50 MB — this one is 212 MB.');
     expect(toast?.traceLine).toContain('4bf92f3577b34da6a3ce929d0e0e4736');
     expect(toast?.retryLabel).toBe('Retry');
-    // Zero means it stays until dismissed: an error that disappears before it is
-    // read is a defect (frame 4l).
+    // Zero means it stays until dismissed.
     expect(toast?.dismissAfterMs).toBe(0);
     expect(store.blocksSend()).toBe(false);
   });
 
-  it('re-posts the file when the toast’s Retry is used (US-805)', async () => {
+  it('re-posts the file when the toast’s Retry is used', async () => {
     store.bindConversation(CONVERSATION_ID);
     store.attach([oversizeFile('big-scan.pdf')]);
     await settle();
@@ -241,7 +231,7 @@ describe('UploadStore', () => {
     expect(toasts.toasts()).toHaveLength(0);
   });
 
-  it('offers no retry for a missing grant, which retrying cannot supply (US-805)', async () => {
+  it('offers no retry for a missing grant, which retrying cannot supply', async () => {
     store.bindConversation(CONVERSATION_ID);
     store.attach([textFile('notes.txt')]);
     await settle();
@@ -301,7 +291,6 @@ describe('UploadStore', () => {
   it('completes the send gate immediately when there is nothing to wait for', async () => {
     store.bindConversation(CONVERSATION_ID);
 
-    // The common case, and the one that must cost a turn with no attachments nothing.
     await expect(firstValueFrom(store.settled$().pipe(timeout(5)))).resolves.toBeUndefined();
   });
 
@@ -332,15 +321,14 @@ describe('UploadStore', () => {
 
   it('holds every file until Send once the composer has asked it to', async () => {
     store.deferUploadsUntilSend();
-    // A conversation already exists, which before was enough to upload on the drop — so the
-    // first turn waited for Send and every later one did not.
+    // A bound conversation alone must not upload on the drop.
     store.bindConversation(CONVERSATION_ID);
 
     store.attach([textFile('notes.txt')]);
     await settle();
 
     expect(xhr.requests).toHaveLength(0);
-    // And a file nothing has been posted for must not hold Send against itself.
+    // An unposted file must not hold Send against itself.
     expect(store.blocksSend()).toBe(false);
     expect(store.isSettled()).toBe(true);
 
@@ -361,8 +349,7 @@ describe('UploadStore', () => {
     xhr.last.respond(202, { id: JOB_ID });
     await settle();
 
-    // The reported bug: after one send the target stayed bound, so the next attachment
-    // uploaded on the drop.
+    // The target stays bound after a send; the next file must still wait for Send.
     store.attach([textFile('second.txt')]);
     await settle();
 
@@ -388,15 +375,14 @@ describe('UploadStore', () => {
     store.attach([textFile('notes.txt')]);
     await settle();
 
-    // A bound store may have a transfer in flight whose job id has not landed yet;
-    // handing that file to another screen would ingest it twice.
+    // A started file's job id may not have landed yet; handing it on would ingest it twice.
     expect(store.pendingFiles()).toEqual([]);
 
     store.cancelAll();
     await settle();
   });
 
-  describe('watching a job (US-802)', () => {
+  describe('watching a job', () => {
     async function queue(): Promise<string> {
       store.bindConversation(CONVERSATION_ID);
       store.attach([textFile('notes.txt')]);
@@ -459,8 +445,7 @@ describe('UploadStore', () => {
       );
       expect(state()).toEqual({ kind: 'processing', subStatus: '3 of 12' });
 
-      // Any report that omits them nulls them server-side, so a client that held on
-      // to the last pair would show a stale count through a stage counting nothing.
+      // A report that omits the counts nulls them server-side; a latched pair would be stale.
       await poll(
         jobStatus({ state: 'Processing', message: null, completedUnits: null, totalUnits: null }),
       );
@@ -473,8 +458,7 @@ describe('UploadStore', () => {
 
       expect(state()).toEqual({ kind: 'ready' });
       expect(store.documentIdOf(id)).toBe(DOC_ID);
-      // The document is the conversation's now, and no API detaches it, so the
-      // control can only hide the chip — it must not claim to remove anything.
+      // No API detaches an ingested document, so the control can only hide the chip.
       expect(store.attachments()[0]?.removeAction).toBe('dismiss');
       expect(store.attachments()[0]?.downloadable).toBe(true);
     });
@@ -486,8 +470,7 @@ describe('UploadStore', () => {
       store.remove(id);
       await settle();
 
-      // The chip goes at once, and one request stops the ingestion rather than waiting for
-      // it to finish and undoing it.
+      // The chip goes at once, and one request stops the ingestion.
       expect(store.attachments()).toHaveLength(0);
       expect(store.isSettled()).toBe(true);
 
@@ -545,8 +528,7 @@ describe('UploadStore', () => {
     });
 
     it('leaves files that were never posted anywhere alone', async () => {
-      // Stop was offered for the create, not for these: no conversation exists yet, so
-      // nothing is in flight for them and losing them to that press would be a surprise.
+      // No conversation exists yet, so nothing is in flight for these and Stop is not theirs.
       store.attach([textFile('notes.txt')]);
       await settle();
 
@@ -585,7 +567,7 @@ describe('UploadStore', () => {
     });
   });
 
-  describe('an expired job (US-803)', () => {
+  describe('an expired job', () => {
     it('reads as unknown, not failed, and stops polling', async () => {
       store.bindConversation(CONVERSATION_ID);
       store.attach([textFile('notes.txt')]);
@@ -599,8 +581,7 @@ describe('UploadStore', () => {
         .flush(PROBLEM_FIXTURES.resourceNotFound, { status: 404, statusText: 'Not Found' });
       await settle();
 
-      // Nothing failed and there is nothing to retry — the status simply is no longer
-      // kept. The same 404 covers another user's job, and must read identically.
+      // Not a failure: the status is no longer kept, and another user's job reads the same.
       expect(state()).toEqual({ kind: 'unknown' });
 
       await vi.advanceTimersByTimeAsync(30_000);

@@ -25,9 +25,7 @@ public sealed class ConversationUsageMcpServerConfiguration : BaseCreatedEntityC
             .WithMany()
             .HasForeignKey(x => x.McpServerId);
 
-        // A server is attached to a call at most once. Unfiltered, unlike the other unique indexes
-        // in this model: these rows are append-only, so no soft-deleted row can ever block a
-        // replacement.
+        // Once per call. Unfiltered because these rows are append-only and never soft-deleted.
         builder.HasIndex(x => new { x.ConversationUsageId, x.McpServerId }).IsUnique();
 
         // Usage reported for one MCP server.

@@ -8,8 +8,7 @@ namespace Enterprise.Gpt.Service.ChatModels;
 public static class ModelMapper
 {
     /// <summary>
-    /// LINQ projection from <see cref="Model"/> to <see cref="ModelDto"/> for use inside
-    /// <c>IQueryable.Select(...)</c>.
+    /// Projection from <see cref="Model"/> to <see cref="ModelDto"/> for <c>IQueryable.Select</c>.
     /// </summary>
     public static Expression<Func<Model, ModelDto>> MapToModelDtoExpression { get; } =
         model => new ModelDto
@@ -32,11 +31,7 @@ public static class ModelMapper
 
     #region Public static methods
 
-    /// <summary>
-    /// Maps a materialized <see cref="Model"/> entity to <see cref="ModelDto"/>.
-    /// </summary>
-    /// <param name="model">The loaded model entity.</param>
-    /// <returns>The mapped DTO.</returns>
+    /// <summary>Maps a materialized <see cref="Model"/> to <see cref="ModelDto"/>.</summary>
     public static ModelDto MapToModelDto(this Model model)
     {
         return new ModelDto
@@ -59,11 +54,9 @@ public static class ModelMapper
     }
 
     /// <summary>
-    /// Creates a new <see cref="Model"/> entity from a <see cref="CreateModelActionDto"/>.
-    /// Callers set <c>Id</c>, <c>CreatedById</c> and <c>ModifiedById</c>; the audit interceptor stamps the dates.
+    /// Creates an untracked <see cref="Model"/>. Callers set <c>Id</c>, <c>CreatedById</c> and
+    /// <c>ModifiedById</c>; the audit interceptor stamps the dates.
     /// </summary>
-    /// <param name="dto">The action DTO carrying the new values.</param>
-    /// <returns>The new, untracked entity.</returns>
     public static Model FromCreateModelActionDtoToModel(this CreateModelActionDto dto)
     {
         return new Model
@@ -84,11 +77,9 @@ public static class ModelMapper
     }
 
     /// <summary>
-    /// Applies an <see cref="UpdateModelActionDto"/> to an existing <see cref="Model"/>
-    /// entity in place. Callers set <c>ModifiedById</c> and save; the audit interceptor stamps <c>DateModified</c>.
+    /// Applies the update to a tracked <see cref="Model"/> in place. Callers set <c>ModifiedById</c>
+    /// and save; the audit interceptor stamps <c>DateModified</c>.
     /// </summary>
-    /// <param name="dto">The action DTO carrying the new values.</param>
-    /// <param name="model">The tracked entity to mutate.</param>
     public static void FromUpdateModelActionDtoToModel(this UpdateModelActionDto dto, Model model)
     {
         model.ProviderId = dto.ProviderId;
@@ -101,8 +92,7 @@ public static class ModelMapper
         model.IsReasoningEnabled = dto.IsReasoningEnabled;
         model.IsUserSelectable = dto.IsUserSelectable;
         model.IsDefault = dto.IsDefault;
-        // Assigned unconditionally, including when the request omits them: this is a full
-        // representation, so an absent price clears the stored one rather than preserving it.
+        // Full representation: an omitted price clears the stored one.
         model.InputPricePerMillionTokens = dto.InputPricePerMillionTokens;
         model.OutputPricePerMillionTokens = dto.OutputPricePerMillionTokens;
     }

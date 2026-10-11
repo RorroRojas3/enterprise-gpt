@@ -11,37 +11,26 @@ namespace Enterprise.Gpt.Entity.Usage;
 /// and which MCP servers were attached to it.
 /// </summary>
 /// <remarks>
-/// Append-only. Rows are never updated and never soft-deleted, which is why this derives from
-/// <see cref="BaseCreatedEntity{TKey}"/> rather than <see cref="BaseModifiedEntity{TKey}"/> and why
-/// <see cref="BaseEntity{TKey}.DateDeactivated"/> stays <see langword="null"/> — a usage record that can
-/// be edited or hidden is not an audit trail. <see cref="BaseCreatedEntity{TKey}.DateCreated"/> is the moment
-/// the row was saved and is the timestamp reports group by.
+/// Append-only audit row: never updated or soft-deleted. Reports group by
+/// <see cref="BaseCreatedEntity{TKey}.DateCreated"/>.
 /// </remarks>
 public class ConversationUsage : BaseCreatedEntity<Guid>
 {
     public Guid ConversationId { get; set; }
 
-    /// <summary>
-    /// The user the call is charged to. Denormalized from <see cref="Conversation"/> so per-user
-    /// reporting does not have to join through it.
-    /// </summary>
+    /// <summary>Denormalized from <see cref="Conversation"/> for per-user reporting.</summary>
     public Guid UserId { get; set; }
 
     public Guid ModelId { get; set; }
 
-    /// <summary>
-    /// The provider that served the call.
-    /// </summary>
     /// <remarks>
-    /// Recorded here rather than read through <see cref="Model"/> at report time: an administrator
-    /// can repoint a catalog row at a different provider, which would silently rewrite the history
-    /// of every call it ever served.
+    /// Snapshotted rather than read through <see cref="Model"/>, since repointing a catalog row would
+    /// otherwise rewrite history.
     /// </remarks>
     public Guid ProviderId { get; set; }
 
     /// <summary>
-    /// The deployment that actually billed the call, captured as it stood at the time. Catalog
-    /// rows are renamed and repointed; this value must keep meaning what it meant.
+    /// The deployment that billed the call, snapshotted because catalog rows are renamed and repointed.
     /// </summary>
     public string DeploymentName { get; set; } = null!;
 
@@ -66,19 +55,9 @@ public class ConversationUsage : BaseCreatedEntity<Guid>
     /// tools.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// The rolled-up total of the top-level entries in <see cref="ToolCalls"/>, denormalized here so
-    /// the assistant/tool split of a call is readable without touching the child table. Zero when
-    /// no tool ran, or when the tools that ran surfaced no usage — an MCP server need not report
-    /// what it spent.
-    /// </para>
-    /// <para>
-    /// Summed from the providers' input and output counts, whereas
-    /// <see cref="ConversationUsageToolCall.SubtreeTotalTokens"/> stores their reported total. A
-    /// provider whose total is not the sum of its operands — cached and reasoning tokens are billed
-    /// without appearing in either — will make those two disagree, so a report should pick one and
-    /// not join across them.
-    /// </para>
+    /// Rolled up from the top-level <see cref="ToolCalls"/>; zero when no tool ran or reported usage.
+    /// Summed from input and output counts, unlike the reported
+    /// <see cref="ConversationUsageToolCall.SubtreeTotalTokens"/>, so never join across the two.
     /// </remarks>
     public long ToolInputTokens { get; set; }
 
@@ -94,10 +73,8 @@ public class ConversationUsage : BaseCreatedEntity<Guid>
     /// no cache figure, which is not the same as reporting a cache miss.
     /// </summary>
     /// <remarks>
-    /// Recorded because cached tokens bill at a discount, so <see cref="EstimatedCost"/> — which
-    /// prices every input token at the same rate — overstates a cached call. Closing that gap needs
-    /// a cached-input price on the catalog model, which does not exist yet; until it does, this
-    /// column is how a report can tell an overstatement is possible.
+    /// Cached tokens bill at a discount the catalog cannot price yet, so this flags where
+    /// <see cref="EstimatedCost"/> overstates.
     /// </remarks>
     public long? CachedInputTokens { get; set; }
 
@@ -116,9 +93,7 @@ public class ConversationUsage : BaseCreatedEntity<Guid>
     /// The call's total token cost: the assistant's own turns plus everything its tools consumed.
     /// </summary>
     /// <remarks>
-    /// Deliberately an expression-bodied getter with no backing field, which is what keeps EF from
-    /// mapping it. Giving it a setter would silently add a column that could disagree with its own
-    /// operands.
+    /// Getter-only so EF does not map it; a stored column could disagree with its operands.
     /// </remarks>
     public long TotalTokens => AssistantTokens + ToolInputTokens + ToolOutputTokens;
 
@@ -127,19 +102,8 @@ public class ConversationUsage : BaseCreatedEntity<Guid>
     /// <see langword="null"/> when the turn was not transcribed.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// Nullable on purpose, and the distinction matters: a cancelled or failed turn is billed in
-    /// SQL and deliberately never transcribed, so it has no context cost at all. Null says "not
-    /// transcribed" where zero would say "transcribed nothing" — the same reason the price columns
-    /// below are nullable.
-    /// </para>
-    /// <para>
-    /// The only estimated figure on this row. Every other token column is what the provider
-    /// reported it billed, and the two are not a reconciliation pair: tool calls, tool results and
-    /// reasoning are billed and never transcribed, so the billed columns exceed this one by more
-    /// the more tools a turn ran. They agree only on a turn with no tool calls, which is exactly
-    /// the condition the estimator's accuracy is measured under.
-    /// </para>
+    /// Null, not zero, for cancelled and failed turns, which are billed but never transcribed. The only
+    /// estimated column; it matches the billed ones only on a turn without tool calls.
     /// </remarks>
     public long? ContextTokens { get; set; }
 
@@ -148,9 +112,7 @@ public class ConversationUsage : BaseCreatedEntity<Guid>
     /// <see langword="null"/> when the model carried no price.
     /// </summary>
     /// <remarks>
-    /// Snapshotted for the same reason <see cref="DeploymentName"/> is: the catalog is editable, so
-    /// joining <c>[Core.Ref].[Model]</c> at report time would price a call at today's rate and
-    /// silently rewrite the history of every call the model ever served.
+    /// Snapshotted like <see cref="DeploymentName"/>, so a catalog price change never reprices history.
     /// </remarks>
     public decimal? InputPricePerMillionTokens { get; set; }
 
@@ -165,31 +127,9 @@ public class ConversationUsage : BaseCreatedEntity<Guid>
     /// price is absent.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// Unmapped, on the same terms as <see cref="TotalTokens"/>: an expression-bodied getter with
-    /// no backing field, so no column can drift from its own operands.
-    /// </para>
-    /// <para>
-    /// Null rather than a partial figure when a price is missing. Adding the priced half would
-    /// produce a number that looks like a cost and understates it, and there is no way for a reader
-    /// to tell the two apart afterwards.
-    /// </para>
-    /// <para>
-    /// Tool tokens are priced at the driving model's rate because nothing in a tool call names the
-    /// model behind it — <see cref="ConversationUsageToolCall.ModelId"/> is null on every row this
-    /// application can write. Cost is therefore an approximation by construction.
-    /// </para>
-    /// <para>
-    /// <see cref="ContextTokens"/> is deliberately absent from this arithmetic and must stay
-    /// absent. Cost is what the provider reported it billed, never what the transcript weighs; the
-    /// two are reportable side by side and are not addable.
-    /// </para>
-    /// <para>
-    /// Being unmapped, this cannot appear in a server-side projection: a
-    /// <c>Select(x =&gt; x.EstimatedCost)</c> over an <see cref="IQueryable{T}"/> throws, because
-    /// there is no column to translate it to. Materialize the row first, or repeat the arithmetic
-    /// in the query — the same constraint <see cref="TotalTokens"/> carries.
-    /// </para>
+    /// Unmapped like <see cref="TotalTokens"/>, so it throws in an <see cref="IQueryable{T}"/> projection;
+    /// materialize first. Tool tokens are priced at the driving model's rate, and <see cref="ContextTokens"/>
+    /// must never enter this sum.
     /// </remarks>
     public decimal? EstimatedCost =>
         InputPricePerMillionTokens is { } inputPrice && OutputPricePerMillionTokens is { } outputPrice
@@ -201,9 +141,8 @@ public class ConversationUsage : BaseCreatedEntity<Guid>
     /// <see langword="null"/> for a naming call and for a turn that did not complete.
     /// </summary>
     /// <remarks>
-    /// Best-effort correlation, not a guarantee: the audit row commits to SQL before the transcript
-    /// append is attempted, so a Cosmos write that fails leaves this pointing at a message that was
-    /// never written. That case is logged with both identifiers.
+    /// Best-effort: the SQL row commits before the transcript append, so a failed Cosmos write leaves
+    /// this dangling (logged with both ids).
     /// </remarks>
     public Guid? AssistantMessageId { get; set; }
 
@@ -222,9 +161,7 @@ public class ConversationUsage : BaseCreatedEntity<Guid>
     /// made directly, and each of those carries its own nested calls.
     /// </summary>
     /// <remarks>
-    /// Unfiltered, this navigation loads the whole tree flat, because EF maps the self-relationship
-    /// on <see cref="ConversationUsageToolCall"/> as an ordinary parent/child edge. Queries that
-    /// want only the top level filter on <c>ParentId == null</c>.
+    /// Unfiltered, this loads the whole tree flat; filter on <c>ParentId == null</c> for the top level.
     /// </remarks>
     public List<ConversationUsageToolCall> ToolCalls { get; set; } = [];
 
@@ -232,9 +169,7 @@ public class ConversationUsage : BaseCreatedEntity<Guid>
     /// What the provider reported for each model turn of the call, in the order it reported them.
     /// </summary>
     /// <remarks>
-    /// Empty for a call that did not stream — providers report one aggregate then, and the
-    /// middleware surfaces no breakdown — and for every row written before this table existed.
-    /// Empty therefore means "no breakdown available", never "the call had no turns".
+    /// Empty means no breakdown (non-streaming calls, older rows), never that the call had no turns.
     /// </remarks>
     public List<ConversationUsageTurn> Turns { get; set; } = [];
 }

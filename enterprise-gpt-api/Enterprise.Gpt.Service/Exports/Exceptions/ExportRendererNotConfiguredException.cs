@@ -12,16 +12,12 @@ namespace Enterprise.Gpt.Service.Exports.Exceptions;
 /// <remarks>
 /// The distinct problem type is what lets the client say "not available here" rather than "try again".
 /// </remarks>
-/// <param name="format">The format that has no renderer.</param>
 public class ExportRendererNotConfiguredException(ConversationExportFormats format)
     : ProblemException(
         HttpStatusCode.ServiceUnavailable,
         ProblemCodes.ExportRendererNotConfigured,
         $"Conversation export to {format.ToWireFormat()} is not available in this environment.")
 {
-    /// <summary>
-    /// Gets the format that has no renderer, as it travels on the wire.
-    /// </summary>
     public string Format { get; } = format.ToWireFormat();
 
     /// <inheritdoc />

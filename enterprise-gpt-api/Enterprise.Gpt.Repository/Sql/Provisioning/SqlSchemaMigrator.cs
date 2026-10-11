@@ -15,7 +15,6 @@ public sealed partial class SqlSchemaMigrator(EnterpriseGptDbContext ctx, ILogge
     /// <summary>
     /// Creates the database when it does not exist and applies every pending migration.
     /// </summary>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
     public async Task MigrateAsync(CancellationToken cancellationToken)
     {
         await _ctx.Database.MigrateAsync(cancellationToken);

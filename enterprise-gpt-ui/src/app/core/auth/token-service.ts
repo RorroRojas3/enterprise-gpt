@@ -17,16 +17,8 @@ export class InteractiveSignInRequiredError extends Error {
 }
 
 /**
- * The one place an API access token comes from.
- *
- * Both transports must share it. `HttpClient` goes through `authInterceptor`, and
- * EP-4's chat stream is a raw `fetch` that never reaches an `HttpClient`
- * interceptor at all — which is exactly why `MsalInterceptor` is not used. Two
- * token sources would mean two caches, two refresh schedules, and a stream that
- * outlives the token the rest of the app is using.
- *
- * A `Promise` rather than an `Observable` for the same reason: the stream path is
- * promise-shaped, and an interceptor converts a promise trivially.
+ * The one token source for `authInterceptor` and the chat stream's raw `fetch`, so both share a
+ * cache and refresh schedule. Promise-shaped because the stream path is.
  */
 @Injectable({ providedIn: 'root' })
 export class TokenService {
@@ -34,35 +26,20 @@ export class TokenService {
   private readonly _scopes = [...inject(APP_CONFIG).auth.apiScopes];
 
   /**
-   * Shared in-flight acquisition. A turn that fires a stream and two list requests
-   * in the same tick would otherwise start three silent acquisitions, each racing
-   * to write the same cache entry.
-   *
-   * A `forceRefresh` deliberately does not join it: that call exists precisely
-   * because the cached token was rejected, so sharing a non-refreshing acquisition
-   * would hand back the token that just failed. The guarantee stops at this class,
-   * though — MSAL's own `acquireTokenSilent` de-duplication keys on a request
-   * thumbprint that does **not** include `forceRefresh`, so a forced call overlapping
-   * a plain one for the same account and scopes can still be merged inside MSAL. The
-   * window is narrow, because this memo already leaves at most one MSAL call
-   * outstanding at a time.
+   * Shared so concurrent callers start one silent acquisition. `forceRefresh` skips it, since
+   * joining would return the rejected token; MSAL may still merge the two, as its request
+   * thumbprint ignores `forceRefresh`.
    */
   private _inFlight: Promise<string> | null = null;
 
-  /** The account tokens are acquired for, or null when nobody is signed in. */
   get activeAccount(): AccountInfo | null {
     return this._instance.getActiveAccount() ?? this._instance.getAllAccounts()[0] ?? null;
   }
 
   /**
-   * Acquires a bearer access token for the Enterprise GPT API.
-   *
-   * @param options `forceRefresh` bypasses the token cache; used once by
-   *   `authInterceptor` after the API rejects a token with a 401.
-   * @throws {InteractiveSignInRequiredError} When no account is signed in, or when
-   *   Entra requires interaction. In the latter case a redirect has already been
-   *   started and the page is on its way out, so the throw exists to stop the
-   *   caller rather than to be recovered from.
+   * @param options `forceRefresh` bypasses the cache; `authInterceptor` uses it once after a 401.
+   * @throws {InteractiveSignInRequiredError} With no account, or once an interaction redirect has
+   *   started; it stops the caller and is not meant to be recovered from.
    */
   async getToken(options?: { forceRefresh?: boolean }): Promise<string> {
     if (options?.forceRefresh) {
@@ -106,8 +83,7 @@ export class TokenService {
     try {
       await this._instance.acquireTokenRedirect({ scopes: this._scopes, account });
     } catch (cause) {
-      // A second redirect while one is already committed is how redirect loops start.
-      // The browser is already on its way out, so there is nothing to recover.
+      // A redirect is already committed and the page is leaving, so there is nothing to recover.
       if (
         cause instanceof BrowserAuthError &&
         cause.errorCode === BrowserAuthErrorCodes.interactionInProgress

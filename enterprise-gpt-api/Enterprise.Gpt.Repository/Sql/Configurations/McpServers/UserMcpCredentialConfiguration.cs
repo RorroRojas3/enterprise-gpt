@@ -6,10 +6,6 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Enterprise.Gpt.Repository.Sql.Configurations.McpServers;
 
-/// <summary>
-/// Maps <see cref="UserMcpCredential"/> to <c>Core.UserMcpCredential</c> and the unique index that
-/// keeps a user to one live credential per server.
-/// </summary>
 public sealed class UserMcpCredentialConfiguration : BaseModifiedByEntityConfiguration<UserMcpCredential, Guid>
 {
     protected override void ConfigureEntity(EntityTypeBuilder<UserMcpCredential> builder)
@@ -32,9 +28,8 @@ public sealed class UserMcpCredentialConfiguration : BaseModifiedByEntityConfigu
             .WithMany(x => x.UserCredentials)
             .HasForeignKey(x => x.McpServerId);
 
-        // Also the covering index for the lookup on the tool-acquisition path, which reads by
-        // both columns. Filtered like every other unique index here: a credential deactivated
-        // alongside its server must not block the user supplying a new one later.
+        // Also covers the tool-acquisition lookup. Filtered so a credential deactivated with its server
+        // does not block a new one.
         builder.HasIndex(x => new { x.UserId, x.McpServerId })
             .HasFilter("[DateDeactivated] IS NULL")
             .IsUnique();

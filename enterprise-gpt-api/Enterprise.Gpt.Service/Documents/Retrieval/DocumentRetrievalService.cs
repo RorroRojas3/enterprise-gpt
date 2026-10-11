@@ -29,27 +29,18 @@ public interface IDocumentRetrievalService
     /// <summary>
     /// Resolves what a conversation's retrieval tool is allowed to search.
     /// </summary>
-    /// <param name="conversationId">The conversation being answered.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>The scope, carrying an empty document list when there is nothing to search.</returns>
     /// <remarks>
-    /// The project is read from the conversation row rather than accepted from the caller, so a project's
-    /// documents can only ever be reached through a conversation that is actually in it. A deactivated
-    /// project is dropped from the returned scope, so its documents become unreachable even though the
-    /// conversation still points at it.
+    /// The project comes off the conversation row, never the caller, and a deactivated project is dropped
+    /// from the scope even though the conversation still points at it.
     /// </remarks>
     Task<DocumentRetrievalScope> GetScopeAsync(Guid conversationId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Finds the passages in <paramref name="scope"/> that best answer <paramref name="query"/>.
+    /// Finds the passages in <paramref name="scope"/> (optionally one named document) that best answer
+    /// <paramref name="query"/>.
     /// </summary>
-    /// <param name="scope">The corpus to search, from <see cref="GetScopeAsync"/>.</param>
-    /// <param name="query">What to search for.</param>
-    /// <param name="documentName">Restricts the search to one document by name, or <see langword="null"/> to search all of them.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>
-    /// The matching passages, most relevant first. An empty result is a normal outcome and carries the
-    /// names of the documents that were searched.
+    /// Passages, most relevant first. An empty result is normal and names the documents searched.
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="scope"/> is <see langword="null"/>.</exception>
     Task<DocumentSearchResult> SearchAsync(DocumentRetrievalScope scope, string query, string? documentName, CancellationToken cancellationToken);
@@ -57,19 +48,9 @@ public interface IDocumentRetrievalService
 
 /// <inheritdoc />
 /// <remarks>
-/// <para>
-/// Retrieval runs two passes and fuses them. The vector pass finds chunks whose meaning is close to the
-/// query; the keyword pass finds chunks that contain its exact tokens. Neither subsumes the other —
-/// embeddings are weak on part numbers, error codes and surnames, and keywords are blind to paraphrase —
-/// so the ranks are combined with Reciprocal Rank Fusion rather than either being trusted alone.
-/// </para>
-/// <para>
-/// What comes back is passages, not chunks. Ingestion cuts documents into 512-token chunks that overlap
-/// by 128, which means a single chunk regularly stops mid-explanation and consecutive chunks repeat a
-/// quarter of their text. Every match is therefore widened by its neighbours and contiguous runs are
-/// merged into one passage with the duplicated seam removed, so the model reads whole thoughts and pays
-/// for each sentence once.
-/// </para>
+/// Vector and keyword passes are fused with Reciprocal Rank Fusion (embeddings miss codes and surnames,
+/// keywords miss paraphrase). Matches widen to their neighbours and contiguous runs merge minus the
+/// overlapping seam, so the model reads whole passages and pays for each sentence once.
 /// </remarks>
 public sealed partial class DocumentRetrievalService(
     ILogger<DocumentRetrievalService> logger,
@@ -78,22 +59,13 @@ public sealed partial class DocumentRetrievalService(
     IOptions<DocumentRetrievalOptions> options,
     EnterpriseGptDbContext ctx) : IDocumentRetrievalService
 {
-    /// <summary>
-    /// The rank-fusion constant from the original Reciprocal Rank Fusion paper. It damps the influence
-    /// of the very top ranks, so a chunk both passes agree on beats one that either ranks first alone.
-    /// </summary>
+    // From the RRF paper: damps the top ranks so a chunk both passes agree on beats one either ranks first.
     private const double RrfK = 60.0;
 
-    /// <summary>
-    /// Shortest seam the overlap stripper will act on. Below this, a match between the tail of one chunk
-    /// and the head of the next is as likely to be a coincidence — a shared "the " — as real overlap.
-    /// </summary>
+    // Shorter seams are as likely a coincidence (a shared "the ") as real overlap.
     private const int MinOverlapChars = 16;
 
-    /// <summary>
-    /// Longest query accepted. Well beyond any real search phrase, and short enough that a runaway
-    /// generation cannot turn one tool call into a large embedding request.
-    /// </summary>
+    // Far beyond a real query; stops a runaway generation becoming a large embedding request.
     private const int MaxQueryLength = 1024;
 
     private static readonly FrozenSet<string> StopWords = new[]
@@ -108,14 +80,8 @@ public sealed partial class DocumentRetrievalService(
         "why", "will", "with", "would", "you", "your"
     }.ToFrozenSet(StringComparer.Ordinal);
 
-    /// <summary>
-    /// Formats whose chunks carry a sheet ordinal rather than a page number.
-    /// </summary>
-    /// <remarks>
-    /// Held here rather than derived from the extractors so citation stays off their construction
-    /// path; <c>DocumentRetrievalServiceTests</c> fails when an extractor reports sheets and its
-    /// extension is missing from this set.
-    /// </remarks>
+    // Chunks of these carry a sheet ordinal, not a page. Not derived from the extractors, to keep citation
+    // off their construction path; DocumentRetrievalServiceTests catches drift.
     private static readonly FileExtensions[] _sheetFormats = [FileExtensions.Xlsx, FileExtensions.Csv];
 
     internal static readonly FrozenSet<string> SpreadsheetExtensions =
@@ -132,10 +98,8 @@ public sealed partial class DocumentRetrievalService(
     {
         List<RetrievableDocument> documents = [];
 
-        // Uploaded only. A generated document has no chunk rows, so it is already absent from the
-        // retrieval query itself; excluding it here is what also keeps its file name out of the
-        // retrieval prompt, out of HasDocuments, and out of every tool that resolves a name through
-        // this scope.
+        // Uploaded only: generated documents have no chunks, and excluding them here also keeps their
+        // names out of the prompt, HasDocuments and every name lookup through this scope.
         var conversationDocuments = await _ctx.ConversationDocuments
             .AsNoTracking()
             .Where(d => d.ConversationId == conversationId
@@ -147,11 +111,8 @@ public sealed partial class DocumentRetrievalService(
 
         documents.AddRange(conversationDocuments.Select(d => new RetrievableDocument(d.Id, DocumentSources.Conversation, d.Name)));
 
-        // Read from the conversation rather than taken from the caller, and confirmed active rather than
-        // assumed. Reading it here ties the project to a conversation that is genuinely in it, so this
-        // service cannot be asked for one project's documents through another project's conversation.
-        // A deactivated project reads as no project, since the soft-delete filter applies to the navigation;
-        // that keeps the project half of every retrieval query switched off while the link still exists.
+        // Off the conversation, so a project is reachable only through its own conversations. The soft-delete
+        // filter on the navigation makes a deactivated project read as none.
         var activeProjectId = await _ctx.Conversations
             .AsNoTracking()
             .Where(c => c.Id == conversationId && c.Project != null)
@@ -187,9 +148,7 @@ public sealed partial class DocumentRetrievalService(
             return EmptyResult(scope, trimmedQuery, "The query was empty. Call the tool again with the words to search for.");
         }
 
-        // The query is model-supplied and goes straight to a billed embedding deployment, so its length
-        // is bounded here rather than wherever it first causes trouble. The ceiling is far above any
-        // real search phrase; anything longer is a runaway generation, not a question.
+        // Model-supplied and sent to a billed embedding deployment; anything this long is a runaway generation.
         if (trimmedQuery.Length > MaxQueryLength)
         {
             // Snapped off a trailing high surrogate so the echoed query never ends mid-character.
@@ -244,10 +203,6 @@ public sealed partial class DocumentRetrievalService(
     /// Fuses the two passes, drops what is not relevant enough, and caps how much any one document can
     /// contribute.
     /// </summary>
-    /// <param name="dense">The vector pass, closest first.</param>
-    /// <param name="lexical">The keyword pass, best first.</param>
-    /// <param name="termCount">How many terms the keyword pass searched for.</param>
-    /// <returns>The chunks worth showing, most relevant first.</returns>
     internal IReadOnlyList<ScoredChunk> SelectHits(
         IReadOnlyList<ChunkCandidate> dense,
         IReadOnlyList<ChunkCandidate> lexical,
@@ -258,9 +213,8 @@ public sealed partial class DocumentRetrievalService(
         Fuse(fused, dense);
         Fuse(fused, lexical);
 
-        // A vector match is trusted on distance alone; a keyword-only match has no distance yet, so it
-        // has to earn its place on term coverage. One matching term out of several is usually the query's
-        // most common word appearing somewhere irrelevant.
+        // Keyword-only matches have no distance, so they qualify on term coverage; one term of several is
+        // usually a common word appearing somewhere irrelevant.
         var requiredTerms = Math.Min(2, Math.Max(termCount, 1));
 
         var ranked = fused.Values
@@ -311,16 +265,8 @@ public sealed partial class DocumentRetrievalService(
         }
     }
 
-    /// <summary>
-    /// Widens each match into the chunk indices around it.
-    /// </summary>
-    /// <param name="hits">The selected chunks.</param>
-    /// <returns>The distinct chunk keys to read, matches and neighbours alike.</returns>
-    /// <remarks>
-    /// De-duplicated here rather than in SQL so overlapping windows in the same document cost one seek
-    /// instead of several, and so the read-back never has to sort <c>nvarchar(max)</c> to remove
-    /// duplicate rows. Indices past the end of a document simply fail to join.
-    /// </remarks>
+    // De-duplicated here, not in SQL, so overlapping windows cost one seek and the read-back never sorts
+    // nvarchar(max). Indices past a document's end simply fail to join.
     internal IReadOnlyList<ChunkKey> ExpandToNeighbours(IReadOnlyList<ScoredChunk> hits)
     {
         var window = _options.NeighborWindow;
@@ -344,16 +290,9 @@ public sealed partial class DocumentRetrievalService(
     /// <summary>
     /// Merges the read-back chunks into contiguous passages, one per unbroken run of chunk indices.
     /// </summary>
-    /// <param name="scope">The corpus, used to resolve document names for citations.</param>
-    /// <param name="hits">The chunks that actually matched, which is what a passage is scored on.</param>
-    /// <param name="chunks">The chunks read back, matches and neighbours together.</param>
-    /// <param name="sheetNames">Sheet names by document and ordinal, for spreadsheet citations.</param>
-    /// <returns>The passages, most relevant first.</returns>
     /// <remarks>
-    /// Ordered by the fused rank-fusion score, not by cosine distance. Ordering by distance would put
-    /// every keyword-only match last by construction — such a match is only in the result set because its
-    /// distance failed the gate — so the exact-token hits the keyword pass exists to find would be ranked
-    /// least relevant and dropped first by the token budget.
+    /// Ordered by fused score, not distance: keyword-only matches failed the distance gate, so distance
+    /// order would rank them last and the token budget would drop them first.
     /// </remarks>
     internal IReadOnlyList<RetrievedPassage> BuildPassages(
         DocumentRetrievalScope scope,
@@ -363,8 +302,7 @@ public sealed partial class DocumentRetrievalService(
     {
         var names = scope.Documents.ToDictionary(d => d.Id, d => d.Name);
 
-        // DistinctBy so this stays total: the production caller passes dictionary values, whose keys are
-        // unique by construction, but this is internal and tests hand it arrays directly.
+        // DistinctBy keeps this total for tests that pass arrays; production keys are already unique.
         var hitsByKey = hits.DistinctBy(h => h.Key).ToDictionary(h => h.Key);
         var maxOverlapChars = Math.Max(64, _textChunker.OverlapTokens * 6);
 
@@ -395,8 +333,7 @@ public sealed partial class DocumentRetrievalService(
                     return;
                 }
 
-                // Scored on the matches only. A neighbour was pulled in for context, and letting one
-                // score the passage would rank a run by an accident of where the chunker cut.
+                // Scored on matches only; a context neighbour would rank the run by where the chunker cut.
                 List<(ChunkText Chunk, ScoredChunk Hit)> matched = [];
                 foreach (var member in members)
                 {
@@ -421,9 +358,8 @@ public sealed partial class DocumentRetrievalService(
                 var distance = matched.Min(m => m.Chunk.Distance);
                 var documentName = names.TryGetValue(group.Key.DocumentId, out var name) ? name : "document";
 
-                // The best match's page, not the run's first: a match at the top of page 5 widened by a
-                // neighbour that began on page 4 would otherwise be cited as page 4, and the model is
-                // told to quote the citation verbatim.
+                // The best match's page, not the run's first, which may be a neighbour's earlier page; the
+                // model quotes the citation verbatim.
                 var page = matched
                     .OrderBy(m => m.Chunk.Distance)
                     .Select(m => m.Chunk.SourceNumber)
@@ -455,16 +391,8 @@ public sealed partial class DocumentRetrievalService(
         ];
     }
 
-    /// <summary>
-    /// Trims the passage list to the configured token budget.
-    /// </summary>
-    /// <param name="passages">The passages, most relevant first.</param>
-    /// <returns>The passages that fit, and whether any were dropped.</returns>
-    /// <remarks>
-    /// The first passage is always kept even if it alone exceeds the budget: returning nothing because
-    /// the single best match is long is worse than overshooting once. A merged passage is bounded by
-    /// the chunk size times the neighbour window, so the overshoot is bounded too.
-    /// </remarks>
+    // The first passage is always kept: overshooting once (bounded by chunk size times the neighbour
+    // window) beats returning nothing.
     internal (IReadOnlyList<RetrievedPassage> Passages, bool Truncated) ApplyTokenBudget(IReadOnlyList<RetrievedPassage> passages)
     {
         var kept = new List<RetrievedPassage>(passages.Count);
@@ -488,10 +416,6 @@ public sealed partial class DocumentRetrievalService(
 
     #region Private methods
 
-    /// <summary>
-    /// Turns the query into a vector the database can compare against the stored embeddings.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">The generator returned nothing, or a vector of the wrong size.</exception>
     private async Task<SqlVector<float>> EmbedQueryAsync(string query, CancellationToken cancellationToken)
     {
         var generated = await _embeddingGenerator.GenerateAsync([query], cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -513,17 +437,8 @@ public sealed partial class DocumentRetrievalService(
         return new SqlVector<float>(vector);
     }
 
-    /// <summary>
-    /// Maps a caller-supplied document name onto a document to restrict a <em>search</em> to.
-    /// </summary>
-    /// <returns>
-    /// The document to restrict to and a note for the model, either of which may be
-    /// <see langword="null"/>. An unknown or ambiguous name searches everything rather than nothing:
-    /// silently returning no results for a near-miss on a file name reads to the model as "the documents
-    /// do not say", which is a worse failure than a wider search with an explanation attached. Summarizing
-    /// takes the opposite decision on the same matches, because a wider search is cheap and summarizing
-    /// the wrong document is not.
-    /// </returns>
+    // An unknown or ambiguous name searches everything, with a note: an empty result reads to the model as
+    // "the documents do not say". Summarizing decides the opposite, as summarizing the wrong file is costly.
     private static (Guid? DocumentId, string? Note) ResolveDocumentFilter(DocumentRetrievalScope scope, string? documentName)
     {
         if (string.IsNullOrWhiteSpace(documentName))
@@ -542,14 +457,7 @@ public sealed partial class DocumentRetrievalService(
         };
     }
 
-    /// <summary>
-    /// Reads the sheet names behind the matched chunks of any spreadsheet in the result.
-    /// </summary>
-    /// <returns>Sheet names by document and ordinal, or <see langword="null"/> when none apply.</returns>
-    /// <remarks>
-    /// Kept out of the retrieval statements and off the scope: a corpus with no spreadsheet in it never
-    /// reaches the database for this at all.
-    /// </remarks>
+    // Separate from the retrieval statements so a corpus without spreadsheets never queries for this.
     private async Task<IReadOnlyDictionary<(Guid DocumentId, int SheetIndex), string>?> ResolveSheetNamesAsync(
         DocumentRetrievalScope scope,
         IReadOnlyList<ChunkText> chunks,
@@ -719,16 +627,8 @@ public sealed partial class DocumentRetrievalService(
         command.Parameters.Add(new SqlParameter("@documentId", SqlDbType.UniqueIdentifier) { Value = (object?)documentId ?? DBNull.Value });
     }
 
-    /// <summary>
-    /// Runs one retrieval statement on the context's own connection.
-    /// </summary>
-    /// <remarks>
-    /// Dropped to ADO.NET rather than <c>SqlQueryRaw</c> because EF composes unmapped-type queries into a
-    /// wrapping subquery, which these statements — a common table expression, and a <c>TOP</c> ordered by
-    /// a computed distance — cannot survive. The connection, and any ambient transaction, still belong to
-    /// EF: only a connection this method opened is closed again, so a caller already inside a transaction
-    /// keeps it.
-    /// </remarks>
+    // ADO.NET, not SqlQueryRaw: EF wraps unmapped queries in a subquery that a CTE, or a TOP ordered by a
+    // computed distance, cannot survive. Closes only a connection it opened, keeping any caller transaction.
     private async Task<IReadOnlyList<T>> QueryAsync<T>(
         string sql,
         Action<DbCommand> configure,
@@ -794,16 +694,11 @@ public sealed partial class DocumentRetrievalService(
     #region Public static methods
 
     /// <summary>
-    /// Picks the distinct terms worth searching for literally.
+    /// Picks the distinct terms worth searching for literally, most distinctive first.
     /// </summary>
-    /// <param name="query">The raw query.</param>
-    /// <param name="maxTerms">The most terms to return.</param>
-    /// <returns>The terms, most distinctive first.</returns>
     /// <remarks>
-    /// Ordering puts tokens containing digits first and longer tokens next, as a cheap stand-in for
-    /// inverse document frequency: identifiers and long words discriminate between chunks, common short
-    /// words do not. Two-character tokens survive only when they contain a digit, which keeps <c>v2</c>
-    /// and <c>5g</c> while dropping the noise a two-letter word would add.
+    /// Digits first, then length, as a cheap stand-in for inverse document frequency. Two-character tokens
+    /// survive only with a digit (<c>v2</c>, <c>5g</c>).
     /// </remarks>
     internal static IReadOnlyList<string> ExtractTerms(string query, int maxTerms)
     {
@@ -855,14 +750,8 @@ public sealed partial class DocumentRetrievalService(
     }
 
     /// <summary>
-    /// Escapes the characters <c>LIKE</c> treats as wildcards so a term matches itself literally.
+    /// Escapes <c>LIKE</c> wildcards, and the backslash itself, for use with <c>ESCAPE '\'</c>.
     /// </summary>
-    /// <param name="term">The term to escape.</param>
-    /// <returns>The escaped term, for use with <c>ESCAPE '\'</c>.</returns>
-    /// <remarks>
-    /// The backslash is escaped first by virtue of being in the same pass — it is the escape character
-    /// itself, so a term containing one would otherwise consume the character after it.
-    /// </remarks>
     internal static string EscapeLikePattern(string term)
     {
         var escaped = new StringBuilder(term.Length + 8);
@@ -881,19 +770,12 @@ public sealed partial class DocumentRetrievalService(
     }
 
     /// <summary>
-    /// Finds the documents in scope whose name matches <paramref name="wanted"/>, widening the
-    /// comparison only as far as it has to.
+    /// Finds the documents whose name matches the already-trimmed <paramref name="wanted"/> at the narrowest
+    /// rung that produces any: exact, else prefix, else substring.
     /// </summary>
-    /// <param name="scope">The documents to match against.</param>
-    /// <param name="wanted">The name to match, already trimmed.</param>
-    /// <returns>
-    /// Every match at the narrowest rung that produced any: an exact name, else a prefix, else a
-    /// substring. Empty when nothing matches at all.
-    /// </returns>
     /// <remarks>
-    /// Shared rather than duplicated because the two tools that take a document name must agree on
-    /// what a name means; they deliberately disagree on what to do about an ambiguous one, which is
-    /// why this returns the matches instead of a decision.
+    /// Both name-taking tools share this so they agree on matching; they deliberately differ on ambiguity,
+    /// hence matches rather than a decision.
     /// </remarks>
     internal static IReadOnlyList<RetrievableDocument> MatchByName(DocumentRetrievalScope scope, string wanted)
     {
@@ -919,9 +801,8 @@ public sealed partial class DocumentRetrievalService(
     /// Builds the reference the model is told to quote verbatim.
     /// </summary>
     /// <remarks>
-    /// A spreadsheet chunk's source number is a sheet ordinal, so rendering it as <c>p.3</c> would cite
-    /// a page the file does not have; the file name alone is the fallback when the sheet cannot be named,
-    /// which is what a document ingested before sheets were stored gets.
+    /// A spreadsheet's source number is a sheet ordinal, never a page; without a stored sheet name the file
+    /// name stands alone.
     /// </remarks>
     internal static string BuildCitation(string documentName, int? page, string? sheetName)
     {
@@ -941,16 +822,9 @@ public sealed partial class DocumentRetrievalService(
     /// Appends <paramref name="next"/> to <paramref name="accumulated"/>, dropping the text the two
     /// already share at the seam.
     /// </summary>
-    /// <param name="accumulated">The passage built so far; appended to in place.</param>
-    /// <param name="next">The following chunk's text.</param>
-    /// <param name="maxOverlapChars">The longest seam to look for.</param>
     /// <remarks>
-    /// Consecutive chunks are built to overlap: the chunker seeds each one with the tail of the last, so
-    /// the head of <paramref name="next"/> is character-for-character the tail of
-    /// <paramref name="accumulated"/>. Finding that seam and skipping it is what stops a three-chunk
-    /// passage from repeating a quarter of itself twice. The longest seam is preferred so a repeated
-    /// short phrase inside the real overlap cannot cut it short, and a run with no seam at all — which a
-    /// re-sliced oversized chunk can produce — falls back to a paragraph break.
+    /// The chunker seeds each chunk with the previous tail, so the seam is exact. The longest seam wins so a
+    /// repeated phrase cannot cut it short; no seam (a re-sliced chunk) falls back to a paragraph break.
     /// </remarks>
     internal static void AppendWithoutOverlap(StringBuilder accumulated, string next, int maxOverlapChars)
     {

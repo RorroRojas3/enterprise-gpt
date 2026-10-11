@@ -5,9 +5,8 @@ import { PROBLEM_TYPE } from '../app/core/errors/problem-types';
 export const TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736';
 
 /**
- * One canned problem body per application-specific type, shaped exactly as the
- * API writes them — including the extension members and the null `detail` on
- * validation problems.
+ * One canned problem body per application type, shaped exactly as the API writes them,
+ * extension members and the validation problem's null `detail` included.
  */
 export const PROBLEM_FIXTURES = {
   validationError: {

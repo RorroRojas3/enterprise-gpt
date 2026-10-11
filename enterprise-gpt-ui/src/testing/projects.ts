@@ -26,12 +26,8 @@ export function projectDetailFixture(overrides: Partial<ProjectDto> = {}): Proje
 }
 
 /**
- * A `PaginatedResponseDto` envelope with the server's own arithmetic.
- *
- * `pageSize` echoes the clamped `take` and `currentPage` is `(skip / take) + 1`, both
- * computed server-side — a fixture that invents them would let a store pass against a
- * shape the API never sends. The default `pageSize` is the projects grid's own
- * `take=100`, which is the server's clamp ceiling.
+ * A `PaginatedResponseDto` with the server's own arithmetic. `pageSize` defaults to the grid's
+ * `take=100`, the server's clamp ceiling.
  */
 export function projectPage(
   items: ProjectSummaryDto[],

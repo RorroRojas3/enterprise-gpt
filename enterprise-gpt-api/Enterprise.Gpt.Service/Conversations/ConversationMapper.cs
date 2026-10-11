@@ -7,13 +7,11 @@ namespace Enterprise.Gpt.Service.Conversations;
 public static class ConversationMapper
 {
     /// <summary>
-    /// LINQ projection from <see cref="Conversation"/> to <see cref="ConversationDto"/> for use
-    /// inside <c>IQueryable.Select(...)</c>.
+    /// Projection from <see cref="Conversation"/> to <see cref="ConversationDto"/> for
+    /// <c>IQueryable.Select</c>.
     /// </summary>
     /// <remarks>
-    /// Kept alongside <see cref="MapToChatDto"/> rather than replacing it: a query that calls the
-    /// method in a top-level projection is client-evaluated, so it materializes whole entities —
-    /// including the rowversion and the token counters — to build a five-field DTO.
+    /// Calling <see cref="MapToChatDto"/> in a projection is client-evaluated and materializes whole entities.
     /// </remarks>
     public static Expression<Func<Conversation, ConversationDto>> MapToChatDtoExpression { get; } =
         source => new ConversationDto

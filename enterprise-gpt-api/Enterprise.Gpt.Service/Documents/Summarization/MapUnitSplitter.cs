@@ -8,19 +8,8 @@ namespace Enterprise.Gpt.Service.Documents.Summarization;
 /// Splits an oversized document into units that each fit one summarizer call.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Deliberately not <c>TokenTextChunker</c>. That chunker is pinned to the retrieval geometry —
-/// 512 tokens with 128 of overlap — because it produces units to embed and rank. Reusing it here
-/// would split a document into hundreds of map units where a handful are needed, multiplying the
-/// call count, and the cost, by roughly two orders of magnitude. Its splitting primitives are
-/// private on a sealed class, and widening that contract to serve a second geometry would make one
-/// type answer to two callers with opposite requirements.
-/// </para>
-/// <para>
-/// No overlap between units. Overlap exists so a retrieval hit near a boundary still has its
-/// context; a summary reads every unit exactly once, so overlap would only re-send — and re-bill —
-/// text the neighbouring call already covered.
-/// </para>
+/// Not <c>TokenTextChunker</c>, whose 512-token retrieval geometry would multiply map units, and cost, by
+/// about a hundred. No overlap: a summary reads every unit once, so overlap would only re-bill text.
 /// </remarks>
 public static partial class MapUnitSplitter
 {
@@ -29,8 +18,7 @@ public static partial class MapUnitSplitter
     #region Private methods
 
     /// <remarks>
-    /// Yields pieces already known to fit the cap on their own, so the caller only has to decide
-    /// where to start a new unit.
+    /// Every piece already fits the cap on its own, so the caller only decides where a unit starts.
     /// </remarks>
     private static IEnumerable<TextPiece> EnumeratePieces(
         string text,
@@ -97,19 +85,8 @@ public static partial class MapUnitSplitter
     }
 
     /// <remarks>
-    /// <para>
-    /// The last resort, for a "sentence" with no interior boundary to split on — a table dumped as
-    /// one line, or a language this splitter's punctuation set does not describe. The cut length is
-    /// found by halving rather than by a characters-per-token guess, so it holds for text whose
-    /// density the guess would be wrong about, and it is snapped off a surrogate pair so a slice can
-    /// never end mid-character.
-    /// </para>
-    /// <para>
-    /// Each probe measures only the candidate slice, and starts from twice the length that last
-    /// fitted rather than from the whole remaining tail. Measuring the tail every time would make
-    /// this quadratic in the input — for the multi-megabyte single-line input this method exists to
-    /// handle, tens of seconds of tokenizing and a large-object allocation per slice.
-    /// </para>
+    /// Last resort for text with no interior boundary. Cuts by halving rather than guessing token density,
+    /// and measures only the candidate slice: measuring the whole tail is quadratic on multi-megabyte lines.
     /// </remarks>
     private static IEnumerable<TextPiece> SliceByLength(
         string sentence,
@@ -137,8 +114,7 @@ public static partial class MapUnitSplitter
             var slice = remaining[..take];
             remaining = remaining[take..];
 
-            // The next slice starts from twice what just fitted, so a cut that had to halve several
-            // times does not pay for those probes again on every subsequent slice.
+            // Start from twice what fitted, so earlier halvings are not repeated on every slice.
             probe = Math.Max(1, take * 2);
 
             if (!slice.Span.IsWhiteSpace())
@@ -157,9 +133,8 @@ public static partial class MapUnitSplitter
             return snapped;
         }
 
-        // Backing off to zero would yield an empty slice and never advance, so a pair that starts at
-        // the very first position is taken whole. One character over budget beats a lone surrogate,
-        // which is not a character at all.
+        // Backing off to zero would never advance, so a leading pair is taken whole: one character over
+        // budget beats a lone surrogate.
         return snapped == 1 ? Math.Min(2, text.Length) : snapped - 1;
     }
 
@@ -176,24 +151,16 @@ public static partial class MapUnitSplitter
     /// <summary>
     /// Splits text into units of at most <paramref name="maxTokens"/> tokens each.
     /// </summary>
-    /// <param name="text">The document's reassembled text.</param>
-    /// <param name="maxTokens">The most tokens one unit may carry.</param>
-    /// <param name="estimator">The summarizer's own token estimator.</param>
-    /// <param name="deploymentName">The summarizer's deployment name, for tokenizer selection.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>
-    /// The units in document order. Every non-whitespace character of the input survives in exactly
-    /// one unit — though a slice taken by length can land mid-word, which summarization tolerates.
+    /// The units in document order. Every non-whitespace character lands in exactly one unit, though a
+    /// length slice can split a word.
     /// </returns>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="text"/> is <see langword="null"/> or whitespace.</exception>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="estimator"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="maxTokens"/> is less than one.</exception>
+    /// <exception cref="ArgumentException"><paramref name="text"/> is <see langword="null"/> or whitespace.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="estimator"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxTokens"/> is less than one.</exception>
     /// <remarks>
-    /// Paragraphs are packed greedily up to the cap; a paragraph over the cap is split on sentence
-    /// boundaries, and a sentence still over it is sliced by length. Token counts are measured per
-    /// piece and summed rather than re-measured for every candidate join — the counts are very
-    /// slightly sub-additive across a join, which the map-unit fraction's own headroom covers, and
-    /// re-measuring would make splitting a large document quadratic.
+    /// Piece counts are summed rather than re-measured per join: joins are slightly sub-additive, which the
+    /// map-unit fraction's headroom covers, and re-measuring would be quadratic.
     /// </remarks>
     public static IReadOnlyList<string> Split(
         string text,

@@ -7,20 +7,15 @@ namespace Enterprise.Gpt.Service.Exports.Interfaces;
 /// Renders a conversation into one export format.
 /// </summary>
 /// <remarks>
-/// One implementation per <see cref="ConversationExportFormats"/> member, resolved by
-/// <see cref="Format"/>. A format whose renderer is not registered is reported as
-/// <see cref="Exceptions.ExportRendererNotConfiguredException"/> rather than as a 500 — see
-/// <c>ExportsConfiguration</c>, where PDF registration depends on a usable font being found.
+/// One implementation per format, resolved by <see cref="Format"/>. An unregistered format (PDF without a
+/// usable font) surfaces as <see cref="Exceptions.ExportRendererNotConfiguredException"/>, not a 500.
 /// </remarks>
 public interface IConversationExportRenderer
 {
-    /// <summary>Gets the format this renderer produces.</summary>
     ConversationExportFormats Format { get; }
 
     /// <summary>
-    /// Renders a conversation.
+    /// Renders a conversation already reduced to what an export may contain.
     /// </summary>
-    /// <param name="document">The conversation, already reduced to what an export may contain.</param>
-    /// <returns>The rendered document.</returns>
     ConversationExport Render(ConversationExportDocument document);
 }

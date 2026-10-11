@@ -12,19 +12,13 @@ using OpenAI;
 namespace Enterprise.Gpt.Api.Configuration.Providers;
 
 /// <summary>
-/// Registers Azure AI Foundry, the Chat Completions route to the same resource Azure OpenAI uses.
+/// The Chat Completions route to the Azure OpenAI resource, which serves Foundry Models (DeepSeek, Llama,
+/// Mistral) at the cost of reasoning. Its own section because the two carry different credentials.
 /// </summary>
 internal static class AzureAIFoundryProviderConfiguration
 {
     #region Public static methods
 
-    /// <summary>
-    /// Registers the validated options and, when <c>AzureAIFoundry:Enabled</c> is set, the keyed chat client.
-    /// </summary>
-    /// <remarks>
-    /// Chat Completions is what lets it serve Foundry Models (DeepSeek, Llama, Mistral) beside Azure OpenAI
-    /// deployments, at the cost of reasoning. Its own section, because the two carry different credentials.
-    /// </remarks>
     internal static IServiceCollection AddAzureAIFoundryProvider(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<IValidator<AzureAIFoundryOptions>, AzureAIFoundryOptionsValidator>();

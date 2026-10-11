@@ -10,14 +10,10 @@ using Xunit;
 namespace Enterprise.Gpt.Integration.Test.Middleware;
 
 /// <summary>
-/// Exercises response body capture against a real host, where the swapped
-/// <c>IHttpResponseBodyFeature</c> has a genuine prior feature behind it — the pipe writer, the
-/// completion handshake and the restore all run for real, which a <c>DefaultHttpContext</c> cannot show.
+/// Exercises body capture on a real host, where the swapped <c>IHttpResponseBodyFeature</c> has a genuine prior
+/// feature behind it, which a <c>DefaultHttpContext</c> cannot show.
 /// </summary>
-/// <remarks>
-/// Runs on its own host because body capture is off by default and the shared factory is used by the rest
-/// of the suite.
-/// </remarks>
+/// <remarks>Runs on its own host because body capture is off by default.</remarks>
 [Collection(IntegrationTestCollection.Name)]
 [Trait("Category", "Integration")]
 public sealed class ResponseBodyCaptureIntegrationTests(IntegrationTestFixture fixture) : IAsyncLifetime
@@ -57,8 +53,8 @@ public sealed class ResponseBodyCaptureIntegrationTests(IntegrationTestFixture f
     {
         using var client = CreateAdminClient();
 
-        // models/all rather than models: the seeded row is the summarizer, which the picker's
-        // own route now filters out, and this test needs a body with a known id in it.
+        // models/all rather than models: the picker's route hides the seeded summarizer, and this
+        // test needs a body with a known id in it.
         var response = await client.GetAsync("api/models/all", TestContext.Current.CancellationToken);
         var models = await response.Content.ReadFromJsonAsync<List<ModelDto>>(TestContext.Current.CancellationToken);
 

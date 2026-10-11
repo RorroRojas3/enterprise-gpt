@@ -7,8 +7,7 @@
   min-height: 0;
 }
 
-// Frame 1b: 52px, separated from what follows by a 1px rule. `--toast-top` in
-// _kit.scss is derived from this height, so the two move together.
+// `--toast-top` in _kit.scss is derived from this height; change them together.
 .chat__header {
   display: flex;
   flex: 0 0 auto;
@@ -29,8 +28,6 @@
   white-space: nowrap;
 }
 
-// Frame 1b: 13px, --accent when on and --muted when off. Unlike the sidebar row's
-// star this one is the control, so it carries a focus ring.
 .chat__star {
   flex: 0 0 auto;
   padding: 4px 6px;
@@ -49,26 +46,21 @@
   }
 }
 
-// Frame 1b: the kebab sits at the far edge; the title ellipsises, the kebab does not.
 .chat__menu {
   flex: 0 0 auto;
   margin-left: auto;
 }
 
-// Frame 3a's submenu affordance: the label takes the free space so the chevron sits
-// hard right. Tag-qualified so it outranks menu.scss's `::ng-deep .menu__item app-icon`.
 .chat__menu-label {
   flex: 1;
 }
 
+// Tag-qualified so it outranks menu.scss's `::ng-deep .menu__item app-icon`.
 app-icon.chat__menu-chevron {
   font-size: 11px;
 }
 
-// `overflow-anchor: none` because US-606 does its own pinning: the browser's
-// scroll anchoring would fight it, holding position against content the reader
-// asked to follow. `overscroll-behavior: contain` keeps a flick at either end
-// from scrolling the page behind the transcript.
+// No scroll anchoring: the browser's would fight the pinning directive.
 .chat__body {
   display: flex;
   flex: 1;
@@ -78,28 +70,20 @@ app-icon.chat__menu-chevron {
   overflow-anchor: none;
   overscroll-behavior: contain;
 
-  // Focus lands here only from the jump-to-latest control, which removes itself
-  // on the same pass — so the ring is the confirmation that the jump worked and
-  // that focus went somewhere deliberate. Inset, because an outline drawn around
-  // a full-height scroll region reads as a rendering fault. Matches the skip
-  // link's target in `shell.scss`.
+  // Inset: an outline around a full-height scroll region reads as a rendering fault.
   &:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
   }
 }
 
-// Everything scrollable, in one element the pinning directive can measure.
-// It grows past the container when the transcript is long and fills it when the
-// transcript is short, which is what keeps the empty state centred.
+// Fills the container when the transcript is short, which keeps the empty state centred.
 .chat__content {
   display: flex;
   flex: 1 0 auto;
   flex-direction: column;
 }
 
-// The bottom marker the pinning observer watches. Zero-height and inert, so it
-// changes neither the layout nor the accessibility tree.
 .chat__sentinel {
   flex: 0 0 auto;
   height: 0;
@@ -110,8 +94,7 @@ app-icon.chat__menu-chevron {
   padding: 24px;
 }
 
-// The transcript mirrors the composer's gutters below, so the answer column
-// and the box it was typed into share the same 820px edge.
+// Mirrors the composer's gutters and 820px cap, so the answer and its input share an edge.
 .chat__transcript {
   padding: 0 22px;
 
@@ -121,8 +104,6 @@ app-icon.chat__menu-chevron {
   }
 }
 
-// The conversation column's width cap. US-406's transcript aligns to the same
-// 820px, so the answer and the box it was typed into share an edge.
 .chat__composer {
   position: relative;
   flex: 0 0 auto;
@@ -134,8 +115,7 @@ app-icon.chat__menu-chevron {
   }
 }
 
-// Frame 1b: a 44px circle centred above the composer. Anchored to the composer
-// rather than to the page so it keeps its 14px gap as the textarea grows.
+// Anchored to the composer, not the page, so the 14px gap holds as the textarea grows.
 .chat__jump {
   position: absolute;
   bottom: calc(100% + 14px);
@@ -168,14 +148,9 @@ app-icon.chat__menu-chevron {
   }
 }
 
-// ── Frame 1d: below 768px ────────────────────────────────────────────────────
 @include bp.mobile {
-  // The bar is gone — the shell's 54px navbar replaces it, and the star and kebab
-  // render there. The <h1> stays, and is **clipped rather than removed**: it is the
-  // document's only level-one heading, and `display: none` would take it and the
-  // skeleton that stands in for a name still in flight out of the accessibility tree
-  // with it. Same call, for the same reason, as the order explanation in
-  // `conversations.scss`.
+  // The shell's navbar replaces the bar. The <h1> is clipped, not removed: it is the page's
+  // only level-one heading.
   .chat__header {
     height: 0;
     padding: 0;
@@ -191,9 +166,8 @@ app-icon.chat__menu-chevron {
     white-space: nowrap;
   }
 
-  // Frame 1d's gutters: 16px around the transcript, 12px around the composer. The
-  // safe-area insets are added rather than substituted, because `viewport-fit=cover`
-  // puts both edges under the device's rounded corners in landscape.
+  // Safe-area insets are added, not substituted: `viewport-fit=cover` puts both edges under
+  // the rounded corners in landscape.
   .chat__transcript {
     padding-inline: calc(16px + var(--safe-left)) calc(16px + var(--safe-right));
   }

@@ -68,8 +68,7 @@ public static class HtmlBlockWriter
         }
     }
 
-    // The language line mirrors the head the app draws above a code block, and is what the Word and
-    // PDF renderers emit in their own idiom from the same CodeBlock.Language.
+    // The language line mirrors the head the app draws above a code block, as Word and PDF do.
     private static void WriteCode(StringBuilder builder, CodeBlock code)
     {
         builder.Append("<div class=\"code\">");
@@ -79,8 +78,7 @@ public static class HtmlBlockWriter
             builder.Append("<div class=\"code__lang\">").Append(Encode(code.Language)).Append("</div>");
         }
 
-        // Normalized, like the Word and PDF renderers do: a code block's line breaks are content,
-        // and which pair of characters carries them should not depend on the host that rendered.
+        // Normalized, as in Word and PDF, so a code block's line breaks do not depend on the host.
         builder
             .Append("<pre><code>")
             .Append(Encode(code.Text.ReplaceLineEndings("\n")))
@@ -97,9 +95,8 @@ public static class HtmlBlockWriter
         {
             builder.Append("<li>");
 
-            // The item's own first paragraph is written inline, so a one-line item is one line; a
-            // second paragraph, a nested list or a fence inside the same item stays a block. The Word
-            // and PDF renderers make the same split, for the same reason.
+            // The first paragraph is written inline so a one-line item is one line; anything after it
+            // stays a block, as in the Word and PDF renderers.
             var first = true;
 
             foreach (var child in item.Children)
@@ -169,8 +166,7 @@ public static class HtmlBlockWriter
 
         for (var column = 0; column < columns; column++)
         {
-            // Ragged rows are padded rather than truncated: a short row emitting fewer cells would
-            // pull every later column of the table one place left.
+            // Ragged rows are padded: a short row would shift every later column one place left.
             var cell = column < row.Cells.Count ? row.Cells[column] : [];
 
             builder.Append(header ? "<th>" : "<td>");
@@ -220,8 +216,7 @@ public static class HtmlBlockWriter
             builder.Append("<code>");
         }
 
-        // A hard break inside a run is a line break in the source; the element is what carries it,
-        // since a raw newline collapses to a space.
+        // A raw newline collapses to a space, so a hard break needs the element.
         var segments = run.Text.ReplaceLineEndings("\n").Split('\n');
 
         for (var index = 0; index < segments.Length; index++)
@@ -262,10 +257,8 @@ public static class HtmlBlockWriter
     #region Public static methods
 
     /// <summary>
-    /// Writes blocks as HTML.
+    /// Writes blocks as HTML, with no wrapping element of its own.
     /// </summary>
-    /// <param name="blocks">The blocks, in document order.</param>
-    /// <returns>The markup, carrying no wrapping element of its own.</returns>
     public static string Write(IReadOnlyList<ExportBlock> blocks)
     {
         var builder = new StringBuilder();

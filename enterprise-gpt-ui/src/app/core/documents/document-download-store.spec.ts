@@ -38,8 +38,7 @@ describe('DocumentDownloadStore', () => {
     store = TestBed.inject(DocumentDownloadStore);
     toasts = TestBed.inject(ToastStore);
 
-    // jsdom navigates on an anchor click and logs "Not implemented"; recording the
-    // element is also the only way to assert what the browser was handed.
+    // jsdom cannot navigate on an anchor click, and recording it shows what was handed over.
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
       this: HTMLAnchorElement,
     ) {
@@ -79,8 +78,7 @@ describe('DocumentDownloadStore', () => {
     const secret = SIGNED.downloadUrl;
     expect(JSON.stringify(localStorage)).not.toContain(secret);
     expect(JSON.stringify(sessionStorage)).not.toContain(secret);
-    // Not in state either: the anchor was detached again, so nothing on the page
-    // still holds it.
+    // Nor in state, nor on the page: the anchor was detached again.
     expect(JSON.stringify(store.pendingIds())).not.toContain(secret);
     expect(document.body.innerHTML).not.toContain(secret);
     expect(window.location.href).not.toContain(secret);
@@ -107,8 +105,7 @@ describe('DocumentDownloadStore', () => {
     });
 
     expect(toasts.toasts()[0]?.title).toBe('Downloads aren’t available in this deployment');
-    // An app-typed 503 is a deterministic deployment state, so `retryInterceptor`
-    // leaves it alone and exactly one request was made.
+    // An app-typed 503 is deterministic, so `retryInterceptor` makes no second request.
     backend.expectNone(DOWNLOAD_URL);
   });
 

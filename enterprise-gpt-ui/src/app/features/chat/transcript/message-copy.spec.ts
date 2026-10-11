@@ -6,11 +6,7 @@ import { MessageCopy } from './message-copy';
 /** Enough fake time for the zoneless scheduler's own notification to land. */
 const SCHEDULER_TICK = 20;
 
-/**
- * US-607. The control in isolation: what reaches the clipboard, how long the
- * confirmation lasts, and whether the accessible name keeps up with it.
- */
-describe('MessageCopy (US-607)', () => {
+describe('MessageCopy', () => {
   let fixture: ComponentFixture<MessageCopy>;
   let button: HTMLButtonElement;
   let writeText: ReturnType<typeof vi.fn>;
@@ -40,11 +36,8 @@ describe('MessageCopy (US-607)', () => {
   });
 
   /**
-   * Advances fake time, then waits the zoneless scheduler out. `whenStable` is
-   * started *before* the second advance because the scheduler notifies through
-   * rAF/setTimeout, which the fake clock holds until advanced — the same shape
-   * `transcript.spec.ts` uses, and the reason this never calls `detectChanges()`:
-   * a forced render would hide a state change that failed to notify at all.
+   * `whenStable` starts before the second advance because the scheduler notifies through timers
+   * the fake clock holds. No `detectChanges()`: a forced render would hide a missed notification.
    */
   async function settle(ms = 0): Promise<void> {
     await vi.advanceTimersByTimeAsync(ms);
@@ -69,9 +62,8 @@ describe('MessageCopy (US-607)', () => {
     await press();
     expect(button.textContent?.trim()).toBe('Copied');
 
-    // Measured against the shared constant rather than a literal, and with a
-    // margin either side of it, because `settle` advances the clock a little on
-    // its own to let the scheduler run.
+    // A margin either side of the constant, because `settle` advances the clock a little
+    // on its own.
     await settle(COPY_CONFIRMATION_MS * 0.75);
     expect(button.textContent?.trim()).toBe('Copied');
 
@@ -148,10 +140,8 @@ describe('MessageCopy (US-607)', () => {
   });
 
   it('is a natively focusable control, so the reveal on focus has something to reveal', () => {
-    // The `:focus-within` rule that reveals the footer is CSS jsdom cannot
-    // evaluate; what a spec can pin is that the thing it reveals is reachable at
-    // all. A `tabindex` here, or a `div` in place of the button, breaks the
-    // criterion silently.
+    // jsdom cannot evaluate the `:focus-within` reveal, so this pins that the control is
+    // reachable at all.
     expect(button.tagName).toBe('BUTTON');
     expect(button.getAttribute('tabindex')).toBeNull();
     expect(button.disabled).toBe(false);

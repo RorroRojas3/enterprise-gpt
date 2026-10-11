@@ -9,36 +9,26 @@ using Microsoft.AspNetCore.Http.HttpResults;
 namespace Enterprise.Gpt.Api.Endpoints;
 
 /// <summary>
-/// Minimal API endpoints for projects: the container that groups a user's conversations and owns
-/// the document set and standing instructions shared across them.
+/// Project routes; a project groups a user's conversations and owns the documents and instructions they share.
 /// </summary>
 /// <remarks>
-/// Every route is scoped to the signed-in user rather than gated on a permission — a project is
-/// owned the way a conversation is, and there is no administrative view of another user's
-/// projects. Uploading into a project lives on <see cref="DocumentEndpoints"/> instead, so a
-/// single upload-status route serves conversation and project uploads alike.
+/// Scoped to the signed-in user rather than gated on a permission: there is no administrative view of another
+/// user's projects.
 /// </remarks>
 public static class ProjectEndpoints
 {
     #region Public static methods
 
-    /// <summary>
-    /// Maps the <c>api/projects</c> endpoint group.
-    /// </summary>
-    /// <param name="app">The route builder to map the group onto.</param>
-    /// <returns>The same <paramref name="app"/> for chaining.</returns>
+    /// <summary>Maps the <c>api/projects</c> endpoint group.</summary>
     public static IEndpointRouteBuilder MapProjectEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("api/projects")
             .RequireAuthorization()
             .WithTags("Projects")
-            // Every route in the group is authorized, so the challenge applies uniformly.
             .ProducesProblem(StatusCodes.Status401Unauthorized);
 
-        // ProducesValidationProblem() since US-706: ?sort= and ?dir= are rejected by the service with
-        // an errors dictionary naming the parameter. A binding failure on ?isFavorite= still returns
-        // a 400 without one, and OpenAPI allows a single schema per status, so the richer of the two
-        // is declared — a client reading `errors` defensively handles both.
+        // A bad ?sort= or ?dir= is a validation problem and a binding failure a bare 400; OpenAPI allows one
+        // schema per status, so the richer is declared.
         group.MapGet("", SearchProjectsAsync)
             .ProducesValidationProblem();
         group.MapGet("{id:guid}", GetProjectAsync)
@@ -54,8 +44,7 @@ public static class ProjectEndpoints
         group.MapDelete("{id:guid}", DeactivateProjectAsync)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
-        // Same reasoning as the listing above: the body has no validator, so its only 400 is a
-        // binding failure on a bool.
+        // No validator, so the only 400 is a binding failure on the bool.
         group.MapPut("{id:guid}/favorite", SetProjectFavoriteAsync)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
@@ -68,8 +57,7 @@ public static class ProjectEndpoints
         return app;
     }
 
-    // Query parameters follow the service rather than leading, as elsewhere in the API: they need
-    // defaults so the paging arguments stay optional, and C# requires optional parameters last.
+    // Query parameters follow the service, unlike elsewhere in the API, because they need defaults.
     internal static async Task<Ok<PaginatedResponseDto<ProjectSummaryDto>>> SearchProjectsAsync(
         IProjectService projectService, string? name = null, int skip = 0, int take = 20,
         bool? isFavorite = null, string? sort = null, string? dir = null,
@@ -79,9 +67,7 @@ public static class ProjectEndpoints
         return TypedResults.Ok(response);
     }
 
-    // Not-found paths throw NotFoundException in the service and surface as 404 through the
-    // exception-handler chain. A project belonging to another user is reported the same way, so
-    // this API cannot be used to probe for project ids.
+    // Another user's project is a 404 too, so ids cannot be probed.
     internal static async Task<Ok<ProjectDto>> GetProjectAsync(
         Guid id, IProjectService projectService, CancellationToken cancellationToken)
     {

@@ -5,10 +5,6 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Enterprise.Gpt.Repository.Sql.Configurations.Documents;
 
-/// <summary>
-/// Maps <see cref="ConversationDocumentSummary"/> to <c>Core.ConversationDocumentSummary</c> and
-/// the unique index that keeps a document to one live summary.
-/// </summary>
 public sealed class ConversationDocumentSummaryConfiguration : BaseDocumentSummaryConfiguration<ConversationDocumentSummary, Guid>
 {
     protected override void ConfigureEntity(EntityTypeBuilder<ConversationDocumentSummary> builder)
@@ -19,9 +15,7 @@ public sealed class ConversationDocumentSummaryConfiguration : BaseDocumentSumma
             .WithMany()
             .HasForeignKey(x => x.ConversationDocumentId);
 
-        // One summary per document, filtered the way the chunk tables' ordinal index is: a summary
-        // deactivated alongside its document must not block a later one, and an unfiltered unique
-        // index would make that a constraint violation instead.
+        // One live summary per document; filtered so a deactivated summary does not block a later one.
         builder.HasIndex(x => x.ConversationDocumentId)
             .HasFilter("[DateDeactivated] IS NULL")
             .IsUnique();

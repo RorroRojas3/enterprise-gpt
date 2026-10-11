@@ -5,10 +5,6 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Enterprise.Gpt.Repository.Sql.Configurations.Documents;
 
-/// <summary>
-/// Maps <see cref="ProjectDocumentSheet"/> to <c>Core.ProjectDocumentSheet</c>, its column and row
-/// relationships, and the unique ordinal index that keeps a document's sheets dense.
-/// </summary>
 public sealed class ProjectDocumentSheetConfiguration : BaseDocumentSheetConfiguration<ProjectDocumentSheet, Guid>
 {
     protected override void ConfigureEntity(EntityTypeBuilder<ProjectDocumentSheet> builder)
@@ -23,8 +19,7 @@ public sealed class ProjectDocumentSheetConfiguration : BaseDocumentSheetConfigu
             .WithOne(x => x.ProjectDocumentSheet)
             .HasForeignKey(x => x.ProjectDocumentSheetId);
 
-        // Filtered for the reason the conversation-side index is: a deactivated sheet must not block
-        // the next ingestion of the same document.
+        // Filtered so a soft-deleted sheet cannot block re-ingesting the same document.
         builder.HasIndex(x => new { x.ProjectDocumentId, x.SheetIndex })
             .HasFilter("[DateDeactivated] IS NULL")
             .IsUnique();

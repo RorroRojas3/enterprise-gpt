@@ -3,11 +3,6 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Conversations;
 
-/// <summary>
-/// Covers <see cref="ConversationLockService"/>: that it grants a conversation to exactly one
-/// caller at a time, that the registry drains as holders release, and that it survives the
-/// concurrent acquire/release churn a chat workload produces.
-/// </summary>
 public sealed class ConversationLockServiceTests
 {
     [Fact]
@@ -36,9 +31,8 @@ public sealed class ConversationLockServiceTests
     }
 
     /// <summary>
-    /// Disposal must be idempotent: an unguarded second release either faults on the semaphore
-    /// the first release already reclaimed, or — if another caller re-took the entry in between —
-    /// raises its count to two and admits a second holder alongside the current one.
+    /// An unguarded second release faults on the reclaimed semaphore or, if another caller re-took the
+    /// entry in between, admits a second holder.
     /// </summary>
     [Fact]
     public async Task Dispose_CalledTwice_ReleasesSemaphoreOnce()
@@ -113,10 +107,8 @@ public sealed class ConversationLockServiceTests
     }
 
     /// <summary>
-    /// Regression for the eviction race the reference-counted registry replaced: a sweep that
-    /// removed and disposed entries on a timer could dispose a semaphore a caller had just been
-    /// handed, faulting that caller and letting the next one acquire a fresh entry for a
-    /// conversation that was already in use.
+    /// Guards against a sweep disposing a semaphore a caller had just been handed, which faulted that
+    /// caller and let the next one acquire a conversation already in use.
     /// </summary>
     [Fact]
     public async Task TryAcquireLockAsync_UnderRepeatedChurn_DoesNotFaultAndDrains()
@@ -140,8 +132,7 @@ public sealed class ConversationLockServiceTests
                 }
 
                 Assert.Equal(1, Interlocked.Increment(ref concurrentHolders[index]));
-                // Yield while holding, so the window in which an overlap could be observed is
-                // wide enough to actually catch one rather than closing in a few nanoseconds.
+                // Yield while holding, so the window for observing an overlap is wide enough to catch one.
                 await Task.Yield();
                 Assert.Equal(0, Interlocked.Decrement(ref concurrentHolders[index]));
                 releaser.Dispose();

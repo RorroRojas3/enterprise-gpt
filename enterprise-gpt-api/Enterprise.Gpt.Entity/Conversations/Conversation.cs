@@ -12,17 +12,14 @@ public class Conversation : BaseModifiedEntity<Guid>
     public Guid UserId { get; set; }
 
     /// <summary>
-    /// The project this conversation belongs to, or <see langword="null"/> for a standalone
-    /// conversation. Cleared rather than cascaded when the project is deactivated, so the
-    /// conversation and its own documents survive.
+    /// <see langword="null"/> for a standalone conversation. Cleared rather than cascaded when the project
+    /// is deactivated, so the conversation and its documents survive.
     /// </summary>
     public Guid? ProjectId { get; set; }
 
     /// <summary>
-    /// The model this conversation's most recent turn ran with, or <see langword="null"/> before
-    /// its first turn. Denormalized from the newest <see cref="ConversationUsage"/> row so
-    /// restoring the model selection does not have to read the audit trail. Set for an abandoned
-    /// turn too — it is still the model the user last chose.
+    /// The model the latest turn (abandoned ones included) ran with, denormalized from the newest
+    /// <see cref="ConversationUsage"/> row so restoring the selection skips the audit trail.
     /// </summary>
     public Guid? ModelId { get; set; }
 
@@ -41,23 +38,9 @@ public class Conversation : BaseModifiedEntity<Guid>
     /// message's estimated token cost.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// A different quantity from <see cref="InputTokens"/>, <see cref="OutputTokens"/> and
-    /// <see cref="TotalTokens"/> beside it, which are what the provider billed. This is what the
-    /// transcript costs to replay on the next turn, estimated locally and recomputable from the
-    /// messages themselves. The naming rule is that <c>Context</c> means estimated and
-    /// replayed, and every other token member is provider-billed; the two are never summed.
-    /// </para>
-    /// <para>
-    /// The two are <em>supposed</em> to disagree, and the gap widens with tool use: tool calls,
-    /// tool results and reasoning are billed and never transcribed. A report treating a
-    /// divergence as a defect is reading the wrong invariant.
-    /// </para>
-    /// <para>
-    /// Not nullable, unlike its counterpart on <see cref="ConversationUsage"/>: a conversation
-    /// that has never completed a turn genuinely weighs nothing, whereas a turn that was billed
-    /// but never transcribed has no context cost at all.
-    /// </para>
+    /// <c>Context</c> means estimated replay cost; the other token members are provider-billed, never
+    /// summed with it, and diverge from it with tool use. Non-nullable, unlike on
+    /// <see cref="ConversationUsage"/>: a conversation with no turns genuinely weighs zero.
     /// </remarks>
     public long ContextTokens { get; set; }
 

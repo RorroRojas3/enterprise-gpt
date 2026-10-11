@@ -26,28 +26,20 @@ namespace Enterprise.Gpt.Service.Documents;
 public interface IGeneratedDocumentService
 {
     /// <summary>Writes an artifact's bytes and the row that points at them.</summary>
-    /// <param name="request">The artifact and the conversation it belongs to.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
-    /// <returns>The stored document's identity, for the message that introduced it.</returns>
     /// <remarks>
-    /// Nothing here extracts, chunks or embeds: a generated document has no chunk rows, which is what
-    /// keeps it structurally absent from retrieval rather than filtered out of it.
+    /// Never chunked, so a generated document is structurally absent from retrieval rather than filtered out.
     /// </remarks>
     /// <exception cref="ValidationException">
-    /// The artifact is empty, is larger than <c>Documents:MaxFileSizeBytes</c>, or carries an extension
-    /// this platform does not produce. Carries a sentence the caller can relay.
+    /// The artifact is empty, over <c>Documents:MaxFileSizeBytes</c>, or not a producible format; the message
+    /// is safe to relay.
     /// </exception>
     /// <exception cref="NotFoundException">The conversation is gone or was never the caller's.</exception>
     /// <exception cref="StorageNotConfiguredException">The generated-documents container is not configured.</exception>
     Task<MessageAttachmentDto> StoreAsync(GeneratedDocumentRequest request, CancellationToken cancellationToken);
 
     /// <summary>Takes back a stored document whose turn never delivered it.</summary>
-    /// <param name="documentId">The document to withdraw.</param>
     /// <remarks>
-    /// For a turn that was stopped or failed after a file had already been stored: the transcript never
-    /// references it, so leaving the row active would show the user a file no message introduced. Takes
-    /// no cancellation token and never throws — it runs while a turn is already unwinding, and the token
-    /// that ended that turn is the one that would abandon this.
+    /// Takes no token and never throws: it runs while the turn unwinds, usually because that token fired.
     /// </remarks>
     Task DiscardAsync(Guid documentId);
 }
@@ -68,10 +60,7 @@ public sealed partial class GeneratedDocumentService(
     private readonly IServiceScopeFactory _scopeFactory = scopeFactory;
     private readonly TimeProvider _timeProvider = timeProvider;
 
-    /// <summary>
-    /// The formats this platform produces. A runaway script writing anything else never becomes a
-    /// downloadable blob, whatever the agent's own instructions said.
-    /// </summary>
+    // A runaway script writing any other format never becomes a downloadable blob.
     private static readonly FrozenSet<string> _producibleExtensions =
         new[] { ".csv", ".docx", ".md", ".pdf", ".pptx", ".txt", ".xlsx" }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
@@ -114,8 +103,7 @@ public sealed partial class GeneratedDocumentService(
         }
         catch
         {
-            // The blob is written first so the bytes survive a slow insert, but a failure past this
-            // point leaves content no row references — unreachable, and billed forever.
+            // A failed insert would otherwise leave the bytes unreferenced and billed forever.
             await TryDeleteBlobAsync(blobPath, documentId);
             throw;
         }
@@ -147,8 +135,8 @@ public sealed partial class GeneratedDocumentService(
                 return;
             }
 
-            // The row first: a row pointing at a blob that is gone reads to every listing as a file
-            // that will not download, where a blob with no row is merely unreferenced.
+            // Row first: a row over a missing blob lists as a file that will not download, whereas a
+            // rowless blob is merely unreferenced.
             await ctx.ConversationDocuments
                 .Where(x => x.Id == documentId)
                 .ExecuteUpdateAsync(
@@ -161,27 +149,15 @@ public sealed partial class GeneratedDocumentService(
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            // Never thrown on: this runs inside a turn that is already unwinding, and replacing the
-            // exception in flight with a cleanup failure would lose why the turn ended.
+            // The turn is already unwinding; a cleanup failure must not replace why it ended.
             LogGeneratedDocumentWithdrawFailed(_logger, exception, documentId);
         }
     }
 
     #region Private methods
 
-    /// <summary>
-    /// Writes the row on a unit of work of its own.
-    /// </summary>
-    /// <remarks>
-    /// A fresh scope rather than the streaming turn's shared <see cref="EnterpriseGptDbContext"/>, for
-    /// the reason <c>DocumentSummaryService.PersistAsync</c> records: EF accepts changes only on a
-    /// successful save, so a failure here would leave this row tracked as <c>Added</c> on the turn's
-    /// context and re-attempted by the turn's own finalization after the answer had already streamed.
-    /// <para>
-    /// Uncancellable: by this line the sandbox run has been paid for and the blob is already written,
-    /// and the token that would abort the write is the one a client disconnect signals.
-    /// </para>
-    /// </remarks>
+    // Own scope: on the turn's shared context a failed save would leave the row Added and retried by the
+    // turn's finalization. Uncancellable: the blob is written, and the token is the client-disconnect one.
     private async Task InsertAsync(
         GeneratedDocumentRequest request, Guid documentId, string fileName, string extension, string mimeType, string blobPath)
     {
@@ -214,10 +190,8 @@ public sealed partial class GeneratedDocumentService(
 
         await ctx.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
 
-        // A turn can outlive the conversation it runs on, and the deactivation cascade never re-runs —
-        // so without this the insert would leave an active document under a deactivated conversation,
-        // which every listing treats as impossible. Set-based, because the cascade may have moved this
-        // row's rowversion between the insert and the re-check.
+        // A turn can outlive its conversation, whose deactivation cascade never re-runs. Set-based below,
+        // because the cascade may have moved this row's rowversion.
         var stillActive = await ctx.Conversations
             .AsNoTracking()
             .AnyAsync(x => x.Id == request.ConversationId, CancellationToken.None)
@@ -255,7 +229,6 @@ public sealed partial class GeneratedDocumentService(
         }
     }
 
-    /// <summary>Strips any directory the sandbox put on the name, and bounds it to the column.</summary>
     private static string NormalizeFileName(string fileName)
     {
         var name = Path.GetFileName(fileName.Trim());
@@ -263,10 +236,7 @@ public sealed partial class GeneratedDocumentService(
         return name.Length > DocumentLimits.NameMaxLength ? name[^DocumentLimits.NameMaxLength..] : name;
     }
 
-    /// <summary>
-    /// The blob path of a generated document, deactivated or not: a cascade may already have deactivated
-    /// the row, and its blob still has to go.
-    /// </summary>
+    // A cascade may already have deactivated the row, and its blob still has to go.
     private static Task<string?> FindGeneratedPathIncludingDeactivatedAsync(EnterpriseGptDbContext ctx, Guid documentId) =>
         ctx.ConversationDocuments
             .IgnoreQueryFilters([QueryFilterNames.SoftDelete])
@@ -275,7 +245,6 @@ public sealed partial class GeneratedDocumentService(
             .Select(x => x.Path)
             .FirstOrDefaultAsync(CancellationToken.None);
 
-    /// <summary>Removes a blob whose row never landed. Never throws — the caller is already failing.</summary>
     private async Task TryDeleteBlobAsync(string blobPath, Guid documentId)
     {
         try

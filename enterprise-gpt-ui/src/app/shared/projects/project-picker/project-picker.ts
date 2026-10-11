@@ -24,30 +24,13 @@ import { AnchoredPosition, anchoredPosition } from '@shared/overlay/anchored-pan
 
 let nextId = 0;
 
-/**
- * The panel's width, mirroring `.picker` in the stylesheet. Named here as well so the
- * placement can decide whether it still fits the viewport; the inline width the
- * full-width branch returns wins over the CSS one, and `null` leaves it alone.
- */
+/** Also read by placement, to decide whether the panel still fits the viewport. */
 const PANEL_WIDTH = 320;
 
 /**
- * Frame `2e`: the searchable project list, with "Remove from project" and a pinned
- * "New project" (US-307).
- *
- * **One control, three invokers**, which is the board's own note on the frame — "same
- * control as the conversation header's Move to project". The sidebar row kebab and the
- * chat header kebab open it anchored to their own trigger; the composer's project pill
- * opens it anchored to itself.
- *
- * **It is not a `Menu`, deliberately.** `Menu` renders its own trigger and its panel is
- * `role="menu"`, whose only valid children are `menuitem*` — and its keyboard handling
- * swallows the arrow keys and closes on Tab. A search field inside that is three
- * separate collisions. So this is a non-modal `role="dialog"` holding a listbox, and
- * what it borrows from `Menu` is the part that genuinely is shared: `anchoredPosition`
- * for placement and `onDismiss` for outside-press and scroll.
- *
- * It lives in `shared/` and injects only `core/` stores, exactly as `Composer` does.
+ * Not a `Menu`: `role="menu"` allows only menu items, and its keys would swallow the search
+ * field's arrows and Tab. A non-modal dialog holding a listbox, borrowing `anchoredPosition`
+ * and `onDismiss`.
  */
 @Component({
   selector: 'app-project-picker',
@@ -66,26 +49,18 @@ export class ProjectPicker {
   private readonly actions = inject(ConversationActionsStore);
   private readonly projectActions = inject(ProjectActionsStore);
 
-  /** The conversation being moved. */
   readonly conversation = input.required<ConversationDto>();
   /**
-   * The element the panel is placed against, and the one focus returns to.
-   *
-   * The kebab path passes its own trigger button, because the menu that opened this has
-   * already closed and taken its own anchor out of the layout with it.
+   * Where the panel is placed and focus returns. A kebab passes its own trigger, since the
+   * menu that opened this has already closed.
    */
   readonly anchor = input.required<HTMLElement>();
   readonly open = model<boolean>(false);
   readonly direction = input<'down' | 'up'>('down');
   readonly align = input<'start' | 'end'>('start');
   /**
-   * Whether the anchor is this panel's own toggle (the composer pill) rather than a
-   * separate control that happened to open it (a kebab item).
-   *
-   * It decides what a press on the anchor means. A toggle must not read as an outside
-   * press, or the panel would close on `pointerdown` and reopen on the trigger's own
-   * `click`. A kebab trigger is not a toggle: pressing it should close this and open the
-   * menu, which is the default.
+   * True for the composer pill, a toggle: a press on it must not read as outside, or the panel
+   * would close on `pointerdown` and reopen on `click`. A kebab trigger is not a toggle.
    */
   readonly anchorToggles = input<boolean>(false);
 
@@ -102,12 +77,8 @@ export class ProjectPicker {
   });
 
   /**
-   * The filter term, local to this instance.
-   *
-   * Not `withClientQuery` on the lookup store: three pickers can exist at once — a
-   * sidebar row, the chat header, the composer — and a term shared through root state
-   * would narrow all of them from whichever one is being typed in. It is also transient
-   * UI state that must not survive the panel closing.
+   * Local rather than on the root lookup store: up to three pickers coexist, and a shared term
+   * would narrow all of them.
    */
   protected readonly term = signal('');
 
@@ -124,7 +95,6 @@ export class ProjectPicker {
     () => this.matches().length === 0 && this.projects.projects().length > 0,
   );
 
-  /** Whether the conversation is in a project at all — "Remove" is absent when it is not. */
   protected readonly isAssigned = computed(() => this.conversation().projectId !== null);
 
   constructor() {
@@ -150,23 +120,13 @@ export class ProjectPicker {
     });
 
     afterRenderEffect({
-      // earlyRead → write, as `Menu` does: the phases run earlyRead → write →
-      // mixedReadWrite → read, so measuring in `read` would land after the write that
-      // needs the measurement.
       earlyRead: () => {
         if (!this.open() || !this.panelRef()) {
           return null;
         }
 
-        // Both reads happen here rather than in `write`, as `Menu` does: they are both
-        // layout reads, and the phase split exists to keep them out of the write pass.
-        // `documentElement.clientWidth` for the width, deliberately, and `innerWidth`
-        // for nothing: a `position: fixed` panel's containing block **excludes** the
-        // classic scrollbar, so sizing it from `innerWidth` overhangs by the scrollbar's
-        // thickness and produces the horizontal scrollbar US-1403's last criterion
-        // forbids — on exactly the desktop browser someone narrows to check it. It is
-        // the JS spelling of the `100vw` mistake `offcanvas.scss` calls out one file
-        // over.
+        // `clientWidth`, not `innerWidth`: a fixed panel's containing block excludes the
+        // classic scrollbar, so `innerWidth` would overhang and add a horizontal scrollbar.
         const view = this.document.defaultView;
         return {
           anchor: this.anchor().getBoundingClientRect(),
@@ -183,8 +143,7 @@ export class ProjectPicker {
           return;
         }
 
-        // PANEL_WIDTH rather than the measured width, for the reason `Menu` gives: the
-        // measurement lags a pass behind the width that was bound.
+        // PANEL_WIDTH, not the measured width, which lags a pass behind the bound one.
         this.position.set(
           anchoredPosition(box.anchor, PANEL_WIDTH, box.viewport, {
             direction: this.direction(),
@@ -194,8 +153,7 @@ export class ProjectPicker {
       },
     });
 
-    // Focus the field once per opening, not on every render: the list re-renders as the
-    // reader types, and re-focusing there would fight the caret rather than help it.
+    // Once per opening: re-focusing on every render would fight the caret as the reader types.
     effect(() => {
       if (this.open()) {
         this.fieldRef()?.nativeElement.focus();
@@ -210,14 +168,8 @@ export class ProjectPicker {
   }
 
   /**
-   * The panel's keyboard model, which is `Menu`'s adapted to a panel whose first child
-   * is a text field.
-   *
-   * **The field is the only tab stop.** Every row carries `tabindex="-1"` and is reached
-   * with the arrows, because the drain ceiling is 500 projects and an empty term matches
-   * all of them — 500 tab stops inside one popover is not a navigable control. Tab
-   * therefore leaves the panel, and closing on the way out is what keeps a 320px overlay
-   * from floating over a page whose Escape handler it no longer owns.
+   * The field is the only tab stop: rows are reached by arrow, since an empty term can list
+   * 500 projects. Tab leaves and closes, so the overlay never outlives its Escape handler.
    */
   protected onKeydown(event: KeyboardEvent): void {
     const rows = this.rows();
@@ -249,8 +201,7 @@ export class ProjectPicker {
         }
         break;
       case 'Tab':
-        // Leaves rather than cycling: this is a non-modal popover, and the page behind
-        // it is still live.
+        // Leaves rather than cycling: the popover is non-modal and the page behind is live.
         this.close(false);
         break;
       default:
@@ -259,9 +210,8 @@ export class ProjectPicker {
   }
 
   /**
-   * Closes when focus lands outside the panel by any route the keydown handler does not
-   * see — a click into the page, a screen reader's own navigation, a Tab out of the
-   * field on a browser that reports it here first.
+   * Closes when focus leaves by a route the keydown handler misses, such as a click into the
+   * page or a screen reader's own navigation.
    */
   protected onFocusOut(event: FocusEvent): void {
     const next = event.relatedTarget;
@@ -309,10 +259,8 @@ export class ProjectPicker {
   }
 
   /**
-   * Opens the shared create-project modal and moves the conversation into whatever it
-   * creates — `beginCreate`'s continuation, which has existed unused since US-903 for
-   * exactly this. The panel closes first: the dialog is where the reader is now, and a
-   * popover left open behind a modal is a second dismissal target.
+   * Moves the conversation into whatever the create modal makes. Closes first, so no popover
+   * is left behind the modal as a second dismissal target.
    */
   protected createProject(): void {
     const conversation = this.conversation();

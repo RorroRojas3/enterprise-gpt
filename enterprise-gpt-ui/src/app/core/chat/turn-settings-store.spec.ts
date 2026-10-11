@@ -170,9 +170,8 @@ describe('TurnSettingsStore', () => {
   });
 
   it('sends no servers when settings seed a non-tool model with server ids', async () => {
-    // The path that bypasses selectModel's visible clear: US-410 restoring a
-    // conversation whose stored settings pair a non-tool model with servers.
-    // effectiveMcpServerIds must re-derive emptiness, or the server 400s.
+    // Seeding bypasses selectModel's visible clear, so effectiveMcpServerIds must re-derive
+    // emptiness or the server 400s.
     const limited = modelFixture({ isDefault: true, isToolEnabled: false });
     await loadModels([limited]);
     const server = mcpFixture();
@@ -260,8 +259,7 @@ describe('TurnSettingsStore', () => {
     store.toggleMcpServer(server.id);
     expect(store.effectiveMcpServerIds()).toEqual([server.id]);
 
-    // Removing a key does not touch the selection, so the derivation is what has to
-    // notice.
+    // Removing a key leaves the selection alone, so the derivation has to notice.
     await reloadServers([{ ...server, hasUserApiKey: false, apiKeyHint: null }]);
 
     expect(store.effectiveMcpServerIds()).toEqual([]);

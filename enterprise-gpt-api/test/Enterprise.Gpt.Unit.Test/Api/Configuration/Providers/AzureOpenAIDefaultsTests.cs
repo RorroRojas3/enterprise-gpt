@@ -5,16 +5,13 @@ using Microsoft.Extensions.AI;
 using OpenAI.Responses;
 using Xunit;
 
-// OPENAI001: the Responses request types are still marked experimental at OpenAI 2.12.0, and remain
-// so at 2.13.0 — no package bump retires this.
+// OPENAI001: the Responses request types are still experimental as of OpenAI 2.13.0.
 #pragma warning disable OPENAI001
 
 namespace Enterprise.Gpt.Unit.Test.Api.Configuration.Providers;
 
 /// <summary>
-/// Covers the callback that stamps Responses settings onto an Azure OpenAI turn, in isolation
-/// from the SDK bridge. <see cref="AzureOpenAIChatClientBridgeTests"/> covers what actually reaches
-/// the wire; this covers the decisions the callback makes before it gets there.
+/// The callback's decisions in isolation; <see cref="AzureOpenAIChatClientBridgeTests"/> covers the wire.
 /// </summary>
 public sealed class AzureOpenAIDefaultsTests
 {
@@ -82,10 +79,8 @@ public sealed class AzureOpenAIDefaultsTests
     [InlineData(null)]
     public void Create_WithoutTheCatalogFlag_AsksForNoReasoningButStillDisablesStorage(bool? isReasoningEnabled)
     {
-        // Null covers a request assembled somewhere that never set the property. Absent means no:
-        // a deployment that does not support reasoning rejects the whole request rather than
-        // ignoring the option, so guessing yes would break every turn on it. Storage is off either
-        // way — that is about the turn, not the model.
+        // Null is a request that never set the property. Absent means no, since a deployment without
+        // reasoning rejects the whole request. Storage is off either way.
         var options = new ChatOptions();
         if (isReasoningEnabled is not null)
         {
@@ -124,9 +119,7 @@ public sealed class AzureOpenAIDefaultsTests
         var settings = Settings();
         settings.ReasoningSummary = summary;
 
-        // Parsing happens once inside Create, so an unknown value throws here rather than on the
-        // first conversation. This theory is what keeps the option vocabulary and the parser from
-        // drifting apart.
+        // Parsing happens once in Create, so an unknown value throws here, not on the first conversation.
         Assert.NotNull(AzureOpenAIDefaults.Create(settings));
     }
 

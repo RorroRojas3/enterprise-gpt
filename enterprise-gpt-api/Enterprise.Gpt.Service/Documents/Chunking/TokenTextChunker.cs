@@ -22,23 +22,15 @@ public interface ITextChunker
     /// </summary>
     int OverlapTokens { get; }
 
-    /// <summary>
-    /// Counts the tokens in <paramref name="text"/> using the embedding model's tokenizer.
-    /// </summary>
-    /// <param name="text">The text to measure.</param>
-    /// <returns>The number of tokens.</returns>
+    /// <summary>Counts the tokens in <paramref name="text"/> using the embedding model's tokenizer.</summary>
     int CountTokens(string text);
 
-    /// <summary>
-    /// Splits <paramref name="segments"/> into ordered, overlapping chunks.
-    /// </summary>
-    /// <param name="segments">The extracted segments, in reading order.</param>
-    /// <param name="cancellationToken">A token to observe while chunking a large document.</param>
+    /// <summary>Splits in-order <paramref name="segments"/> into ordered, overlapping chunks.</summary>
     /// <returns>
-    /// The chunks in reading order with dense, zero-based <see cref="TextChunkDto.Index"/> values.
-    /// Empty when <paramref name="segments"/> contains no readable text.
+    /// Chunks with dense, zero-based <see cref="TextChunkDto.Index"/> values; empty when there is no
+    /// readable text.
     /// </returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="segments"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="segments"/> is null.</exception>
     IReadOnlyList<TextChunkDto> Chunk(IReadOnlyList<DocumentSegmentDto> segments, CancellationToken cancellationToken);
 }
 
@@ -47,51 +39,21 @@ public interface ITextChunker
 /// <see cref="MaxTokens"/> tokens with <see cref="OverlapTokens"/> tokens of overlap between neighbours.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Chunking is done in tokens rather than characters because tokens are what the embedding model
-/// actually bounds; a character budget over-shoots on prose and under-shoots on code, tables and
-/// non-Latin scripts.
-/// </para>
-/// <para>
-/// Text is first broken into <em>units</em> — paragraphs, then sentences, then raw token slices — and
-/// units are packed greedily. Splitting at natural boundaries first keeps most chunks from starting or
-/// ending mid-sentence, which measurably helps retrieval; the raw token slice is only ever reached by
-/// input that has no boundaries at all, such as minified data.
-/// </para>
-/// <para>
-/// Chunks deliberately span segment boundaries. Chunking per page or per slide would emit a chunk of a
-/// handful of tokens for every sparse slide, and those embed poorly.
-/// </para>
-/// <para>
-/// Registered as a singleton: building a tokenizer loads and indexes a large vocabulary, which must not
-/// happen per request.
-/// </para>
+/// Chunks deliberately span segments (split at paragraphs, then sentences, then token slices) so sparse
+/// slides do not embed as tiny chunks. Singleton: building the tokenizer loads a large vocabulary.
 /// </remarks>
 public sealed partial class TokenTextChunker : ITextChunker
 {
     private const string UnitSeparator = "\n";
 
-    // Encoding used by the text-embedding-3-* and ada-002 model families. Only consulted when the
-    // configured model name is a deployment alias the tokenizer library does not recognize.
+    // Encoding of the text-embedding-3-* and ada-002 families, used when the configured name is a
+    // deployment alias the tokenizer library does not recognize.
     private const string FallbackEncoding = "cl100k_base";
 
     private readonly ILogger<TokenTextChunker> _logger;
     private readonly Tokenizer _tokenizer;
     private readonly int _separatorTokens;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="TokenTextChunker"/> class.
-    /// </summary>
-    /// <param name="options">Chunking options; <c>OverlapTokens</c> is clamped below <c>MaxTokens</c>.</param>
-    /// <param name="azureOpenAIOptions">
-    /// Supplies the embedding deployment name, which selects the tokenizer. Taken from the
-    /// validated options rather than read off <c>IConfiguration</c> by key, which couples this
-    /// class to a section name nothing checks: the rename of that section to <c>AzureOpenAI</c>
-    /// would have left a raw read returning nothing and silently falling back to
-    /// <c>cl100k_base</c> — chunking every document against a tokenizer that need not match the
-    /// one the embedding model actually uses.
-    /// </param>
-    /// <param name="logger">Logger used for tokenizer selection and chunking telemetry.</param>
     public TokenTextChunker(
         IOptions<DocumentOptions> options,
         IOptions<AzureOpenAIOptions> azureOpenAIOptions,
@@ -114,6 +76,8 @@ public sealed partial class TokenTextChunker : ITextChunker
             LogOverlapClamped(_logger, chunking.OverlapTokens, OverlapTokens, MaxTokens);
         }
 
+        // Validated options, not a raw IConfiguration read that would silently fall back to
+        // cl100k_base if the section were renamed.
         _tokenizer = CreateTokenizer(azureOpenAIOptions.Value.EmbeddingModel, logger);
         _separatorTokens = _tokenizer.CountTokens(UnitSeparator);
     }
@@ -150,9 +114,8 @@ public sealed partial class TokenTextChunker : ITextChunker
                 current = BuildOverlap(current);
                 currentTokens = SumWithSeparators(current);
 
-                // Drop carried-over units from the front until the incoming one fits. Units are capped
-                // at MaxTokens by the token-slice fallback, so worst case this empties the list and the
-                // unit still fits — the loop always terminates and always makes forward progress.
+                // Units are capped at MaxTokens, so at worst this empties the list and the unit still
+                // fits; the loop always makes forward progress.
                 while (current.Count > 0 && currentTokens + unit.TokenCount + _separatorTokens > MaxTokens)
                 {
                     current.RemoveAt(0);
@@ -179,17 +142,10 @@ public sealed partial class TokenTextChunker : ITextChunker
         return chunks;
     }
 
-    /// <summary>
-    /// A span of text small enough to be packed into a chunk, tagged with where it came from.
-    /// </summary>
     private sealed record TextUnit(string Text, int TokenCount, int? SourceNumber);
 
     #region Private methods
 
-    /// <summary>
-    /// Materializes the accumulated units into one chunk, or into several if the joined text
-    /// re-tokenizes to more than <see cref="MaxTokens"/>.
-    /// </summary>
     private void AddChunks(List<TextChunkDto> chunks, List<TextUnit> units)
     {
         var text = string.Join(UnitSeparator, units.Select(u => u.Text)).Trim();
@@ -207,9 +163,8 @@ public sealed partial class TokenTextChunker : ITextChunker
             return;
         }
 
-        // Belt and braces. Joining units is accounted for separator by separator, so this is not
-        // expected to trigger; re-slicing rather than trusting the arithmetic keeps the "no chunk
-        // exceeds MaxTokens" guarantee true for every possible input.
+        // Not expected (separators are budgeted), but re-slicing keeps "no chunk exceeds MaxTokens"
+        // true for every input instead of trusting the arithmetic.
         LogJoinedChunkSplit(_logger, tokenCount, MaxTokens);
 
         foreach (var slice in SplitByTokens(text, MaxTokens, CancellationToken.None))
@@ -223,9 +178,6 @@ public sealed partial class TokenTextChunker : ITextChunker
         }
     }
 
-    /// <summary>
-    /// Selects the trailing units of a just-emitted chunk to seed the next one.
-    /// </summary>
     private List<TextUnit> BuildOverlap(List<TextUnit> emitted)
     {
         if (OverlapTokens <= 0 || emitted.Count == 0)
@@ -248,9 +200,8 @@ public sealed partial class TokenTextChunker : ITextChunker
                 continue;
             }
 
-            // Only part of this unit fits. Carry its token-level tail so the overlap is the requested
-            // size even for documents written as a few very long paragraphs, where whole-unit overlap
-            // would otherwise be all-or-nothing.
+            // Carry a token-level tail so long-paragraph documents still get the requested overlap
+            // rather than all-or-nothing.
             var remaining = OverlapTokens - total - (carried.Count == 0 ? 0 : _separatorTokens);
             if (remaining > 0)
             {
@@ -277,10 +228,6 @@ public sealed partial class TokenTextChunker : ITextChunker
         return units.Sum(u => u.TokenCount) + ((units.Count - 1) * _separatorTokens);
     }
 
-    /// <summary>
-    /// Flattens segments into a stream of units small enough to pack, progressively falling back to
-    /// coarser splits only where a finer one leaves something too large.
-    /// </summary>
     private IEnumerable<TextUnit> EnumerateUnits(IReadOnlyList<DocumentSegmentDto> segments, CancellationToken cancellationToken)
     {
         foreach (var segment in segments)
@@ -294,9 +241,8 @@ public sealed partial class TokenTextChunker : ITextChunker
 
             foreach (var paragraph in SplitParagraphs(segment.Text))
             {
-                // Checked per paragraph, not just per segment: the plain-text and legacy-Word
-                // extractors return the whole file as a single segment, so a segment-level check alone
-                // would make a large upload effectively uncancellable through a long CPU-bound stretch.
+                // Per paragraph too: plain-text and legacy-Word extractors return the whole file as one
+                // segment, which would otherwise be uncancellable.
                 cancellationToken.ThrowIfCancellationRequested();
 
                 foreach (var piece in SplitToFit(paragraph, SplitSentences, cancellationToken))
@@ -311,10 +257,6 @@ public sealed partial class TokenTextChunker : ITextChunker
         }
     }
 
-    /// <summary>
-    /// Returns <paramref name="text"/> unchanged when it already fits, otherwise the results of
-    /// <paramref name="finer"/>, recursively, with a raw token slice as the final fallback.
-    /// </summary>
     private IEnumerable<string> SplitToFit(string text, Func<string, IEnumerable<string>> finer, CancellationToken cancellationToken)
     {
         if (_tokenizer.CountTokens(text) <= MaxTokens)
@@ -366,14 +308,7 @@ public sealed partial class TokenTextChunker : ITextChunker
             .Where(s => s.Length > 0);
     }
 
-    /// <summary>
-    /// Slices <paramref name="text"/> into runs of at most <paramref name="maxTokens"/> tokens,
-    /// preserving every character.
-    /// </summary>
-    /// <remarks>
-    /// This is the last-resort path for text with no sentence or paragraph boundaries at all — scripts
-    /// written without spaces, minified data — where the alternative is failing the whole document.
-    /// </remarks>
+    // Last resort for text with no boundaries at all (minified data, unspaced scripts).
     private IEnumerable<string> SplitByTokens(string text, int maxTokens, CancellationToken cancellationToken)
     {
         var start = 0;
@@ -393,23 +328,14 @@ public sealed partial class TokenTextChunker : ITextChunker
         }
     }
 
-    /// <summary>
-    /// Returns the length of the longest prefix of <paramref name="span"/> that stays within the token
-    /// budget, always at least one character so the caller cannot stall.
-    /// </summary>
-    /// <remarks>
-    /// The cut is chosen by character index, not token index. Slicing a range of encoded token ids and
-    /// decoding it back is not round-trip safe: a byte-pair encoding assigns tokens to byte sequences,
-    /// so a cut inside a character's bytes yields replacement characters on both sides of the seam —
-    /// which corrupts the text and re-encodes to a different, sometimes larger, token count than was
-    /// taken. Cutting on a character boundary avoids both.
-    /// </remarks>
+    // Cuts by character index, not token index: decoding a token-id range can split a character's
+    // bytes, corrupting the text and re-encoding to a larger count. Always returns at least 1.
     private int FitLength(ReadOnlySpan<char> span, int maxTokens)
     {
         var length = _tokenizer.GetIndexByTokenCount(span, maxTokens, out var normalizedText, out _);
 
-        // A normalizer would make the returned index address the normalized text rather than ours.
-        // None is configured for the Tiktoken tokenizers used here, so this guards a future change.
+        // A normalizer would index the normalized text, not ours; Tiktoken has none, so this guards a
+        // future change.
         if (normalizedText is not null)
         {
             length = 0;
@@ -417,8 +343,7 @@ public sealed partial class TokenTextChunker : ITextChunker
 
         length = SnapToCharacterBoundary(span, Math.Clamp(length, 0, span.Length));
 
-        // Encoding an isolated prefix can differ from encoding it in context, so the budget is verified
-        // rather than assumed.
+        // An isolated prefix can encode differently than in context, so verify the budget.
         while (length > 0 && _tokenizer.CountTokens(span[..length]) > maxTokens)
         {
             length = SnapToCharacterBoundary(span, length - 1);
@@ -429,15 +354,10 @@ public sealed partial class TokenTextChunker : ITextChunker
             return length;
         }
 
-        // A single character whose own encoding exceeds the budget still has to be emitted somewhere;
-        // returning zero here would loop forever.
+        // A character that alone exceeds the budget is still emitted; returning zero would loop forever.
         return span.Length >= 2 && char.IsSurrogatePair(span[0], span[1]) ? 2 : 1;
     }
 
-    /// <summary>
-    /// Moves <paramref name="length"/> back off a trailing high surrogate so a slice never ends
-    /// half-way through a surrogate pair.
-    /// </summary>
     private static int SnapToCharacterBoundary(ReadOnlySpan<char> span, int length)
     {
         return length > 0 && length < span.Length && char.IsHighSurrogate(span[length - 1])
@@ -445,9 +365,6 @@ public sealed partial class TokenTextChunker : ITextChunker
             : length;
     }
 
-    /// <summary>
-    /// Returns the tail of <paramref name="text"/> worth at most <paramref name="tokenCount"/> tokens.
-    /// </summary>
     private string TakeTokenTail(string text, int tokenCount)
     {
         var index = _tokenizer.GetIndexByTokenCountFromEnd(text, tokenCount, out var normalizedText, out _);
@@ -483,8 +400,7 @@ public sealed partial class TokenTextChunker : ITextChunker
             }
             catch (Exception ex) when (ex is NotSupportedException or ArgumentException)
             {
-                // Azure OpenAI addresses models by deployment name, which is chosen by whoever created
-                // the deployment and often is not a model identifier the tokenizer library knows.
+                // Azure OpenAI uses deployment names, which often are not model ids the library knows.
                 LogTokenizerFallback(logger, embeddingModel, FallbackEncoding);
             }
         }
@@ -492,11 +408,10 @@ public sealed partial class TokenTextChunker : ITextChunker
         return TiktokenTokenizer.CreateForEncoding(FallbackEncoding);
     }
 
-    /// <summary>A blank line, i.e. a paragraph break.</summary>
     [GeneratedRegex(@"\n[ \t]*\n[\s]*", RegexOptions.CultureInvariant)]
     private static partial Regex ParagraphBoundary();
 
-    /// <summary>Whitespace following sentence-ending punctuation, or a single line break.</summary>
+    // Whitespace after sentence-ending punctuation, or a single line break.
     [GeneratedRegex(@"(?<=[.!?…。！？])[ \t]+|\n", RegexOptions.CultureInvariant)]
     private static partial Regex SentenceBoundary();
 

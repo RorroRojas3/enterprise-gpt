@@ -19,51 +19,23 @@ export interface StreamTurnRequest {
   readonly conversationId: string;
   readonly prompt: string;
   readonly modelId: string;
-  /**
-   * Sent as `mcpServers: [{ id }]` — always present, `[]` when empty. The old
-   * client dropped the field entirely, which is the regression US-403 names.
-   */
+  /** Sent as `mcpServers: [{ id }]`, always present: `[]` when empty, never omitted. */
   readonly mcpServerIds: readonly string[];
-  /** The caller's Stop (US-407). Composed with the signed-out signal. */
+  /** The caller's Stop. Composed with the signed-out signal. */
   readonly signal?: AbortSignal;
 }
 
 /**
- * How long decoded events are buffered before being delivered as one batch.
- * `bufferTime` rather than `requestAnimationFrame`, because it is deterministic
- * under test without a browser scheduler; ~16ms keeps delivery within one
- * frame at any token rate, so a consumer folding each batch performs at most
- * one `patchState` per flush.
+ * Batch window for decoded events: `bufferTime` is deterministic under test, unlike
+ * `requestAnimationFrame`, and ~16ms keeps consumers to one `patchState` per frame.
  */
 export const STREAM_BATCH_WINDOW_MS = 16;
 
 /**
- * The chat turn transport: an abortable raw `fetch` that reads errors first.
- *
- * Raw `fetch` because `HttpClient` cannot expose a readable body stream; the
- * bearer token therefore comes from the same {@link TokenService} the
- * `authInterceptor` uses, and is only ever attached to a URL built by
- * {@link ApiUrl} — ours by construction.
- *
- * Contract with consumers:
- * - Every value the observable errors with is an {@link AppError}.
- * - A pre-stream failure (bad token, transport failure, non-2xx response)
- *   errors. The server sets its `text/event-stream` headers lazily on the
- *   first frame, so every pre-stream failure carries ordinary
- *   `application/problem+json`, parsed *before* a single body byte is read.
- * - A bare 401 is replayed exactly once with a force-refreshed token, gated by
- *   {@link authErrorDecision} — the same single source of truth the
- *   interceptor consults. The replay is safe because authentication is
- *   rejected before the conversation lock is taken, so it cannot double-start
- *   a turn.
- * - Aborting (the caller's Stop, sign-out, or unsubscribing) errors with the
- *   `aborted` arm — the race-free discriminator against a natural end; every
- *   previously flushed batch has already been delivered, so partial output
- *   survives a Stop (US-407). There is no stop endpoint and none is called.
- * - A failure *after* the body has begun completes gracefully instead: the
- *   contract has no error surface after the first frame, so a mid-stream
- *   fault is indistinguishable from a network drop, and both take the single
- *   path US-406 already owns — a body that ended without `Finished`.
+ * Raw `fetch`, as `HttpClient` cannot expose a body stream; the token goes only to {@link ApiUrl}
+ * URLs. Pre-stream failures error with an {@link AppError}, and a bare 401 replays once (auth is
+ * rejected before the conversation lock). Aborting errors as `aborted` after flushed batches; a
+ * failure after the body starts completes instead, as the contract has no mid-stream errors.
  */
 @Injectable({ providedIn: 'root' })
 export class ConversationStreamClient {
@@ -73,11 +45,7 @@ export class ConversationStreamClient {
   private readonly _fetch = inject(STREAM_FETCH);
   private readonly _signedOut = injectSignedOutAbort();
 
-  /**
-   * Streams one turn, delivering decoded events in batches of at most one
-   * flush per {@link STREAM_BATCH_WINDOW_MS}. Empty batches are never emitted;
-   * the residual buffer is flushed on completion.
-   */
+  /** Empty batches are never emitted; the residual buffer flushes on completion. */
   stream(request: StreamTurnRequest): Observable<readonly AssistantUiEvent[]> {
     return new Observable<AssistantUiEvent>((subscriber) => {
       const teardown = new AbortController();
@@ -89,8 +57,7 @@ export class ConversationStreamClient {
 
       void this.run(request, signal, subscriber);
 
-      // Unsubscribing aborts the fetch too, so a `switchMap`-style consumer
-      // cancels the network request rather than orphaning it.
+      // Unsubscribing aborts the fetch, so a `switchMap` consumer cancels the request.
       return () => teardown.abort();
     }).pipe(
       bufferTime(STREAM_BATCH_WINDOW_MS),
@@ -152,9 +119,8 @@ export class ConversationStreamClient {
     } catch (thrown) {
       const error: AppError = toAppError(thrown, { signal, url });
       if (error.kind !== 'aborted' && bodyStarted) {
-        // The contract's two "body just stops" endings — a clean close and a
-        // faulting read — must deliver the same text, so the codec's buffered
-        // tail is salvaged here exactly as it is on `done`.
+        // A clean close and a faulting read must deliver the same text, so salvage the
+        // codec's buffered tail as on `done`.
         if (codec !== null) {
           try {
             for (const event of codec.flush()) {

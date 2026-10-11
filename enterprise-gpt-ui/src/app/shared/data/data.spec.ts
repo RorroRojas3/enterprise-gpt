@@ -470,8 +470,7 @@ describe('Paginator', () => {
   });
 
   it('offers no page-size select unless a caller asks for one', async () => {
-    // Frame `4a` draws none, which is why the default is empty rather than a set of
-    // numbers every caller has to opt out of.
+    // Empty by default, rather than a set of sizes every caller has to opt out of.
     const { host } = await render(1);
 
     expect(host.querySelector('.paginator__size')).toBeNull();
@@ -482,9 +481,8 @@ describe('Paginator', () => {
     fixture.componentRef.setInput('pageSizes', [25, 50, 100]);
     await fixture.whenStable();
 
-    // A `[value]` binding on the <select> would run before `@for` inserted the options
-    // and leave the first one showing — so a deep link would display a size it is not
-    // using. The selection is bound on the options for that reason.
+    // A `[value]` on the <select> would run before `@for` inserted the options and leave the
+    // first one showing, so a deep link would display a size it is not using.
     expect(host.querySelector<HTMLSelectElement>('.paginator__size select')?.value).toBe('100');
   });
 

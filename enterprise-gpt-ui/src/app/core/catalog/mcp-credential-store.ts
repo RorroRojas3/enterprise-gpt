@@ -19,25 +19,17 @@ interface McpCredentialState {
   /** The dialog is open on this server; null keeps it closed. */
   readonly target: McpDto | null;
   /**
-   * Which opening of the dialog is on screen, counted from one.
-   *
-   * A request carries the value it was started under, and a response is only rendered while
-   * that value still stands. The server id alone is not enough: closing and reopening the
-   * *same* server is a new surface, and an earlier attempt's rejection landing on it would
-   * show a message about a key the reader never typed there.
+   * Which opening of the dialog is on screen. A response renders only under the id it started
+   * with, since reopening the same server is a new surface.
    */
   readonly openId: number;
-  /**
-   * A save or a removal is in flight. Handed to `Modal.busy`, which suppresses Escape and
-   * backdrop dismissal so the reader is not left wondering whether their key was stored.
-   */
+  /** A save or removal is in flight; `Modal.busy` blocks dismissal until the outcome is known. */
   readonly busy: boolean;
   /** The last rejection, rendered in the dialog rather than as a toast. */
   readonly error: AppError | null;
   /**
-   * The exact key the server rejected. The field shows {@link error}'s messages only while
-   * it still holds that value, which is what clears them on the next keystroke — Signal
-   * Forms has no `setErrors` for an imperative reset.
+   * The key the server rejected. {@link error} shows only while the field still holds it, so it
+   * clears on the next keystroke; Signal Forms has no `setErrors` to reset it.
    */
   readonly rejectedValue: string | null;
 }
@@ -51,19 +43,8 @@ const initialState: McpCredentialState = {
 };
 
 /**
- * The flow behind a tool server that needs an API key of the user's own.
- *
- * Root-scoped for the reason the admin action stores are: `rxMethod` binds its subscription to
- * the injector that created it, and a save started from the composer must survive the user
- * navigating to another conversation while it is in flight.
- *
- * Reached only from the shell's lazy chunk — the composer's Tools menu and the dialog it opens
- * — so `providedIn: 'root'` costs the initial graph nothing. Keep it that way.
- *
- * The boundaries mirror `McpServerActionsStore`: a confirmed change travels as an event rather
- * than as `patchState` into another store, no failure closes the dialog, and **nothing is
- * inferred from what happens to be open** — every response identifies the surface it belongs
- * to.
+ * Root-scoped so a save survives navigating away mid-flight; reach it only from the shell's lazy
+ * chunk to keep it out of the initial graph. Each response carries the surface it belongs to.
  */
 export const McpCredentialStore = signalStore(
   { providedIn: 'root' },
@@ -80,22 +61,16 @@ export const McpCredentialStore = signalStore(
       return store._api.build(`mcps/${ApiUrl.segment(mcpServerId)}/credential`);
     }
 
-    /** Whether the dialog that started a request is still the one on screen. */
     function isOwnSurface(openId: number): boolean {
       return store.openId() === openId;
     }
 
-    /** Closes the dialog only if the response belongs to it. */
     function resolve(openId: number): void {
       if (isOwnSurface(openId)) {
         patchState(store, { target: null, error: null, rejectedValue: null });
       }
     }
 
-    /**
-     * Reports a rejection on the dialog that produced it, and as a toast once that dialog has
-     * been replaced — the rule every action store here follows.
-     */
     function reject(
       cause: unknown,
       requestUrl: string,
@@ -134,8 +109,7 @@ export const McpCredentialStore = signalStore(
               resolve(openId);
             },
             error: (cause: unknown) => reject(cause, requestUrl, server, apiKey, openId),
-            // Success, failure and sign-out cancellation alike; the only path that reliably
-            // releases the flag, which is why `close()` does not clear it.
+            // The only path that always releases `busy`, so `close()` leaves it alone.
             finalize: () => patchState(store, { busy: false }),
           }),
         );
@@ -151,8 +125,7 @@ export const McpCredentialStore = signalStore(
           takeUntil(store._signedOut$),
           tapResponse({
             next: () => {
-              // The 204 carries no body, so the cleared status is built here. It claims nothing
-              // the server did not do: the request was an unconditional removal.
+              // The 204 has no body; an unconditional removal makes the cleared status safe.
               store._dispatcher.dispatch(
                 mcpEvents.credentialChanged({
                   mcpServerId: server.id,
@@ -173,9 +146,8 @@ export const McpCredentialStore = signalStore(
 
     return {
       open(server: McpDto): void {
-        // `busy` survives a force-closed dialog, and `exhaustMap` would drop the next submit
-        // anyway: opening now would present a modal whose field and every button are disabled
-        // and which Escape cannot dismiss.
+        // `busy` survives a force-closed dialog; opening now would show a disabled modal that
+        // Escape cannot dismiss.
         if (store.busy()) {
           return;
         }
@@ -189,9 +161,7 @@ export const McpCredentialStore = signalStore(
       },
 
       close(): void {
-        // Bumped here too: the surface really is gone, so a response still in flight has
-        // nowhere to render and belongs on a toast. Without this the reader force-closes a
-        // dialog and is told nothing when the request behind it fails.
+        // Bumped so a response still in flight reports on a toast, not in a dialog that's gone.
         patchState(store, {
           target: null,
           openId: store.openId() + 1,

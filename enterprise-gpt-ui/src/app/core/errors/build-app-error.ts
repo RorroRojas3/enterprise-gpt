@@ -18,14 +18,7 @@ export interface AppErrorParts {
   readonly fallbackTitle?: string;
 }
 
-/**
- * Selects the {@link AppError} arm and fills its fields.
- *
- * The single place arm selection happens, so the synchronous and asynchronous
- * entry points cannot drift.
- *
- * @param parts The normalized inputs.
- */
+/** The one place an {@link AppError} arm is chosen, so the sync and async entry points agree. */
 export function buildAppError(parts: AppErrorParts): AppError {
   const { problem, url, cause } = parts;
   const status = problem?.status ?? parts.status;
@@ -132,7 +125,6 @@ export function networkAppError(url: string | null, cause: unknown): AppError {
   };
 }
 
-/** Builds the arm for a request the caller aborted. */
 export function abortedAppError(url: string | null, cause: unknown): AppError {
   return {
     kind: 'aborted',

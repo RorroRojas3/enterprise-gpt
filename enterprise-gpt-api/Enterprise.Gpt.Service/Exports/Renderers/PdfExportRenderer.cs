@@ -12,19 +12,9 @@ namespace Enterprise.Gpt.Service.Exports.Renderers;
 /// Writes a conversation as a PDF.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The same block model the Word renderer consumes and the same <see cref="ExportTheme"/> the HTML
-/// template resolves against, so the three cannot disagree about what a message's markdown meant or
-/// what colour it is. What differs is everything below that: a PDF is laid out here and now, with the
-/// glyphs embedded, where a .docx defers both to whatever opens it.
-/// </para>
-/// <para>
-/// Because the glyphs are embedded, this renderer — alone among the five — can fail for a reason that
-/// has nothing to do with the conversation: no font. That is handled by not registering it, so the
-/// route answers <c>503</c> up front rather than throwing partway through a response body.
-/// </para>
+/// Shares the block model and <see cref="ExportTheme"/> with the Word and HTML renderers. Embedded glyphs
+/// mean it alone can fail for want of a font, so it is left unregistered and the route answers <c>503</c>.
 /// </remarks>
-/// <param name="mapper">Maps each message's markdown into blocks.</param>
 public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversationExportRenderer
 {
     private const string BodyStyle = "ExportBody";
@@ -35,7 +25,7 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
     private const string CodeLanguageStyle = "ExportCodeLanguage";
     private const string CellStyle = "ExportCell";
 
-    /// <summary>How far one nesting level indents. MigraDoc measures in points.</summary>
+    /// <summary>Points per nesting level.</summary>
     private const int IndentStepPoints = 18;
 
     /// <summary>Points. The 2.25pt rule the app draws down the side of a prompt.</summary>
@@ -147,12 +137,10 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
         AppendRuns(paragraph, runs);
     }
 
-    // One MigraDoc paragraph per line: a code block's line breaks are content, and MigraDoc's own
-    // wrapping would reflow them. The shading is per paragraph, so a short line still reads as part
-    // of the block.
+    // One paragraph per line, since MigraDoc's wrapping would reflow the breaks; the shading is per
+    // paragraph, so a short line still reads as part of the block.
     private static void AppendCode(Section section, CodeBlock code, int indentLevel, ExportBlockStyles style)
     {
-        // The fence's language, the way the app labels a code block and the HTML export repeats.
         if (!string.IsNullOrWhiteSpace(code.Language))
         {
             var label = section.AddParagraph();
@@ -171,9 +159,8 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
             paragraph.Format.LeftIndent = Unit.FromPoint(indentLevel * IndentStepPoints);
             Enclose(paragraph, style, keepsOwnShading: true);
 
-            // A blank line still needs a paragraph, or the block loses its internal spacing. A
-            // non-breaking space rather than nothing, because MigraDoc collapses an empty shaded
-            // paragraph to zero height.
+            // A blank line still needs a paragraph, holding a non-breaking space because MigraDoc
+            // collapses an empty shaded paragraph to zero height.
             paragraph.AddText(line.Length > 0 ? line.Replace("\t", "    ", StringComparison.Ordinal) : " ");
         }
     }
@@ -197,11 +184,8 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
 
         foreach (var item in list.Items)
         {
-            // The marker belongs to the item, so it is drawn whether or not the item opens with a
-            // paragraph to hang it on — an item starting with a nested list or a fence would
-            // otherwise lose its bullet, which an HTML <li> never does. Everything after the first
-            // paragraph is indented rather than numbered: a continuation line carrying its own
-            // number restarts the count against it.
+            // The marker is drawn even when the item opens with a list or fence, as an HTML <li> would.
+            // Content after the first paragraph is indented, not numbered, or it would restart the count.
             var opening = item.Children is [ParagraphBlock lead, ..] ? lead : null;
 
             AppendListItem(section, opening?.Runs ?? [], listType, level, continues: !first, style);
@@ -229,8 +213,7 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
         paragraph.Format.ListInfo = new ListInfo
         {
             ListType = listType,
-            // False on the first item restarts an ordered list at 1; true on the rest is what stops
-            // every item being numbered "1".
+            // False restarts an ordered list at 1; true on later items stops each being numbered "1".
             ContinuePreviousList = continues
         };
 
@@ -264,8 +247,7 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
         migraTable.TopPadding = Unit.FromPoint(2);
         migraTable.BottomPadding = Unit.FromPoint(2);
 
-        // The text column split evenly. A width derived from content would need a measuring pass
-        // MigraDoc does not expose before rendering.
+        // Split evenly: content-derived widths need a measuring pass MigraDoc does not expose.
         var usable = section.PageSetup.PageWidth.Point
             - section.PageSetup.LeftMargin.Point
             - section.PageSetup.RightMargin.Point;
@@ -281,8 +263,7 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
             var row = migraTable.AddRow();
             row.HeadingFormat = isHeader;
 
-            // A table inside a prompt is filled row by row, because MigraDoc has no ancestor for
-            // the band to come from the way the HTML has.
+            // Filled row by row: MigraDoc has no ancestor for a prompt's band to come from.
             if (isHeader)
             {
                 row.Shading.Color = Rgb(ExportTheme.Colors.SurfaceAlt);
@@ -306,8 +287,7 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
             }
         }
 
-        // MigraDoc gives a table no space of its own; without this the next paragraph sits on its
-        // bottom border.
+        // MigraDoc gives a table no spacing; without this the next paragraph sits on its border.
         section.AddParagraph().Format.SpaceAfter = Unit.FromPoint(6);
     }
 
@@ -321,14 +301,9 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
     }
 
     /// <summary>
-    /// Draws whatever encloses a paragraph — a prompt's band, a block quote's rule, or neither.
+    /// Draws a prompt's band or a quote's rule. A <paramref name="keepsOwnShading"/> paragraph (code) gets
+    /// the rule alone, so prose and code stay distinct.
     /// </summary>
-    /// <param name="paragraph">The paragraph to enclose, styled in place and returned.</param>
-    /// <param name="style">What encloses it; a quote inside a prompt keeps the prompt's rule, since a paragraph has only one left border.</param>
-    /// <param name="keepsOwnShading">
-    /// <see langword="true"/> for a paragraph whose style already fills it — a code block, which a
-    /// band marks with its rule alone rather than erasing the distinction between prose and code.
-    /// </param>
     private static Paragraph Enclose(
         Paragraph paragraph, ExportBlockStyles style, bool keepsOwnShading = false)
     {
@@ -356,8 +331,7 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
     {
         foreach (var run in runs)
         {
-            // A hard break inside a run is a line break in the source; MigraDoc needs the element
-            // rather than the character.
+            // MigraDoc needs a line-break element rather than the character.
             var segments = run.Text.ReplaceLineEndings("\n").Split('\n');
 
             for (var index = 0; index < segments.Length; index++)
@@ -379,8 +353,7 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
 
     private static void AppendSegment(Paragraph paragraph, string text, ExportRun run)
     {
-        // MigraDoc's Hyperlink is a container of formatted text, so the styling has to be applied
-        // inside it rather than to it.
+        // A MigraDoc Hyperlink is a container, so the styling goes on the text inside it.
         if (run.LinkUrl is not null && Uri.TryCreate(run.LinkUrl, UriKind.Absolute, out var uri))
         {
             var link = paragraph.AddHyperlink(uri.AbsoluteUri, HyperlinkType.Web);

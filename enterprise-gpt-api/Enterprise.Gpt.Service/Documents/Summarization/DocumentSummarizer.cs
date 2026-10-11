@@ -23,10 +23,6 @@ public interface IDocumentSummarizer
     /// <summary>
     /// Summarizes a document from the chunk rows ingestion already wrote.
     /// </summary>
-    /// <param name="documentId">The document's identifier.</param>
-    /// <param name="source">Which document family the id belongs to.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The summary and what producing it cost.</returns>
     /// <exception cref="ValidationException">The document has no text to summarize, or the run failed.</exception>
     /// <exception cref="SummarizerNotConfiguredException">The summarizer's catalog row is missing or unusable.</exception>
     Task<SummarizationRun> SummarizeDocumentAsync(
@@ -37,16 +33,8 @@ public interface IDocumentSummarizer
     /// <summary>
     /// Reduces several documents' summaries to one overview through the same pipeline.
     /// </summary>
-    /// <param name="summaries">The labelled per-document summaries to digest.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The overview and what producing it cost.</returns>
     /// <exception cref="ValidationException">There is nothing to summarize, or the run failed.</exception>
     /// <exception cref="SummarizerNotConfiguredException">The summarizer's catalog row is missing or unusable.</exception>
-    /// <remarks>
-    /// A digest is not a second algorithm: it is this same pipeline run over per-document summaries
-    /// instead of a document's own text, under a framing that asks for an overview rather than a
-    /// record of everything.
-    /// </remarks>
     Task<SummarizationRun> SummarizeDigestAsync(string summaries, CancellationToken cancellationToken);
 }
 
@@ -54,13 +42,6 @@ public interface IDocumentSummarizer
 /// Summarizes in one call when a document fits, and by hierarchical map-reduce with a collapse loop
 /// when it does not.
 /// </summary>
-/// <param name="summarizerModelResolver">Reads the pinned summarizer's catalog row.</param>
-/// <param name="chatClientResolver">Resolves the summarizer's provider-specific chat client.</param>
-/// <param name="tokenEstimatorResolver">Resolves the token estimator for that provider.</param>
-/// <param name="promptOverheadCalculator">Accounts for the prompt tokens belonging to no message.</param>
-/// <param name="assembler">Reassembles a document's text from its chunk rows.</param>
-/// <param name="options">The bound summarization options.</param>
-/// <param name="logger">The logger.</param>
 public sealed partial class DocumentSummarizer(
     ISummarizerModelResolver summarizerModelResolver,
     IChatClientResolver chatClientResolver,
@@ -103,9 +84,8 @@ public sealed partial class DocumentSummarizer(
     public async Task<SummarizationRun> SummarizeDigestAsync(
         string summaries, CancellationToken cancellationToken)
     {
-        // async rather than a bare Task-returning guard, so the failure lands on the returned task.
-        // A digest fans several of these out through Task.WhenAll, where a synchronous throw would
-        // abandon the sibling tasks it had already started, unobserved.
+        // Thrown inside the async method so it lands on the task: digests fan out through Task.WhenAll,
+        // where a synchronous throw would leave already-started siblings unobserved.
         if (string.IsNullOrWhiteSpace(summaries))
         {
             throw Invalid(nameof(summaries), "There is nothing to summarize.");
@@ -135,19 +115,15 @@ public sealed partial class DocumentSummarizer(
     #region Private methods
 
     /// <remarks>
-    /// Every terminal failure leaves as a <see cref="ValidationException"/>, because that is the one
-    /// type the background job processor copies verbatim into a job's error message. A provider
-    /// exception allowed to escape as itself reaches the user as a generic 500 with the message
-    /// suppressed — so the failure most likely to happen in production would be the one whose reason
-    /// nobody ever reads. The original is logged rather than shown, since a provider message can
-    /// carry a deployment name or a request id.
+    /// Every terminal failure leaves as a <see cref="ValidationException"/>, or users would see a bare 500.
+    /// The original is logged, not shown, since provider messages can carry deployment names or request ids.
     /// </remarks>
     private async Task<SummarizationRun> SummarizeCoreAsync(
         string text,
         SummaryStage stage,
         CancellationToken cancellationToken)
     {
-        // Named outside the try so the log line still has it when the failure happens deep in a run.
+        // Outside the try so the failure log still has it.
         var deployment = "unresolved";
 
         try
@@ -158,9 +134,8 @@ public sealed partial class DocumentSummarizer(
         catch (Exception ex) when (ex is not (ValidationException or SummarizerNotConfiguredException)
             && !(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
         {
-            // Only a cancellation the caller actually asked for passes through. One that nobody's
-            // token explains is a provider failure wearing a cancellation's clothes, and letting it
-            // escape would report it to the user as though they had abandoned the request.
+            // Only the caller's own cancellation passes through; any other is a provider failure, and
+            // escaping would report it as though the user had abandoned the request.
             LogSummarizationRunFailed(_logger, ex, deployment);
 
             throw Invalid("summary", "This document could not be summarized. Please try again.");
@@ -184,8 +159,7 @@ public sealed partial class DocumentSummarizer(
         var context = new RunContext(summarizer, estimator, chatClient);
         var documentTokens = CountTokens(context, text);
 
-        // Sized against the framing this run's one call would actually carry: each stage's framing
-        // differs, and the decision this budget serves is whether the whole text rides that prompt.
+        // Sized against this stage's own framing, since the question is whether the text fits that prompt.
         var singleCallPrompt = stage is SummaryStage.Digest
             ? SummarizationPrompts.BuildDigest(text)
             : SummarizationPrompts.BuildSinglePass(text);
@@ -200,8 +174,7 @@ public sealed partial class DocumentSummarizer(
             return BuildRun(context, single.Text, [single], mapUnitCount: 0, collapsePasses: 0);
         }
 
-        // A digest that overflows falls back to the document's own map and reduce framing rather
-        // than earning two more templates for a path a scope of summaries rarely reaches.
+        // An overflowing digest reuses the document map/reduce framing; the path is too rare for its own.
         return await MapReduceAsync(context, text, documentTokens, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -222,8 +195,7 @@ public sealed partial class DocumentSummarizer(
             throw Invalid("summary", "This document has no text to summarize.");
         }
 
-        // Checked here, before the map phase dispatches anything, so an oversized document costs
-        // nothing at all rather than running to the ceiling and stopping with a partial result.
+        // Checked before dispatch, so an oversized document costs nothing rather than a partial run.
         if (units.Count > _options.MaxMapUnits)
         {
             throw Invalid(
@@ -252,18 +224,8 @@ public sealed partial class DocumentSummarizer(
     }
 
     /// <remarks>
-    /// <para>
-    /// A unit already in flight when a sibling fails is left to finish, because the acceptance
-    /// criterion says a failing unit must not cancel its siblings. That is the criterion's price,
-    /// not a saving: the run fails regardless, so those results are discarded anyway, and letting
-    /// them finish adds their output tokens and delays the failure by up to one call timeout.
-    /// </para>
-    /// <para>
-    /// A unit that has not started yet is a different matter. The run fails once any unit exhausts
-    /// its retries, so every call dispatched after that point is bought for a result nobody will
-    /// read — on a large document that is hundreds of calls. Queued units are therefore skipped
-    /// rather than cancelled, which is why the flag is checked after the gate rather than before it.
-    /// </para>
+    /// A failing unit must not cancel siblings already in flight, but queued units are skipped once any unit
+    /// fails, since the run is lost anyway; hence the flag is checked after the gate, not before.
     /// </remarks>
     private async Task<(IReadOnlyList<string> Partials, IReadOnlyList<CallResult> Calls)> RunMapPhaseAsync(
         RunContext context,
@@ -301,16 +263,14 @@ public sealed partial class DocumentSummarizer(
             }
         })).ConfigureAwait(false);
 
-        // Task.WhenAll preserves input order, so the partials line up with the units that produced
-        // them. It also throws before this line whenever any unit failed, so nothing here is null.
+        // WhenAll throws if any unit failed, so no result is null here.
         var completed = results.Select(r => r!.Value).ToList();
 
         return ([.. completed.Select(r => r.Text)], completed);
     }
 
     /// <remarks>
-    /// What plain map-reduce lacks. Without it a document whose own partial summaries overflow the
-    /// window has no answer at all — not a worse summary, no summary.
+    /// Without it, a document whose partial summaries overflow the window gets no summary at all.
     /// </remarks>
     private async Task<(IReadOnlyList<string> Partials, int Passes, IReadOnlyList<CallResult> Calls)>
         RunCollapseLoopAsync(
@@ -321,8 +281,7 @@ public sealed partial class DocumentSummarizer(
         var partials = mapped;
         List<CallResult> calls = [];
 
-        // Two budgets because two prompts are in play: the loop exits when the partials fit the
-        // reduce that follows it, while a pass inside it packs against the call it is making.
+        // Two prompts, two budgets: the loop exits once partials fit the reduce; passes pack for collapse.
         var reduceBudget = ComputeBudget(
             context, SummarizationPrompts.BuildReduce(["x"]).Instructions);
 
@@ -344,10 +303,8 @@ public sealed partial class DocumentSummarizer(
 
             passes++;
 
-            // Grouping can legitimately leave the count unchanged — when one partial summary
-            // already fills the budget, nothing can be combined with it, and the pass still earns
-            // its cost by compressing that partial on its own. Whether the partials shrink fast
-            // enough is what the pass limit above answers; it is not knowable from the grouping.
+            // Grouping may leave the count unchanged when one partial fills the budget; the pass still
+            // compresses it, and the pass limit above bounds a loop that does not converge.
             var groups = GroupToFit(context, partials, collapseBudget.PerCallTokens);
 
             LogCollapsePass(_logger, passes, partials.Count, groups.Count);
@@ -416,8 +373,7 @@ public sealed partial class DocumentSummarizer(
             }
             catch (Exception ex) when (attempt < _options.MaxCallRetries && IsTransient(ex))
             {
-                // Full jitter, so a document whose map units all fault at once does not retry them
-                // in lockstep against a provider that is already struggling.
+                // Full jitter, so map units that fault together do not retry in lockstep.
                 var ceiling = TimeSpan.FromMilliseconds(500 * Math.Pow(2, attempt));
                 var delay = TimeSpan.FromMilliseconds(Random.Shared.NextDouble() * ceiling.TotalMilliseconds);
 
@@ -429,20 +385,9 @@ public sealed partial class DocumentSummarizer(
     }
 
     /// <remarks>
-    /// <para>
-    /// Deliberately narrow, for two reasons. Retrying a bad credential, a repointed deployment name,
-    /// a content-filter rejection or a prompt the provider says is too long cannot succeed, and the
-    /// map phase multiplies that waste by the unit count.
-    /// </para>
-    /// <para>
-    /// More importantly, this loop sits on top of one that has already run. Neither chat-client
-    /// registration overrides the client pipeline's retry policy, so the provider SDK has already
-    /// made its own attempts — honouring <c>Retry-After</c>, which this loop's blind jitter cannot —
-    /// before any status-coded or transport failure reaches here. Retrying those again would mean
-    /// several times the requests per map unit against a provider that is already shedding load. Only
-    /// the two conditions the SDK's policy cannot see are retried: this call's own deadline, which
-    /// belongs to us and not to it, and a completion that came back empty.
-    /// </para>
+    /// Deliberately narrow: the provider SDK has already retried status and transport failures, honouring
+    /// <c>Retry-After</c>, so only what it cannot see is retried here: this call's own deadline and an empty
+    /// completion. Anything else cannot succeed, and the map phase multiplies each wasted retry.
     /// </remarks>
     private static bool IsTransient(Exception exception) =>
         exception is TimeoutException or EmptyCompletionException;
@@ -461,12 +406,8 @@ public sealed partial class DocumentSummarizer(
             Instructions = prompt.Instructions
         };
 
-        // The first call site in this codebase to put MaxOutputTokens on the wire for any provider.
-        // A map phase can run hundreds of calls, and without a cap each one's output is unbounded at
-        // the summarizer's rate. That Azure OpenAI honours it as a hard cap rather than a hint is an
-        // accepted, unverified assumption — it has not been checked against a live deployment.
-        // Guarded on a positive value because a catalog row nobody filled in would otherwise put a
-        // cap of zero on the wire.
+        // Bounds the output of a map phase's many calls; that Azure OpenAI treats it as a hard cap is
+        // unverified. Guarded so an unfilled catalog row does not put a cap of zero on the wire.
         if (context.Summarizer.MaxOutputTokens > 0)
         {
             chatOptions.MaxOutputTokens = (int)Math.Clamp(context.Summarizer.MaxOutputTokens, 1, int.MaxValue);
@@ -482,11 +423,8 @@ public sealed partial class DocumentSummarizer(
         }
         catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            // Only the caller's own token means cancellation. Everything else that cancels a call —
-            // this call's deadline, or the provider SDK's own per-attempt network timeout, which
-            // surfaces as a TaskCanceledException with nobody's token set — is a failure to respond
-            // and has to be named as one. Left as an OperationCanceledException it would escape the
-            // run's failure contract and be reported to the user as though they had given up.
+            // Only the caller's token means cancellation. This call's deadline, or the SDK's network
+            // timeout surfacing as TaskCanceledException, is a non-response, not the user giving up.
             throw new TimeoutException(
                 $"The summarizer did not respond within {_options.CallTimeoutSeconds} seconds.", ex);
         }
@@ -495,9 +433,7 @@ public sealed partial class DocumentSummarizer(
             ? response.Messages[^1].Text?.Trim() ?? string.Empty
             : string.Empty;
 
-        // Cut-off text is kept rather than failed — it is the best answer the run has, and a retry
-        // against the same cap buys the same text — but it is cached as it stands, so the flag rides
-        // out with it.
+        // Cut-off text is kept, as a retry under the same cap gets the same, and flagged since it is cached.
         var truncated = response.FinishReason == ChatFinishReason.Length;
 
         if (truncated)
@@ -519,10 +455,7 @@ public sealed partial class DocumentSummarizer(
             throw new EmptyCompletionException();
         }
 
-        // Preferred over ChatResponse.Usage for the reason the naming path prefers it: the report
-        // separates the assistant's own consumption from anything a tool spent. Summarization
-        // attaches no tools, so the two agree today, and the raw response is the fallback for a
-        // client that has no tracking installed.
+        // The report separates assistant from tool usage; Usage is the fallback for an untracked client.
         var report = response.AdditionalProperties?.TryGetValue(
             ToolTrackingChatClient.UsageReportPropertyName, out ChatUsageReport? usageReport) is true
                 ? usageReport
@@ -544,8 +477,7 @@ public sealed partial class DocumentSummarizer(
             _options.MapUnitFraction);
 
     /// <remarks>
-    /// Guarded for the reason the turn path guards its own counting: a tokenizer fault while sizing
-    /// a call must not fail a run. Counting low routes an oversized document down the single-pass
+    /// A tokenizer fault must not fail a run; counting low sends an oversized document down the single-pass
     /// path, which the provider rejects loudly rather than silently mis-summarizing.
     /// </remarks>
     private long CountTokens(RunContext context, string text)
@@ -580,9 +512,7 @@ public sealed partial class DocumentSummarizer(
             SummarizationPrompts.PromptVersion);
 
     /// <remarks>
-    /// A <see cref="ValidationException"/> specifically: it is the one type the background job
-    /// processor passes through verbatim to a job's error message, so a reason written here is the
-    /// reason a user eventually reads.
+    /// The one exception type the background job processor copies verbatim into a job's error message.
     /// </remarks>
     private static ValidationException Invalid(string property, string message) =>
         new([new ValidationFailure(property, message)]);

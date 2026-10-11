@@ -454,16 +454,9 @@ public sealed class McpToolProviderTests : IDisposable
     }
 
     /// <summary>
-    /// Pins the exact substitution the tool-name prefix is built from.
+    /// Pins the tool-name prefix substitution, which the client's regex and <c>UsageReportTranslator</c>
+    /// both reimplement; these cases are where a looser rule (<c>\w</c>, Unicode-aware) would disagree.
     /// </summary>
-    /// <remarks>
-    /// Two consumers undo this prefix and neither can see this method: the client, which strips it
-    /// to label an activity card with the tool that ran, reimplements it as a regular expression;
-    /// and <c>UsageReportTranslator</c>, which rebuilds the prefix to attribute a call back to a
-    /// catalog server. The cases below are the ones where a looser rule — a <c>\w</c> class, or
-    /// anything Unicode-aware — silently disagrees, which is the drift worth catching here rather
-    /// than in a mislabelled card nobody reports.
-    /// </remarks>
     [Theory]
     [InlineData("Weather", "Weather")]
     // Kept, not replaced: a hyphenated server is the case a `\w` class gets wrong.
@@ -480,14 +473,9 @@ public sealed class McpToolProviderTests : IDisposable
     }
 
     /// <summary>
-    /// The single most important assertion in the headers feature: a stored <c>Authorization</c>
-    /// cannot displace the on-behalf-of bearer, in any casing.
+    /// A stored <c>Authorization</c> cannot displace the on-behalf-of bearer, in any casing. Validators
+    /// refuse it on write, so this guards older rows and direct SQL writes.
     /// </summary>
-    /// <remarks>
-    /// The validators refuse the name on write, so reaching this needs a row that predates those
-    /// rules or one written straight into SQL. Both are exactly the cases this guard exists for,
-    /// which is why it is asserted here rather than trusted from the validator tests.
-    /// </remarks>
     [Theory]
     [InlineData("Authorization")]
     [InlineData("authorization")]
@@ -519,14 +507,9 @@ public sealed class McpToolProviderTests : IDisposable
     }
 
     /// <summary>
-    /// The MCP protocol headers, which the "bearer written last" lock cannot defend.
+    /// The SDK sets the MCP protocol headers before copying ours and <c>TryAddWithoutValidation</c> appends,
+    /// so dropping them here is what keeps a stored session id off every user's request.
     /// </summary>
-    /// <remarks>
-    /// <c>CopyAdditionalHeaders</c> sets these on the request before copying ours, and
-    /// <c>TryAddWithoutValidation</c> appends rather than replaces — so the collision would happen
-    /// inside <c>HttpRequestHeaders</c>, past anything this dictionary can order. Dropping them
-    /// here is the only thing that stops a stored session id riding along on every user's request.
-    /// </remarks>
     [Theory]
     [InlineData("Mcp-Session-Id")]
     [InlineData("mcp-session-id")]
@@ -566,8 +549,7 @@ public sealed class McpToolProviderTests : IDisposable
     [Fact]
     public void BuildTransportHeaders_NothingConfiguredAndNoToken_IsEmpty()
     {
-        // Empty rather than a dictionary of nothing: `CreateEntrySourceAsync` leaves
-        // `AdditionalHeaders` unset on this arm, which is what it did before headers existed.
+        // Empty rather than a dictionary of nothing: this arm leaves AdditionalHeaders unset.
         Assert.Empty(McpToolProvider.BuildTransportHeaders(null, accessToken: null));
     }
 
@@ -592,9 +574,8 @@ public sealed class McpToolProviderTests : IDisposable
     };
 
     /// <summary>
-    /// Pins the branch that decides who is told to fix a failed connection. Getting it wrong
-    /// either blames a third-party outage on the user's key, or hides a revoked key behind a
-    /// Retry button that can never succeed.
+    /// Decides who is told to fix a failed connection: wrong, it blames a third-party outage on the user's
+    /// key or hides a revoked key behind a Retry that can never succeed.
     /// </summary>
     [Theory]
     [InlineData(HttpStatusCode.Unauthorized)]

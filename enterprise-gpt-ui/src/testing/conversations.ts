@@ -10,11 +10,8 @@ let sequence = 0;
 let messageSequence = 0;
 
 /**
- * A `ConversationMessageDto` as `GET api/conversations/{id}/messages` returns one.
- *
- * Ids are distinct per call for the same reason conversation ids are: a repeated one
- * would let a spec pass while two messages shared a rating, which is precisely the bug
- * a per-message anchor exists to prevent.
+ * A `ConversationMessageDto` as `GET api/conversations/{id}/messages` returns one. Ids are
+ * distinct, or a spec could pass while two messages shared a rating.
  */
 export function messageFixture(
   overrides: Partial<ConversationMessageDto> = {},
@@ -56,11 +53,8 @@ export function conversationDetailFixture(
 }
 
 /**
- * A `PaginatedResponseDto` envelope with the server's own arithmetic.
- *
- * `pageSize` echoes the clamped `take` and `currentPage` is `(skip / take) + 1`, both
- * computed server-side — a fixture that invents them would let a store pass against a
- * shape the API never sends.
+ * A `PaginatedResponseDto` with the server's own arithmetic, so no store passes against a shape
+ * the API never sends.
  */
 export function conversationPage(
   items: ConversationDto[],

@@ -10,21 +10,9 @@ namespace Enterprise.Gpt.Entity.Usage;
 /// what it consumed, and — for a tool that invoked tools of its own — the calls nested inside it.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Append-only for the same reason as its parent, and derives from <see cref="BaseCreatedEntity{TKey}"/> rather
-/// than <see cref="BaseModifiedEntity{TKey}"/> for the same reason: a usage record that can be edited or
-/// hidden is not an audit trail.
-/// </para>
-/// <para>
-/// The token columns split deliberately. The tracking middleware reports each invocation's usage as
-/// a <em>rollup</em> — its own consumption plus every descendant's — so persisting that number on
-/// every row would double-count a nested agent under any <c>SUM</c>.
-/// <see cref="InputTokens"/>/<see cref="OutputTokens"/>/<see cref="TotalTokens"/> therefore carry
-/// only what <em>this</em> invocation consumed, which makes an aggregate correct under any filter,
-/// and <see cref="SubtreeTotalTokens"/> keeps the rollup so the end-to-end cost of one call is
-/// still a single-column read. The invariant is
+/// Append-only like its parent. The token columns hold this invocation alone, so any <c>SUM</c> is
+/// correct; <see cref="SubtreeTotalTokens"/> keeps the middleware's rollup, and
 /// <c>SubtreeTotalTokens = TotalTokens + sum(Children.SubtreeTotalTokens)</c>.
-/// </para>
 /// </remarks>
 public class ConversationUsageToolCall : BaseCreatedEntity<Guid>
 {
@@ -40,9 +28,8 @@ public class ConversationUsageToolCall : BaseCreatedEntity<Guid>
     /// The invocation's position among its siblings, in the order the middleware reported them.
     /// </summary>
     /// <remarks>
-    /// Carried explicitly because nothing else orders siblings reliably: identifiers are assigned
-    /// by the database and <see cref="BaseCreatedEntity{TKey}.DateCreated"/> is the whole turn's timestamp, not
-    /// the invocation's.
+    /// Explicit because ids are database-assigned and <see cref="BaseCreatedEntity{TKey}.DateCreated"/> is
+    /// the whole turn's timestamp.
     /// </remarks>
     public int Sequence { get; set; }
 
@@ -50,8 +37,7 @@ public class ConversationUsageToolCall : BaseCreatedEntity<Guid>
     /// How deeply the invocation is nested; zero for a tool the assistant called directly.
     /// </summary>
     /// <remarks>
-    /// Denormalized from the parent chain so rendering a tree, or filtering to top-level calls,
-    /// does not need a recursive query.
+    /// Denormalized so trees and top-level filters need no recursive query.
     /// </remarks>
     public int Depth { get; set; }
 
@@ -60,26 +46,10 @@ public class ConversationUsageToolCall : BaseCreatedEntity<Guid>
     /// <see cref="ConversationUsageTurn.Iteration"/>.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// This is what makes a tool's <em>prompt</em> cost attributable. A tool's arguments and result
-    /// are billed in the next turn's prompt rather than inside the call, so the cost of the calls
-    /// one turn issued is the difference between that turn's reported input and the next turn's —
-    /// and without knowing which calls a turn issued there is nothing to attribute the difference
-    /// to. Wall-clock ordering cannot substitute: function invocation is serial by configuration,
-    /// so several calls from one turn are indistinguishable from one call each across several.
-    /// </para>
-    /// <para>
-    /// A nested call reports the iteration of the outer turn that issued its enclosing <em>root</em>
-    /// call, not one of its own. Grouping for attribution must therefore restrict to
-    /// <see cref="Depth"/> zero, or a subtree is counted once per level it is deep.
-    /// </para>
-    /// <para>
-    /// <see langword="null"/> on a row written before iteration tracking existed. Deliberately not
-    /// backfilled to zero: zero is a real iteration, so backfilling would assert that every
-    /// historical call was issued by the first model turn, and a delta query would then attribute
-    /// tokens to calls nobody can place. Null excludes such a row from attribution instead, which
-    /// is the truthful answer.
-    /// </para>
+    /// Makes prompt cost attributable, since a tool's arguments and result bill in the next turn's prompt and
+    /// serial invocation makes wall-clock order useless. Nested calls carry their root call's iteration, so
+    /// attribute only at <see cref="Depth"/> zero. Null on older rows; not backfilled, as zero is a real
+    /// iteration.
     /// </remarks>
     public int? Iteration { get; set; }
 
@@ -106,9 +76,8 @@ public class ConversationUsageToolCall : BaseCreatedEntity<Guid>
     /// The catalog MCP server that served the call, when it could be correlated.
     /// </summary>
     /// <remarks>
-    /// Correlation is by the tool-name prefix this application stamps onto every leased MCP tool,
-    /// falling back to the reported source name. Left <see langword="null"/> rather than guessed
-    /// when neither matches, so a report can distinguish "not an MCP tool" from "we do not know".
+    /// Matched by the tool-name prefix stamped on leased MCP tools, then by source name; left
+    /// <see langword="null"/> rather than guessed when neither matches.
     /// </remarks>
     public Guid? McpServerId { get; set; }
 
@@ -116,10 +85,8 @@ public class ConversationUsageToolCall : BaseCreatedEntity<Guid>
     /// The catalog model the invocation consumed tokens against, when it is knowable.
     /// </summary>
     /// <remarks>
-    /// Usually <see langword="null"/>, and honestly so: the middleware reports no model for a tool
-    /// call, an MCP server is opaque by construction, and a function that reports usage does not
-    /// say what produced it. It is populated only where this application knows the answer itself —
-    /// an agent whose catalog model it configured.
+    /// Usually <see langword="null"/>: tool calls report no model. Set only for an agent whose catalog
+    /// model this application configured.
     /// </remarks>
     public Guid? ModelId { get; set; }
 
@@ -145,9 +112,7 @@ public class ConversationUsageToolCall : BaseCreatedEntity<Guid>
     /// Total tokens for this invocation alone, as reported rather than recomputed.
     /// </summary>
     /// <remarks>
-    /// Stored rather than derived from <see cref="InputTokens"/> and <see cref="OutputTokens"/>
-    /// because providers do not always agree that the total is their sum — cached and reasoning
-    /// tokens are billed but need not appear in either operand.
+    /// Stored, not derived: cached and reasoning tokens can be billed outside both operands.
     /// </remarks>
     public long? TotalTokens { get; set; }
 
@@ -156,14 +121,10 @@ public class ConversationUsageToolCall : BaseCreatedEntity<Guid>
     /// </summary>
     public long? SubtreeTotalTokens { get; set; }
 
-    /// <summary>
-    /// How long the invocation took, in milliseconds.
-    /// </summary>
     public long DurationMs { get; set; }
 
     /// <summary>
-    /// Whether the invocation returned without throwing. A failed call still consumed whatever it
-    /// consumed before failing, which is why it is recorded rather than dropped.
+    /// Whether the invocation returned without throwing. Failed calls are kept: they still consumed tokens.
     /// </summary>
     public bool Succeeded { get; set; }
 

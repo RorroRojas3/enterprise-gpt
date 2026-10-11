@@ -9,9 +9,8 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Service.Options;
 
 /// <summary>
-/// Covers the sheet-query section against the same options pipeline the host builds, so a
-/// range or a cross-field rule that contradicts the shipped defaults fails here rather than at host
-/// start.
+/// Runs the host's options pipeline, so a range or cross-field rule that contradicts the shipped defaults
+/// fails here rather than at host start.
 /// </summary>
 public sealed class SheetQueryOptionsTests
 {
@@ -64,10 +63,8 @@ public sealed class SheetQueryOptionsTests
     /// An environment that overrides nothing does not silently switch the tool on.
     /// </summary>
     /// <remarks>
-    /// The class default is the only one asserted here. The committed <c>appsettings.json</c> sets the
-    /// key deliberately, and an explicit setting is not a default — what it happens to say is an
-    /// environment's own choice rather than a rule a test enforces, the same line
-    /// <c>SummarizationOptionsTests</c> draws.
+    /// Only the class default is asserted: the committed <c>appsettings.json</c> sets the key explicitly,
+    /// which is an environment's choice rather than a default.
     /// </remarks>
     [Fact]
     public void Bind_NoConfigurationAtAll_LeavesTheToolDisabled()
@@ -141,8 +138,7 @@ public sealed class SheetQueryOptionsTests
     /// cap the tool silently acts on.
     /// </summary>
     /// <remarks>
-    /// Booleans are excluded, not overlooked: a switch has exactly two valid values and a range over
-    /// them would assert nothing.
+    /// Booleans are excluded: a range over two valid values would assert nothing.
     /// </remarks>
     [Fact]
     public void Options_EverySettableBound_HasAValidationRule()

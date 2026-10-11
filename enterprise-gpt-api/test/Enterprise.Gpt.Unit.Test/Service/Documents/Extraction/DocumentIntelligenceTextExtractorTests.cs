@@ -31,10 +31,7 @@ public sealed class DocumentIntelligenceTextExtractorTests
         return new FileDto { FileName = fileName, ContentType = "application/pdf", Length = bytes.Length, Content = bytes };
     }
 
-    /// <summary>
-    /// Builds an <see cref="AnalyzeResult"/> through the SDK's model factory, which is the only way to
-    /// construct these sealed response types outside the client.
-    /// </summary>
+    // The SDK's model factory is the only way to construct these sealed response types outside the client.
     private static AnalyzeResult AnalyzeResult(string content, params string[][] pageLines)
     {
         var pages = pageLines.Select((lines, i) => DocumentIntelligenceModelFactory.DocumentPage(

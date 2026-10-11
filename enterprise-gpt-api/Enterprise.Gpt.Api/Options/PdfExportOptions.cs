@@ -9,11 +9,8 @@ public sealed class PdfExportOptions
     /// Directory to load export font faces from. Defaults to <c>Fonts</c> beside the assembly.
     /// </summary>
     /// <remarks>
-    /// PDFsharp's cross-platform build resolves no font on its own and throws without a resolver,
-    /// so a PDF export is only possible where faces can be found. The directory is searched first
-    /// and the operating system's own font directories after it, which is what lets a developer
-    /// machine work with nothing dropped in while a container is given an explicit, deterministic
-    /// set. See <c>Service/Exports/Fonts/ExportFontResolver.cs</c>.
+    /// Searched before the OS font directories, so a developer machine needs nothing while a container
+    /// gets a deterministic set. See <c>Service/Exports/Fonts/ExportFontResolver.cs</c>.
     /// </remarks>
     public string? FontDirectory { get; set; }
 }

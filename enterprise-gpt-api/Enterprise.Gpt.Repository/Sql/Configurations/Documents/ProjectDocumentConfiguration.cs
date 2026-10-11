@@ -5,10 +5,6 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Enterprise.Gpt.Repository.Sql.Configurations.Documents;
 
-/// <summary>
-/// Maps <see cref="ProjectDocument"/> to <c>Core.ProjectDocument</c>, its owner and chunk
-/// relationships, and the index that backs the per-project listing.
-/// </summary>
 public sealed class ProjectDocumentConfiguration : BaseDocumentConfiguration<ProjectDocument, Guid>
 {
     protected override void ConfigureEntity(EntityTypeBuilder<ProjectDocument> builder)

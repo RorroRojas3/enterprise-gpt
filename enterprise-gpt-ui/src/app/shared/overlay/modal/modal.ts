@@ -17,15 +17,9 @@ import { tabbableWithin } from '@shared/a11y/tabbable';
 let nextId = 0;
 
 /**
- * A modal dialog.
- *
- * Built on native `<dialog>` + `showModal()` rather than Bootstrap's modal. That is
- * 17.5 kB of JavaScript and 5.8 kB of CSS saved, but the reason is correctness: the
- * top layer inerts everything behind the dialog for real, and supplies `aria-modal`
- * and a cancellable Escape, none of which a `focusin`-cycling trap can match.
- *
- * The kit owns the heading so `aria-labelledby` cannot be forgotten. The body is the
- * default slot; the action row projects into `[modalFooter]`.
+ * Native `<dialog>` + `showModal()`, not Bootstrap's modal: the top layer truly inerts the page
+ * and supplies `aria-modal` and a cancellable Escape. The kit owns the heading so
+ * `aria-labelledby` cannot be forgotten.
  */
 @Component({
   selector: 'app-modal',
@@ -40,7 +34,7 @@ export class Modal {
   readonly open = model<boolean>(false);
   readonly heading = input.required<string>();
 
-  /** 420 / 460 / 520px — the three widths the boards use. */
+  /** 420 / 460 / 520px. */
   readonly size = input<'sm' | 'md' | 'lg'>('md');
 
   /** When false, neither Escape nor a backdrop click closes it. */
@@ -74,10 +68,8 @@ export class Modal {
     });
 
     this.destroyRef.onDestroy(() => {
-      // A dialog left open while its host is destroyed keeps the page inert. Focus is
-      // restored here rather than left to the (close) binding: close() queues its
-      // event, and by the time that task runs the view — and the listener — is gone,
-      // so a modal closed by a route change would drop focus to <body>.
+      // A dialog left open on destroy keeps the page inert. Focus is restored here because
+      // close() queues its event, which fires after the view and its listener are gone.
       const dialog = this.dialogRef().nativeElement;
       if (dialog.open) {
         dialog.close();
@@ -112,10 +104,7 @@ export class Modal {
   }
 
   private focusInitialTarget(dialog: HTMLDialogElement): void {
-    // A data attribute rather than `autofocus`: the native attribute means "focus this
-    // when the document loads", which is disorienting and is why lint bans it. This
-    // one means "focus this when the dialog opens", which is a different and correct
-    // thing to want.
+    // Not `autofocus`, which means "on document load" and is lint-banned; this means "on open".
     const explicit = dialog.querySelector<HTMLElement>('[data-modal-autofocus]');
     // The heading carries tabindex="-1" precisely so it can be the last resort — a
     // dialog whose focus lands on <body> is one the screen reader never announces.

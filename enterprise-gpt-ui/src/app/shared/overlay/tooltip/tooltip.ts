@@ -18,20 +18,9 @@ const GUTTER = 12;
 type Placement = 'right' | 'top' | 'bottom';
 
 /**
- * The flyout label for an icon-only control — the collapsed sidebar strip of frame
- * `3b`, and every icon button that has no visible text.
- *
- * It sets `aria-label` on the host rather than `aria-describedby`. This is a
- * deliberate correction of the prototype: the controls it labels have no accessible
- * name at all, so the tooltip text *is* the name. Wiring it as a description would
- * leave the button nameless and have the text announced twice. It only does this when
- * the host has no name of its own — including from its own text content, since
- * overriding a visible label would break WCAG SC 2.5.3 (Label in Name).
- *
- * Shown on keyboard-visible focus as well as hover, and dismissed by Escape from
- * anywhere, as WCAG SC 1.4.13 (Dismissible) requires. A host-scoped Escape listener would
- * not do: a tooltip shown by hover while focus is elsewhere would be undismissable, which
- * is precisely the case the criterion exists for.
+ * Labels icon-only controls via `aria-label`, not `aria-describedby`, because the text is the
+ * name; only when the host has none, visible text included (SC 2.5.3). Shown on hover and visible
+ * focus, and Escape dismisses it from anywhere (SC 1.4.13).
  */
 @Directive({
   selector: '[appTooltip]',
@@ -63,10 +52,8 @@ export class Tooltip {
         const element = this.host.nativeElement;
         const text = this.appTooltip();
 
-        // An empty tip is no tip. A consumer binding one conditionally — `Menu`'s
-        // `hint`, which is null on every menu that has no reason to give — would
-        // otherwise flash an empty box on hover and, on an unnamed host, name it
-        // with the empty string.
+        // An empty tip is no tip: `Menu`'s absent `hint` would otherwise flash an empty box and
+        // name an unnamed host with the empty string.
         if (text === '') {
           this.remove();
 
@@ -83,15 +70,9 @@ export class Tooltip {
           this.remove();
         }
       },
-      // A flyout cannot be measured before it exists, so placing it is a second phase
-      // rather than part of the write above. Both run inside one render pass, so it is
-      // never painted at the origin it was created at.
-      //
-      // Every signal the write phase reads is read here too, and that is the invariant to
-      // keep: a change that re-renders the box must also re-measure it. `flyout` is a
-      // plain field, so this phase can never be woken by the box appearing — it only ever
-      // rides the same signal change. Reading the text is what re-places a flyout whose
-      // sentence changed under it, not just an early-out.
+      // A second phase, as the flyout cannot be measured before it exists; same pass, so it never
+      // paints at the origin. It reads every signal the write phase reads, so any re-render also
+      // re-measures: `flyout` is a plain field and cannot wake this phase.
       mixedReadWrite: () => {
         const placement = this.appTooltipPlacement();
         this.placementTick();
@@ -109,10 +90,8 @@ export class Tooltip {
   }
 
   /**
-   * A control focused by pointer — or refocused by script after a click destroyed it, as
-   * the sidebar chevron is — was never hovered, so nothing but a click elsewhere would ever
-   * take the flyout back. Hiding stays ungated, which is what dismisses a hover-shown tip
-   * when focus moves away.
+   * Gated on `:focus-visible`: a pointer- or script-focused control was never hovered, so only a
+   * click elsewhere would dismiss it. Hiding stays ungated.
    */
   protected showOnVisibleFocus(): void {
     // Every host is a button or a link with no focusable descendants, so it is the node
@@ -123,11 +102,8 @@ export class Tooltip {
   }
 
   protected show(): void {
-    // The empty check is here as well as in the write phase, and this is the one that
-    // matters for cost: `Menu` binds this directive on every trigger in the application
-    // and passes a hint on almost none of them, so without it every kebab hover would
-    // write a signal — a change-detection pass, in a zoneless app — and register a
-    // document-level listener for a flyout that can never render.
+    // Checked here too for cost: almost no `Menu` passes a hint, and each kebab hover would
+    // otherwise cost a change-detection pass and a document listener.
     if (this.visible() || this.appTooltip() === '') {
       return;
     }
@@ -149,15 +125,9 @@ export class Tooltip {
       { signal },
     );
 
-    // Re-placed rather than dismissed: a resize invalidates the geometry, not the
-    // tooltip, and on a phone it fires when the URL bar collapses or the keyboard opens.
-    //
-    // Scroll is deliberately not wired the way `Menu` wires it. `onDismiss` listens on
-    // the document in the capture phase, so it fires for any scroller — including the
-    // transcript, which scrolls continuously while a turn streams, which is exactly when
-    // the header's hint is on screen. Dismissing on it would also fail WCAG SC 1.4.13
-    // (Persistent), which an unrelated scroll does not satisfy. No tooltip host today
-    // sits inside a scroller; when one does, the answer is another `place()`, not a hide.
+    // Re-placed, not dismissed, on resize (a phone's URL bar or keyboard). Scroll is not wired
+    // as in `Menu`: its capture-phase listener would fire for the streaming transcript, and
+    // dismissing on an unrelated scroll fails SC 1.4.13 (Persistent).
     this.document.defaultView?.addEventListener(
       'resize',
       () => this.placementTick.update((tick) => tick + 1),
@@ -196,14 +166,8 @@ export class Tooltip {
   }
 
   /**
-   * Places the flyout in viewport coordinates, clamped so a host near an edge cannot
-   * push it off screen.
-   *
-   * `position: fixed` rather than absolute within the host: these controls sit routinely
-   * inside an `overflow: hidden` ancestor — the shell's main column, a scroller — which
-   * clips an absolutely-positioned flyout whatever its z-index. The two surfaces that
-   * hold the same control disagree about which way it would overflow, so no static
-   * offset serves both.
+   * `position: fixed`, clamped to the viewport: hosts often sit inside an `overflow: hidden`
+   * ancestor that would clip an absolutely positioned flyout.
    */
   private place(flyout: HTMLElement, placement: Placement): void {
     const anchor = this.host.nativeElement.getBoundingClientRect();
@@ -220,9 +184,8 @@ export class Tooltip {
           ? anchor.bottom + OFFSET
           : anchor.top + anchor.height / 2 - box.height / 2;
 
-    // Both axes off `documentElement`, which is the box a fixed element resolves
-    // against — `innerWidth`/`innerHeight` include the strips the classic scrollbars sit
-    // in, and clamping to those puts the flyout under one.
+    // `documentElement`, the box a fixed element resolves against; `innerWidth`/`innerHeight`
+    // include the scrollbar strips, and clamping to those puts the flyout under one.
     const viewportWidth = this.document.documentElement.clientWidth;
     const viewportHeight = this.document.documentElement.clientHeight;
 

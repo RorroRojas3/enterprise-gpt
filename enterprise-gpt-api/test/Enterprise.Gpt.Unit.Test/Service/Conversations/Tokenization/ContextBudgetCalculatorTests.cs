@@ -5,11 +5,6 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Conversations.Tokenization;
 
-/// <summary>
-/// The calculator runs with no <c>DbContext</c>, no chat client and no Cosmos dependency, which is
-/// the point: trimming is the decision most likely to be wrong in a way nobody notices — a
-/// conversation quietly losing its early context — so it must be testable without a running turn.
-/// </summary>
 public sealed class ContextBudgetCalculatorTests
 {
     private static BudgetMessage System(long tokens) => new(ChatRoles.System, tokens);

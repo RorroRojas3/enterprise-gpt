@@ -14,16 +14,8 @@ namespace Enterprise.Gpt.Service.Agents;
 /// </remarks>
 public static partial class FileAgentPreflight
 {
-    /// <summary>
-    /// The words that make a name the run's own output rather than something it has to find.
-    /// </summary>
-    /// <remarks>
-    /// One-sided on purpose: a create misread as a read costs the user the feature outright, while a
-    /// read misread as a create costs a sandbox session and, worse, can hand back a plausible document
-    /// built from nothing — which is why <see cref="ReadsFromAMissingName"/> overrides this.
-    /// "Save" and "export" are absent: both read as "export this file to that format" far more often
-    /// than as a create.
-    /// </remarks>
+    // Words that make a name the run's output. A read misread as a create can fabricate a document from
+    // nothing, so ReadsFromAMissingName overrides this; "save" and "export" usually mean converting a file.
     private static readonly FrozenSet<string> _writingWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "create", "creating", "generate", "generating", "make", "making", "produce", "producing",
@@ -35,9 +27,8 @@ public static partial class FileAgentPreflight
 
     /// <summary>Whether an unmatched name is a source the run needs rather than a file it would write.</summary>
     /// <remarks>
-    /// Nothing in an instruction says which direction a name points, so the refusal is held to the case
-    /// where it can only be a source: something was there to be named, nothing resolved, and either
-    /// nothing asks for a file to be written or one of the names is read from regardless.
+    /// An instruction does not say which way a name points, so this holds to the case where it can only be
+    /// a source: nothing resolved, and either nothing asks for a write or a name is read from.
     /// </remarks>
     private static bool NamesAMissingSource(FileAgentSourceResolution resolution, string instruction) =>
         resolution.Unresolved.Count > 0
@@ -45,18 +36,13 @@ public static partial class FileAgentPreflight
         && resolution.Matched.Count == 0
         && (ReadsFromAMissingName(instruction, resolution.Unresolved)
 
-            // Struck out first: a name is a bag of ordinary words once split, and "draft.docx" would
-            // otherwise supply the very verb that proves the request is a create.
+            // Names struck out first, or "draft.docx" would supply the verb that marks a create.
             || !FileAgentFormats
                 .Words(FileAgentFormats.Without(instruction, resolution.Unresolved))
                 .Overlaps(_writingWords));
 
     /// <summary>Whether the instruction reads one of these names out of the conversation.</summary>
-    /// <remarks>
-    /// A create says what to put in a file; only a read says where the content comes from. The
-    /// preposition settles a name the surrounding verb would otherwise claim, as in "write a summary of
-    /// q3-report.pdf", which is a read however it opens.
-    /// </remarks>
+    /// <remarks>The preposition settles direction: "write a summary of q3-report.pdf" is a read.</remarks>
     private static bool ReadsFromAMissingName(string instruction, IReadOnlyList<string> names)
     {
         foreach (var name in names)
@@ -79,12 +65,7 @@ public static partial class FileAgentPreflight
 
     #region Public static methods
 
-    /// <summary>
-    /// Weighs one run's resolved sources and its instruction against the confirmed matrix.
-    /// </summary>
-    /// <param name="resolution">What the instruction named, from <see cref="IFileAgentDocumentReader"/>.</param>
-    /// <param name="instruction">The run's instruction.</param>
-    /// <param name="matrix">The confirmed conversion matrix.</param>
+    /// <summary>Weighs one run's resolved sources and its instruction against the confirmed matrix.</summary>
     /// <returns>The refusal, or <see langword="null"/> when the run should proceed.</returns>
     public static FileAgentRefusal? Evaluate(
         FileAgentSourceResolution resolution, string instruction, IConversionMatrix matrix)

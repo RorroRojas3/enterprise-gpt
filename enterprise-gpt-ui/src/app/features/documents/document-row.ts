@@ -15,25 +15,14 @@ const BADGE_SOURCES = {
 } as const satisfies Record<DocumentType, DocumentSource>;
 
 /**
- * One row of the documents library (US-1002, frame `4j`) — the same anatomy as
- * `ProjectFiles`' frame-`4f` rows: glyph, name, size, date, then the row's controls.
- *
- * What this row adds over that panel's is the flat view's own two cells: the source
- * badge and the owning-conversation link. US-1003's grouped view names the
- * conversation in its group header instead, and passes {@link showConversation}
- * `false` — which also drops the cell's grid track, so the badge sits flush against
- * the download control rather than leaving a phantom column.
- *
- * The signed download link is requested at the click and never on render (US-804): it
- * is a bearer credential with a five-minute life, and a list that prefetched one per
- * row would mint a credential for every file the reader merely looked at.
+ * The signed download link is requested on click, never on render: it is a five-minute bearer
+ * credential, and prefetching would mint one for every row merely looked at.
  */
 @Component({
   selector: 'app-document-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, RouterLink, SourceBadge],
-  // The class carries the layout change so the stylesheet, not the template, owns the
-  // grid: without the conversation cell the row also has one fewer track.
+  // A host class, so the stylesheet owns the grid track the missing conversation cell drops.
   host: { '[class.document-row--no-conversation]': '!showConversation()' },
   templateUrl: './document-row.html',
   styleUrl: './document-row.scss',
@@ -41,11 +30,7 @@ const BADGE_SOURCES = {
 export class DocumentRow {
   readonly document = input.required<UserDocumentDto>();
 
-  /**
-   * Whether the owning-conversation link cell renders. The flat view keeps it (its
-   * link column is US-1002's criterion); grouped rows pass `false`, because there the
-   * group header already names and links the conversation (US-1003).
-   */
+  /** Grouped rows pass `false`: their group header already names and links the conversation. */
   readonly showConversation = input(true);
 
   private readonly _downloads = inject(DocumentDownloadStore);
@@ -54,8 +39,7 @@ export class DocumentRow {
   protected readonly chatRoute = CHAT_ROUTE;
 
   /** The badge's own vocabulary, which `domain/` cannot name without reaching into `shared/`. */
-  // Defaulted: the table is exhaustive against the union, not against a wire that could
-  // add a member before the union does.
+  // Defaulted: the wire could add a type before the union does.
   protected readonly source = computed<DocumentSource>(
     () => BADGE_SOURCES[this.document().type] ?? 'uploaded',
   );
@@ -68,7 +52,7 @@ export class DocumentRow {
     return formatShortDate(this.document().dateCreated, true);
   }
 
-  /** Fetches a signed link and saves the file — US-804's flow, unchanged. */
+  /** Fetches a signed link and saves the file. */
   protected download(): void {
     const document = this.document();
 

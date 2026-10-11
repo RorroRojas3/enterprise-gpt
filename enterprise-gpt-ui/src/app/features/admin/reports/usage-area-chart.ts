@@ -2,35 +2,20 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import { UsageSeriesPointDto } from '@domain/api/usage-report';
 import { formatDay, formatTokens } from './usage-format';
 
-/** Frame `5j`'s own viewBox. The chart scales to its column; the coordinates never change. */
+/** A fixed viewBox: the chart scales to its column, the coordinates never change. */
 const VIEW_WIDTH = 640;
 const VIEW_HEIGHT = 170;
 const PLOT_TOP = 10;
 const PLOT_BOTTOM = 152;
 
-/** How many x-axis labels the strip under the chart carries. The board draws five. */
 const AXIS_LABELS = 5;
 
-/**
- * Distinguishes one instance's gradient from another's.
- *
- * An SVG `<defs>` id is a document-global identifier, so a fixed one would be a `duplicate-id`
- * violation — serious impact, and the axe gate fails the build on it — the moment a second chart
- * renders. It would also silently re-point the first chart's fill at the second chart's gradient.
- */
+/** Per-instance gradient ids: `<defs>` ids are document-global, and a duplicate fails axe. */
 let gradientSequence = 0;
 
 /**
- * The usage-over-time area chart, frame `5j`.
- *
- * Hand-authored SVG rather than a charting library, which is what the design boards themselves
- * draw: two paths, no axes, no gridlines, no tooltips and no data markers. A library would add its
- * own bundle to the shared `admin-routes` chunk that `/admin/users` also downloads, to reproduce a
- * shape that is eleven line segments.
- *
- * The straight polyline is deliberate — no curve smoothing. A spline through daily totals invents
- * values between the days that were measured, which on a spend report is a number somebody could
- * act on.
+ * Hand-authored SVG: a charting library would add its bundle to the shared `admin-routes` chunk
+ * for eleven line segments. No smoothing, as a spline would invent values between measured days.
  */
 @Component({
   selector: 'app-usage-area-chart',
@@ -50,9 +35,7 @@ export class UsageAreaChart {
       return [];
     }
 
-    // A floor of one, so a range with no traffic draws a flat baseline rather than dividing by
-    // zero. The empty state replaces the whole panel in that case, but the guard has to hold for
-    // the paint before it does.
+    // A floor of one, so a range with no traffic draws a flat baseline instead of dividing by zero.
     const peak = Math.max(1, ...series.map((point) => point.totalTokens));
     const span = series.length > 1 ? VIEW_WIDTH / (series.length - 1) : 0;
 
@@ -68,11 +51,8 @@ export class UsageAreaChart {
       .map((point, index) => `${index === 0 ? 'M' : 'L'}${round(point.x)},${round(point.y)}`)
       .join(' ');
 
-    // A lone moveto is not stroked — SVG 2 §13 is explicit that a subpath with no line-drawing
-    // command paints nothing, cap or no cap. A one-day window would otherwise render an empty
-    // panel under an `aria-label` promising a chart, so it gets a zero-length segment, which a
-    // round cap does paint. Unreachable through the range control; this is a presentational
-    // component with a required input.
+    // A lone moveto is not stroked (SVG 2 §13), so a one-day window gets a zero-length segment
+    // that a round cap paints.
     return plotted.length === 1
       ? `${drawn} L${round(plotted[0]!.x)},${round(plotted[0]!.y)}`
       : drawn;
@@ -91,7 +71,7 @@ export class UsageAreaChart {
     return `${this.linePath()} L${round(last.x)},${PLOT_BOTTOM} L${round(first.x)},${PLOT_BOTTOM} Z`;
   });
 
-  /** Five evenly spaced dates, not one per point — the board's own axis. */
+  /** Evenly spaced dates, not one per point. */
   protected readonly axisLabels = computed(() => {
     const series = this.points();
     if (series.length <= AXIS_LABELS) {
@@ -105,13 +85,7 @@ export class UsageAreaChart {
     });
   });
 
-  /**
-   * What a screen reader is told instead of the shape.
-   *
-   * The line itself is `aria-hidden`: a path of eleven coordinates is not describable, and the
-   * useful facts about it are the span, the total and the peak. The table further down the page
-   * carries the per-group figures, so this is a summary rather than the only route to the data.
-   */
+  /** Read instead of the `aria-hidden` line: its span, total and peak are what is describable. */
   protected readonly summary = computed(() => {
     const series = this.points();
     if (series.length === 0) {

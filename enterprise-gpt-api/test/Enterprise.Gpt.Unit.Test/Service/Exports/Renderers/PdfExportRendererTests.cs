@@ -10,22 +10,9 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Exports.Renderers;
 
-/// <summary>
-/// Exercises the PDF renderer end to end, against whatever fonts the machine running the suite has.
-/// </summary>
 /// <remarks>
-/// <para>
-/// <c>GlobalFontSettings.FontResolver</c> is process-global and documented as set-once, so every test
-/// here shares one resolver installed by the fixture rather than each installing its own — a second
-/// assignment after a font operation is what PDFsharp warns about, and xUnit runs classes in
-/// parallel.
-/// </para>
-/// <para>
-/// The assertions are structural: that the bytes are a PDF, that they carry pages, and that the
-/// renderer survives every block kind. What the glyphs look like is not asserted, because it depends
-/// on which faces the host resolved — the layout decisions themselves are covered by
-/// <see cref="MarkdownBlockMapperTests"/>, which is host-independent.
-/// </para>
+/// <c>GlobalFontSettings.FontResolver</c> is process-global and set-once, so the fixture installs one shared
+/// resolver. Glyphs depend on the host's fonts, so only structure is asserted here.
 /// </remarks>
 [Collection(PdfFontCollection.Name)]
 public sealed class PdfExportRendererTests(PdfFontFixture fonts)
@@ -64,9 +51,8 @@ public sealed class PdfExportRendererTests(PdfFontFixture fonts)
         Assert.Equal("Planning-notes.pdf", export.FileName);
         Assert.Equal("%PDF-", Encoding.ASCII.GetString(export.Content, 0, 5));
 
-        // Reopened rather than pattern-matched against the bytes: PDFsharp writes its own object
-        // syntax and compresses streams, so a substring assertion tests the writer's spacing rather
-        // than whether anything can read the file back.
+        // Reopened rather than substring-matched: PDFsharp compresses streams, so a substring assertion
+        // would test the writer's spacing rather than whether the file reads back.
         using var stream = new MemoryStream(export.Content);
         using var reopened = PdfReader.Open(stream, PdfDocumentOpenMode.Import);
         Assert.True(reopened.PageCount >= 1);

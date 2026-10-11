@@ -6,17 +6,11 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Api.Configuration.Providers;
 
-/// <summary>
-/// Covers the Anthropic-native request settings stamped onto every turn, and in particular the two
-/// fields the SDK's Microsoft.Extensions.AI bridge does <em>not</em> overlay.
-/// </summary>
 public sealed class AnthropicDefaultsTests
 {
     /// <summary>
-    /// Every thinking mode the startup validators accept, so a mode added to
-    /// <see cref="AnthropicOptions.ThinkingModes"/> without a matching parser arm fails here rather
-    /// than on the first conversation — the chat client is built lazily, so the parser never runs
-    /// under startup validation.
+    /// The chat client is built lazily, so a mode in <see cref="AnthropicOptions.ThinkingModes"/> without a
+    /// parser arm would otherwise fail on the first conversation rather than here.
     /// </summary>
     public static TheoryData<string> AcceptedThinkingModes => [.. AnthropicOptions.ThinkingModes];
 
@@ -42,11 +36,8 @@ public sealed class AnthropicDefaultsTests
     }
 
     /// <summary>
-    /// The bridge merges the messages, tools, and system content it derives from
-    /// <see cref="ChatOptions"/> onto these parameters, but leaves <c>Model</c> and <c>MaxTokens</c>
-    /// exactly as supplied. Reading them back off the per-request options is the whole reason a model
-    /// row still routes to its own deployment; hardcoding either would pin every Anthropic
-    /// conversation to one model.
+    /// The bridge leaves <c>Model</c> and <c>MaxTokens</c> as supplied, so reading them off the request is
+    /// what routes each model row to its own deployment.
     /// </summary>
     [Fact]
     public void Create_RequestCarriesModelAndMaxTokens_UsesTheRequestValues()
@@ -145,9 +136,7 @@ public sealed class AnthropicDefaultsTests
     }
 
     /// <summary>
-    /// Sampling parameters were removed from the request surface on the models this provider targets,
-    /// so one reaching the wire is a 400 on every turn — independently of the thinking mode, which is
-    /// why this holds for a disabled configuration too.
+    /// This provider's models reject sampling parameters with a 400, whatever the thinking mode.
     /// </summary>
     [Theory]
     [InlineData("adaptive", "high")]

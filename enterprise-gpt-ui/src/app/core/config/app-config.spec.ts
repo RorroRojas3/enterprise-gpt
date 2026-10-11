@@ -77,8 +77,7 @@ describe('assertAppConfig', () => {
     const config = validConfig();
     mutate(config);
 
-    // The message is what the fatal shell renders, so an unnamed field would leave
-    // whoever has to fix the deployment with nothing to go on.
+    // The fatal shell renders this message, so it must name the field.
     expect(() => assertAppConfig(config)).toThrow(new RegExp(`"${escapeRegExp(field)}"`));
   });
 });

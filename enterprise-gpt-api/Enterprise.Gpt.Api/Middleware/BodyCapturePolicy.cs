@@ -1,9 +1,5 @@
 namespace Enterprise.Gpt.Api.Middleware;
 
-/// <summary>
-/// The predicates deciding whether a payload may be captured, shared by
-/// <see cref="RequestLoggingMiddleware"/> and <see cref="ResponseCaptureStream"/>.
-/// </summary>
 internal static class BodyCapturePolicy
 {
     #region Private methods
@@ -37,16 +33,9 @@ internal static class BodyCapturePolicy
 
     #region Public static methods
 
-    /// <summary>
-    /// Whether a content type is eligible for capture.
-    /// </summary>
-    /// <param name="contentType">The raw header value, parameters included.</param>
-    /// <param name="allowedContentTypes">The configured allow-list.</param>
-    /// <returns><see langword="true"/> when the media type is listed or carries a <c>+json</c> suffix.</returns>
     /// <remarks>
-    /// An allow-list rather than a deny-list, because the failure modes are asymmetric: a media type
-    /// wrongly excluded costs a missing log line, one wrongly included ships a binary upload — or a live
-    /// <c>text/event-stream</c> — into the telemetry backend.
+    /// An allow-list because the failures are asymmetric: a wrong exclusion costs a log line, a wrong inclusion
+    /// ships a binary upload or a live <c>text/event-stream</c> into the telemetry backend.
     /// </remarks>
     internal static bool IsAllowedContentType(string? contentType, IList<string> allowedContentTypes)
     {
@@ -84,13 +73,9 @@ internal static class BodyCapturePolicy
     /// Whether a request path matches any of the configured patterns, where <c>*</c> stands for exactly
     /// one segment and a pattern matches any path it prefixes.
     /// </summary>
-    /// <param name="path">The request path.</param>
-    /// <param name="patterns">The patterns to test.</param>
-    /// <returns><see langword="true"/> when at least one pattern matches.</returns>
     /// <remarks>
-    /// Deliberately not route templates: capture has to be arranged before the pipeline runs, and routing
-    /// has not resolved an endpoint at that point, so <c>api/conversations/{id}/stream</c> is not yet
-    /// knowable. <c>/api/conversations/*/stream</c> is.
+    /// Not route templates: capture is arranged before routing resolves an endpoint, so
+    /// <c>/api/conversations/*/stream</c> is knowable where <c>{id}</c> is not.
     /// </remarks>
     internal static bool MatchesAnyPattern(PathString path, IList<string> patterns)
     {

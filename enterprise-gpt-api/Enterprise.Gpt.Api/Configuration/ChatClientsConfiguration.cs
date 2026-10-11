@@ -4,21 +4,14 @@ using Enterprise.Gpt.Service.Conversations.Chat;
 
 namespace Enterprise.Gpt.Api.Configuration;
 
-/// <summary>
-/// Registers every chat provider and the resolver that picks one per model.
-/// </summary>
 internal static class ChatClientsConfiguration
 {
     #region Public static methods
 
-    /// <summary>
-    /// Registers the usage observer, the four providers under their <c>ChatClientKeys</c>, and the resolver.
-    /// </summary>
     internal static IServiceCollection AddEnterpriseGptChatClients(this IServiceCollection services, IConfiguration configuration)
     {
-        // Before the clients: UseToolTracking collects every IChatProgressObserver when a client is built, and
-        // this one is how a completed request's usage report reaches the code that started it, including for a
-        // turn the user cancelled.
+        // Before the clients: UseToolTracking collects every IChatProgressObserver when a client is built,
+        // and this one carries a request's usage back to its caller, cancelled turns included.
         services.AddSingleton<IChatProgressObserver, ChatUsageObserver>();
 
         services.AddAzureOpenAIProvider(configuration);
@@ -26,7 +19,6 @@ internal static class ChatClientsConfiguration
         services.AddAmazonBedrockProvider(configuration);
         services.AddAnthropicProvider(configuration);
 
-        // Turns a model's ProviderId into one of the keyed clients above at request time.
         services.AddSingleton<IChatClientResolver, ChatClientResolver>();
 
         return services;

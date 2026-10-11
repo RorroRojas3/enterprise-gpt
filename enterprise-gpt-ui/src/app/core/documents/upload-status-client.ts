@@ -9,10 +9,7 @@ import { ApiUrl } from '@core/http/api-url';
 /** What one poll of an upload job produced. */
 export type JobPoll =
   | { readonly kind: 'status'; readonly status: JobStatusDto }
-  /**
-   * A 404. The job is expired, evicted by a restart, or someone else's — the server
-   * deliberately makes those indistinguishable, so this arm does too (US-803).
-   */
+  /** A 404: expired, evicted, or someone else's job, which the server makes indistinguishable. */
   | { readonly kind: 'expired' };
 
 /** One step of the schedule: how many polls have run, and what the last one said. */
@@ -22,14 +19,8 @@ interface PollStep {
 }
 
 /**
- * Follows one upload job to a conclusion (US-802).
- *
- * The schedule is staged rather than fixed — see `pollDelayMs`. The stream emits every
- * poll and completes on the first terminal one, so a consumer renders each step and
- * needs no stop condition of its own; anything other than a 404 errors out.
- *
- * `GET` is idempotent, so `retryInterceptor` already replays a 502/503/504 with
- * jittered backoff underneath this, which is why nothing here retries.
+ * Emits every poll on `pollDelayMs`'s schedule and completes on the first terminal one; only a
+ * 404 is not an error. Nothing retries: `retryInterceptor` already replays 502/503/504 GETs.
  */
 @Injectable({ providedIn: 'root' })
 export class UploadStatusClient {
@@ -37,16 +28,8 @@ export class UploadStatusClient {
   private readonly _apiUrl = inject(ApiUrl);
 
   /**
-   * Polls a job until it succeeds, fails, or turns out to be unknown.
-   *
-   * `expand` rather than a self-referential `concat`, which is the obvious shape and
-   * the wrong one: each recursive level would stay subscribed until the level below
-   * it completed, so a twenty-minute OCR job at the five-second ceiling would retain
-   * a chain of ~240 subscribers and route every emission through all of them. Each
-   * `expand` iteration completes and is dropped, so the cost is constant however long
-   * ingestion takes. Unsubscribing disposes the pending timer and read either way.
-   *
-   * @param jobId The id the upload's 202 returned.
+   * `expand`, not a recursive `concat`: each level would stay subscribed, so a long job would
+   * retain hundreds of subscribers. Each `expand` iteration is dropped, keeping the cost constant.
    */
   follow(jobId: string): Observable<JobPoll> {
     const url = this._apiUrl.build(`documents/upload-status/${ApiUrl.segment(jobId)}`);
@@ -72,8 +55,7 @@ export class UploadStatusClient {
       catchError((cause: unknown) => {
         const error = toAppError(cause, { url });
 
-        // The one failure that is not a failure. Everything else — a 500, a dropped
-        // connection — is a real error and reaches the caller as one.
+        // The one failure that is not a failure; a 500 or a dropped connection still errors.
         if (error.kind === 'resource-not-found') {
           return of<JobPoll>({ kind: 'expired' });
         }

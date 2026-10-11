@@ -16,10 +16,8 @@ namespace Enterprise.Gpt.Service.Documents.Extraction;
 /// persisted behind them — the single implementation both spreadsheet formats go through.
 /// </summary>
 /// <remarks>
-/// A window is shaped here rather than the chunker taught about tables: the chunker splits a segment
-/// on a blank line first, so a window that fits its token budget survives as one indivisible chunk and
-/// carries its header, and one that does not falls back to the sentence boundary, which breaks on
-/// <c>\n</c> and therefore on row boundaries rather than inside a row.
+/// Windows are shaped here, not in the chunker: one within budget survives as a single chunk with its
+/// header, and one over budget splits on <c>\n</c>, i.e. between rows.
 /// </remarks>
 internal static class SheetAssembler
 {
@@ -37,8 +35,8 @@ internal static class SheetAssembler
         "HH:mm:ss"
     ];
 
-    // Relaxed rather than the default encoder: nothing renders these cells into markup, and a column
-    // read directly in SQL Server should show its text instead of a run of \uXXXX escapes.
+    // Relaxed: cells never render into markup, and a column read in SQL Server should show its text,
+    // not \uXXXX escapes.
     private static readonly JsonWriterOptions _cellWriterOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     #region Private methods
@@ -61,14 +59,8 @@ internal static class SheetAssembler
         return scratch.ToString();
     }
 
-    /// <summary>
-    /// Builds the one segment per sheet that describes the sheet rather than carrying its data.
-    /// </summary>
-    /// <remarks>
-    /// Held to the same token budget as a row window, so a sheet at the column ceiling names as many
-    /// columns as fit and says how many it left out; the persisted column rows, not this, are what a
-    /// query resolves a name against.
-    /// </remarks>
+    // Same token budget as a row window: a wide sheet lists the columns that fit and counts the rest.
+    // Queries resolve names against the persisted columns, not this.
     private static string BuildSchemaCard(
         string sheetName,
         IReadOnlyList<string[]> rows,
@@ -153,8 +145,7 @@ internal static class SheetAssembler
             included++;
         }
 
-        // All or nothing: a sheet whose rows are too wide to illustrate is already described by the
-        // column list above, and a heading with nothing under it describes nothing.
+        // All or nothing: a heading with nothing under it describes nothing.
         if (included > 0)
         {
             card.Append(SampleHeading).Append(headerText).Append(samples);
@@ -163,15 +154,8 @@ internal static class SheetAssembler
         return card.ToString();
     }
 
-    /// <summary>
-    /// Whether the first row reads as column headings rather than data.
-    /// </summary>
-    /// <remarks>
-    /// Text throughout, with a bare year the one typed exception — a budget export heads its measure
-    /// columns with years and nothing else numeric reads as a heading. Erring the other way is the
-    /// costlier mistake: a data row taken for a heading disappears from every total silently, where a
-    /// heading taken for data at least surfaces as columns nobody can name.
-    /// </remarks>
+    // All text, except bare years (budget exports head columns with them). Strict on purpose: a data row
+    // taken for a heading silently drops from every total.
     private static bool IsHeaderRow(string[] cells)
     {
         var sawText = false;
@@ -205,9 +189,6 @@ internal static class SheetAssembler
             && year is >= 1900 and <= 2199;
     }
 
-    /// <summary>
-    /// Names every column, uniquely, whether or not the sheet declared headings.
-    /// </summary>
     private static string[] BuildColumnNames(string[]? header, int columnCount)
     {
         var names = new string[columnCount];
@@ -222,8 +203,7 @@ internal static class SheetAssembler
             var name = declared;
             var suffix = 2;
 
-            // A name that resolves to two columns is a question nothing can answer, so a repeated
-            // heading is disambiguated here rather than left for a caller to discover.
+            // A name resolving to two columns is unanswerable, so repeated headings are disambiguated.
             while (!used.Add(name))
             {
                 var tail = string.Create(CultureInfo.InvariantCulture, $" ({suffix++})");
@@ -279,8 +259,7 @@ internal static class SheetAssembler
             return SheetColumnTypes.Number;
         }
 
-        // Exactly the formats extraction renders a date cell as, and no others: a loose parse would
-        // read an order code or a version string as a date.
+        // Exactly the formats extraction renders dates as; a loose parse would read order codes as dates.
         return DateTime.TryParseExact(value, _dateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out _)
             ? SheetColumnTypes.Date
             : SheetColumnTypes.Text;
@@ -323,18 +302,13 @@ internal static class SheetAssembler
 
     #region Public static methods
 
-    /// <summary>
-    /// Assembles one sheet.
-    /// </summary>
-    /// <param name="sheetName">The name the segments and the persisted sheet carry, already normalized and truncated by the caller.</param>
-    /// <param name="sheetIndex">The sheet's 1-based position in its workbook, stamped on every segment as its source number.</param>
-    /// <param name="rows">
-    /// The sheet's populated rows in reading order, each trimmed to its own last populated cell.
-    /// </param>
-    /// <param name="options">How large a row window may grow, in rows and as a share of the chunker's token budget.</param>
-    /// <param name="chunker">The chunker whose token count and budget the schema card and the row windows are sized against.</param>
+    /// <param name="sheetName">Already normalized and truncated by the caller.</param>
+    /// <param name="sheetIndex">1-based; every segment's source number.</param>
+    /// <param name="rows">Populated rows in reading order, each trimmed to its last populated cell.</param>
+    /// <param name="options">Row-window limits.</param>
+    /// <param name="chunker">Sizes the schema card and row windows.</param>
     /// <param name="cellBudget">Serialized cell characters still available to this upload.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public static SheetAssembly Assemble(
         string sheetName,
         int sheetIndex,
@@ -370,10 +344,8 @@ internal static class SheetAssembler
         var prefix = BuildWindowPrefix(sheetName, header, scratch);
         var prefixTokens = chunker.CountTokens(prefix);
 
-        // Anything repeated onto every window costs the budget it takes; past half of it a window is
-        // mostly prefix and holds one row. The schema card carries both the name and the columns, so
-        // the prefix gives way rather than the data — the sheet line too, since a name is bounded in
-        // characters and a script that tokenizes several to the character can still crowd out a row.
+        // Past half the budget a prefix leaves one row per window. The schema card already carries the
+        // header and name, so the prefix gives way first (a name can tokenize densely in some scripts).
         if (prefixTokens * 2 > budget)
         {
             prefix = BuildWindowPrefix(sheetName, header: null, scratch);
@@ -397,8 +369,8 @@ internal static class SheetAssembler
 
         for (var i = firstDataRow; i < rows.Count; i++)
         {
-            // Per row, not per sheet: counting tokens and growing the window over a sheet at the row
-            // ceiling is a long CPU-bound stretch, and the caller only checks between sheets.
+            // Per row: a sheet at the row ceiling is a long CPU-bound stretch, and the caller checks only
+            // between sheets.
             cancellationToken.ThrowIfCancellationRequested();
 
             var row = rows[i];
@@ -408,8 +380,7 @@ internal static class SheetAssembler
             var rowText = scratch.ToString();
             var rowTokens = chunker.CountTokens(rowText);
 
-            // Only ever closed on a window that already holds a row, so a single row larger than the
-            // budget still gets a window of its own rather than stalling the loop.
+            // Closed only once it holds a row, so an over-budget row gets its own window instead of stalling.
             if (windowRows > 0 && (windowRows == options.MaxRows || windowTokens + rowTokens > budget))
             {
                 segments.Add(Segment(sheetIndex, window.ToString()));
@@ -425,8 +396,8 @@ internal static class SheetAssembler
             var cells = SerializeCells(row, columnNames, buffer, writer);
             cellCharacters += cells.Length;
 
-            // Every populated cell carries its column's name, so a wide sheet's stored form outgrows
-            // the text it was read from — and all of it is resident until the document is saved.
+            // Each populated cell repeats its column name, so the stored form outgrows the text, and all
+            // of it stays resident until the document is saved.
             if (cellCharacters > cellBudget)
             {
                 throw SheetSegmentBuilder.CellLimitExceeded(cellBudget);

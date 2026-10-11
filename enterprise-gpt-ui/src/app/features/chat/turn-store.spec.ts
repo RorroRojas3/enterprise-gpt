@@ -82,10 +82,8 @@ describe('TurnStore', () => {
             applyConversationSettings,
           },
         },
-        // Provided rather than faked: TurnStore gates the stream on its settle
-        // signal (EP-8), and a fake store would let that gate pass without proving
-        // it. With nothing attached it settles synchronously, which is the path
-        // every test outside "the attachment gate" takes.
+        // Real, not faked, so the upload gate is exercised; with nothing attached it settles
+        // synchronously.
         provideFakeUploadXhr(uploadXhr),
         UploadStore,
         ConversationStore,
@@ -114,11 +112,7 @@ describe('TurnStore', () => {
     return `${TEST_API_BASE_URL}/api/conversations/${id}/messages`;
   }
 
-  /**
-   * Answers the stored-transcript read that opening a conversation issues
-   * (US-410). Every test that binds a conversation has to, because the read is
-   * part of opening one — an empty body is the "nothing said yet" case.
-   */
+  /** Opening a conversation always reads its transcript; an empty body means nothing said yet. */
   function flushHistory(id: string, messages: readonly ConversationMessageDto[] = []): void {
     backend.expectOne(messagesUrl(id)).flush({ id, name: 'Conversation', messages });
   }
@@ -133,7 +127,7 @@ describe('TurnStore', () => {
     return handle;
   }
 
-  describe('the attachment gate (US-801)', () => {
+  describe('the attachment gate', () => {
     /** A file whose upload never settles, so the gate stays shut. */
     function attachPending(): void {
       const uploads = TestBed.inject(UploadStore);
@@ -151,8 +145,6 @@ describe('TurnStore', () => {
       store.send('What does this say?');
       await settle();
 
-      // A document still being embedded is not in what the retrieval tool can see,
-      // so opening the stream now would answer the question without the file.
       expect(fetchMock).not.toHaveBeenCalled();
       expect(store.inFlight()).toBe(true);
 
@@ -173,9 +165,6 @@ describe('TurnStore', () => {
       await settle();
 
       const uploads = TestBed.inject(UploadStore);
-      // Claimed inside the binding, not from an effect: the gate is evaluated in the
-      // same call stack, and an attach a pass later would find it already answered —
-      // opening the stream on a question about a file the model cannot see.
       expect(uploads.attachments()).toHaveLength(1);
       expect(uploads.attachments()[0]?.fileName).toBe('notes.txt');
 
@@ -230,15 +219,12 @@ describe('TurnStore', () => {
       store.stop();
       await settle();
 
-      // Nothing streamed, so nothing is opened and the prompt goes back to the
-      // composer — the same settle the other pre-stream window takes.
       expect(fetchMock).not.toHaveBeenCalled();
       expect(store.inFlight()).toBe(false);
       expect(store.phase()).toBe('idle');
       expect(store.composerSeed()?.text).toBe('What does this say?');
 
-      // And the slot is genuinely free: without this the Critical would still be
-      // here, with `exhaustMap` swallowing every later send in silence.
+      // `exhaustMap`'s slot is free again, so a later send goes through.
       TestBed.inject(UploadStore).remove(TestBed.inject(UploadStore).attachments()[0]!.id);
       store.send('A fresh prompt');
       await settle();
@@ -257,9 +243,7 @@ describe('TurnStore', () => {
       await settle();
       expect(fetchMock).not.toHaveBeenCalled();
 
-      // The order the composer's Stop uses. Cancelling first would settle the gate
-      // synchronously and release the turn into the stream before `stop()` ran, turning
-      // a clean pre-stream cancel into a stopped-turn card with the prompt gone.
+      // The composer's order: cancelling first would release the gate before `stop()` ran.
       store.stop();
       TestBed.inject(UploadStore).cancelAll();
       await settle();
@@ -281,8 +265,6 @@ describe('TurnStore', () => {
       await settle();
       expect(fetchMock).not.toHaveBeenCalled();
 
-      // Moving away must tear the gate down with the turn. Left alive, it holds
-      // `exhaustMap`'s slot and every later send is dropped with no error anywhere.
       // Both bindings move together, as `Chat` drives them from the same input.
       const other = '2b3c4d5e-6f70-4812-9a3b-4c5d6e7f8091';
       store.bindRoute(other);
@@ -299,7 +281,7 @@ describe('TurnStore', () => {
     });
   });
 
-  describe('send on the empty chat screen (US-401)', () => {
+  describe('send on the empty chat screen', () => {
     it('creates the conversation, prepends it, replaces the URL, and streams against the new id', async () => {
       setup();
       const created = conversationFixture();
@@ -469,7 +451,7 @@ describe('TurnStore', () => {
     });
   });
 
-  describe('watching the answer arrive (US-406)', () => {
+  describe('watching the answer arrive', () => {
     it('accumulates streamed text on the live snapshot without touching the transcript', async () => {
       setup();
       const handle = await startBoundTurn();
@@ -557,7 +539,7 @@ describe('TurnStore', () => {
     });
   });
 
-  describe('stopping a turn (US-407)', () => {
+  describe('stopping a turn', () => {
     it('aborts the fetch, keeps the flushed partial text on the detached card, and drops the bubble', async () => {
       setup();
       const handle = await startBoundTurn();
@@ -566,7 +548,7 @@ describe('TurnStore', () => {
       await settle(STREAM_BATCH_WINDOW_MS);
 
       store.stop();
-      // The send control returns on this synchronous patch — no network wait.
+      // The send control returns on this synchronous patch, with no network wait.
       expect(store.inFlight()).toBe(true);
       await settle(STREAM_BATCH_WINDOW_MS);
 
@@ -683,19 +665,17 @@ describe('TurnStore', () => {
       expect(store.phase()).toBe('idle');
     });
 
-    it('surfaces a 409 as the conversation-busy notice (US-408)', async () => {
+    it('surfaces a 409 as the conversation-busy notice', async () => {
       setup();
       await failWith(PROBLEM_FIXTURES.conversationBusy, 409);
 
       expect(store.turnError()?.error.kind).toBe('conversation-busy');
       expect(store.entries()).toEqual([]);
-      // The notice offers Retry, so the retry has to be the user's: the other
-      // tab holds the lock for an unknown time and a schedule would either
-      // fire uselessly or send a turn the user has moved on from.
+      // Retry is the user's: another tab holds the lock for an unknown time.
       expect(store.turnError()?.retry).not.toBeNull();
     });
 
-    it('schedules no automatic retry of a 409 at any interval (US-408)', async () => {
+    it('schedules no automatic retry of a 409 at any interval', async () => {
       setup();
       await failWith(PROBLEM_FIXTURES.conversationBusy, 409);
 
@@ -711,9 +691,7 @@ describe('TurnStore', () => {
 
       const notice = store.turnError();
       expect(notice?.error.kind).toBe('forbidden');
-      // One acquisition — the request's own. A 403 must never take the replay
-      // path a bare 401 takes: the token is fine and the grant is not, so a
-      // loop is all a refresh would produce.
+      // One acquisition, the request's own: a 403 never takes the 401 refresh-and-replay path.
       expect(getToken).toHaveBeenCalledExactlyOnceWith(undefined);
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
@@ -734,7 +712,7 @@ describe('TurnStore', () => {
     });
   });
 
-  describe('announcing a completed turn (US-409)', () => {
+  describe('announcing a completed turn', () => {
     function completions(): TurnCompleted[] {
       const seen: TurnCompleted[] = [];
       TestBed.inject(Events)
@@ -805,8 +783,7 @@ describe('TurnStore', () => {
       await settle();
       await finishTurn(handle);
 
-      // An empty transcript here means unread, not new — a conversation named
-      // long ago would otherwise be refetched on every turn.
+      // Unread, not new: otherwise a long-named conversation would refetch on every turn.
       expect(seen[0]?.wasFirstTurn).toBe(false);
     });
 
@@ -846,8 +823,7 @@ describe('TurnStore', () => {
       await settle();
       await finishTurn(retried);
 
-      // The abandoned attempt left a `cutOff` entry, never an `assistant` one,
-      // so the turn that actually completed is still the conversation's first.
+      // The abandoned attempt left a `cutOff` entry, not an `assistant` one.
       expect(seen).toEqual([{ conversationId: CONVERSATION_ID, wasFirstTurn: true }]);
     });
   });
@@ -907,8 +883,6 @@ describe('TurnStore', () => {
     });
 
     it('drops an entry it cannot read rather than letting it reach a chip', async () => {
-      // A malformed element would otherwise throw inside the chip's own computed, which takes
-      // the whole transcript's render with it rather than one row.
       setup();
       const handle = await startBoundTurn();
 
@@ -927,8 +901,6 @@ describe('TurnStore', () => {
     });
 
     it('replays a generated file from the stored transcript', () => {
-      // The whole of how a chip survives a reload: what the server holds is what the
-      // transcript draws, and the link is minted again when it is clicked.
       setup();
       store.bindRoute(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID, [
@@ -952,7 +924,7 @@ describe('TurnStore', () => {
     });
   });
 
-  describe('replaying the stored transcript (US-410)', () => {
+  describe('replaying the stored transcript', () => {
     const HISTORY: readonly ConversationMessageDto[] = [
       messageFixture({ text: 'What is the weather?', role: CHAT_ROLE.user }),
       messageFixture({ text: 'It is sunny.', role: CHAT_ROLE.assistant }),
@@ -971,8 +943,7 @@ describe('TurnStore', () => {
       expect(entries).toHaveLength(2);
       expect(entries[0]).toMatchObject({ kind: 'user', text: 'What is the weather?' });
       expect(entries[1]?.kind).toBe('assistant');
-      // Replayed through the same fold a live turn uses, so the answer text is
-      // where the transcript already looks for it.
+      // Replayed through the live fold, so the text sits where the transcript reads it.
       expect(entries[1]?.kind === 'assistant' && entries[1].snapshot.text).toBe('It is sunny.');
     });
 
@@ -995,8 +966,7 @@ describe('TurnStore', () => {
       flushHistory(CONVERSATION_ID, HISTORY);
       expect(store.entries()).toHaveLength(2);
 
-      // What an aborted turn leaves behind: the server transcribed neither
-      // half of it, so the read back is shorter than what is on screen.
+      // An aborted turn leaves the server's transcript shorter than the screen's.
       store.retryHistory();
       flushHistory(CONVERSATION_ID, HISTORY.slice(0, 1));
 
@@ -1024,8 +994,6 @@ describe('TurnStore', () => {
       const kinds = store.entries().map((entry) => entry.kind);
       expect(kinds).toEqual(['user', 'assistant', 'user', 'assistant']);
       expect(store.entries()[2]).toMatchObject({ text: 'And tomorrow?' });
-      // Two id ranges, so the replayed block can be swapped without ever
-      // colliding with a live turn's `@for` key.
       expect(
         store.entries().every((entry, index) => (index < 2 ? entry.id < 0 : entry.id > 0)),
       ).toBe(true);
@@ -1039,8 +1007,7 @@ describe('TurnStore', () => {
 
       store.bindRoute(other.id);
 
-      // Cancelled, not merely ignored on arrival: the entries it carries
-      // belong to a screen the user has left, and nothing may install them.
+      // Cancelled, not merely ignored on arrival.
       expect(stale.cancelled).toBe(true);
       flushHistory(other.id, HISTORY.slice(0, 1));
       expect(store.entries()).toHaveLength(1);
@@ -1073,8 +1040,7 @@ describe('TurnStore', () => {
         .expectOne(messagesUrl(CONVERSATION_ID))
         .flush({ title: 'Boom' }, { status: 500, statusText: 'Internal Server Error' });
 
-      // The panel keeps the composer live, so a turn can be taken and settle
-      // while the stored transcript is unreadable.
+      // The error panel keeps the composer live, so a turn can settle meanwhile.
       const handle = streamingResponse();
       respondWithStream(handle);
       store.send('And tomorrow?');
@@ -1085,8 +1051,7 @@ describe('TurnStore', () => {
       await settle(STREAM_BATCH_WINDOW_MS);
       expect(store.entries()).toHaveLength(2);
 
-      // The server now holds that exchange too, so a retry that kept the live
-      // entries would show the prompt and the answer twice.
+      // The server now holds that exchange too.
       store.retryHistory();
       flushHistory(CONVERSATION_ID, [
         ...HISTORY,
@@ -1108,7 +1073,7 @@ describe('TurnStore', () => {
     });
   });
 
-  describe('what a screen reader is told (US-1402)', () => {
+  describe('what a screen reader is told', () => {
     it('reports the folded Finished before the body has closed', async () => {
       setup();
       const handle = await startBoundTurn();
@@ -1117,9 +1082,7 @@ describe('TurnStore', () => {
       await settle(STREAM_BATCH_WINDOW_MS);
       expect(store.answerComplete()).toBe(false);
 
-      // The frame, and only the frame: the body stays open. `inFlight` is still
-      // true here, which is the whole point — the transcript's `aria-busy` names
-      // the frame the criterion names, not the settle a step later.
+      // The frame only: the body stays open, so `inFlight` is still true.
       handle.enqueue(frame(assistantEvent('Finished')));
       await settle(STREAM_BATCH_WINDOW_MS);
 
@@ -1146,9 +1109,6 @@ describe('TurnStore', () => {
       handle.enqueue(frame(assistantEvent('Finished')));
       await settle(STREAM_BATCH_WINDOW_MS);
 
-      // Releasing the answer's own region is an `aria-busy` change with no
-      // content mutation behind it, so it rests on assistive tech replaying what
-      // it buffered. This is the channel that works either way.
       expect(store.turnStatus()).toBe('Answer ready');
 
       handle.close();
@@ -1162,8 +1122,6 @@ describe('TurnStore', () => {
 
       store.send('What is the weather?');
 
-      // The one window with no stream to describe, and the one a first-time user
-      // spends the longest in.
       expect(store.phase()).toBe('creating');
       expect(store.turnStatus()).toBe('Starting the conversation');
 
@@ -1225,7 +1183,7 @@ describe('TurnStore', () => {
     });
   });
 
-  describe('rating an answer (US-1103)', () => {
+  describe('rating an answer', () => {
     const MESSAGE_ID = 'aaaaaaaa-1111-4222-8333-444444444444';
     const SECOND_MESSAGE_ID = 'bbbbbbbb-1111-4222-8333-444444444444';
     const OTHER_CONVERSATION_ID = 'cccccccc-1111-4222-8333-444444444444';
@@ -1275,11 +1233,6 @@ describe('TurnStore', () => {
       await settle(STREAM_BATCH_WINDOW_MS);
     }
 
-    /**
-     * The whole of how a rating survives a reload: the replayed block is rebuilt from the
-     * response, so what the server holds is what the footer draws. Nothing is remembered
-     * across the read.
-     */
     it('hydrates a stored rating onto the replayed entry', () => {
       openRatedConversation(MESSAGE_FEEDBACK_RATING.up);
 
@@ -1297,7 +1250,7 @@ describe('TurnStore', () => {
 
       store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.up);
 
-      // Before the request is answered: the thumb fills on the click, not a round trip later.
+      // Optimistic: set before the request is answered.
       expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.up);
       const request = backend.expectOne(feedbackUrl());
       expect(request.request.method).toBe('POST');
@@ -1310,7 +1263,6 @@ describe('TurnStore', () => {
       expect(store.isRowPending(MESSAGE_ID)).toBe(false);
     });
 
-    /** A set, not a toggle, so a retried or duplicated request cannot land on the opposite value. */
     it('sends the opposite verdict as a set when the other thumb is pressed', () => {
       openRatedConversation(MESSAGE_FEEDBACK_RATING.up);
 
@@ -1323,11 +1275,6 @@ describe('TurnStore', () => {
       expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.down);
     });
 
-    /**
-     * Pressing the thumb already selected is the withdrawal, and this is where that is
-     * decided — the control reports a press either way, because only the store knows what
-     * is currently stored.
-     */
     it('withdraws the rating when the selected thumb is pressed again', () => {
       openRatedConversation(MESSAGE_FEEDBACK_RATING.down);
 
@@ -1357,10 +1304,6 @@ describe('TurnStore', () => {
       expect(store.isRowPending(MESSAGE_ID)).toBe(false);
     });
 
-    /**
-     * A double-click would otherwise open a second request whose completion order, not the
-     * reader's second press, would decide the stored value.
-     */
     it('refuses a second press while the first request is in flight', () => {
       openRatedConversation();
 
@@ -1379,10 +1322,6 @@ describe('TurnStore', () => {
       backend.expectNone(() => true);
     });
 
-    /**
-     * `Finished` carries the id the transcript will return for the answer (US-1101), which
-     * is what makes a turn rateable the moment it settles rather than after a reload.
-     */
     it('takes the message id off the Finished frame, so a fresh turn is rateable', async () => {
       setup();
       const handle = await startBoundTurn();
@@ -1395,11 +1334,6 @@ describe('TurnStore', () => {
       expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.up);
     });
 
-    /**
-     * A completed turn whose transcript write failed is sent `Finished` with no metadata
-     * at all. There is no persisted message to rate, and claiming otherwise would offer a
-     * control whose every press 404s.
-     */
     it('claims no message id when Finished carries no metadata', async () => {
       setup();
       const handle = await startBoundTurn();
@@ -1409,12 +1343,6 @@ describe('TurnStore', () => {
       expect(entry?.kind === 'assistant' ? entry.messageId : 'unset').toBeNull();
     });
 
-    /**
-     * Leaving a conversation cancels the rating rather than merely forgetting it. An
-     * orphaned request whose pending id has been cleared is one the re-entry guard can no
-     * longer see, so coming back and pressing again would open a second request racing
-     * the first — and the server would settle on whichever landed last.
-     */
     it('cancels a rating in flight when the conversation changes', () => {
       openRatedConversation();
 
@@ -1443,11 +1371,6 @@ describe('TurnStore', () => {
       expect(store.entries()).toEqual([]);
     });
 
-    /**
-     * The whole justification for `mergeMap` over `switchMap`, and for `withPendingIds`
-     * being keyed per message rather than a single flag: rating one answer must not
-     * cancel, block or resolve another.
-     */
     it('rates two answers concurrently, each resolving on its own request', () => {
       setup();
       store.bindRoute(CONVERSATION_ID);
@@ -1478,11 +1401,7 @@ describe('TurnStore', () => {
       expect(ratings).toEqual([MESSAGE_FEEDBACK_RATING.up, MESSAGE_FEEDBACK_RATING.down]);
     });
 
-    /**
-     * The repair the 204 handler exists for: a history reload landing mid-request rebuilds
-     * the replayed block from the server, which at that moment still reports the rating as
-     * it was before the press.
-     */
+    /** The reload rebuilds from a server that does not yet report the new rating. */
     it('re-asserts the rating over a history reload that landed mid-request', () => {
       openRatedConversation();
 
@@ -1502,18 +1421,13 @@ describe('TurnStore', () => {
     });
   });
 
-  describe('the download target (US-1502)', () => {
+  describe('the download target', () => {
     it('is null before a conversation is bound', () => {
       setup();
 
       expect(store.exportTarget()).toBeNull();
     });
 
-    /**
-     * Criterion 5: an empty conversation offers no download. `hasContent` would be the
-     * wrong test — it is deliberately true while history is merely pending and while a
-     * pre-stream notice is up, and neither is anything to export.
-     */
     it('is null for a conversation whose transcript is empty', () => {
       setup();
       store.bindRoute(CONVERSATION_ID);

@@ -7,9 +7,6 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Repository.Cosmos.HealthChecks;
 
-/// <summary>
-/// Covers the readiness probe for the transcript account, including what its result may not carry.
-/// </summary>
 public sealed class CosmosHealthCheckTests
 {
     [Fact]

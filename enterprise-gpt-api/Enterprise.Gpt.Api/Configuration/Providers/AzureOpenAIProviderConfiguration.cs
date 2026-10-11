@@ -11,9 +11,6 @@ using OpenAI;
 
 namespace Enterprise.Gpt.Api.Configuration.Providers;
 
-/// <summary>
-/// Registers Azure OpenAI: the default chat model, the File Agent's client and the embedding generator.
-/// </summary>
 internal static class AzureOpenAIProviderConfiguration
 {
     #region Private methods
@@ -22,9 +19,7 @@ internal static class AzureOpenAIProviderConfiguration
     {
         var settings = services.GetRequiredService<IOptions<AzureOpenAIOptions>>().Value;
 
-        // The Responses adapter is still experimental; suppressed at the call site rather than project-wide so a
-        // second experimental API cannot slip in unnoticed behind it. See AzureOpenAIDefaults for why no upgrade
-        // retires either.
+        // Experimental Responses adapter, suppressed at the call site so no other experimental API slips in.
 #pragma warning disable OPENAI001, MEAI001
         return services.GetRequiredService<OpenAIClient>()
             .GetResponsesClient()
@@ -36,10 +31,6 @@ internal static class AzureOpenAIProviderConfiguration
 
     #region Public static methods
 
-    /// <summary>
-    /// Registers the validated options, the shared <see cref="OpenAIClient"/>, both keyed chat clients and the
-    /// embedding generator.
-    /// </summary>
     /// <remarks>
     /// No <c>Enabled</c> flag: this provider serves the default model and owns the embedding generator, so missing
     /// settings are a broken deployment rather than an opted-out one.
@@ -52,10 +43,9 @@ internal static class AzureOpenAIProviderConfiguration
             .ValidateWithFluentValidation()
             .ValidateOnStart();
 
-        // One client for chat, embeddings and the Files API the File Agent uploads through. The hosted-file
-        // client is built from it because GetFileClient() cannot see a file the code interpreter wrote into its
-        // container. Factories, so new Uri(...) runs after ValidateOnStart and a blank Url fails with the
-        // validator's message rather than a bare UriFormatException.
+        // The hosted-file client is built from the shared client because GetFileClient() cannot see a file
+        // the code interpreter wrote into its container. Factories, so a blank Url fails with the validator's
+        // message rather than a bare UriFormatException.
 #pragma warning disable OPENAI001, MEAI001
         services.AddSingleton(services =>
         {
@@ -102,8 +92,7 @@ internal static class AzureOpenAIProviderConfiguration
                 innerClient,
                 AzureOpenAIDefaults.Create(services.GetRequiredService<IOptions<AzureOpenAIOptions>>().Value)));
 
-        // The deployment named by EmbeddingModel determines the stored vectors, not the route, so the v1 route
-        // reaches the same deployment the legacy one did.
+        // Stored vectors depend on the EmbeddingModel deployment, not on the route.
         services.AddEmbeddingGenerator(services =>
         {
             var settings = services.GetRequiredService<IOptions<AzureOpenAIOptions>>().Value;

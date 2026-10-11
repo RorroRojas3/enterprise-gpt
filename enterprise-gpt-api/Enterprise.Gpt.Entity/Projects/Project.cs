@@ -34,18 +34,15 @@ public class Project : BaseModifiedEntity<Guid>
     /// Whether the owner has marked this project as a favourite.
     /// </summary>
     /// <remarks>
-    /// A plain column rather than a join table, because a project has exactly one owner: the
-    /// per-user favourite and the per-row flag are the same fact. Set through its own route so a
-    /// full-representation <c>PUT</c> that omits it cannot clear it.
+    /// A column, not a join table, since a project has one owner. Set through its own route so a
+    /// <c>PUT</c> that omits it cannot clear it.
     /// </remarks>
     public bool IsFavorite { get; set; }
 
-    /// <summary>
-    /// Standing instructions prepended to the system prompt of every conversation in this project.
-    /// </summary>
+    /// <summary>Standing instructions sent on <c>ChatOptions.Instructions</c> with every turn in this project.</summary>
     /// <remarks>
-    /// Read at each turn rather than snapshotted into the conversation transcript, so editing them
-    /// affects later turns and moving a conversation between projects behaves as expected.
+    /// Read at each turn rather than snapshotted into the transcript, so edits and moves between projects apply
+    /// to later turns.
     /// </remarks>
     public string? Instructions { get; set; }
 

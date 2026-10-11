@@ -8,10 +8,8 @@ namespace Enterprise.Gpt.Service.Agents;
 /// Builds the File Agent's skill provider out of the skill directories that shipped with the build.
 /// </summary>
 /// <remarks>
-/// Two levels of trimming, and both matter. <see cref="CreateProvider"/> filters what is
-/// <em>advertised</em> to the formats a run actually names, before a token is spent on describing the
-/// rest; progressive disclosure then trims what is <em>loaded</em>, because a skill's body is only
-/// read when the model calls for it. Either alone is half the mechanism.
+/// <see cref="CreateProvider"/> trims what is advertised to the formats a run names; progressive disclosure
+/// then trims what is loaded.
 /// </remarks>
 public static class FileAgentSkills
 {
@@ -22,16 +20,8 @@ public static class FileAgentSkills
     /// <summary>The skill every run advertises, whatever it was asked for.</summary>
     private const string VerificationSkill = "artifact-verification";
 
-    /// <summary>
-    /// What each skill is about, lower-cased. A skill is advertised when the run's instruction
-    /// mentions any of its topics — the formats it authors, or the verb it performs.
-    /// </summary>
-    /// <remarks>
-    /// Matched against the instruction's own words rather than against a parsed request, because the
-    /// agent's tool takes one natural-language string and there is nothing else to match on. A run
-    /// naming no topic at all advertises everything, which is the safe direction to fail: an
-    /// unadvertised skill is one the model cannot know to ask for.
-    /// </remarks>
+    // A skill is advertised when the instruction mentions one of its topics. Naming none advertises
+    // everything, the safe failure: the model cannot ask for an unadvertised skill.
     private static readonly FrozenDictionary<string, string[]> _topics = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
     {
         ["docx-authoring"] = ["docx", "word", "document", "doc"],
@@ -46,13 +36,10 @@ public static class FileAgentSkills
 
     #region Public static methods
 
-    /// <summary>
-    /// Lists the skills present under a root, for a startup probe.
-    /// </summary>
-    /// <param name="root">The directory the skills were deployed to.</param>
+    /// <summary>Lists the skills present under a root, for a startup probe.</summary>
     /// <returns>The skill directory names, sorted.</returns>
     /// <exception cref="DirectoryNotFoundException">
-    /// The root is absent, or holds no <c>SKILL.md</c> — which is what a missing copy rule looks like.
+    /// The root is absent or holds no <c>SKILL.md</c>, which is what a missing copy rule looks like.
     /// </exception>
     public static IReadOnlyList<string> Discover(string root)
     {
@@ -79,31 +66,11 @@ public static class FileAgentSkills
                 $"The File Agent's skills directory '{root}' holds no SKILL.md, so no skill shipped with this build.");
     }
 
-    /// <summary>
-    /// Builds a provider for one run, advertising only the skills its instruction implies.
-    /// </summary>
-    /// <param name="root">The directory the skills were deployed to.</param>
-    /// <param name="instruction">
-    /// Reads the run's own instruction. A function rather than a string because the provider is built
-    /// when the turn's tools are assembled, and the instruction does not exist until the model writes
-    /// one — the filter runs later, once per run, and reads it then.
-    /// </param>
-    /// <param name="loggerFactory">The logger factory the provider reports through.</param>
+    /// <summary>Builds a provider for one run, advertising only the skills its instruction implies.</summary>
     /// <returns>A provider the caller owns and must dispose with the run.</returns>
     /// <remarks>
-    /// Built fresh per turn rather than cached: the filter closes over this turn's instruction, and a
-    /// provider shared across conversations would advertise one turn's formats to another's. Skill
-    /// caching is off for the same reason — a cached advertisement would be the first call's answer,
-    /// whatever the second call asked for.
-    /// <para>
-    /// Three things together make host-side execution impossible. <c>AllowedScriptExtensions</c> is
-    /// empty, so no file is ever discovered as a script; <c>run_skill_script</c> keeps its approval,
-    /// which nothing in a headless turn can answer; and the runner itself is
-    /// <see cref="RefuseScriptAsync"/>, which throws. A runner is not optional in practice —
-    /// <c>Build()</c> fails with "File-based skill sources require a script runner" without one,
-    /// whatever the parameter's documentation says — so refusing is the strongest available
-    /// guarantee, and a stricter one than absence because it fails loudly rather than by omission.
-    /// </para>
+    /// <paramref name="instruction"/> is a function because the model writes it after the tools are built.
+    /// Per turn with caching off, so one turn's advertisement never reaches another.
     /// </remarks>
     public static AgentSkillsProvider CreateProvider(
         string root, Func<string> instruction, ILoggerFactory loggerFactory)
@@ -112,8 +79,7 @@ public static class FileAgentSkills
         ArgumentNullException.ThrowIfNull(instruction);
         ArgumentNullException.ThrowIfNull(loggerFactory);
 
-        // Memoized on the instruction rather than recomputed per skill: the filter is called once for
-        // each of the nine, and they all see the same run.
+        // Memoized: the filter runs once per skill, all against the same instruction.
         string? seen = null;
         FrozenSet<string>? advertised = null;
 
@@ -141,11 +107,8 @@ public static class FileAgentSkills
             .DisableCaching()
             .UseOptions(options =>
             {
-                // Without these, every load_skill and read_skill_resource call returns an approval
-                // request instead of executing, and a server turn with nobody to answer it stalls
-                // until the run's own deadline. run_skill_script keeps its approval, which — with a
-                // runner that refuses — is the second half of the guarantee that nothing this agent
-                // loads can run outside the sandbox.
+                // Otherwise these calls wait for an approval nobody in a server turn can give.
+                // run_skill_script deliberately keeps its approval (see RefuseScriptAsync).
                 options.DisableLoadSkillApproval = true;
                 options.DisableReadSkillResourceApproval = true;
             })
@@ -153,14 +116,10 @@ public static class FileAgentSkills
             .Build();
     }
 
-    /// <summary>
-    /// The script runner, which refuses. Unreachable in practice and loud if it ever is reached.
-    /// </summary>
+    /// <summary>The script runner the package insists on (<c>Build()</c> needs one); it refuses.</summary>
     /// <remarks>
-    /// Every line of Python this feature runs, runs in the hosted sandbox. A skill script executing on
-    /// the API host would run outside every bound this design has — no per-request container, no
-    /// network isolation, no artifact ceiling — so the runner the package insists on is one that
-    /// cannot execute anything.
+    /// All Python runs in the sandbox. With no script extensions allowed, <c>run_skill_script</c> gated by
+    /// approval, and this runner throwing, nothing a skill loads can execute on the API host.
     /// </remarks>
     internal static Task<object?> RefuseScriptAsync(
         AgentFileSkill skill,
@@ -168,8 +127,7 @@ public static class FileAgentSkills
         System.Text.Json.JsonElement? arguments,
         IServiceProvider? services,
         CancellationToken cancellationToken) =>
-        // On the task rather than at the call site, so the refusal reaches the caller the same way
-        // whichever way the package invokes the delegate.
+        // A faulted task, so the refusal arrives the same way however the package invokes the delegate.
         Task.FromException<object?>(new NotSupportedException(
             "A File Agent skill tried to run a script on the API host. Skill scripts are never executed here; "
             + "every line of Python this feature runs, runs in the sandbox."));
@@ -184,10 +142,8 @@ public static class FileAgentSkills
             return null;
         }
 
-        // Whole words, not substrings: "text" occurs inside "context" and "md" inside "command",
-        // and a topic that matches everything advertises everything, which is the cost this filter
-        // exists to avoid. The same split the conversion pre-flight reads its targets with, so the
-        // two cannot disagree about where a word ends.
+        // Whole words ("text" is inside "context"), split the same way as the conversion pre-flight so the
+        // two agree on word boundaries.
         var words = FileAgentFormats.Words(instruction);
 
         List<string> matched = [.. _topics

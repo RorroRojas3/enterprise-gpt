@@ -19,8 +19,8 @@
     background var(--t-fast),
     color var(--t-fast);
 
-  // The board's own active treatment: the option lifts onto `--surface` rather than taking a
-  // fill, which is what keeps the group legible against `--surface-2` in both themes.
+  // Lifts onto `--surface` rather than taking a fill, which keeps the group legible against
+  // `--surface-2` in both themes.
   &--active {
     background: var(--surface);
     box-shadow: 0 1px 3px rgb(11 31 51 / 12%);
@@ -28,8 +28,7 @@
     font-weight: 600;
   }
 
-  // WCAG SC 2.5.8. The board draws a 26px control; below the tablet edge it becomes a touch
-  // target, and the group is the only way to change what every panel on the screen is showing.
+  // SC 2.5.8: below the tablet edge the 26px control becomes a touch target.
   @include bp.mobile {
     min-height: 44px;
   }

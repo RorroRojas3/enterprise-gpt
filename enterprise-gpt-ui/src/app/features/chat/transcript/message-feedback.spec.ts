@@ -3,12 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { MESSAGE_FEEDBACK_RATING, MessageFeedbackRating } from '@domain/api/conversation';
 import { MessageFeedback } from './message-feedback';
 
-/**
- * US-1103. The control in isolation: what it reports, what it announces, and what it
- * refuses. Nothing here decides what a press *means* — that is the store's, and the
- * distinction is the reason this component holds no state at all.
- */
-describe('MessageFeedback (US-1103)', () => {
+describe('MessageFeedback', () => {
   let fixture: ComponentFixture<MessageFeedback>;
   let host: HTMLElement;
   let emitted: MessageFeedbackRating[];
@@ -40,11 +35,7 @@ describe('MessageFeedback (US-1103)', () => {
     expect(down?.getAttribute('aria-label')).toBe('Not helpful');
   });
 
-  /**
-   * The controls carry no visible label, so `aria-pressed` is the only place the state
-   * can live — the same reasoning as the library's Favourites toggle. A name that also
-   * changed with the state would announce it twice.
-   */
+  /** No visible label, so `aria-pressed` carries the state; a changing name would say it twice. */
   it('carries the state on aria-pressed, on exactly one thumb at a time', () => {
     render(MESSAGE_FEEDBACK_RATING.up);
     expect(thumbs().map((thumb) => thumb.getAttribute('aria-pressed'))).toEqual(['true', 'false']);
@@ -56,12 +47,7 @@ describe('MessageFeedback (US-1103)', () => {
     expect(thumbs().map((thumb) => thumb.getAttribute('aria-pressed'))).toEqual(['false', 'false']);
   });
 
-  /**
-   * The pressed state has to survive greyscale, which colour alone does not: in dark
-   * theme `--muted` and `--brand` sit at a 1.06:1 luminance ratio, so a rated thumb and
-   * an unrated one would be the same mark to anyone not reading hue (SC 1.4.1). The glyph
-   * is the signal; the colour reinforces it and `aria-pressed` announces it.
-   */
+  /** The glyph carries the state: in dark theme the two colours sit at 1.06:1 (SC 1.4.1). */
   it('fills the selected thumb, so the state is not carried by colour alone', () => {
     const glyphs = (): (string | null)[] =>
       [...host.querySelectorAll('app-icon use')].map((use) => use.getAttribute('href'));
@@ -82,11 +68,7 @@ describe('MessageFeedback (US-1103)', () => {
     expect(emitted).toEqual([MESSAGE_FEEDBACK_RATING.up, MESSAGE_FEEDBACK_RATING.down]);
   });
 
-  /**
-   * A press on the selected thumb is a withdrawal, and it is the store that says so —
-   * this reports the press either way. Swallowing it here would make the rating
-   * unwithdrawable and look, from the outside, exactly like a dead button.
-   */
+  /** The store reads it as a withdrawal; swallowing it here would make ratings permanent. */
   it('reports a press on the thumb that is already selected', () => {
     render(MESSAGE_FEEDBACK_RATING.up);
 
@@ -95,13 +77,7 @@ describe('MessageFeedback (US-1103)', () => {
     expect(emitted).toEqual([MESSAGE_FEEDBACK_RATING.up]);
   });
 
-  /**
-   * `aria-disabled` and a guard in the handler, never the native attribute: a natively
-   * disabled button blurs itself the instant it is pressed, which here would strand a
-   * keyboard reader on `<body>`, collapse the footer's `:focus-within` reveal mid-request,
-   * and announce the `aria-pressed` transition to nobody — the control's only feedback
-   * channel, since it carries no visible text.
-   */
+  /** A natively disabled button would blur on press and collapse the footer's reveal. */
   it('refuses both thumbs while a rating for this answer is in flight', () => {
     render(MESSAGE_FEEDBACK_RATING.up, true);
 
@@ -130,11 +106,7 @@ describe('MessageFeedback (US-1103)', () => {
     expect(thumbs().every((thumb) => thumb.getAttribute('aria-disabled') === null)).toBe(true);
   });
 
-  /**
-   * The footer is revealed by `:has()` on this class, and a rating nobody can see at rest
-   * is not a state that visibly survived anything. The CSS is what jsdom cannot evaluate;
-   * the hook it keys on is what a spec can pin.
-   */
+  /** jsdom cannot evaluate the footer's `:has()` reveal, so this pins the class it keys on. */
   it('marks itself rated, so the footer can stay up without a hover', () => {
     expect(host.classList).not.toContain('message-feedback--rated');
 
@@ -142,10 +114,7 @@ describe('MessageFeedback (US-1103)', () => {
     expect(host.classList).toContain('message-feedback--rated');
   });
 
-  /**
-   * The reveal is opacity-based, so these are focusable before they are visible. A
-   * `tabindex` here, or a `div` in place of a button, breaks that silently.
-   */
+  /** The reveal is opacity-based, so these must be focusable before they are visible. */
   it('is two natively focusable controls, so the reveal on focus has something to reveal', () => {
     for (const thumb of thumbs()) {
       expect(thumb.tagName).toBe('BUTTON');

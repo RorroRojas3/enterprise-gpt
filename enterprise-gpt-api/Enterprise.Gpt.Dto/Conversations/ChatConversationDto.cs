@@ -9,25 +9,17 @@ public class ChatConversationDto : ConversationDto
     /// returned in <see cref="Messages"/>.
     /// </summary>
     /// <remarks>
-    /// Read from the stored counter rather than counted, which is exact because the write that
-    /// creates a turn's messages and the patch that moves this counter are one transaction.
+    /// Read from the stored counter, which is exact: the message write and the counter patch are one
+    /// transaction.
     /// </remarks>
     public long TotalCount { get; set; }
 
     /// <summary>
-    /// Whether older messages remain beyond the ones returned.
+    /// Whether older messages remain beyond the ones returned; always <see langword="false"/> when unpaged.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// Always <see langword="false"/> for an unpaged request, which returns the whole
-    /// transcript.
-    /// </para>
-    /// <para>
-    /// This, and not the size of <see cref="Messages"/>, is what a paged walk terminates on. A
-    /// page can legitimately hold fewer messages than were asked for — system messages are
-    /// filtered out after the page is taken, so the oldest page of a transcript comes back one
-    /// short, and a page holding only the system message comes back empty.
-    /// </para>
+    /// End a paged walk on this, not on the size of <see cref="Messages"/>: system messages are filtered
+    /// after the page is taken, so a page can come back short or empty.
     /// </remarks>
     public bool HasMore { get; set; }
 }

@@ -57,15 +57,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  // Without this the flex row refuses to shrink below its content and the name never
-  // ellipsises — it widens the table instead.
+  // Lets the name ellipsise instead of widening the table.
   min-width: 0;
 }
 
-// A retired model is still listed, so it needs a second channel besides the Status
-// column: the name itself recedes. Opacity rather than a colour swap, so the `Default`
-// pill and the mono cells recede with it — and never below the 4.5:1 the muted token
-// already clears against the row.
+// A second channel besides the Status column. Opacity rather than a colour swap, so the
+// `Default` pill recedes with the name.
 .admin-models__identity--retired {
   opacity: 0.65;
 }
@@ -79,15 +76,8 @@
   white-space: nowrap;
 }
 
-// Frame `5e` draws this pill in `--accent`, and it is rendered in `--brand` instead.
-// `--accent` (#21A8D8) measures 2.74:1 on `--surface` in the light theme — recorded in
-// `_tokens.scss` — which is below the 4.5:1 AA minimum for text this size, and the border
-// is the same colour so there is no second channel. `--brand` clears AA in both themes.
-//
-// The departure is deliberate rather than inherited: other badges in the app carry the
-// same ratio, but this pill is the only marker of which model the whole deployment
-// defaults to, which makes it the worst place to keep it. Flagged for the design owner
-// alongside the unresolved `--warn` question in the PRD.
+// `--brand`, not the design's `--accent`, which is 2.74:1 on `--surface` in the light theme:
+// below AA, on the only marker of the deployment's default model.
 .admin-models__default {
   flex: 0 0 auto;
   padding: 0 5px;
@@ -121,16 +111,14 @@
 }
 
 @include bp.mobile {
-  // A deployment name is read character by character when it is wrong, and an ellipsis on a
-  // card has no hover to recover the rest of it from.
+  // A wrong deployment name is read in full, and a card has no hover to reveal the rest.
   .admin-models__deployment {
     overflow: visible;
     overflow-wrap: anywhere;
     white-space: normal;
   }
 
-  // A card has the vertical room the table row never had, so the name wraps rather than
-  // losing its tail to an ellipsis no hover can reopen.
+  // A card has the vertical room to wrap the name rather than ellipsise it.
   .admin-models__name {
     overflow: visible;
     overflow-wrap: anywhere;

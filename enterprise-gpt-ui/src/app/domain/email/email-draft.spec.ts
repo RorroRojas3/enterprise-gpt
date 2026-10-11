@@ -70,8 +70,7 @@ describe('splitEmailSegments', () => {
   });
 
   it('refuses a block closed by a nested opener rather than showing half an email', () => {
-    // CommonMark closes the email at the ```ts, so a card here would carry a body
-    // truncated at that line — and hand the truncation to a mail client.
+    // CommonMark closes the email at the ```ts line.
     const segments = splitEmailSegments('```email\nSubject: Hi\n\n```ts\nx\n```\n');
 
     expect(segments.map((s) => s.kind)).toEqual(['markdown']);
@@ -136,8 +135,7 @@ describe('detectEmailDraft', () => {
   });
 
   it('keeps a body line that merely looks like a header', () => {
-    // The header run ends at the blank line, so this sentence is body — dropping
-    // it would cut a line out of what the user sends, silently.
+    // The header run ends at the blank line, so this sentence is body.
     const draft = detectEmailDraft(
       'Subject: Hi\n\nHi Alice,\n\nTo: confirm, we meet Friday.\n\nRegards,',
     );

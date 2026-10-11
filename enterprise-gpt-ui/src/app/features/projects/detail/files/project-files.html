@@ -1,9 +1,6 @@
 <!--
-  The drop zone is bound to the permission on both counts, which US-204 requires as two
-  separate mechanisms: `@if` removes the visible affordance, and the directive's own
-  input is what makes a drag-and-drop inert — an `@if` cannot express that, because a
-  drop target that is not rendered is still a page the browser will happily navigate to
-  the dropped file on.
+  Bound to the permission twice: `@if` hides the affordance, and the directive's input makes a
+  drop inert, since the browser navigates to a file dropped where no target is rendered.
 -->
 @if (session.canUploadFiles()) {
   <div
@@ -24,10 +21,8 @@
   </div>
 
   <!--
-    Off-screen rather than `display: none`: a hidden input is not focusable, and the
-    button above is the accessible control that opens it. `accept` narrows the picker to
-    what this deployment can read, and is empty — meaning "any file" — until that list
-    loads.
+    Off-screen, not `display: none`, which is unfocusable; the button above is the accessible
+    control. `accept` is empty, meaning any file, until this deployment's list loads.
   -->
   <input
     #filePicker
@@ -41,10 +36,7 @@
   />
 }
 
-<!--
-  The chips carry their own live region and their own per-file controls; this only has
-  to exist from first render so an appearing chip is announced.
--->
+<!-- Rendered from the start so an appearing chip is announced. -->
 <p class="visually-hidden" role="status">{{ uploads.attachmentSummary() }}</p>
 
 @if (uploads.hasAttachments()) {
@@ -82,8 +74,7 @@
     }
   </div>
 } @else if (documents.isEmpty()) {
-  <!-- Frame `4f` draws no empty state, so this is the plainest honest one: a sentence,
-       not a ridgeline illustration competing with the drop zone right above it. -->
+  <!-- A plain sentence, not an illustration competing with the drop zone above. -->
   <p class="files__empty">
     @if (session.canUploadFiles()) {
       No files yet. Files added here are shared by every conversation in this project.
@@ -104,11 +95,6 @@
         <span class="files__size">{{ sizeLabel(document) }}</span>
         <span class="files__date">{{ dateLabel(document) }}</span>
 
-        <!--
-          Real buttons with accessible names, not the prototype's clickable `<i>`: the
-          board's own caption defers to this document on accessibility, and an icon-only
-          control with no name is one of the gaps EP-14 corrects rather than reproduces.
-        -->
         <button
           class="files__action"
           type="button"
@@ -125,8 +111,7 @@
         </button>
 
         @if (session.canUploadFiles()) {
-          <!-- Removing is an upload-permission action; without it the files stay listed
-               and downloadable, which is frame `4f`'s own caption. -->
+          <!-- Removing needs the upload permission; without it files stay downloadable. -->
           <button
             class="files__action files__action--danger"
             type="button"

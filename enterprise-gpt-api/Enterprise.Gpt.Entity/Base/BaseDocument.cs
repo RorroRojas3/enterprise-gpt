@@ -9,16 +9,13 @@ namespace Enterprise.Gpt.Entity.Base;
 public abstract class BaseDocument<TKey> : BaseModifiedEntity<TKey>
     where TKey : struct, IEquatable<TKey>
 {
-    /// <summary>The user the document belongs to.</summary>
     public Guid UserId { get; set; }
 
-    /// <summary>The file name as uploaded.</summary>
     public string Name { get; set; } = null!;
 
-    /// <summary>The file extension, without the leading dot.</summary>
+    /// <summary>The lower-cased file extension, including the leading dot.</summary>
     public string Extension { get; set; } = null!;
 
-    /// <summary>The file's media type.</summary>
     public string MimeType { get; set; } = null!;
 
     /// <summary>The file size in bytes.</summary>

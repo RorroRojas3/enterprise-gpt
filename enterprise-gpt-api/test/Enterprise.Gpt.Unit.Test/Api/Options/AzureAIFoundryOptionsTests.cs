@@ -4,15 +4,9 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Api.Options;
 
-/// <summary>
-/// Covers what the Azure AI Foundry section adds over the shared v1-endpoint behaviour, and pins
-/// that it actually inherits that behaviour.
-/// </summary>
 /// <remarks>
-/// The URL predicates themselves are exercised in depth by <see cref="Service.Options.AzureOpenAIOptionsTests"/>,
-/// against the same <see cref="AzureV1EndpointOptions"/> base. Repeating every theory here would
-/// duplicate the table without testing anything new — what these cover is the derivation being
-/// wired at all, which a refactor that gave this type its own copy of the logic would break.
+/// The URL predicates are covered by <see cref="Service.Options.AzureOpenAIOptionsTests"/> on the same
+/// <see cref="AzureV1EndpointOptions"/> base; these pin that the derivation is wired at all.
 /// </remarks>
 public sealed class AzureAIFoundryOptionsTests
 {
@@ -35,9 +29,8 @@ public sealed class AzureAIFoundryOptionsTests
     }
 
     /// <summary>
-    /// Reasoning is a Responses-API feature, so this provider carries no reasoning settings at all —
-    /// the absence is the contract, and <c>AzureAIFoundryDefaults</c> enforces it at request
-    /// time. A property added here later would be a signal that the enforcement moved.
+    /// Reasoning is a Responses-API feature; the absence is the contract <c>AzureAIFoundryDefaults</c>
+    /// enforces at request time.
     /// </summary>
     [Fact]
     public void Options_CarryNoReasoningSettings()

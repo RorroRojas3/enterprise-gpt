@@ -5,10 +5,8 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Service.Exports;
 
 /// <summary>
-/// Three tables list the wire tokens — the parse lookup, the advertised supported set, and
-/// <see cref="ConversationExportFormatNames.ToWireFormat"/> — and nothing but this keeps them in step.
-/// A format present in one and missing from another fails silently: it either vanishes from the
-/// rejection message a client learns the supported set from, or is advertised and then rejected.
+/// The parse lookup, the supported set and <see cref="ConversationExportFormatNames.ToWireFormat"/> all
+/// list the wire tokens, and only this keeps them in step; drift fails silently.
 /// </summary>
 public sealed class ExportFormatNamesTests
 {

@@ -2,7 +2,6 @@
   display: block;
 }
 
-// Frame 3a: 34px minimum, 8px radius, ellipsised title, star trailing, kebab last.
 .row {
   position: relative;
   display: flex;
@@ -58,10 +57,7 @@
   font-size: 10px;
 }
 
-// Revealed rather than inserted: opacity keeps the trigger in the tab order and the
-// accessibility tree, so keyboard focus can reach it — and :focus-within is what
-// reveals it when it does. Hidden-until-hover has no meaning on a touch screen, so
-// (hover: none) shows it outright.
+// Opacity, not display, so the trigger stays focusable; :focus-within reveals it.
 .row__menu {
   flex: 0 0 auto;
   margin-right: 2px;
@@ -81,14 +77,11 @@
   }
 }
 
-// Frame 3a's submenu affordance: the label takes the free space so the chevron sits
-// hard right, the way the board draws it.
 .row__menu-label {
   flex: 1;
 }
 
-// Tag-qualified so it outranks menu.scss's `::ng-deep .menu__item app-icon`, which sets
-// the 13px every other item icon uses.
+// Tag-qualified so it outranks menu.scss's `::ng-deep .menu__item app-icon`.
 app-icon.row__menu-chevron {
   font-size: 11px;
 }

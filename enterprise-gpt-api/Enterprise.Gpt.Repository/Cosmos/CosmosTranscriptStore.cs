@@ -11,42 +11,22 @@ namespace Enterprise.Gpt.Repository.Cosmos;
 /// partition key holding <c>{userId}:{conversationId}</c>.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Every member takes a partition key and none accepts a cross-partition query. That is the point:
-/// a transcript read that fanned out across partitions would be both a cost surprise and a tenancy
-/// hole, so it is unreachable through this surface rather than merely discouraged.
-/// </para>
+/// Every member requires a partition key, so a cross-partition read (a cost and tenancy hole) is unreachable.
 /// </remarks>
 public interface ITranscriptStore
 {
     /// <summary>
     /// Reads a single document by identifier.
     /// </summary>
-    /// <typeparam name="T">The document type.</typeparam>
-    /// <param name="id">The document's identifier.</param>
-    /// <param name="partitionKey">The partition the document lives in.</param>
-    /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
     /// <returns>The document, or <see langword="null"/> when it does not exist.</returns>
     Task<T?> ReadItemAsync<T>(string id, PartitionKey partitionKey, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Runs one page of a query against a single partition.
+    /// Runs one page of a query against a single partition; a <see langword="null"/>
+    /// <paramref name="pageSize"/> uses the configured page size.
     /// </summary>
-    /// <typeparam name="T">The projected document type.</typeparam>
-    /// <param name="query">The parameterized query to run.</param>
-    /// <param name="partitionKey">The partition to query. Required.</param>
-    /// <param name="pageSize">
-    /// How many documents to request, or <see langword="null"/> to use the configured page size.
-    /// </param>
-    /// <param name="continuationToken">
-    /// The token returned by the previous page, or <see langword="null"/> to start at the first.
-    /// </param>
-    /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
     /// <returns>The page, carrying the token for the next one when more remain.</returns>
-    /// <exception cref="ArgumentException">
-    /// Thrown when <paramref name="partitionKey"/> is unset, because the query would otherwise fan
-    /// out across every physical partition.
-    /// </exception>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="partitionKey"/> is unset.</exception>
     Task<TranscriptPage<T>> QueryAsync<T>(
         QueryDefinition query,
         PartitionKey partitionKey,
@@ -55,16 +35,9 @@ public interface ITranscriptStore
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Applies partial-update operations to a document without reading and rewriting it.
+    /// Applies up to 10 partial-update operations to a document without reading and rewriting it.
     /// </summary>
-    /// <param name="id">The identifier of the document to patch.</param>
-    /// <param name="partitionKey">The partition the document lives in.</param>
-    /// <param name="operations">The updates to apply. Cosmos DB permits at most 10 per call.</param>
-    /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
-    /// <returns>
-    /// <see langword="true"/> when the document was patched, <see langword="false"/> when no
-    /// document with that identifier exists.
-    /// </returns>
+    /// <returns><see langword="false"/> when no document with that identifier exists.</returns>
     Task<bool> PatchItemAsync(
         string id,
         PartitionKey partitionKey,
@@ -72,20 +45,15 @@ public interface ITranscriptStore
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Runs a set of operations as one transaction against a single partition.
+    /// Runs the operations <paramref name="build"/> records, in order, as one transaction against a
+    /// single partition.
     /// </summary>
-    /// <param name="partitionKey">The partition every operation acts on.</param>
-    /// <param name="build">Records the operations to run, in order.</param>
-    /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
     /// <returns>The outcome, naming the failing operation when one failed.</returns>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// Thrown when the batch is empty or exceeds <see cref="TranscriptBatch.MaxOperations"/>, so an
-    /// oversized batch fails before the request leaves the process rather than as a 400.
+    /// Thrown before any request when the batch is empty or over <see cref="TranscriptBatch.MaxOperations"/>.
     /// </exception>
     /// <remarks>
-    /// Atomicity within the partition is what keeps a header's counters honest: the message
-    /// documents and the counter patch that accounts for them either all land or none do, so the
-    /// stored count cannot drift from the documents backing it.
+    /// Atomicity keeps a header's counters consistent with the message documents they count.
     /// </remarks>
     Task<TranscriptBatchResult> ExecuteBatchAsync(
         PartitionKey partitionKey,
@@ -98,12 +66,8 @@ public interface ITranscriptStore
 /// <see cref="CosmosDbOptions.TranscriptContainerId"/>.
 /// </summary>
 /// <remarks>
-/// Registered as a singleton over the singleton <see cref="CosmosClient"/>. The container handle
-/// is resolved once: <c>GetContainer</c> is a local lookup that issues no request, so holding it
-/// costs nothing and avoids repeating the resolution on every turn.
+/// A singleton over the singleton <see cref="CosmosClient"/>, so the container handle is resolved once.
 /// </remarks>
-/// <param name="cosmosClient">The account client.</param>
-/// <param name="options">The bound and validated Cosmos settings.</param>
 public sealed class CosmosTranscriptStore(CosmosClient cosmosClient, IOptions<CosmosDbOptions> options) : ITranscriptStore
 {
     /// <summary>
@@ -161,9 +125,8 @@ public sealed class CosmosTranscriptStore(CosmosClient cosmosClient, IOptions<Co
 
         var response = await iterator.ReadNextAsync(cancellationToken).ConfigureAwait(false);
 
-        // The SDK reports a continuation token on the final page too when the backend cannot yet
-        // prove the page was the last; HasMoreResults is the authority, so the token is dropped
-        // when it says otherwise. Returning it would cost every caller one empty round trip.
+        // The SDK can return a token on the final page; HasMoreResults is the authority, and passing
+        // that token on would cost every caller an empty round trip.
         return new TranscriptPage<T>([.. response], iterator.HasMoreResults ? response.ContinuationToken : null);
     }
 
@@ -181,9 +144,7 @@ public sealed class CosmosTranscriptStore(CosmosClient cosmosClient, IOptions<Co
         ArgumentOutOfRangeException.ThrowIfGreaterThan(operations.Count, MaxPatchOperations);
         EnsurePartitioned(partitionKey);
 
-        // No caller reads the patched document back — a header's counters and name, a message's
-        // rating — so returning it on every rename, every turn and every thumb is bandwidth spent
-        // on a value that is discarded.
+        // No caller reads the patched document back, so don't pay to return it.
         var requestOptions = new PatchItemRequestOptions { EnableContentResponseOnWrite = false };
 
         try

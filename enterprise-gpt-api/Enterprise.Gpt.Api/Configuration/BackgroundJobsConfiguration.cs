@@ -6,16 +6,10 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Enterprise.Gpt.Api.Configuration;
 
-/// <summary>
-/// Registers the background job pipeline that ingests uploaded documents.
-/// </summary>
 internal static class BackgroundJobsConfiguration
 {
     #region Public static methods
 
-    /// <summary>
-    /// Registers the queue, the status store clients poll, the cancellation registry and the processor.
-    /// </summary>
     internal static IServiceCollection AddEnterpriseGptBackgroundJobs(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<IValidator<BackgroundJobOptions>, BackgroundJobOptionsValidator>();

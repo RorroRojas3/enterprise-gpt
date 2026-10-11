@@ -9,41 +9,25 @@ using Microsoft.Extensions.AI;
 namespace Enterprise.Gpt.Api.Startup;
 
 /// <summary>
-/// Refuses to start against a File Agent that could not run: a <c>FileAgent:ModelId</c> naming no
-/// usable catalog row, a missing chat client, an instruction template left out of the build, or a
-/// skills directory that did not ship.
+/// Refuses to start against a File Agent that could not run: an unusable model, a missing chat client,
+/// or a prompt template or skills directory that did not ship.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Runs unconditionally, whatever <c>FileAgent:Enabled</c> says: a deployment whose agent is
-/// misconfigured should say so when it is deployed, not on the first request after somebody
-/// switches the feature on months later.
-/// </para>
-/// <para>
-/// Run by <see cref="StartupBootstrapper"/> rather than registered as an <see cref="IHostedService"/>,
-/// for the same reason as <see cref="SummarizerBootstrapper"/>: it needs a live backing store, and
-/// <c>WebApplicationFactory</c> starts the host before the integration fixture creates the schema.
-/// </para>
+/// Runs whatever <c>FileAgent:Enabled</c> says, so misconfiguration fails the deploy. Not an
+/// <see cref="IHostedService"/>, for the same reason as <see cref="SummarizerBootstrapper"/>.
 /// </remarks>
 public static partial class FileAgentBootstrapper
 {
     #region Public static methods
 
     /// <summary>
-    /// Resolves the pinned model, verifies its client and its keyed sandbox client exist, and forces
-    /// the prompt and skill content to be read off disk.
+    /// Resolves the pinned model from a scoped provider, verifies its clients exist, and forces the
+    /// prompt and skill content to be read off disk.
     /// </summary>
-    /// <param name="services">A scoped service provider.</param>
-    /// <param name="skillsRoot">The directory the deployed skills were expected at.</param>
-    /// <param name="logger">The logger that reports the resolved deployment.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <exception cref="FileAgentNotConfiguredException">
-    /// The configured id names no active model row, or one on a provider that cannot carry a hosted
-    /// code interpreter.
+    /// No active model row, or one on a provider without a hosted code interpreter.
     /// </exception>
-    /// <exception cref="ProviderNotConfiguredException">
-    /// The row's provider has no chat client registered in this deployment.
-    /// </exception>
+    /// <exception cref="ProviderNotConfiguredException">The row's provider has no chat client.</exception>
     /// <exception cref="DirectoryNotFoundException">The deployed skills are missing.</exception>
     public static async Task ValidateAsync(
         IServiceProvider services, string skillsRoot, ILogger logger, CancellationToken cancellationToken = default)

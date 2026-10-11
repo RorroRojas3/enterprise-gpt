@@ -57,17 +57,11 @@ public interface IConversationService
 {
     /// <summary>
     /// The <c>metadata</c> key the <see cref="AssistantUiEventKind.Finished"/> frame carries the
-    /// persisted assistant message's identifier under (US-1101).
+    /// persisted assistant message's identifier under.
     /// </summary>
     /// <remarks>
-    /// An opaque identifier clients match verbatim, like the problem-type URIs — renaming it is
-    /// a breaking API change.
-    /// <para>
-    /// Present only on a turn whose answer actually reached the transcript. A cancelled or
-    /// faulted turn is sent no <see cref="AssistantUiEventKind.Finished"/> frame at all, and a
-    /// completed turn whose transcript write failed is sent one carrying no <c>metadata</c>
-    /// object — the serializer omits nulls, so the key is absent rather than empty either way.
-    /// </para>
+    /// Clients match it verbatim, so renaming it is a breaking API change. Absent unless the answer
+    /// reached the transcript.
     /// </remarks>
     const string AssistantMessageIdMetadataKey = "assistantMessageId";
 
@@ -77,35 +71,16 @@ public interface IConversationService
     /// <see cref="MessageAttachmentDto"/>.
     /// </summary>
     /// <remarks>
-    /// An opaque identifier clients match verbatim, like the key above. JSON in a string because
-    /// the streamed contract's metadata bag is <c>Record&lt;string, string&gt;</c> — a typed array
-    /// would need a new event kind, which is a breaking change to a vendored contract.
-    /// <para>
-    /// Absent when the turn produced no file, and absent on a turn that never reached a
-    /// <see cref="AssistantUiEventKind.Finished"/> frame at all. A reload reads the same identities
-    /// off the transcript instead, so this key is a convenience for the turn that made them rather
-    /// than the only place they exist.
-    /// </para>
+    /// Clients match it verbatim. JSON in a string because the vendored contract's metadata bag is
+    /// <c>Record&lt;string, string&gt;</c>; absent when the turn produced no file.
     /// </remarks>
     const string GeneratedAttachmentsMetadataKey = "generatedAttachments";
 
-    /// <summary>
-    /// Reads a single conversation, including the model and MCP servers its most recent turn ran
-    /// with so a client can restore that selection.
-    /// </summary>
-    /// <param name="id">The unique identifier of the conversation.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>The conversation.</returns>
+    /// <summary>Reads a conversation with the model and MCP servers its last turn ran with.</summary>
     /// <exception cref="NotFoundException">The conversation is not an active conversation of the caller.</exception>
     Task<ConversationDetailDto> GetConversationAsync(Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Lists the active documents of one of the caller's conversations, most recently uploaded
-    /// first.
-    /// </summary>
-    /// <param name="id">The unique identifier of the conversation.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>The conversation's documents.</returns>
+    /// <summary>Lists the active documents of one of the caller's conversations, newest first.</summary>
     /// <exception cref="NotFoundException">The conversation is not an active conversation of the caller.</exception>
     Task<List<ConversationDocumentDto>> GetConversationDocumentsAsync(Guid id, CancellationToken cancellationToken = default);
 
@@ -120,17 +95,16 @@ public interface IConversationService
     /// <summary>
     /// Searches the caller's active conversations, newest first unless an order is requested.
     /// </summary>
-    /// <param name="name">A substring to match against the conversation name, or <see langword="null"/> for no name filter.</param>
-    /// <param name="skip">The number of conversations to skip.</param>
+    /// <param name="name">A name substring, or <see langword="null"/> for no filter.</param>
+    /// <param name="skip">Conversations to skip.</param>
     /// <param name="take">The page size.</param>
-    /// <param name="isFavorite">Restricts the results to favourites when <see langword="true"/>, to non-favourites when <see langword="false"/>, and applies no filter when <see langword="null"/>.</param>
-    /// <param name="projectId">Restricts the results to one of the caller's projects, or <see langword="null"/> for no project filter.</param>
-    /// <param name="sort">An optional field to order by — one of <see cref="ConversationSortKeyNames.Supported"/>.</param>
-    /// <param name="dir">An optional direction, <c>asc</c> or <c>desc</c>.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>A page of conversations.</returns>
+    /// <param name="isFavorite">Favourites, non-favourites, or <see langword="null"/> for both.</param>
+    /// <param name="projectId">One of the caller's projects, or <see langword="null"/> for all.</param>
+    /// <param name="sort">One of <see cref="ConversationSortKeyNames.Supported"/>.</param>
+    /// <param name="dir"><c>asc</c> or <c>desc</c>.</param>
+    /// <param name="cancellationToken">Cancels the query.</param>
     /// <exception cref="NotFoundException"><paramref name="projectId"/> is not an active project of the caller.</exception>
-    /// <exception cref="ValidationException"><paramref name="sort"/> or <paramref name="dir"/> names something this listing does not accept.</exception>
+    /// <exception cref="ValidationException">The sort field or direction is not accepted.</exception>
     Task<PaginatedResponseDto<ConversationDto>> SearchConversationsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, Guid? projectId = null, string? sort = null, string? dir = null, CancellationToken cancellationToken = default);
 
     Task<ConversationDto> UpdateConversationAsync(UpdateConversationActionDto request, CancellationToken cancellationToken = default);
@@ -138,9 +112,6 @@ public interface IConversationService
     /// <summary>
     /// Marks the caller's conversation as a favourite, or clears the mark.
     /// </summary>
-    /// <param name="id">The unique identifier of the conversation.</param>
-    /// <param name="request">The requested state.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
     /// <exception cref="NotFoundException">The conversation is not an active conversation of the caller.</exception>
     Task SetConversationFavoriteAsync(Guid id, SetConversationFavoriteActionDto request, CancellationToken cancellationToken = default);
@@ -149,15 +120,9 @@ public interface IConversationService
     /// Runs one chat turn and streams what the assistant does while it runs: answer text,
     /// reasoning, and an activity event for every tool, MCP call and agent it invokes.
     /// </summary>
-    /// <param name="id">The unique identifier of the conversation.</param>
-    /// <param name="request">The prompt, the model to serve it, and the MCP servers to attach.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>The turn's events, in the order they occurred.</returns>
     /// <remarks>
-    /// Validation and the caller's identity are resolved eagerly, so a bad request faults before
-    /// the sequence is produced and the caller can answer it with a normal error response.
-    /// Everything else — the conversation lock, the transcript read, the model call — happens on
-    /// the first move, which is why contention and a missing conversation surface there.
+    /// Validation and identity resolve eagerly, so a bad request faults before streaming; contention and
+    /// a missing conversation surface on the first move.
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
     /// <exception cref="ConversationBusyException">Another turn is already in flight for this conversation.</exception>
@@ -165,41 +130,29 @@ public interface IConversationService
     IAsyncEnumerable<AssistantUiEvent> StreamConversationAsync(Guid id, CreateConversationStreamActionDto request, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Reads a conversation's transcript, oldest message first.
+    /// Reads a conversation's transcript, oldest message first, excluding system messages.
     /// </summary>
-    /// <param name="id">The unique identifier of the conversation.</param>
+    /// <param name="id">The conversation.</param>
     /// <param name="take">
-    /// How many of the newest messages to return, clamped to 1–100. Omit it to return the whole
-    /// transcript, which is the default so that a client written before paging existed is
-    /// unaffected.
+    /// How many of the newest messages to return, clamped to 1–100; omitted returns the whole transcript,
+    /// which keeps pre-paging clients working.
     /// </param>
-    /// <param name="before">
-    /// Return only messages written strictly before this moment, so a client can walk backwards
-    /// through a long transcript. Omit it to start at the newest.
-    /// </param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>The conversation's name, dates, counters and messages. System messages are excluded.</returns>
+    /// <param name="before">Only messages written strictly before this moment, for paging backwards.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
     /// <exception cref="NotFoundException">The conversation is not an active conversation of the caller.</exception>
     Task<ChatConversationDto> GetConversationMessagesAsync(
         Guid id, int? take, DateTimeOffset? before, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Records, replaces or withdraws the caller's rating of an assistant message.
+    /// Records, replaces or withdraws (null rating) the caller's rating of an assistant message.
     /// </summary>
-    /// <param name="conversationId">The unique identifier of the conversation.</param>
-    /// <param name="messageId">The unique identifier of the assistant message being rated.</param>
-    /// <param name="request">The verdict, or a null rating to withdraw one already recorded.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <remarks>
-    /// The rating lands on the transcript message document, which is what the transcript
-    /// response projects and therefore what survives a reload; the relational
-    /// <c>MessageFeedback</c> row written after it is a projection for reporting, and failing to
-    /// write it is logged rather than thrown. That order is deliberate — see the implementation.
+    /// The transcript document is the source of truth; the relational <c>MessageFeedback</c> row written
+    /// after it is a reporting projection whose failure is logged, not thrown.
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
     /// <exception cref="NotFoundException">
-    /// The conversation is not an active conversation of the caller, or it holds no message with
-    /// this identifier.
+    /// The conversation is not an active conversation of the caller, or holds no such message.
     /// </exception>
     /// <exception cref="ValidationException">The message is not an assistant message.</exception>
     Task SetMessageFeedbackAsync(
@@ -241,8 +194,7 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     private readonly PromptOverheadCalculator _promptOverheadCalculator = promptOverheadCalculator;
     private readonly IMarkdownRenderer _markdownRenderer = markdownRenderer;
 
-    // Logged once per model rather than per turn: an unset context window is a permanent
-    // property of a catalog row, and a warning on every turn would bury the rest of the log.
+    // Once per model: an unset context window is permanent, and a per-turn warning would bury the log.
     private readonly ConcurrentDictionary<Guid, bool> _unboundedModelsReported = new();
     private readonly IDocumentSummaryService _documentSummaryService = documentSummaryService;
     private readonly IUserGrantReader _userGrantReader = userGrantReader;
@@ -255,10 +207,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     private readonly EnterpriseGptDbContext _ctx = ctx;
     private readonly TimeProvider _timeProvider = timeProvider;
 
-    // The synthetic pair every turn's stream opens with, ahead of the first model event.
-    // The reasoning text ends with a blank line because the package reducer accumulates
-    // reasoning deltas verbatim: without the separator, a reasoning-capable model's first
-    // real delta would concatenate run-on with this sentence.
+    // The synthetic pair every stream opens with. The trailing blank line stops the reducer, which
+    // accumulates reasoning verbatim, running a model's first real delta on from this sentence.
     private const string StartingStatusMessage = "Starting";
     private const string PreparingReasoningText = "Reviewing the request and preparing a response.\n\n";
 
@@ -289,18 +239,9 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             throw new NotFoundException($"Conversation with id {id} not found");
         }
 
-        // The servers attached to the newest chat turn, so a client can restore the selection the
-        // conversation was last run with. Naming calls are excluded — they never carry tools, so
-        // a conversation's first turn would otherwise resolve to an empty selection.
-        //
-        // Narrowed to servers that are still active and still permitted, matching what
-        // McpToolProvider.AcquireToolsAsync will accept: handing back a deactivated or revoked
-        // server would have the client replay it into the next turn and take a 404 or a 403 it
-        // cannot act on. The audit row keeps the historical selection either way.
-        //
-        // A second round trip rather than a correlated subquery on the projection above: taking
-        // the newest turn's collection per conversation row translates to SQL APPLY, which not
-        // every provider this model runs on can express.
+        // The newest chat turn's servers (naming calls carry none), narrowed to what
+        // McpToolProvider.AcquireToolsAsync accepts so the client never replays one into a 404 or 403.
+        // A second round trip: the correlated form translates to SQL APPLY, which not every provider has.
         conversation.McpServerIds = await _ctx.ConversationUsage
             .AsNoTracking()
             .Where(u => u.ConversationId == id && u.Kind == ConversationUsageKinds.Chat)
@@ -321,9 +262,7 @@ public partial class ConversationService(ILogger<ConversationService> logger,
         var userId = _tokenService.GetOid();
         await EnsureConversationExistsAsync(id, userId, cancellationToken);
 
-        // Uploads only. Every surface this feeds — the composer's chips, the files panel — is
-        // about what the user brought to the conversation, and a file the assistant made reaches
-        // them through the chip on the message that made it instead.
+        // Uploads only: a file the assistant made reaches the user through its message's chip instead.
         return await _ctx.ConversationDocuments
             .AsNoTracking()
             .Where(x => x.ConversationId == id
@@ -357,15 +296,13 @@ public partial class ConversationService(ILogger<ConversationService> logger,
         // Add assigns the client-generated key, which the seeded message needs before the save.
         _ctx.Add(newChat);
 
-        // No model has been chosen yet, so there is no provider to calibrate for: the
-        // uncalibrated default is the honest estimator here, and it is what the budget will
-        // re-estimate against on the first turn anyway.
+        // No model is chosen yet, so the uncalibrated default is the honest estimator; the first turn
+        // re-estimates anyway.
         var systemMessage = BuildSeededSystemMessage(
             userId, newChat.Id, default, _tokenEstimatorResolver.Default, deploymentName: null);
 
-        // Both counters start from the same message. Seeding only the header would leave the
-        // relational roll-up understated by the system prompt for the life of the conversation:
-        // every later turn moves the two by the same delta, so the gap never closes.
+        // Both counters start from the same message; later turns move them by the same delta, so a
+        // gap seeded here would never close.
         newChat.ContextTokens = systemMessage.Tokens;
         await _ctx.SaveChangesAsync(cancellationToken);
 
@@ -398,11 +335,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
         }
         catch (Exception ex)
         {
-            // The Cosmos write is inside the transaction so a relational failure rolls the row
-            // back — but it cannot roll back the documents, which are in another store. A commit
-            // that fails here therefore leaves a transcript partition with no conversation row
-            // behind it. Logged with the partition key because nothing else can find it
-            // afterwards: no query reaches a conversation that SQL has no record of.
+            // The rollback cannot undo the Cosmos documents, so a failed commit orphans a transcript
+            // partition; its key is logged because no query can find it afterwards.
             LogConversationCommitFailed(_logger, ex, newChat.Id, PartitionKeys.For(userId, newChat.Id));
 
             throw;
@@ -426,17 +360,15 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             return;
         }
 
-        // Patched rather than read-modify-replaced so a turn streaming concurrently cannot
-        // have its appended messages reverted by this write. Returns false when the document
-        // is absent, which is tolerated for the same reason the previous null check was.
+        // Patched, not replaced, so a concurrently streaming turn's messages are not reverted. An
+        // absent document is tolerated.
         await _transcriptStore.PatchItemAsync(id.ToString(), TranscriptPartition(userId, id),
         [
             PatchOperation.Set("/dateDeactivated", date),
         ], cancellationToken);
 
-        // Ahead of the chunks and the document itself, so a summary never outlives what it
-        // summarizes: a live summary row under a deleted document is a fully readable account of
-        // everything that document said.
+        // Summaries first, so one never outlives its document: a live summary under a deleted
+        // document is still a readable account of it.
         await _ctx.ConversationDocumentSummaries
             .Where(s => s.ConversationDocument.ConversationId == id)
             .ExecuteUpdateAsync(s => s
@@ -502,10 +434,7 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             return;
         }
 
-        // Patched by identifier rather than queried and replaced. Besides removing the
-        // read-modify-write window, this drops a cross-partition query whose predicates
-        // (c.UserId, c.DateDeactivated) did not match the documents' camelCase property names
-        // and so never selected anything. SQL has already narrowed the ids to this user's.
+        // Patched by id, with no read-modify-write window; SQL has already narrowed the ids to this user's.
         foreach (var conversationId in conversationIds)
         {
             await _transcriptStore.PatchItemAsync(
@@ -564,12 +493,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        // Read untracked: the write below is an ExecuteUpdate, and a tracked entity carrying the
-        // pre-naming token values alongside it is exactly the mix EF warns about — a later
-        // SaveChanges would write the stale counters back over the increment.
-        // Owner-scoped and active-only, like every other read. The sole caller has already
-        // matched ownership, but this method is public on the interface, and a filter that is
-        // correct only because of who happens to call it is a filter waiting to be wrong.
+        // Untracked so a later SaveChanges cannot write stale counters over the ExecuteUpdate below.
+        // Owner-scoped although the only caller already checked: the method is public.
         var callerId = _tokenService.GetOid();
         var conversation = await _ctx.Conversations
             .AsNoTracking()
@@ -600,9 +525,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
                         x.OutputPricePerMillionTokens
                     })
                     .FirstOrDefaultAsync(cancellationToken);
-        // DeploymentName is not checked here: the create and update validators already enforce
-        // NotEmpty on it, and guarding only this path — which runs on a conversation's first turn
-        // alone — would leave every later turn shipping the same empty ModelId anyway.
+        // DeploymentName is not checked: the model validators enforce NotEmpty, and this path runs
+        // on the first turn only.
         if (model is null)
         {
             LogModelNotFound(_logger, request.ModelId);
@@ -614,9 +538,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             ]);
         }
 
-        // Naming runs inline on a conversation's first turn, so it has to reach the same provider
-        // as the turn itself — a deployment without an Azure client would otherwise fail here
-        // before the stream ever produced a token.
+        // Naming runs inline on the first turn, so it must use the turn's provider or fail the stream
+        // before its first token.
         var chatClient = _chatClientResolver.Resolve(model.ProviderId);
 
         var response = await chatClient.GetResponseAsync([
@@ -632,11 +555,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
         var name = response.Messages.Last().Text?.Trim() ?? string.Empty;
         var date = _timeProvider.GetUtcNow();
 
-        // A non-streaming tracked request carries its report on the response rather than
-        // in-band. Preferred over ChatResponse.Usage because it separates the assistant's own
-        // consumption from anything a tool spent — although naming attaches no tools, so the
-        // two agree today and the usage falls back to the raw response when tracking is not
-        // installed on the client that served it.
+        // A non-streamed tracked request carries its report on the response; ChatResponse.Usage is
+        // the fallback when tracking is not installed.
         var report = response.AdditionalProperties?.TryGetValue(
             ToolTrackingChatClient.UsageReportPropertyName, out ChatUsageReport? usageReport) is true
                 ? usageReport
@@ -645,19 +565,13 @@ public partial class ConversationService(ILogger<ConversationService> logger,
         var inputTokens = report?.AssistantUsage.InputTokenCount ?? response.Usage?.InputTokenCount ?? 0;
         var outputTokens = report?.AssistantUsage.OutputTokenCount ?? response.Usage?.OutputTokenCount ?? 0;
 
-        // Read off the raw response rather than the report, which is the opposite of the two
-        // above. The middleware's aggregation carries only input, output and total, so these
-        // two arrive null on its report however faithfully the provider reported them; the
-        // response's own usage is untouched and still has them. There is no per-turn breakdown
-        // to fall back on here, because a non-streamed call produces none.
+        // From the raw response, unlike the two above: the middleware's aggregation drops these, and
+        // a non-streamed call has no per-turn breakdown to sum.
         var cachedInputTokens = response.Usage?.CachedInputTokenCount;
         var reasoningTokens = response.Usage?.ReasoningTokenCount;
 
-        // Name and counters move together in one statement, and the usage row lands in the same
-        // transaction, so a conversation whose totals include the naming call always carries the
-        // row that accounts for it. Naming is a real completion against a real deployment and is
-        // billed like any other call; it used to be charged to nobody, which made a
-        // conversation's totals — and every report built on them — understate what was spent.
+        // Name, counters and usage row commit together, so totals that include the naming call
+        // always carry the row that accounts for it.
         await using var transaction = await _ctx.Database.BeginTransactionAsync(cancellationToken);
 
         await _ctx.Conversations
@@ -682,9 +596,7 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             OutputTokens = outputTokens,
             CachedInputTokens = cachedInputTokens,
             ReasoningTokens = reasoningTokens,
-            // Priced like any other call: naming is a real completion against a real
-            // deployment, so leaving it unpriced would understate a conversation's cost by
-            // exactly the call that a report is least likely to look for.
+            // Priced like any other call: naming is a real, billed completion.
             InputPricePerMillionTokens = model.InputPricePerMillionTokens,
             OutputPricePerMillionTokens = model.OutputPricePerMillionTokens
         });
@@ -692,9 +604,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
         await _ctx.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        // Patch the two fields that changed. Passing the SQL entity to a full-document replace
-        // here overwrote the Cosmos document with the relational shape and destroyed the
-        // transcript — and this runs from inside a live stream, on the conversation's first turn.
+        // Patch only what changed: a full replace with the SQL entity would destroy the transcript
+        // mid-stream.
         await _transcriptStore.PatchItemAsync(
             conversation.Id.ToString(), TranscriptPartition(conversation.UserId, conversation.Id),
         [
@@ -723,11 +634,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             .AsNoTracking()
             .Where(x => x.UserId == userId);
 
-        // Throws before the page is read, so a project that is missing, deactivated or another
-        // user's answers 404 rather than an empty page — the route cannot be used to probe for
-        // project ids, exactly as the single-project route behaves. A deactivated project is
-        // the case that needs it most: DeactivateProjectAsync releases its conversations, so
-        // without the check this would answer an empty page for a project that once had rows.
+        // A missing, deactivated or foreign project answers 404 rather than an empty page, so the
+        // route cannot probe project ids; a deactivated project's released conversations would look empty.
         if (projectId.HasValue)
         {
             await EnsureProjectExistsAsync(projectId.Value, userId, cancellationToken);
@@ -782,10 +690,7 @@ public partial class ConversationService(ILogger<ConversationService> logger,
         }
 
         var date = _timeProvider.GetUtcNow();
-        // A full-representation PUT: an absent ProjectId removes the conversation from its
-        // project rather than leaving the current value in place. The DTO documents this, since
-        // a rename that forgets to echo the project id would otherwise silently orphan the
-        // conversation.
+        // Full-representation PUT: an absent ProjectId removes the conversation from its project.
         var rows = await _ctx.Conversations
             .Where(x => x.Id == request.Id && x.UserId == userId)
             .ExecuteUpdateAsync(s => s
@@ -801,9 +706,7 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             PatchOperation.Set("/dateModified", date),
         ], cancellationToken);
 
-        // Re-read through the listing projection rather than GetConversationAsync: this route
-        // returns ConversationDto, so the detail read's extra round trip for the MCP selection
-        // would be spent on a field the response does not carry.
+        // Not GetConversationAsync: its MCP-selection round trip fills a field ConversationDto lacks.
         return await _ctx.Conversations
             .AsNoTracking()
             .Where(x => x.Id == request.Id)
@@ -819,12 +722,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
         var userId = _tokenService.GetOid();
         var date = _timeProvider.GetUtcNow();
 
-        // No Cosmos patch: favouriting only affects how conversations are listed, and the
-        // transcript has no use for the flag. Keeping it out also keeps a star click off the
-        // document a live turn may be appending to.
-        // DateModified is deliberately left alone: starring a conversation does not modify it,
-        // and moving the SQL timestamp would put it out of step with the Cosmos document's own,
-        // which the transcript endpoint returns.
+        // No Cosmos patch, which keeps a star click off a live turn's document. DateModified is left
+        // alone so SQL stays in step with the Cosmos timestamp the transcript endpoint returns.
         var rows = await _ctx.Conversations
             .Where(x => x.Id == id && x.UserId == userId)
             .ExecuteUpdateAsync(s => s
@@ -840,9 +739,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
 
     /// <inheritdoc />
     /// <remarks>
-    /// Not an iterator, so the argument check runs on the call rather than at the first
-    /// <c>MoveNextAsync</c>. The lock is still taken inside the iterator, which would otherwise strand it
-    /// for a caller that never enumerates, but before the first fragment, so contention is a clean 409.
+    /// Not an iterator, so the argument check runs on the call. The lock is taken inside the iterator (a
+    /// caller that never enumerates cannot strand it) but before the first fragment, so contention is a 409.
     /// </remarks>
     public IAsyncEnumerable<AssistantUiEvent> StreamConversationAsync(Guid id, CreateConversationStreamActionDto request, CancellationToken cancellationToken)
     {
@@ -859,17 +757,14 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     {
         var userId = _tokenService.GetOid();
 
-        // The partition key is built from the caller's user id, so a conversation belonging to
-        // someone else addresses a partition that holds nothing and this read answers null — a
-        // 404, never a 403, matching every other conversation route.
+        // The partition key includes the caller's id, so another user's conversation reads null: a
+        // 404, never a 403.
         var header = await ReadHeaderAsync(userId, id, cancellationToken);
 
         if (header is null)
         {
-            // A conversation created before the transcript cutover has a SQL row and no header,
-            // because the cutover destroyed every transcript. It still opens: an empty
-            // transcript is the truth about it, and an error would strand a row the user can
-            // see in their sidebar.
+            // A pre-cutover conversation has a SQL row but no header. An empty transcript is the
+            // truth about it, and an error would strand a row the user sees in their sidebar.
             return await ReadEmptyTranscriptAsync(userId, id, cancellationToken);
         }
 
@@ -879,15 +774,12 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             throw new NotFoundException($"Conversation {id} not found.");
         }
 
-        // Clamped rather than validated, matching every other paginated route here. Absent
-        // means the whole transcript: the client that reads this endpoint today expects every
-        // message, so paging is opt-in and the default is unchanged.
+        // Clamped, not validated, like the other paginated routes. Absent means the whole transcript:
+        // paging is opt-in.
         var clamped = take.HasValue ? Math.Clamp(take.Value, 1, 100) : (int?)null;
 
-        // One more than asked for, purely to answer "is there another page". Deriving that from
-        // the header's total instead would be wrong while walking backwards: every page would be
-        // compared against the whole transcript rather than against what is left behind it, so
-        // the last page would always claim another one follows.
+        // One extra to answer "is there another page"; the header's total cannot, because walking
+        // backwards it would always claim another page follows.
         var probe = clamped.HasValue ? clamped.Value + 1 : (int?)null;
         var fetched = await ReadMessagesAsync(userId, id, probe, before, cancellationToken);
 
@@ -905,10 +797,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
                             HtmlContent = x.HtmlContent,
                             Tokens = x.Tokens,
                             TokenAccuracy = x.TokenAccuracy,
-                            // Read straight off the document rather than joined from the usage
-                            // row: the transcript recorded the turn's totals beside the message
-                            // when it was written, and the audit row is the wrong side to reach
-                            // from — it is keyed the other way and would cost a query per page.
+                            // Off the document, not joined from the usage row, which is keyed the
+                            // other way and would cost a query per page.
                             Usage = x.Usage is null
                                 ? null
                                 : new ConversationMessageUsageDto
@@ -916,9 +806,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
                                     InputTokens = x.Usage.InputTokens,
                                     OutputTokens = x.Usage.OutputTokens
                                 },
-                            // Read off the document for the same reason, and the reason it is
-                            // written there first: this projection is the whole of what a reader
-                            // gets back on a reload, so the relational row cannot stand in for it.
+                            // Off the document too: this projection is all a reload gets, so the
+                            // relational row cannot stand in for it.
                             Feedback = x.Feedback is null
                                 ? null
                                 : new ConversationMessageFeedbackDto
@@ -946,11 +835,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             DateCreated = header.DateCreated,
             DateModified = header.DateModified,
             Messages = messages,
-            // Taken from the header rather than counted, which the write batch's atomicity is
-            // what makes exact. The system message is counted here and excluded from the
-            // payload, because the total describes the transcript rather than this page of it —
-            // so the oldest page of a paged read comes back one message short of `take`, once,
-            // when it is the page the system message falls on.
+            // The header's count (exact thanks to the batched writes) includes the system message the
+            // payload omits, so the oldest page of a paged read comes back one short of `take`.
             TotalCount = header.MessageCount,
             HasMore = hasMore
         };
@@ -969,19 +855,13 @@ public partial class ConversationService(ILogger<ConversationService> logger,
         // the projection row's foreign key before anything tries to write it.
         await EnsureConversationExistsAsync(conversationId, userId, cancellationToken);
 
-        // A point read rather than a query, and no "does this message belong to that
-        // conversation" check afterwards: the partition key composes the caller's user id with
-        // the conversation id, so a message from another conversation — or another user's copy
-        // of this one — addresses a partition that holds nothing and this answers null.
+        // No ownership check needed: the partition key combines the caller and conversation ids, so
+        // a message from elsewhere reads null.
         var message = await _transcriptStore.ReadItemAsync<TranscriptMessageDocument>(
             messageId.ToString(), TranscriptPartition(userId, conversationId), cancellationToken);
 
-        // The discriminator is checked here and not only in the query predicates, because this
-        // is the one read in the service whose id comes straight off the route. The header
-        // document shares the partition under the conversation's own id, so a caller passing the
-        // conversation id as the message id would otherwise point-read the header, have it
-        // deserialize into this shape with every unmapped member dropped, and be answered about
-        // a message that does not exist.
+        // The id comes off the route, and the header shares this partition under the conversation id,
+        // so without the type check a conversation id would point-read the header as a message.
         if (message is null || message.Type is not TranscriptDocumentTypes.Message)
         {
             LogMessageNotFoundInConversation(_logger, messageId, conversationId);
@@ -991,9 +871,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
 
         if (message.Role is not ChatRoles.Assistant)
         {
-            // Keyed on the route parameter rather than a property of the body, as the sort and
-            // export parameters are: the rating is well-formed, and the message it names is not
-            // one there is anything to rate.
+            // Keyed on the route parameter, as the sort and export parameters are: the body is
+            // well-formed, but the message it names cannot be rated.
             throw new ValidationException(
             [
                 new ValidationFailure(
@@ -1008,9 +887,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
 
         if (!written)
         {
-            // Withdrawing a rating nobody recorded. Projecting it anyway would file a row
-            // claiming this message was considered, for every message a client cared to post a
-            // null rating at — and "messages considered" is the denominator reporting reads.
+            // Withdrawing an unrecorded rating; projecting it would inflate "messages considered",
+            // the denominator reporting reads.
             return;
         }
 
@@ -1021,38 +899,21 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     /// <summary>
     /// Everything a finished turn needs to record, whether it ran to completion or was abandoned.
     /// </summary>
-    /// <param name="ConversationId">The conversation the turn belongs to.</param>
-    /// <param name="UserId">The object identifier of the user the turn is charged to.</param>
+    /// <param name="ConversationId">The conversation.</param>
+    /// <param name="UserId">The user the turn is charged to.</param>
     /// <param name="Model">The catalog model that served the turn.</param>
-    /// <param name="McpServers">The MCP servers attached to the turn; empty when none were selected.</param>
+    /// <param name="McpServers">Empty when none were selected.</param>
     /// <param name="Status">How the turn ended.</param>
     /// <param name="Prompt">The user's prompt.</param>
-    /// <param name="Answer">The text the model produced, possibly truncated when the turn was abandoned.</param>
-    /// <param name="PromptReceivedAt">
-    /// The moment the prompt arrived, which is what the user message is stamped with.
-    /// </param>
-    /// <param name="HeaderExists">
-    /// Whether the conversation already has a transcript header. False for a conversation
-    /// created before the transcript cutover, whose header the turn has to create rather than
-    /// patch.
-    /// </param>
-    /// <param name="ConversationName">
-    /// The conversation's name, needed only when the header has to be created.
-    /// </param>
-    /// <param name="ConversationCreatedAt">
-    /// When the conversation was created, needed only when the header has to be created, so a
-    /// reseeded header does not report this turn's moment as the conversation's creation date.
-    /// </param>
-    /// <param name="EstimatedPromptTokens">
-    /// What this application estimated the prompt would cost, including per-turn overhead. Kept
-    /// so finalization can compare it against what the provider reported.
-    /// </param>
-    /// <param name="Report">
-    /// What the turn consumed, as the tool-tracking middleware accounted for it, or
-    /// <see langword="null"/> when it produced no report at all.
-    /// </param>
-    /// <param name="Attachments">The files the File Agent stored during the turn, for the assistant message; a stopped or faulted turn's are withdrawn first, leaving this empty.</param>
-    /// <param name="FileAgent">The File Agent's pinned catalog model, which its tool calls are attributed to, or <see langword="null"/> when the turn did not attach the agent.</param>
+    /// <param name="Answer">Possibly truncated when the turn was abandoned.</param>
+    /// <param name="PromptReceivedAt">Stamps the user message.</param>
+    /// <param name="HeaderExists">False for a pre-cutover conversation, whose header the turn creates.</param>
+    /// <param name="ConversationName">Only for creating the header.</param>
+    /// <param name="ConversationCreatedAt">Only for creating the header, so it keeps the real date.</param>
+    /// <param name="EstimatedPromptTokens">Includes overhead; compared with the provider's figure.</param>
+    /// <param name="Report">The middleware's accounting, or <see langword="null"/> when there is none.</param>
+    /// <param name="Attachments">Files the File Agent stored; empty for a stopped or faulted turn.</param>
+    /// <param name="FileAgent">The agent's pinned model, or <see langword="null"/> when not attached.</param>
     private sealed record TurnOutcome(
         Guid ConversationId,
         Guid UserId,
@@ -1073,9 +934,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     #region Private methods
 
     /// <remarks>
-    /// The string comparison is the database collation's, not the CLR's — case-insensitive on a
-    /// SQL Server default and ordinal on the SQLite the unit tests run against. A client must not
-    /// re-sort a page with <c>localeCompare</c> and expect to agree with it.
+    /// Names compare by database collation (case-insensitive on SQL Server, ordinal on SQLite), so a
+    /// client must not re-sort a page with <c>localeCompare</c>.
     /// </remarks>
     private static IOrderedQueryable<Conversation> OrderConversations(
         IQueryable<Conversation> query,
@@ -1083,9 +943,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     {
         if (order is not { } requested)
         {
-            // Left exactly as it was before this listing accepted an order, tie-break and all —
-            // which is to say without one. Adding Id here would reorder conversations created in
-            // the same tick, and clients written against this route are promised it unchanged.
+            // Deliberately no tie-break: adding Id would reorder same-tick conversations, and the
+            // default order is promised unchanged.
             return query.OrderByDescending(x => x.DateCreated);
         }
 
@@ -1099,13 +958,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
                 : query.OrderByDescending(x => x.DateCreated)
         };
 
-        // Every requested order gets a tie-break the default cannot be given: a client paging
-        // through a list needs the row at a page boundary to be the same row every time.
-        //
-        // It follows the requested direction rather than being fixed, and on this listing that
-        // is the difference between a working control and an inert one: every untitled
-        // conversation carries the same name, so under a fixed tie-break A-Z and Z-A would both
-        // collapse to the tie-break's own order and the reader would see nothing happen.
+        // A tie-break for stable paging, following the requested direction: untitled conversations
+        // share a name, so a fixed tie-break would make A-Z and Z-A look identical.
         return requested.IsAscending
             ? ordered.ThenBy(x => x.Id)
             : ordered.ThenByDescending(x => x.Id);
@@ -1115,18 +969,10 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     /// Runs a single chat turn under the conversation lock: loads history, streams the model
     /// response and its tool activity to the caller, then persists the turn.
     /// </summary>
-    /// <param name="id">The unique identifier of the conversation.</param>
-    /// <param name="request">The validated stream request.</param>
-    /// <param name="userId">The object identifier of the calling user, resolved by the caller.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>An asynchronous sequence of events as the turn produces them.</returns>
-    /// <exception cref="ConversationBusyException">Thrown when another turn is already in flight for this conversation.</exception>
-    /// <exception cref="NotFoundException">Thrown when the conversation does not exist for this user.</exception>
     private async IAsyncEnumerable<AssistantUiEvent> StreamConversationCoreAsync(Guid id, CreateConversationStreamActionDto request, Guid userId, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        // using var, rather than a separate acquire and using block: it makes acquisition and
-        // release inseparable, so no statement can be introduced between them that could throw
-        // and strand the lock. A stranded conversation lock is unrecoverable short of a restart.
+        // using var keeps acquire and release inseparable: a statement slipped between them could
+        // throw and strand the lock until a restart.
         using var lockReleaser = await _conversationLockService.TryAcquireLockAsync(id, cancellationToken)
             ?? throw LogAndCreateBusy(id);
 
@@ -1140,19 +986,15 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             throw new NotFoundException($"Conversation with id {id} not found.");
         }
 
-        // The moment the prompt was received, carried to the write so the user message is
-        // stamped when it was asked rather than when the answer finished. Those are genuinely
-        // different moments, and the difference is what makes dateCreated a total order.
+        // Stamps the user message when it was asked, not when the answer finished, which keeps
+        // dateCreated a total order.
         var promptReceivedAt = _timeProvider.GetUtcNow();
 
-        // A one-RU point read rather than a count query. It answers two questions the turn needs
-        // before it can run: whether this is the conversation's first turn, and whether the
-        // header exists at all — a conversation created before the transcript cutover has none,
-        // and patching a header that is absent would fail the whole write batch.
+        // A one-RU point read: is this the first turn, and does a header exist at all? Pre-cutover
+        // conversations have none, and patching an absent header would fail the whole batch.
         var header = await ReadHeaderAsync(userId, id, cancellationToken);
 
-        // Only the seeded system prompt so far, i.e. this is the conversation's first turn:
-        // name it from the opening prompt before answering it.
+        // Only the seeded system prompt so far: name the conversation from its opening prompt.
         if (header is { MessageCount: 1 })
         {
             await UpdateConversationNameAsync(id, request, cancellationToken);
@@ -1165,11 +1007,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             new(ChatRole.User, request.Prompt)
         };
 
-        // Read per turn rather than snapshotted into the transcript at creation time: editing a
-        // project's instructions has to affect the conversations already in it, and moving a
-        // conversation between projects has to swap which instructions apply. Carried on the
-        // chat options rather than as a message for the same reason — the transcript is the
-        // conversation's own record, and this is derived context that belongs to the request.
+        // Read per turn and carried on the chat options, not the transcript, so editing a project's
+        // instructions or moving the conversation between projects takes effect.
         var projectInstructions = await GetProjectInstructionsAsync(conversation.ProjectId, cancellationToken);
 
         var model = await _modelService.GetModelAsync(request.ModelId, cancellationToken);
@@ -1179,69 +1018,46 @@ public partial class ConversationService(ILogger<ConversationService> logger,
         StringBuilder sb = new();
         var completed = false;
 
-        // Held back rather than forwarded with the rest of the stream. The frame has to carry
-        // the identifier of the assistant message the turn produced, and that message does not
-        // exist until PersistTurnAsync has written the transcript — which runs in the finally
-        // below, after the loop that yields events has already exited. Re-emitted underneath
-        // this block once the write has answered.
+        // Held back: the frame carries the assistant message id, which exists only once
+        // PersistTurnAsync runs in the finally below. Re-emitted after the lease block.
         AssistantUiEvent? finishedEvent = null;
         Guid? assistantMessageId = null;
 
-        // Copied out of the lease while it is still open, because the frame that carries it is
-        // yielded after the lease scope has closed.
+        // Copied while the lease is open; the frame carrying it is yielded after the scope closes.
         IReadOnlyList<MessageAttachmentDto> generatedAttachments = [];
 
-        // Held for the same reason the frame is. A completed turn is owed its Finished event
-        // whatever the write then does, and throwing out of the finally below would skip the
-        // statement that delivers it — so the failure is captured there and rethrown after.
+        // A completed turn is owed its Finished frame whatever the write does, so a write failure is
+        // captured in the finally and rethrown after the frame.
         ExceptionDispatchInfo? persistFailure = null;
 
-        // The lease set (null when no MCPs are selected) must stay alive for the whole
-        // stream: the attached tools invoke through the leased clients. await using
-        // releases the leases on completion, fault, or client disconnect alike.
+        // The leases (null without MCPs) must outlive the stream: the tools invoke through them.
         await using (fileAgentLease)
         await using (toolLeases)
         {
-            // Inside the lease scope, not before it: this throws when the prompt cannot fit the
-            // model's context window, and a throw between acquiring the leases and entering the
-            // scope would strand them. A stranded lease never decrements its cache entry's
-            // count, so the MCP client it holds is never disposed even after eviction.
+            // Inside the lease scope because this throws when the prompt cannot fit, and a throw
+            // before the scope would strand the leases and the MCP clients they hold.
             var estimator = _tokenEstimatorResolver.Resolve(model.ProviderId);
             var estimatedPromptTokens = ApplyContextBudget(
                 conversations, transcript, request.Prompt, model, chatOptions, estimator);
 
-            // Collects the tracking middleware's report. Reading the token counts off the
-            // stream instead would lose everything for a turn that never reaches its final
-            // update, which is every cancelled turn.
+            // Counts read off the stream would be lost for every cancelled turn, which never
+            // reaches its final update.
             var usageScope = ChatUsageScope.Create();
 
-            // Enumerated by hand rather than with await foreach, and this is the reason: the
-            // scope has to be ambient while the middleware runs, and an async iterator resumes
-            // on whatever execution context its consumer supplies, so anything made ambient
-            // here is gone after the first yield return below. Re-entering the scope around
-            // each move — and around the disposal that finalizes an abandoned request — is what
-            // keeps it in effect for exactly the windows the middleware occupies.
+            // Enumerated by hand so the scope can be re-entered around each move and the final
+            // disposal: an async iterator loses ambient state after a yield.
             var events = chatClient
                 .GetStreamingResponseAsync(conversations, chatOptions, cancellationToken)
                 .ToUiEventsAsync(cancellationToken)
                 .GetAsyncEnumerator(cancellationToken);
 
-            // try/finally rather than straight-line code after the loop: a turn that is
-            // cancelled or faults still consumed — and is still billed for — every token the
-            // model produced up to that point, and this is the only path that runs when the
-            // controller disposes the enumerator because the client disconnected. A catch
-            // cannot enclose a yield return, so the outcome is classified from a flag.
+            // A cancelled or faulted turn is still billed, and the finally is the only path that
+            // runs when a disconnect disposes the enumerator. A catch cannot enclose a yield, hence the flag.
             try
             {
-                // Synthesized ahead of the model call, after every failure point that can
-                // still answer with problem JSON — the lock, the conversation reads, naming,
-                // model resolution, and tool acquisition; the enumerator above is lazy, so a
-                // synchronous construction failure also stays pre-stream. The first yield
-                // commits the response to text/event-stream, which is a deliberate trade-off:
-                // a provider that faults on its very first token now surfaces as a truncated
-                // stream rather than a problem response, in exchange for the client hearing
-                // something before model latency. Inside the try, so a client that
-                // disconnects on these frames still reaches the finally that records the turn.
+                // After every failure point that can still answer with problem JSON. The first yield
+                // commits to text/event-stream, so a first-token fault becomes a truncated stream (a
+                // deliberate trade for early feedback); in the try so a disconnect still records the turn.
                 yield return new AssistantUiEvent
                 {
                     Kind = AssistantUiEventKind.Status,
@@ -1249,10 +1065,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
                     Timestamp = _timeProvider.GetUtcNow()
                 };
 
-                // A deliberate contract deviation, requested by the product: the package
-                // documents ReasoningDelta as model-sourced text, and this seeds it
-                // server-side, so every turn reports reasoning whatever the model streams.
-                // Timestamp stays at its default, as the contract prescribes for deltas.
+                // A deliberate, product-requested deviation: ReasoningDelta is documented as
+                // model-sourced. Timestamp stays default, as the contract prescribes for deltas.
                 yield return new AssistantUiEvent
                 {
                     Kind = AssistantUiEventKind.ReasoningDelta,
@@ -1276,9 +1090,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
 
                     var uiEvent = events.Current;
 
-                    // Only the answer is transcribed. Reasoning arrives as its own event kind
-                    // and is shown live but never persisted: replaying a model's reasoning back
-                    // to it on the next turn is neither useful nor what providers expect.
+                    // Only the answer is transcribed; reasoning is shown live but never replayed
+                    // to the model.
                     if (uiEvent.Kind is AssistantUiEventKind.TextDelta && !string.IsNullOrEmpty(uiEvent.Text))
                     {
                         sb.Append(uiEvent.Text);
@@ -1297,15 +1110,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             }
             finally
             {
-                // Before the report is read: disposal is where the middleware finalizes a
-                // request that was abandoned rather than drained, and where it hands the
-                // observer the partial account of what that turn had already spent.
-                //
-                // Guarded for the same reason the audit write below is, and it needs its own
-                // guard because it runs ahead of that one: a provider aborting its response
-                // stream during teardown would otherwise replace the exception already in
-                // flight and skip the accounting entirely. Whatever the middleware published
-                // before the failure survives it.
+                // Before the report is read: disposal finalizes an abandoned request. Guarded so a
+                // teardown fault cannot replace the in-flight exception and skip the accounting.
                 try
                 {
                     using (usageScope.Enter())
@@ -1318,10 +1124,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
                     LogDisposingResponseStreamFailed(_logger, ex, id);
                 }
 
-                // A generated file reaches the transcript only on a completed turn, so one stored
-                // by a turn that was stopped or faulted would sit in the conversation's files with
-                // no message introducing it. Withdrawn before the attachments are read, so the
-                // audit row records what the user actually got.
+                // An abandoned turn's files would have no message introducing them. Withdrawn before
+                // the attachments are read, so the audit row records what the user actually got.
                 if (!completed && fileAgentLease is not null)
                 {
                     await fileAgentLease.DiscardGeneratedAsync();
@@ -1358,47 +1162,25 @@ public partial class ConversationService(ILogger<ConversationService> logger,
                 }
                 catch (Exception ex) when (!completed)
                 {
-                    // Filtered on !completed: throwing out of a finally while an exception is
-                    // already in flight would replace it, so a cancelled turn would surface as a
-                    // database error rather than the 499 it owes the client. Losing the usage row
-                    // is the lesser harm.
+                    // Throwing would replace the in-flight exception, turning a cancelled turn's 499
+                    // into a database error; losing the usage row is the lesser harm.
                     LogAbandonedTurnUsageFailed(_logger, ex, id);
                 }
                 catch (Exception ex)
                 {
-                    // The completed half. The failure still reaches the caller — captured rather
-                    // than swallowed — but only after the Finished frame it would otherwise have
-                    // cost. That frame used to be forwarded from inside the loop, so a write
-                    // that threw truncated the body *after* it; holding the frame back must not
-                    // quietly turn a completed turn into one the client reads as incomplete.
-                    //
-                    // It matters most for the failures after the SQL commit —
-                    // _markdownRenderer.Render is one — which leave the same billed-but-not-
-                    // transcribed state that a failed batch reports with a bare Finished.
+                    // Rethrown after the Finished frame, so a completed turn still reads as complete
+                    // (e.g. a Render failure after the SQL commit).
                     persistFailure = ExceptionDispatchInfo.Capture(ex);
                 }
             }
         }
 
-        // Outside the lease scope, because the leases have no part in this frame and their
-        // lifetime belongs to the model call rather than to the write that followed it.
-        //
-        // Reached only on a turn that ran to completion: a cancelled turn and a faulted one are
-        // never sent a Finished event by the middleware, and a client that disconnected stops
-        // pulling — disposing a suspended iterator resumes it in dispose mode, which runs the
-        // finally above and terminates rather than continuing here. That is what makes "no
-        // assistantMessageId is claimed for an abandoned turn" structural rather than a
-        // condition to remember.
+        // Reached only on a completed turn: abandoned turns get no Finished event, and a disconnect
+        // disposes the iterator through the finally, so no abandoned turn claims a message id.
         if (finishedEvent is not null)
         {
-            // Null when the turn completed and the transcript write did not — the usage row is
-            // committed but its message was never written, whether the batch reported failure
-            // or the write threw. The frame still goes out, without the key: the identifier is
-            // a promise about what the transcript will return, and there is nothing to return.
-            //
-            // Assignment rather than a merge, and safe because it is: ToUiEventsAsync documents
-            // that it always leaves Metadata null, so there is nothing here to preserve. A
-            // package that starts attaching its own values would need this to merge.
+            // No message id when the transcript write failed: the id promises a readable message.
+            // Assigned, not merged, because ToUiEventsAsync always leaves Metadata null.
             Dictionary<string, string> metadata = [];
 
             if (assistantMessageId is { } messageId)
@@ -1406,9 +1188,7 @@ public partial class ConversationService(ILogger<ConversationService> logger,
                 metadata[IConversationService.AssistantMessageIdMetadataKey] = messageId.ToString();
             }
 
-            // Only on the turn that made them, and only once they are genuinely stored: this is
-            // what lets the chip appear under the answer without waiting for a reload, and a
-            // reload reads the same identities off the transcript.
+            // Only on the turn that made them, once stored, so the chip appears without a reload.
             if (generatedAttachments.Count > 0)
             {
                 metadata[IConversationService.GeneratedAttachmentsMetadataKey] =
@@ -1418,9 +1198,7 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             yield return metadata.Count > 0 ? finishedEvent with { Metadata = metadata } : finishedEvent;
         }
 
-        // After the frame, never instead of it. Rethrown with its original stack, so the
-        // endpoint still sees the failure — on a stream that has already started it short-
-        // circuits on Response.HasStarted rather than corrupting the body.
+        // After the frame, never instead of it; GlobalExceptionHandler leaves a started response alone.
         persistFailure?.Throw();
     }
 
@@ -1429,24 +1207,13 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     /// audit row with the tool calls underneath it, and — only for a turn that completed — the
     /// transcript append.
     /// </summary>
-    /// <param name="turn">The outcome to record.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>
-    /// The identifier of the assistant message this turn appended to the transcript, or
-    /// <see langword="null"/> when it appended none — an abandoned turn, or a completed one
-    /// whose transcript write failed after the usage row had already committed.
+    /// The appended assistant message's id, or <see langword="null"/> for an abandoned turn or a
+    /// failed transcript write.
     /// </returns>
     /// <remarks>
-    /// An abandoned turn is billed but not transcribed: appending a truncated answer would
-    /// corrupt the history every later turn replays to the model. It still moves the counters
-    /// and writes its usage row, so reports account for tokens the user stopped paying attention
-    /// to but was still charged for.
-    /// <para>
-    /// The return value is deliberately narrower than the identifier written to
-    /// <see cref="ConversationUsage.AssistantMessageId"/>, which is set before the transcript
-    /// append is attempted and is therefore best-effort. What the caller puts on the wire has to
-    /// be a message a client can actually read back.
-    /// </para>
+    /// An abandoned turn is billed but not transcribed: a truncated answer would corrupt replayed history.
+    /// <see cref="ConversationUsage.AssistantMessageId"/> is set before the append, so it is best-effort.
     /// </remarks>
     private async Task<Guid?> PersistTurnAsync(TurnOutcome turn, CancellationToken cancellationToken)
     {
@@ -1458,10 +1225,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
 
         if (turn.Report is null)
         {
-            // Tracking is installed on every chat client, so a missing report means the request
-            // faulted before the middleware could account for anything. The turn is still
-            // recorded — at zero — rather than dropped: a conversation with a gap in its audit
-            // trail is worse than one with a zero-token row explaining the gap.
+            // Tracking is on every client, so no report means an early fault. Recorded at zero
+            // rather than dropped: a zero-token row explains the gap in the audit trail.
             LogNoUsageReportForTurn(_logger, turn.Status, conversationId);
         }
 
@@ -1470,17 +1235,13 @@ public partial class ConversationService(ILogger<ConversationService> logger,
         if (turn.FileAgent is null
             && turnUsage.ToolCalls.Exists(call => call.Kind == ConversationToolKinds.Agent))
         {
-            // The startup validator should have made this unreachable. Logged rather than
-            // reconstructed: the column is a foreign key and this write runs after the answer has
-            // already streamed, so a guessed id would trade an unattributed row for a lost one.
+            // The startup validator should prevent this. Logged, not guessed: the column is a
+            // foreign key and the answer has already streamed.
             LogAgentToolCallWithoutModel(_logger, conversationId);
         }
 
-        // Only on a turn that invoked no tools. A turn that ran tools was billed for prompts the
-        // estimator never saw — every tool round trip re-sends the conversation plus the tool's
-        // result — so the two figures measure different things and comparing them would record
-        // an error that is not one. Token-zero is deliberately not the test: an MCP server can
-        // run and report no usage at all.
+        // Tool-free turns only: tool round trips re-send prompts the estimator never saw. Not a
+        // token-zero test, since an MCP server can run and report no usage.
         if (turn.Report is not null && turnUsage.ToolCalls.Count == 0)
         {
             ChatMetrics.RecordEstimatorError(
@@ -1490,17 +1251,13 @@ public partial class ConversationService(ILogger<ConversationService> logger,
                 turnUsage.InputTokens);
         }
 
-        // The conversation's running counters move by everything the turn consumed — the
-        // assistant's own turns and every tool, MCP call and agent underneath them. Derived
-        // from the same numbers written to the audit row below rather than read separately off
-        // the report, so the counters can never disagree with the sum of the rows.
+        // Everything the turn consumed, tools included, from the audit-row numbers so the counters
+        // always match the rows.
         var inputTokens = turnUsage.TotalInputTokens;
         var outputTokens = turnUsage.TotalOutputTokens;
 
-        // Estimated before the transaction opens so the context roll-up can ride the update that
-        // is already running, rather than costing a second statement. Null — not zero — for a
-        // turn that was billed and never transcribed: null says "not transcribed" where zero
-        // would claim it was transcribed and weighed nothing.
+        // Estimated before the transaction so the roll-up rides the running update. Null, not zero,
+        // for a turn billed but never transcribed.
         var estimator = _tokenEstimatorResolver.Resolve(turn.Model.ProviderId);
         var deploymentName = turn.Model.DeploymentName;
 
@@ -1514,9 +1271,7 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             promptTokens = EstimateTokens(estimator, turn.Prompt, deploymentName);
             answerTokens = EstimateTokens(estimator, turn.Answer, deploymentName);
 
-            // The turn's own two messages, which is what the audit row records. The reseeded
-            // system message below is not one of them — it belongs to the conversation, not to
-            // this turn — so it is deliberately outside this figure.
+            // The turn's own two messages; a reseeded system message belongs to the conversation.
             contextTokens = promptTokens + answerTokens;
 
             if (!turn.HeaderExists)
@@ -1544,9 +1299,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
                 .SetProperty(x => x.DateModified, date),
                 cancellationToken);
 
-        // Id left unset so EF's sequential generator assigns it: this table grows by one row per
-        // model call, and random GUIDs in its clustered key fragment the index that carries the
-        // most rows in the schema.
+        // Id left to EF's sequential generator: random GUIDs would fragment the clustered key of
+        // the schema's fastest-growing table.
         var usage = new ConversationUsage
         {
             ConversationId = turn.ConversationId,
@@ -1576,12 +1330,9 @@ public partial class ConversationService(ILogger<ConversationService> logger,
                     McpServerName = server.Name
                 })
             ],
-            // Saved as one graph rather than row by row: EF assigns the sequential keys and
-            // fixes each child's ParentId from the navigation, so nesting survives without the
-            // random identifiers the comment above exists to avoid.
+            // One graph, so EF assigns sequential keys and fixes each child's ParentId.
             ToolCalls = turnUsage.ToolCalls,
-            // Empty on a non-streamed call, whose provider reports one aggregate and no
-            // breakdown. That is why a tool row's Iteration is only meaningful alongside these.
+            // Empty on a non-streamed call, so a tool row's Iteration only means something alongside these.
             Turns = turnUsage.Turns
         };
 
@@ -1594,15 +1345,12 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             return null;
         }
 
-        // Clamped to at least one tick after the prompt. A turn that completes inside a single
-        // tick would otherwise stamp both messages identically, and with no array position and
-        // no sequence field to fall back on, ORDER BY dateCreated could render the answer before
-        // the question — and replay it to the model that way on every later turn.
+        // At least one tick after the prompt: dateCreated is the only order, so identical stamps
+        // could put the answer before the question, in display and in every replay.
         var answeredAt = date > turn.PromptReceivedAt ? date : turn.PromptReceivedAt.AddTicks(1);
 
-        // The deployment name, not the display label: the transcript is append-only, so the value
-        // recorded here has to stay meaningful after a model is renamed in the catalog, and it is
-        // the deployment that identifies which model actually served and billed the turn.
+        // The deployment name, not the display label: the append-only transcript must stay
+        // meaningful after a catalog rename.
         var userMessage = TranscriptMessageDocument.Create(
             turn.UserId, conversationId, Guid.NewGuid(), ChatRoles.User, turn.Prompt, turn.PromptReceivedAt) with
         {
@@ -1632,9 +1380,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             })]
         };
 
-        // One batch, so the header's counters and the documents they count either all land or
-        // none do. That atomicity is what makes messageCount exact rather than advisory, and it
-        // is why nothing has to reconcile the two afterwards.
+        // One batch, so the header's counters and the documents they count land together, which
+        // keeps messageCount exact.
         var result = await _transcriptStore.ExecuteBatchAsync(
             TranscriptPartition(turn.UserId, conversationId),
             batch =>
@@ -1653,18 +1400,12 @@ public partial class ConversationService(ILogger<ConversationService> logger,
                 }
                 else
                 {
-                    // A conversation created before the transcript cutover has no header, and
-                    // patching one that is absent would fail the whole batch. Its earlier
-                    // messages were destroyed at cutover and do not come back, but the seeded
-                    // system message has to: it is the assistant's standing instructions, and a
-                    // conversation that never reseeds it would run every future turn without
-                    // them — silently, because nothing reports a missing system prompt.
+                    // Pre-cutover: no header to patch, and the seeded system message must be restored
+                    // or every later turn silently runs without the standing instructions.
                     batch.Create(reseededSystemMessage!.Id, reseededSystemMessage);
 
-                    // Stamped with the conversation's real creation date, not this turn's. The
-                    // transcript read serves the header's date once one exists, so stamping
-                    // "now" would have the same conversation report two different creation dates
-                    // either side of its first post-cutover turn.
+                    // The real creation date, not now, or the conversation would report two
+                    // creation dates either side of this turn.
                     batch.Create(
                         conversationId.ToString(),
                         TranscriptHeaderDocument.Create(
@@ -1680,11 +1421,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
 
         if (!result.IsSuccess)
         {
-            // The token counters and the usage row have already been committed to SQL, so failing
-            // silently here would bill the turn and lose it. Nothing can be returned to the
-            // caller at this point — the answer has been streamed — so this has to be caught in
-            // the logs. Both identifiers are logged because the usage row now asserts an
-            // AssistantMessageId that no transcript contains; reconciling needs the pair.
+            // Billed in SQL and already streamed, so only the logs can catch this. Both ids are
+            // logged because the usage row now names a message no transcript contains.
             LogTranscriptWriteFailed(_logger, conversationId, result.Describe(), usage.Id, assistantMessageId);
 
             return null;
@@ -1696,10 +1434,6 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     /// <summary>
     /// Throws when the conversation does not exist, is deactivated, or belongs to another user.
     /// </summary>
-    /// <param name="id">The unique identifier of the conversation.</param>
-    /// <param name="userId">The object identifier of the calling user.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <exception cref="NotFoundException">The conversation is not an active conversation of this user.</exception>
     private async Task EnsureConversationExistsAsync(Guid id, Guid userId, CancellationToken cancellationToken)
     {
         var exists = await _ctx.Conversations
@@ -1718,10 +1452,6 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     /// <summary>
     /// Throws when the project does not exist, is deactivated, or belongs to another user.
     /// </summary>
-    /// <param name="projectId">The unique identifier of the project.</param>
-    /// <param name="userId">The object identifier of the calling user.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <exception cref="NotFoundException">The project is not an active project of this user.</exception>
     private async Task EnsureProjectExistsAsync(Guid projectId, Guid userId, CancellationToken cancellationToken)
     {
         var exists = await _ctx.Projects
@@ -1740,15 +1470,9 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     /// <summary>
     /// Reads the standing instructions of the conversation's project, if it has one.
     /// </summary>
-    /// <param name="projectId">The conversation's project, or <see langword="null"/> when standalone.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>
-    /// The project's instructions, or <see langword="null"/> when the conversation has no project,
-    /// the project has been deactivated, or it carries no instructions.
-    /// </returns>
     /// <remarks>
-    /// Ownership is not re-checked here: the caller has already matched the conversation to the
-    /// signed-in user, and a project can only ever hold that same user's conversations.
+    /// Ownership is not re-checked: the caller matched the conversation, and a project only holds its
+    /// owner's conversations.
     /// </remarks>
     private async Task<string?> GetProjectInstructionsAsync(Guid? projectId, CancellationToken cancellationToken)
     {
@@ -1764,12 +1488,6 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Logs the contention and builds the exception to throw for a conversation that already
-    /// has a turn in flight.
-    /// </summary>
-    /// <param name="id">The unique identifier of the contended conversation.</param>
-    /// <returns>The exception to throw.</returns>
     private ConversationBusyException LogAndCreateBusy(Guid id)
     {
         LogConversationBusy(_logger, id);
@@ -1779,24 +1497,11 @@ public partial class ConversationService(ILogger<ConversationService> logger,
 
     /// <summary>
     /// Trims a turn's replayed history in place to what the selected model's context window can
-    /// hold, and reports the estimated prompt that results.
+    /// hold, and reports the estimated prompt that results, including the per-turn overhead.
     /// </summary>
-    /// <param name="replay">The messages about to be sent, trimmed in place.</param>
-    /// <param name="transcript">The stored messages backing all but the last entry of <paramref name="replay"/>.</param>
-    /// <param name="prompt">The current prompt, which is the last entry of <paramref name="replay"/>.</param>
-    /// <param name="model">The model that will answer.</param>
-    /// <param name="chatOptions">The options the turn will be sent with, read for tools and instructions.</param>
-    /// <param name="estimator">The estimator for the model's provider.</param>
-    /// <returns>The estimated prompt in tokens, including the per-turn overhead.</returns>
     /// <exception cref="ValidationException">
-    /// Thrown when the system message and the current prompt exceed the model's window on their
-    /// own. Failing here is deliberate: the alternative is sending a prompt the provider will
-    /// reject after the user has waited for it.
+    /// The system message and prompt alone exceed the window; failing now beats a provider rejection later.
     /// </exception>
-    /// <remarks>
-    /// Trimming decides what is <em>sent</em>, never what is <em>stored</em> — the transcript
-    /// keeps every message either way.
-    /// </remarks>
     private long ApplyContextBudget(
         List<ChatMessage> replay,
         IReadOnlyList<TranscriptMessageDocument> transcript,
@@ -1807,9 +1512,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     {
         List<BudgetMessage> budgetMessages =
         [
-            // A message stored before per-message accounting existed carries zero, which would
-            // make it free to keep. Estimated on the fly instead, so the budget measures the
-            // whole prompt rather than the part of it this application happened to have counted.
+            // Messages stored before per-message accounting carry zero; estimated on the fly so
+            // they are not free to keep.
             .. transcript.Select(x => new BudgetMessage(
                 x.Role,
                 x.Tokens > 0 ? x.Tokens : EstimateTokens(estimator, x.Content, model.DeploymentName))),
@@ -1855,11 +1559,6 @@ public partial class ConversationService(ILogger<ConversationService> logger,
         return budget.KeptIndexes.Sum(index => budgetMessages[index].Tokens) + overhead;
     }
 
-    /// <summary>
-    /// Logs once per model that its catalog row declares no context window, so nothing is
-    /// trimmed for it.
-    /// </summary>
-    /// <param name="model">The model with an unset context window.</param>
     private void LogUnboundedModelOnce(ModelDto model)
     {
         if (_unboundedModelsReported.TryAdd(model.Id, true))
@@ -1871,18 +1570,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     /// <summary>
     /// Answers a transcript read for a conversation that has a relational row but no transcript.
     /// </summary>
-    /// <param name="userId">The object identifier of the calling user.</param>
-    /// <param name="id">The conversation's unique identifier.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>The conversation with an empty message list.</returns>
-    /// <exception cref="NotFoundException">
-    /// Thrown when no active conversation with that identifier belongs to the caller — which is
-    /// also what a foreign identifier produces, so the two are indistinguishable to a caller.
-    /// </exception>
     /// <remarks>
-    /// The only path that falls back to SQL. It exists for conversations that predate the
-    /// transcript cutover: their rows survived and their transcripts did not, and a row a user
-    /// can see in their sidebar has to open.
+    /// The only SQL fallback: pre-cutover conversations lost their transcripts, but a sidebar row must open.
     /// </remarks>
     private async Task<ChatConversationDto> ReadEmptyTranscriptAsync(
         Guid userId, Guid id, CancellationToken cancellationToken)
@@ -1914,18 +1603,9 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     /// <summary>
     /// Builds the seeded system message a conversation's transcript opens with.
     /// </summary>
-    /// <param name="userId">The object identifier of the conversation's owner.</param>
-    /// <param name="conversationId">The conversation the message belongs to.</param>
-    /// <param name="createdAt">
-    /// The moment to stamp it with, which must precede every other message in the conversation.
-    /// </param>
-    /// <param name="estimator">The estimator for the serving provider.</param>
-    /// <param name="deploymentName">The deployment the text will be sent to.</param>
-    /// <returns>The seeded system message.</returns>
     /// <remarks>
-    /// The system message is not privileged: it goes through the same estimator and the same
-    /// renderer as user text, so the header's counters describe every message beneath them on
-    /// one basis.
+    /// <paramref name="createdAt"/> must precede every other message. Estimated and rendered like user
+    /// text, so the header's counters share one basis.
     /// </remarks>
     private TranscriptMessageDocument BuildSeededSystemMessage(
         Guid userId,
@@ -1947,14 +1627,9 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     /// <summary>
     /// Counts a message's context cost, degrading to zero rather than failing the turn.
     /// </summary>
-    /// <param name="estimator">The estimator for the serving provider.</param>
-    /// <param name="text">The message text.</param>
-    /// <param name="deploymentName">The deployment the text was or will be sent to.</param>
-    /// <returns>The estimated token count, or zero when estimation failed.</returns>
     /// <remarks>
-    /// A tokenizer fault must not lose a turn whose answer has already been streamed to the
-    /// user. Zero is honest here — it is what the recorded cost is — and it is recoverable,
-    /// because the count is a pure function of the stored text and can be recomputed later.
+    /// A tokenizer fault must not lose an already-streamed turn, and zero is recoverable: the count is a
+    /// pure function of the stored text.
     /// </remarks>
     private long EstimateTokens(ITokenEstimator estimator, string? text, string? deploymentName)
     {
@@ -1970,16 +1645,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
         }
     }
 
-    /// <summary>
-    /// Builds the partition every one of a conversation's transcript documents lives in.
-    /// </summary>
-    /// <param name="userId">The object identifier of the conversation's owner.</param>
-    /// <param name="conversationId">The conversation's unique identifier.</param>
-    /// <returns>The partition key.</returns>
     /// <remarks>
-    /// The caller's user id is always the one composed in, never a value read from a document.
-    /// That is what makes a foreign conversation id address a partition holding nothing rather
-    /// than one the caller has to be filtered out of.
+    /// Always composed from the caller's id, so a foreign conversation id addresses an empty partition.
     /// </remarks>
     private static PartitionKey TranscriptPartition(Guid userId, Guid conversationId)
     {
@@ -1987,12 +1654,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     }
 
     /// <summary>
-    /// Reads a conversation's header document.
+    /// Reads a conversation's header document, or <see langword="null"/> when it has no transcript.
     /// </summary>
-    /// <param name="userId">The object identifier of the conversation's owner.</param>
-    /// <param name="conversationId">The conversation's unique identifier.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>The header, or <see langword="null"/> when the conversation has no transcript.</returns>
     private Task<TranscriptHeaderDocument?> ReadHeaderAsync(Guid userId, Guid conversationId, CancellationToken cancellationToken)
     {
         return _transcriptStore.ReadItemAsync<TranscriptHeaderDocument>(
@@ -2000,32 +1663,12 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     }
 
     /// <summary>
-    /// Reads a conversation's message documents in the order they were written.
+    /// Reads a conversation's messages oldest first: the newest <paramref name="take"/> (or all) written
+    /// strictly before <paramref name="before"/> (or now).
     /// </summary>
-    /// <param name="userId">The object identifier of the conversation's owner.</param>
-    /// <param name="conversationId">The conversation's unique identifier.</param>
-    /// <param name="take">
-    /// How many of the newest messages to return, or <see langword="null"/> for all of them.
-    /// </param>
-    /// <param name="before">
-    /// Return only messages written strictly before this moment, or <see langword="null"/> to
-    /// start at the newest.
-    /// </param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>The messages, oldest first.</returns>
     /// <remarks>
-    /// <para>
-    /// Always a single-partition query. The <c>type</c> predicate stays in place because the
-    /// container is heterogeneous by design, and it is what stops a third document kind added
-    /// later from silently entering a query written before it existed.
-    /// </para>
-    /// <para>
-    /// Ordered by <c>dateCreated</c> alone rather than by a <c>(dateCreated, id)</c> pair: a
-    /// multi-property <c>ORDER BY</c> requires a composite index in Cosmos, and the tie it would
-    /// break cannot occur — a turn's own two messages are clamped a tick apart, and the
-    /// conversation lock serializes turns. The materialized page is still ordered by id within a
-    /// timestamp so the result is total whatever the store returns.
-    /// </para>
+    /// The <c>type</c> predicate keeps later document kinds out. Ordered by <c>dateCreated</c> alone because
+    /// a two-key ORDER BY needs a composite index and turns cannot tie; id still breaks ties in memory.
     /// </remarks>
     private async Task<List<TranscriptMessageDocument>> ReadMessagesAsync(
         Guid userId,
@@ -2061,10 +1704,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             messages.AddRange(page.Items);
             continuationToken = page.ContinuationToken;
 
-            // Kept draining until the requested count is actually in hand. A page size is a
-            // ceiling that Cosmos may return fewer than — a page can even come back empty with
-            // more results behind it — so stopping at the first page would silently truncate a
-            // transcript, and truncating history the model replays is not a visible failure.
+            // Drain until the count is in hand: Cosmos can return short or even empty pages with more
+            // behind, and silently truncated history would be replayed to the model.
             if (take.HasValue && messages.Count >= take.Value)
             {
                 break;
@@ -2086,17 +1727,7 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     /// Writes the rating onto the transcript message document, which is what the transcript
     /// response reads back.
     /// </summary>
-    /// <param name="message">The message document as it was read a moment ago.</param>
-    /// <param name="userId">The object identifier of the conversation's owner.</param>
-    /// <param name="conversationId">The conversation's unique identifier.</param>
-    /// <param name="messageId">The message's unique identifier.</param>
-    /// <param name="rating">The verdict, or <see langword="null"/> to withdraw one.</param>
-    /// <param name="ratedAt">The moment to stamp on the rating.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>
-    /// <see langword="true"/> when the document was written; <see langword="false"/> when the
-    /// rating asked for is the one it already holds and there was nothing to do.
-    /// </returns>
+    /// <returns><see langword="false"/> when withdrawing a rating that was never recorded.</returns>
     /// <exception cref="NotFoundException">The document was deleted between the read and the patch.</exception>
     private async Task<bool> PatchTranscriptFeedbackAsync(
         TranscriptMessageDocument message, Guid userId, Guid conversationId, Guid messageId,
@@ -2104,19 +1735,12 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     {
         if (rating is null && message.Feedback is null)
         {
-            // Withdrawing a rating that was never recorded. The end state is already the one
-            // being asked for, so nothing is written and nothing is charged. Safe to decide
-            // from a read this time, unlike the branch below: skipping a write can only ever
-            // leave the document as the caller found it.
+            // Safe to decide from the read here: skipping a write leaves the document as found.
             return false;
         }
 
-        // Set to null rather than Remove, even though Remove is what "withdraw" sounds like.
-        // Cosmos rejects Remove against a path the document does not carry, and two withdrawals
-        // racing each other would both pass the read above and the loser would take a 400 the
-        // caller can do nothing with — a 500 for a request whose work was already done. Set is
-        // idempotent whatever the document currently holds, and a JSON null deserializes back
-        // into a null Feedback, which the transcript projection reports as no rating at all.
+        // Set null, not Remove: Remove fails on an absent path, so racing withdrawals would error.
+        // Set is idempotent, and null reads back as no rating.
         var operation = rating is { } verdict
             ? PatchOperation.Set(
                 "/feedback",
@@ -2141,26 +1765,10 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     /// <summary>
     /// Maintains the relational <see cref="MessageFeedback"/> row that mirrors the rating.
     /// </summary>
-    /// <param name="userId">The object identifier of the conversation's owner.</param>
-    /// <param name="conversationId">The conversation's unique identifier.</param>
-    /// <param name="messageId">The message's unique identifier.</param>
-    /// <param name="rating">The verdict, or <see langword="null"/> to withdraw one.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <remarks>
-    /// Never throws, and the breadth of the catch is the point rather than an oversight. Every
-    /// 204 this route returns has to mean the reader's rating comes back on the next reload, and
-    /// the transcript patch above is what decides that; this row exists so the same fact is
-    /// queryable outside one conversation's partition. Failing the request here would revert a
-    /// thumb over a rating that was in fact stored, and rating the message again repairs the row
-    /// — so the failure is logged, loudly, and swallowed. The same trade
-    /// <see cref="ConversationUsage.AssistantMessageId"/> documents, in the same direction.
-    /// <para>
-    /// Two consequences of that choice are deliberate. A failed save leaves the new entity
-    /// tracked as <c>Added</c>; nothing saves again inside this request, so it dies with the
-    /// scoped context. And cancellation is excluded from the catch, so a token cancelled between
-    /// the two writes answers 499 for a rating the transcript has already stored — the caller
-    /// asked to stop, and the alternative is reporting success on a request they abandoned.
-    /// </para>
+    /// The broad catch is deliberate: the transcript already holds the rating and re-rating repairs this row;
+    /// cancellation still answers 499. A failed save leaves the row tracked as Added, so nothing else may save
+    /// in this request.
     /// </remarks>
     private async Task ProjectFeedbackAsync(
         Guid userId, Guid conversationId, Guid messageId, MessageFeedbackRatings? rating,
@@ -2201,24 +1809,13 @@ public partial class ConversationService(ILogger<ConversationService> logger,
     /// the conversation has documents, and the tools of any MCP servers the user selected, resolved
     /// through <see cref="IMcpToolProvider"/> (permission-checked, cached).
     /// </summary>
-    /// <param name="sessionId">The unique identifier of the chat session.</param>
-    /// <param name="model">The AI model to use for the chat.</param>
-    /// <param name="mcps">The MCP servers the user selected for tool calling.</param>
-    /// <param name="projectInstructions">
-    /// The standing instructions of the conversation's project, or <see langword="null"/> when it
-    /// is standalone or its project sets none.
-    /// </param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>
-    /// The configured chat options and the tool lease set backing them, or
-    /// <see langword="null"/> leases when no MCP servers were selected. The caller must
-    /// keep the lease set alive for the whole stream and dispose it afterwards.
+    /// The options and the leases backing them (null when not selected), which the caller keeps alive for
+    /// the whole stream.
     /// </returns>
     /// <remarks>
-    /// The two kinds of tool are treated differently on a model that cannot call tools. An MCP
-    /// selection is something the user made and can undo, so it fails loudly; document retrieval is
-    /// attached implicitly, and failing the turn over it would break every conversation that happens
-    /// to hold a file, so it is dropped with a warning instead.
+    /// On a tool-less model an MCP selection fails loudly, since the user made it, while implicit document
+    /// retrieval is dropped with a warning so conversations holding files keep working.
     /// </remarks>
     /// <exception cref="ValidationException">MCP servers were selected but <paramref name="model"/> does not support tools.</exception>
     /// <exception cref="NotFoundException">A selected server does not exist or is deactivated.</exception>
@@ -2234,24 +1831,10 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             ConversationId = sessionId.ToString()
         };
 
-        // The catalog's per-model reasoning flag, on two channels because they reach different
-        // providers.
-        //
-        // The property is the gate the Azure OpenAI client reads, and it is set even when false
-        // so that client can tell "this model does not reason" from "nobody said". The Azure AI
-        // Foundry client — Chat Completions on the same resource — reads neither channel and
-        // clears `Reasoning` outright, because reasoning is a Responses-API feature; that is
-        // what makes a reasoning-flagged model pointed at that provider harmless rather than a
-        // rejected request on every turn.
-        //
-        // `Reasoning` is Microsoft.Extensions.AI's own provider-agnostic request, which the
-        // Bedrock and Anthropic bridges understand and which is the only reason this flag means
-        // anything outside Azure. It is **conditional**, and that is load-bearing: the OpenAI
-        // Responses adapter applies it with `??=`, so on a turn where the Azure client has
-        // deliberately left the raw reasoning options empty — the non-reasoning path — an
-        // unconditional value here fills them back in and the deployment rejects the whole
-        // request. On a reasoning turn the Azure client sets its raw options first, so its
-        // configured effort and summary win over these values.
+        // Two channels: the property gates the Azure OpenAI client (set even when false; Foundry clears
+        // Reasoning), and Reasoning reaches the Bedrock and Anthropic bridges. Reasoning must stay
+        // conditional: the Responses adapter applies it with ??=, so on a non-reasoning turn it would
+        // refill the raw options the Azure client left empty and the deployment would reject the request.
         if (model.IsReasoningEnabled)
         {
             chatOptions.Reasoning = new()
@@ -2264,24 +1847,20 @@ public partial class ConversationService(ILogger<ConversationService> logger,
         chatOptions.AdditionalProperties ??= [];
         chatOptions.AdditionalProperties[ChatRequestProperties.IsReasoningEnabled] = model.IsReasoningEnabled;
 
-        // Both blocks of instructions are derived context carried on the request rather than injected
-        // into the message list: that is the channel each provider maps to its own instruction slot,
-        // and it keeps the messages equal to the transcript instead of transcript-plus-derived-context.
+        // Instructions ride the request, not the message list: each provider maps them to its own slot,
+        // and the messages stay equal to the transcript.
         List<string> instructions = [];
         List<AITool> tools = [];
 
         if (!string.IsNullOrWhiteSpace(projectInstructions))
         {
+            // Providers place Instructions differently, so the wrapper's wording, not message order, is what
+            // ranks these below the platform prompt.
             instructions.Add(ConversationPrompts.BuildProjectInstructionsPrompt(projectInstructions));
         }
 
-        // Resolved once here, before the stream starts, and captured by the tool. Resolving per tool
-        // call would repeat the query for every search the model runs, and would let a document
-        // removed mid-turn change the corpus underneath a half-answered question.
-        //
-        // A failure to resolve it costs retrieval, not the turn: this now runs for every
-        // conversation, including the ones with no documents at all, so letting it abort a turn
-        // would make a feature nobody in that turn is using a new way for chat to fail.
+        // Resolved once and captured, so a mid-turn removal cannot change the corpus under a
+        // half-answered question. A failure costs retrieval, not the turn: this runs for every conversation.
         DocumentRetrievalScope? documentScope = null;
         try
         {
@@ -2304,10 +1883,7 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             attachDocumentTool = false;
         }
 
-        // Deliberately gated on more than retrieval is, and resolved here so the whole decision
-        // sits beside the one it mirrors. A grant read is a cache hit in the normal case — the
-        // entry is written at sign-in — so this costs nothing on a turn that is not the user's
-        // first.
+        // Gated beyond retrieval; the grant read is normally a cache hit written at sign-in.
         var attachSummaryTool = _summarizationOptions.Enabled && documentScope?.HasDocuments is true;
 
         if (attachSummaryTool && !model.IsToolEnabled)
@@ -2329,11 +1905,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             }
         }
 
-        // Narrower than retrieval's own gate by one condition: the scope has to hold a spreadsheet,
-        // not merely a document. A tool that is always present and always answers that there is
-        // nothing to query teaches the model to stop calling it — the same reason retrieval is not
-        // attached to a conversation with no documents. No permission gate, though: this spends
-        // nothing, and a caller who can already read a document's chunks can already read its cells.
+        // Only with a spreadsheet: a tool that always finds nothing teaches the model to stop calling it.
+        // No permission gate, since it spends nothing and a caller who can read chunks can read cells.
         var spreadsheetNames = documentScope is null
             ? []
             : documentScope.Documents
@@ -2353,9 +1926,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
 
         if (attachSheetQueryTool)
         {
-            // A spreadsheet extension is not the same fact as a queryable sheet: a file uploaded
-            // before the sheet tables existed has chunks and no rows, and attaching over it would
-            // name a workbook in the prompt that every call then denies exists.
+            // Uploads older than the sheet tables have chunks but no rows; attaching over them would
+            // name a workbook every call then denies exists.
             try
             {
                 attachSheetQueryTool = await _sheetQueryService
@@ -2388,17 +1960,12 @@ public partial class ConversationService(ILogger<ConversationService> logger,
             tools.AddRange(toolLeases.Tools);
         }
 
-        // Everything below runs with the leases already held, and the caller can only dispose
-        // what this method returns. Anything that throws in between would strand them — and a
-        // stranded lease never decrements its cache entry's count, so the MCP client it holds is
-        // never disposed even after the entry is evicted.
+        // The leases are held from here and the caller can only dispose what is returned, so a throw
+        // below must release them or their MCP clients are never disposed.
         try
         {
-            // MCP tools are named "{sanitizedServerName}_{tool}", so a server named "document" exposing a
-            // tool named "search" produces exactly this name. Two identically named functions on one
-            // request are rejected outright by OpenAI-shaped providers, and the usage audit would credit
-            // retrieval's tokens to that server. The user's explicit MCP selection wins; retrieval is the
-            // implicit one, so it stands down.
+            // An MCP server "document" with a tool "search" yields this exact name, which OpenAI-shaped
+            // providers reject as a duplicate. The explicit MCP selection wins; retrieval stands down.
             if (attachDocumentTool && tools.Any(t => string.Equals(t.Name, DocumentTool.ToolName, StringComparison.OrdinalIgnoreCase)))
             {
                 LogDocumentRetrievalNameClash(_logger, sessionId, DocumentTool.ToolName);
@@ -2412,10 +1979,7 @@ public partial class ConversationService(ILogger<ConversationService> logger,
                 instructions.Add(ConversationPrompts.BuildDocumentRetrievalPrompt(DocumentTool.ToolName, documentScope!.DocumentNames));
             }
 
-            // Attached under strictly narrower conditions than retrieval: the feature has to be
-            // switched on, and the caller has to hold the same grant that adding a document
-            // needs. Reading a document back costs nothing and is gated on ownership alone;
-            // summarizing spends money on a cache miss, so it is gated the way adding one is.
+            // Gated like adding a document, not like reading one: summarizing spends money on a cache miss.
             if (attachSummaryTool
                 && tools.Any(t => string.Equals(t.Name, DocumentSummaryTool.ToolName, StringComparison.OrdinalIgnoreCase)))
             {
@@ -2424,9 +1988,7 @@ public partial class ConversationService(ILogger<ConversationService> logger,
                 attachSummaryTool = false;
             }
 
-            // Checked after retrieval has settled, not beside the flag: retrieval stands down on
-            // its own name collision, and a summarization prompt that tells the model to prefer
-            // a tool which is not on the request is the one thing a tool prompt must never do.
+            // After retrieval settles: the summary prompt must never point at a tool not on the request.
             if (attachSummaryTool && !attachDocumentTool)
             {
                 LogSummarizationStandsDown(_logger, sessionId);
@@ -2489,9 +2051,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
 
             if (attachFileAgent)
             {
-                // Silently, and before anything is composed: a caller who was never offered the
-                // capability has nothing to be told. Administrators are not implicitly granted it,
-                // and reading the grant per turn is what makes a revocation land on the next one.
+                // Silently: a caller never offered it has nothing to be told. Admins are not implicitly
+                // granted it, and reading per turn makes a revocation land on the next one.
                 var granted = await _userGrantReader
                     .GetGrantsAsync(_tokenService.GetOid(), cancellationToken)
                     .ConfigureAwait(false);
@@ -2519,11 +2080,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
                         .AcquireAsync(sessionId, _tokenService.GetOid(), cancellationToken)
                         .ConfigureAwait(false);
 
-                    // After composition rather than before it, because the ceiling counts rows
-                    // written against the agent's own pinned model and only the lease knows which
-                    // that is. A user over the ceiling still costs one cheap query and one
-                    // composition, and is told plainly rather than being handed a tool that then
-                    // refuses.
+                    // After composition: the ceiling counts rows against the agent's pinned model,
+                    // which only the lease knows.
                     var quota = await _fileAgentQuotaService
                         .CheckAsync(_tokenService.GetOid(), fileAgentLease.Model.ModelId, cancellationToken)
                         .ConfigureAwait(false);
@@ -2537,9 +2095,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
                         await fileAgentLease.DisposeAsync().ConfigureAwait(false);
                         fileAgentLease = null;
 
-                        // The one stand-down the assistant is told about. Every other reason the
-                        // agent is absent is a capability the user never had; this one is a
-                        // capability they had an hour ago, and silence would read as a fault.
+                        // The one stand-down the assistant is told about: the user had this capability
+                        // an hour ago, so silence would read as a fault.
                         instructions.Add(
                             $"File generation is unavailable for now. {quota.Explanation} If the user asks for a "
                                 + "file, tell them the limit was reached and that it resets within a day.");
@@ -2551,9 +2108,7 @@ public partial class ConversationService(ILogger<ConversationService> logger,
                     // the startup validator is where a broken registration is meant to surface.
                     LogComposingFileAgentFailed(_logger, ex, sessionId);
 
-                    // Dropped rather than left standing: a lease whose tool never reached the tool
-                    // list would still report its model on the turn's usage row, attributing an
-                    // agent to a turn that was never offered one.
+                    // Else the lease would put an agent the turn was never offered on its usage row.
                     if (fileAgentLease is not null)
                     {
                         await fileAgentLease.DisposeAsync().ConfigureAwait(false);
@@ -2578,8 +2133,7 @@ public partial class ConversationService(ILogger<ConversationService> logger,
         }
         catch when (toolLeases is not null || fileAgentLease is not null)
         {
-            // Innermost first, matching the order the stream's own nested `await using` scopes
-            // unwind in.
+            // Innermost first, matching how the stream's nested `await using` scopes unwind.
             if (toolLeases is not null)
             {
                 await toolLeases.DisposeAsync().ConfigureAwait(false);

@@ -3,33 +3,16 @@
     <app-brand-logo variant="mark" />
   </div>
 
-  <!--
-    US-1402. Polite only while this instance is the streaming one: the settled
-    turn that replaces it carries nothing, so the answer is announced exactly
-    once. `aria-busy` defers everything the region accumulates until the folded
-    `Finished` clears it, which is what keeps "the streaming answer region is
-    aria-live=polite" from meaning "read every text delta"; it is released as an
-    explicit `false` rather than by removing the attribute, because that release
-    is the single mutation the whole pattern hangs on.
-
-    `aria-atomic` is left at its default: the region announces what changed, not
-    the whole answer again on every change.
-  -->
+  <!-- Polite only while streaming, so the answer is announced once. `aria-busy` defers it until
+       `Finished`, and is released as an explicit `false`: that mutation is what announces it. -->
   <div
     class="assistant-turn__content"
     [attr.aria-live]="streaming() ? 'polite' : null"
     [attr.aria-busy]="streaming() ? (liveAnswer() ? 'true' : 'false') : null"
   >
     @if (reasoningText()) {
-      <!-- US-503: reasoning has no place in the arrival-order index — it is not
-           a block of the answer and never interleaves with one — so it opens
-           the turn rather than taking a timeline node. Absent entirely for a
-           turn whose only reasoning was the server's seed, and for every
-           replayed one, which stores none at all. -->
-      <!-- `aria-live="off"` because the region above is polite and this is not
-           the answer: without the override, releasing the answer would flush the
-           whole reasoning summary at the reader first (US-1402). It stays fully
-           readable in browse mode. -->
+      <!-- Opens the turn rather than taking a timeline node: reasoning never interleaves
+           with the answer. `aria-live="off"`, or releasing the answer would read it first. -->
       <app-reasoning-region
         aria-live="off"
         [text]="reasoningText()"
@@ -37,30 +20,18 @@
       />
     }
 
-    <!-- Keyed on where a block starts and on the activity's own scope, both of
-         which are fixed once the node exists. The index fallback covers an
-         activity that arrived without a scope id, where two nodes would
-         otherwise share a key. -->
+    <!-- Both keys are fixed once the node exists; the index covers an activity with no
+         scope id. -->
     @for (
       node of renderedNodes();
       track node.kind === 'text' ? 't' + node.start : 'a' + (node.activity.scopeId || $index)
     ) {
       @switch (node.kind) {
         @case ('text') {
-          <!-- The caret is a CSS pseudo-element on the rendered block rather than
-               an element of its own: the markdown output is written as innerHTML,
-               so there is no template position left inside it to put a span. -->
+          <!-- The caret is a pseudo-element: innerHTML leaves no template position for a span. -->
           @if ($index === caretIndex()) {
-            <!-- US-602: the node still growing renders as a stable head and a
-                 volatile tail, two renderers rather than one bound to the whole
-                 accumulating string — ngx-markdown re-parses its entire input on
-                 every change, so one instance would re-parse the answer per
-                 flush. The caret rides whichever of the two ends the text.
-
-                 They are wrapped so the pair counts as one child of the content
-                 column: as two, the column's own 10px gap would space them apart
-                 and then close to a paragraph margin the moment the turn settled
-                 into a single render. -->
+            <!-- A stable head and a volatile tail, since ngx-markdown re-parses its whole
+                 input on every change. Wrapped so the column gap does not split the pair. -->
             <div class="assistant-turn__live">
               <markdown
                 class="assistant-turn__md"
@@ -74,18 +45,8 @@
               />
             </div>
           } @else {
-            <!-- Settled, or closed by a later activity: one canonical render of
-                 the untouched source, highlighting included.
-                 `appMarkdownExtras` (US-605) is here and not on the live pair
-                 above: a half-written diagram is not a diagram, and the tail's
-                 fences have had their info strings stripped anyway.
-
-                 Segments are the whole node unless the model marked an email in
-                 it, so the ordinary answer still renders as exactly one
-                 `<markdown>` and re-parses no more often than it used to. Only
-                 the settled branch splits: a fence still arriving is not yet a
-                 closed block, and a card that appeared halfway through a body
-                 would have to take it back. -->
+            <!-- Only settled text gets `appMarkdownExtras` and email cards: a half-written
+                 diagram is not a diagram, and an arriving fence is not yet a closed block. -->
             @for (segment of node.segments; track segment.start) {
               @if (segment.kind === 'email') {
                 <app-email-card [draft]="segment.draft" />
@@ -96,44 +57,28 @@
           }
         }
         @case ('activity') {
-          <!-- Excluded from the answer's live region, and the override covers the
-               card's nested children with it. Each card carries a state label, a
-               kind, a source and a sub-status list that grows mid-turn; announcing
-               all of that when the answer is released is the unusable live region
-               US-1402's third criterion forbids — and `Chat`'s status region has
-               already said what each activity did, as it happened. -->
+          <!-- Off for the card and its children: `Chat`'s status region already narrated
+               each activity, and reading every card on release would be unusable. -->
           <app-activity-card aria-live="off" [activity]="node.activity" />
         }
       }
     }
 
-    <!-- Outside the footer below, and deliberately: the footer is invisible until hover or
-         focus, and a file the assistant made is part of the answer rather than an
-         affordance about it. Guarded rather than rendered empty, so a turn that produced
-         nothing is unchanged down to the element — and safe to guard, because a settled
-         entry's files are fixed for its life and cannot change height under the
-         transcript's ResizeObserver. -->
+    <!-- Outside the hover-revealed footer: a generated file is part of the answer. The guard
+         is safe because a settled entry's files never change. -->
     @if (attachments().length > 0) {
       <app-generated-files [attachments]="attachments()" [conversationId]="conversationId()" />
     }
 
     @if (!streaming()) {
-      <!-- Frames 1f/1g: the completed turn's footer, revealed on hover and on
-           focus (US-607). It exists for every settled turn, because Copy is
-           always offerable; the counts are the conditional part, since a
-           stopped, cut-off or replayed turn never folded a `Finished`. -->
       <div class="assistant-turn__footer">
-        <!-- A turn can settle with no text at all — a cut-off that died after its
-             first activity — and copying an empty string *succeeds*, so the
-             control would confirm while having wiped the reader's clipboard. -->
+        <!-- A cut-off can settle with no text, and copying '' succeeds: it would wipe the
+             clipboard and still confirm. -->
         @if (copySource(); as source) {
           <app-message-copy [text]="source" subject="response" />
         }
-        <!-- The one @if inside the footer that is allowed to be one: §9.2 forbids an @if
-             on the footer itself, because its height must not change under the
-             ResizeObserver US-606 pins the transcript with. This condition is fixed for
-             the life of the entry — a settled turn either became a persisted message or
-             never will — so it is evaluated once and never toggles under the reader. -->
+        <!-- The footer's height must not change under the transcript's ResizeObserver; this
+             condition is fixed for the entry's life, so it never toggles. -->
         @if (messageId() !== null) {
           <app-message-feedback
             [rating]="rating()"
@@ -141,9 +86,7 @@
             (rated)="rated.emit($event)"
           />
         }
-        <!-- Fixed for the entry's life on the same reasoning as the guard above:
-             a settled turn's text no longer changes, so what it was detected as
-             cannot change either. -->
+        <!-- Fixed for the entry's life too: a settled turn's text no longer changes. -->
         @if (footerDraft(); as draft) {
           <app-email-open-menu [compact]="true" [draft]="draft" />
         }

@@ -11,28 +11,9 @@ import {
 import { TurnStore } from './turn-store';
 
 /**
- * Keeps the transcript pinned to the newest content while the reader is at the
- * bottom, and gets out of the way the moment they are not (US-606).
- *
- * Applied to the scroll container itself, so the host element is both the thing
- * scrolled and the observer's root. The zero-height sentinel it watches is passed
- * in rather than queried: it lives after the body's `@if` chain as an
- * unconditional last child, which is what keeps one element — and therefore one
- * observation — alive across the error, transcript and empty-state swaps.
- *
- * Bottom detection is an `IntersectionObserver` rather than a scroll listener
- * because a scroll handler runs on the main thread for every frame of a flick and
- * would still have to measure to answer the only question asked here. The 80px
- * bottom margin is the tolerance: a reader a line or two short of the end is
- * treated as still following.
- *
- * Following is driven by a `ResizeObserver` on the content rather than by the
- * turn's signals, because the answer is not in the DOM when those signals settle:
- * the markdown renderer writes its output a microtask after change detection
- * returns, so a scroll taken during the render phase would measure the height the
- * page had *before* the text it is meant to follow. Watching the content instead
- * means the scroll happens when the geometry actually changes, whatever produced
- * it — and it cannot loop, because moving `scrollTop` changes no element's size.
+ * Follows new content while the reader is within 80px of the bottom. A `ResizeObserver` on the
+ * content drives it, not turn signals, because markdown renders after change detection; moving
+ * `scrollTop` resizes nothing, so it cannot loop.
  */
 @Directive({
   selector: '[appTranscriptPinning]',
@@ -49,22 +30,12 @@ export class TranscriptPinning {
   private readonly _turn = inject(TurnStore);
   private readonly _destroyRef = inject(DestroyRef);
 
-  /**
-   * Starts true so the first paint pins and no jump control is shown before the
-   * observer has said anything. A real observer's first record is asynchronous,
-   * and treating "not yet reported" as "scrolled up" would flash the control on
-   * every mount.
-   */
+  /** True until told otherwise, so the jump control does not flash before the first report. */
   private readonly _atBottom = signal(true);
 
-  /**
-   * Shown whenever the reader is away from the bottom and there is a transcript
-   * to return to — including after the turn ends, because `Finished` deliberately
-   * does not scroll and hiding the control then would strand them.
-   */
+  /** Outlives the turn: `Finished` does not scroll, so hiding it then would strand the reader. */
   readonly showJump = computed(() => !this._atBottom() && this._turn.hasContent());
 
-  /** The ring pulse is the streaming signal, so it stops when the turn does. */
   readonly pulsing = computed(() => this._turn.inFlight());
 
   constructor() {
@@ -82,9 +53,6 @@ export class TranscriptPinning {
       observer.observe(this.sentinel());
       this._destroyRef.onDestroy(() => observer.disconnect());
 
-      // Fires whenever the answer, an activity card or a notice changes the
-      // height — including the markdown renderer's own deferred write, which no
-      // Angular lifecycle hook is late enough to catch.
       const resize = new ResizeObserver(() => {
         if (this._atBottom()) {
           this._host.scrollTop = this._host.scrollHeight;
@@ -96,20 +64,11 @@ export class TranscriptPinning {
     });
   }
 
-  /**
-   * Returns to the newest content and resumes following it.
-   *
-   * The flag is set here rather than left to the observer so the control
-   * disappears on the same change detection as the scroll, instead of a frame
-   * later when the sentinel is reported visible again.
-   */
+  /** Sets the flag itself so the control vanishes with the scroll, not a frame later. */
   jumpToLatest(): void {
     this._atBottom.set(true);
     this._host.scrollTop = this._host.scrollHeight;
-    // The control removes itself on this same change detection, and focus would
-    // fall to <body> — losing a keyboard or screen-reader user their place on the
-    // page. The transcript is where the control just took them, and it holds
-    // focus programmatically for exactly this.
+    // The control removes itself; catch focus before it falls to <body>.
     this._host.focus({ preventScroll: true });
   }
 }

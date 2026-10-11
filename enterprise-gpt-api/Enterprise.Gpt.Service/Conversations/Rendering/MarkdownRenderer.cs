@@ -10,16 +10,10 @@ namespace Enterprise.Gpt.Service.Conversations.Rendering;
 public interface IMarkdownRenderer
 {
     /// <summary>
-    /// Renders markdown to HTML safe to store and re-serve.
+    /// Renders markdown to HTML safe to store and re-serve; empty input renders to an empty string.
     /// </summary>
-    /// <param name="markdown">The message text.</param>
-    /// <returns>
-    /// The rendered HTML, or the HTML-escaped input when rendering fails. Empty input renders to an
-    /// empty string.
-    /// </returns>
     /// <remarks>
-    /// Never throws. A rendering fault must not lose a turn whose answer has already been streamed
-    /// to the user, so a failure degrades to escaped plain text and is logged.
+    /// Never throws: a fault must not lose a turn already streamed, so it logs and returns the escaped input.
     /// </remarks>
     string Render(string? markdown);
 }
@@ -28,17 +22,9 @@ public interface IMarkdownRenderer
 /// Renders markdown with Markdig, with raw HTML passthrough disabled and link schemes restricted.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Registered as a singleton, though the pipeline it renders through is
-/// <see cref="MarkdownPipelines.Default"/> and is shared with the export renderers.
-/// </para>
-/// <para>
-/// The input is attacker-influenceable. Model output is shaped by uploaded documents and MCP tool
-/// results, and a user prompt is rendered through this same path, so this is a real trust boundary
-/// rather than a formatting convenience.
-/// </para>
+/// A trust boundary: model output is shaped by documents and MCP results, and prompts render through
+/// the same <see cref="MarkdownPipelines.Default"/> the export renderers share.
 /// </remarks>
-/// <param name="logger">The logger.</param>
 public sealed partial class MarkdownRenderer(ILogger<MarkdownRenderer> logger) : IMarkdownRenderer
 {
     private readonly ILogger<MarkdownRenderer> _logger = logger;

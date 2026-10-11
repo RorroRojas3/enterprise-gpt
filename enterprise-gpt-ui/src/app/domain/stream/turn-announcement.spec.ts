@@ -7,11 +7,7 @@ import {
 } from './andes/assistant-ui.contract';
 import { turnAnnouncement } from './turn-announcement';
 
-/**
- * US-1402's third criterion, made testable: "status changes are announced,
- * individual text deltas are not". These specs fold real events and assert what
- * the string does and — more importantly — what it refuses to do.
- */
+/** Folds real events to pin that status changes are announced and individual deltas are not. */
 describe('turnAnnouncement', () => {
   function fold(events: readonly AssistantUiEvent[]) {
     return events.reduce(foldAssistantEvents, createInitialSnapshot());
@@ -70,8 +66,7 @@ describe('turnAnnouncement', () => {
       assistantEvent('ActivityCompleted', { scopeId: 'agent-1', toolKind: 'Agent', depth: 2 }),
     ]);
 
-    // "Get forecast is running" again would be the same string twice with one
-    // thing between it, carrying nothing the reader has not already heard.
+    // "Get forecast is running" again would repeat a string with nothing new in it.
     expect(turnAnnouncement(snapshot, idle)).toBe('Forecast Agent completed');
   });
 
@@ -137,8 +132,7 @@ describe('turnAnnouncement', () => {
       assistantEvent('ActivityFailed', { scopeId: 'fn-1' }),
     ]);
 
-    // Not "Search Documents failed. 2 steps failed", which a listener hears as
-    // three failures rather than two.
+    // Not "Search Documents failed. 2 steps failed", which sounds like three failures.
     expect(turnAnnouncement(snapshot, idle)).toBe('Search Documents failed. 1 more step failed');
   });
 
@@ -184,13 +178,8 @@ describe('turnAnnouncement', () => {
       }
     }
 
-    // Twelve events — two of them text deltas — reduce to seven distinct
-    // strings, every one a state change rather than a chunk of the answer, and
-    // no string repeated. `Get forecast completed` is the one transition not
-    // announced, and the reason is structural rather than about `fn-1`: the
-    // headline follows the pre-order-last activity, and `mcp-1` stopped being it
-    // the moment `agent-1` started inside it. Removing `fn-1` from the fixture
-    // would not bring it back.
+    // `Get forecast completed` is unspoken by design: the headline follows the pre-order-last
+    // activity, which `mcp-1` stopped being once `agent-1` started inside it.
     expect(spoken).toEqual([
       'Waiting for a response',
       'Get forecast is running',

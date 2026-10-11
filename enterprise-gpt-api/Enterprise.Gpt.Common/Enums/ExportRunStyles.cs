@@ -13,10 +13,8 @@ public enum ExportRunStyles
     /// <summary>Plain body text.</summary>
     None = 0,
 
-    /// <summary>Strong emphasis.</summary>
     Bold = 1,
 
-    /// <summary>Emphasis.</summary>
     Italic = 2,
 
     /// <summary>Inline code, rendered in the monospace face.</summary>

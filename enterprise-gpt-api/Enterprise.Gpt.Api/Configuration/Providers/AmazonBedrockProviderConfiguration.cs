@@ -12,17 +12,10 @@ using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Api.Configuration.Providers;
 
-/// <summary>
-/// Registers Amazon Bedrock.
-/// </summary>
 internal static class AmazonBedrockProviderConfiguration
 {
     #region Public static methods
 
-    /// <summary>
-    /// Registers the validated options and, when <c>AmazonBedrock:Enabled</c> is set, the runtime client and the
-    /// keyed chat client.
-    /// </summary>
     internal static IServiceCollection AddAmazonBedrockProvider(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<IValidator<AmazonBedrockOptions>, AmazonBedrockOptionsValidator>();

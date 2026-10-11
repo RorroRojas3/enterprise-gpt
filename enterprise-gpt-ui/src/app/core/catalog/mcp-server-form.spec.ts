@@ -34,12 +34,9 @@ function formValue(overrides: Partial<McpServerFormValue> = {}): McpServerFormVa
   };
 }
 
-describe('MCP server form rules (US-1208)', () => {
+describe('MCP server form rules', () => {
   describe('auth types', () => {
     it('offers the three the API has, still not the board’s three', () => {
-      // The board draws "Header key", "OAuth2" and "None". "Header key" — one shared
-      // secret in a plain-text column — stays refused; the per-user API key is the
-      // opposite arrangement and is the third arm here.
       expect(AUTH_TYPE_OPTIONS.map((option) => option.value)).toEqual([1, 2, 3]);
       expect(AUTH_TYPE_OPTIONS.map((option) => option.label)).toEqual([
         'None',
@@ -49,8 +46,6 @@ describe('MCP server form rules (US-1208)', () => {
     });
 
     it('labels an auth type this build does not know by its raw value', () => {
-      // Degrades rather than blanking, as the model table's provider dot does: a value
-      // added server-side after this build still says something in its column.
       expect(authTypeLabel(MCP_AUTH_TYPE.entraIdOnBehalfOf)).toBe('Entra ID (on behalf of)');
       expect(authTypeLabel(99)).toBe('99');
     });
@@ -62,8 +57,6 @@ describe('MCP server form rules (US-1208)', () => {
     });
 
     it('refuses an auth type outside the enum, the empty select included', () => {
-      // `IsInEnum` refuses the zero an empty select parses to, and a row seeded with a
-      // third value is reachable — the table has `authTypeLabel` precisely for it.
       expect(authTypeError(NONE)).toBeNull();
       expect(authTypeError(ENTRA)).toBeNull();
       expect(authTypeError(String(MCP_AUTH_TYPE.userApiKey))).toBeNull();
@@ -86,8 +79,7 @@ describe('MCP server form rules (US-1208)', () => {
       expect(urlError('/rooted/path')).toBe(ABSOLUTE_URL_MESSAGE);
       expect(urlError('ftp://mcp.example.test/x')).toBe(ABSOLUTE_URL_MESSAGE);
       expect(urlError('not a url')).toBe(ABSOLUTE_URL_MESSAGE);
-      // The board's own typo — a comma where the dot belongs — which is why frame `5h`
-      // draws this field invalid.
+      // A comma where the dot belongs, and no scheme.
       expect(urlError('mcp.andessoftware,net/sap')).toBe(ABSOLUTE_URL_MESSAGE);
     });
 
@@ -109,8 +101,6 @@ describe('MCP server form rules (US-1208)', () => {
       ['None', NONE],
       ['API key (per user)', String(MCP_AUTH_TYPE.userApiKey)],
     ])('refuses a scope for %s, the direction the server also enforces', (_label, authType) => {
-      // The field is hidden and cleared on a switch, so this arm is the guard behind that
-      // rather than a message a reader normally meets.
       expect(scopeError('', authType)).toBeNull();
       expect(scopeError('api://sap/.default', authType)).toBe(
         'Only an Entra ID server can carry a scope.',
@@ -180,9 +170,6 @@ describe('MCP server form rules (US-1208)', () => {
     });
 
     it('sends a null scope for None, whatever the hidden field still holds', () => {
-      // Normalized rather than refused. The dialog clears the field on a switch, so this
-      // is the belt behind that — and refusing here would be a Save that does nothing,
-      // with the field that caused it no longer on screen to explain why.
       expect(
         toMcpServerBody(formValue({ authType: NONE, scope: 'api://sap/.default' }))?.scope,
       ).toBeNull();
@@ -223,8 +210,7 @@ describe('MCP server form rules (US-1208)', () => {
     });
 
     it('says nothing rather than naming a field the reader cannot find', () => {
-      // An object-level rule, or a key a later API version introduces. The caller falls
-      // back to a generic line instead of pointing at a control that is not there.
+      // An object-level rule, or a key a later API version introduces.
       expect(describeRejectedFields([])).toBeNull();
       expect(describeRejectedFields(['Something'])).toBeNull();
     });
@@ -267,8 +253,7 @@ describe('MCP server form rules (US-1208)', () => {
       'authorization',
       'Cookie',
       'Host',
-      // Transport control — accepted by HttpRequestHeaders, so they change the connection
-      // silently rather than failing loudly.
+      // Transport control, which HttpRequestHeaders accepts and would silently apply.
       'Connection',
       'Transfer-Encoding',
       'Expect',

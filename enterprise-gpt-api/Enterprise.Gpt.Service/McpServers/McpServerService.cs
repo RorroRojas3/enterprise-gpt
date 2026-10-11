@@ -17,60 +17,30 @@ namespace Enterprise.Gpt.Service.McpServers;
 
 public interface IMcpServerService
 {
-    /// <summary>
-    /// Gets the active MCP servers the calling user holds a permission for, ordered by name.
-    /// </summary>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The list of permitted servers in the user-facing shape.</returns>
+    /// <summary>Gets the active servers the caller holds a permission for, ordered by name.</summary>
     Task<List<McpDto>> GetPermittedMcpServersAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Gets every MCP server, active and deactivated, ordered by name. Intended for
-    /// administrators managing the server catalog.
-    /// </summary>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The list of all servers in the administrative shape.</returns>
+    /// <summary>Gets every server, active and deactivated, ordered by name, for administrators.</summary>
     Task<List<McpServerDto>> GetAllMcpServersAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Gets a single active MCP server by id.
-    /// </summary>
-    /// <param name="id">The server id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The matching server.</returns>
     /// <exception cref="NotFoundException">No active server with <paramref name="id"/> exists.</exception>
     Task<McpServerDto> GetMcpServerAsync(Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Creates a new MCP server after validating the request, together with its linked
-    /// permission (same name) in one atomic save. Users must be granted that permission
-    /// before they can see or use the server.
-    /// </summary>
-    /// <param name="request">The creation request.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The created server.</returns>
+    /// <summary>Creates a server and its same-named gating permission in one save.</summary>
     /// <exception cref="ValidationException">The name is already in use by an active server or permission.</exception>
     Task<McpServerDto> CreateMcpServerAsync(CreateMcpServerActionDto request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Updates an existing active MCP server after validating the request. Renames are
-    /// synced to the linked permission, and cached clients for the server are invalidated
-    /// so connection changes take effect on the next request.
+    /// Updates an active server, syncing a rename to its permission and invalidating its cached clients.
+    /// Changing the URL or auth type of a user-API-key server discards every stored key.
     /// </summary>
-    /// <param name="id">The id of the server to update.</param>
-    /// <param name="request">The update request.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The updated server.</returns>
     /// <exception cref="ValidationException">The name is already in use by an active server or permission.</exception>
     /// <exception cref="NotFoundException">No active server with <paramref name="id"/> exists.</exception>
     Task<McpServerDto> UpdateMcpServerAsync(Guid id, UpdateMcpServerActionDto request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Soft-deletes an MCP server together with its linked permission and every active
-    /// grant of that permission, in one atomic save, then invalidates cached clients.
+    /// Soft-deletes a server with its permission, grants and stored credentials in one save.
     /// </summary>
-    /// <param name="id">The id of the server to deactivate.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <exception cref="NotFoundException">No active server with <paramref name="id"/> exists.</exception>
     Task DeactivateMcpServerAsync(Guid id, CancellationToken cancellationToken = default);
 }
@@ -94,9 +64,8 @@ public partial class McpServerService(ILogger<McpServerService> logger,
     {
         var oid = _tokenService.GetOid();
 
-        // Deliberately reads the database rather than IUserPermissionCache: the McpServers query
-        // has to run regardless, so the cache would save no round trip — only an EXISTS over an
-        // indexed foreign key — while making a user-visible list eventually consistent.
+        // Deliberately not IUserPermissionCache: this query runs anyway, so the cache would save only an
+        // indexed EXISTS, not a round trip, while making a user-visible list eventually consistent.
         return await _ctx.McpServers
             .AsNoTracking()
             .Where(s => !s.DateDeactivated.HasValue
@@ -138,8 +107,7 @@ public partial class McpServerService(ILogger<McpServerService> logger,
         newServer.CreatedById = oid;
         newServer.ModifiedById = oid;
 
-        // The permission is created in the same SaveChangesAsync so a server can never
-        // exist without its gate.
+        // Same save, so a server never exists without its gate.
         var permission = new Permission
         {
             Id = Guid.NewGuid(),
@@ -173,10 +141,8 @@ public partial class McpServerService(ILogger<McpServerService> logger,
         }
 
         var oid = _tokenService.GetOid();
-        // A stored key is consent to send it to one endpoint. Repointing the server is
-        // therefore as much a reason to discard the keys as dropping the auth type is:
-        // without this, editing the URL forwards every user's token to the new host on
-        // their next turn, with nothing asked and nothing shown.
+        // A stored key is consent to send it to one endpoint, so repointing the server discards the keys
+        // too; otherwise a URL edit silently forwards every user's key to the new host.
         var discardUserApiKeys = server.AuthType == McpAuthTypes.UserApiKey
             && (request.AuthType != McpAuthTypes.UserApiKey
                 || !string.Equals(server.Url, request.Url, StringComparison.OrdinalIgnoreCase));
@@ -184,8 +150,7 @@ public partial class McpServerService(ILogger<McpServerService> logger,
         request.FromUpdateMcpServerActionDtoToMcpServer(server);
         server.ModifiedById = oid;
 
-        // Keep the linked permission's name/description in sync so administrators keep
-        // recognizing it in grant listings after a rename.
+        // Synced so administrators still recognize the permission in grant listings after a rename.
         var permission = server.Permissions.FirstOrDefault();
         if (permission is not null)
         {
@@ -222,9 +187,8 @@ public partial class McpServerService(ILogger<McpServerService> logger,
         var oid = _tokenService.GetOid();
         var date = _timeProvider.GetUtcNow();
 
-        // Tracked entities so server, permission, grants and stored credentials deactivate in
-        // one atomic save, preserving the invariant that an active grant implies an active
-        // permission — and leaving no credential behind for a server nobody can select.
+        // One atomic save keeps "active grant implies active permission" and leaves no credential behind
+        // for a server nobody can select.
         server.DateDeactivated = date;
         server.ModifiedById = oid;
 
@@ -246,7 +210,6 @@ public partial class McpServerService(ILogger<McpServerService> logger,
             }
         }
 
-        // Collected from the already-included graph, so the cascade costs no extra query.
         Guid[] affectedUserIds = [.. server.Permissions
             .SelectMany(p => p.UserPermissions)
             .Select(g => g.UserId)
@@ -262,10 +225,7 @@ public partial class McpServerService(ILogger<McpServerService> logger,
 
     #region Private methods
 
-    /// <summary>
-    /// Marks every stored credential for a server deactivated, leaving the save to the caller
-    /// so it lands in the same transaction as the change that made them redundant.
-    /// </summary>
+    // Leaves the save to the caller so it lands in the same transaction as the server change.
     private async Task DeactivateCredentialsAsync(Guid mcpServerId, Guid oid, CancellationToken cancellationToken)
     {
         var date = _timeProvider.GetUtcNow();
@@ -281,12 +241,8 @@ public partial class McpServerService(ILogger<McpServerService> logger,
         }
     }
 
-    /// <summary>
-    /// Throws when the name is already used by an active MCP server or an active
-    /// permission, so callers get a clear 400 instead of an opaque unique-index violation
-    /// at save time. Server and permission names share one uniqueness space because every
-    /// server auto-creates a same-named permission.
-    /// </summary>
+    // A clear 400 rather than a unique-index violation at save. Server and permission names share one
+    // space because every server creates a same-named permission.
     private async Task EnsureNameIsAvailableAsync(string name, Guid? excludeServerId, CancellationToken cancellationToken)
     {
         var serverNameTaken = await _ctx.McpServers

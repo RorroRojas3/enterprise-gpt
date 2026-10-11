@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UsageRange } from './admin-reports-route';
 import { RangeSegmented } from './range-segmented';
 
-describe('RangeSegmented (US-1302)', () => {
+describe('RangeSegmented', () => {
   beforeEach(() => {
     TestBed.resetTestingModule();
   });
@@ -22,8 +22,6 @@ describe('RangeSegmented (US-1302)', () => {
     const { host } = await render();
     const buttons = [...host.querySelectorAll('button')];
 
-    // The prototype draws spans; a control that changes what the page shows has to be
-    // reachable, pressable and announced as the toggle it is.
     expect(buttons.map((button) => button.textContent?.trim())).toEqual([
       '7 days',
       '30 days',
@@ -65,8 +63,7 @@ describe('RangeSegmented (US-1302)', () => {
   it('stays operable while a report is in flight', async () => {
     const { host, selected } = await render(30);
 
-    // A control that goes inert under the gesture that triggered it blurs itself, which drops a
-    // keyboard reader to the top of the document. The store's `switchMap` handles the overlap.
+    // Going inert would blur the control and drop keyboard focus; `switchMap` handles overlap.
     expect([...host.querySelectorAll('button')].some((button) => button.disabled)).toBe(false);
 
     [...host.querySelectorAll('button')][0]!.click();

@@ -8,12 +8,8 @@ namespace Enterprise.Gpt.Unit.Test.Service.Reports;
 /// The one place null and zero are told apart, pinned without a database.
 /// </summary>
 /// <remarks>
-/// This arithmetic is the reason the whole report models cost as nullable, and getting it wrong
-/// produces a plausible number rather than a failure: a period nobody could price would read as a
-/// period that cost nothing. The aggregate itself cannot express the difference — EF wraps every
-/// <c>SUM</c> in a <c>COALESCE</c>, so an all-null sum arrives as zero — which is why
-/// <c>AggregateRow.EstimatedCost</c> restores it from the unpriced count and why both halves are
-/// worth a test of their own.
+/// Getting it wrong reads an unpriceable period as free. EF coalesces every <c>SUM</c> to zero, so
+/// <c>AggregateRow.EstimatedCost</c> restores null from the unpriced count.
 /// </remarks>
 public sealed class UsageCostFoldTests
 {
@@ -29,8 +25,7 @@ public sealed class UsageCostFoldTests
     [Fact]
     public void EstimatedCost_EverythingPricedAtZero_IsZeroRatherThanNull()
     {
-        // Free is a price. Collapsing this into null would say the cost is unknown when it is
-        // known and happens to be nothing.
+        // Free is a price; null would claim the cost is unknown.
         Assert.Equal(0m, Row(turns: 3, unpriced: 0, pricedCost: 0m).EstimatedCost);
     }
 
@@ -43,8 +38,7 @@ public sealed class UsageCostFoldTests
     [Fact]
     public void EstimatedCost_NoTurnsAtAll_IsNull()
     {
-        // An empty group is unpriced by the same test, which is what an empty period should read
-        // as: nothing was spent that anyone can vouch for, not a measured zero.
+        // An empty period should read as unpriced, not as a measured zero.
         Assert.Null(Row(turns: 0, unpriced: 0, pricedCost: 0m).EstimatedCost);
     }
 

@@ -24,14 +24,8 @@ interface RowView<T> extends TableCellContext<T> {
 }
 
 /**
- * The list surface every library and admin screen composes.
- *
- * It imports no store. Everything comes in as inputs, which is what lets it serve
- * `withOffsetPagination` (the footer slot), `withPendingIds` (`pendingIds`) and
- * `withClientQuery` (the notice slot) without knowing any of them exist.
- *
- * Below `mobileBreakpoint` it renders {@link CardRow}s instead of a table, because the
- * boards restructure the row at that width rather than reflowing it.
+ * The list surface for library and admin screens. Inputs only, no store, so it serves every
+ * `with*` state feature; below the mobile breakpoint it renders {@link CardRow}s.
  */
 @Component({
   selector: 'app-data-table',
@@ -57,13 +51,8 @@ export class DataTable<T> {
   readonly skeletonRows = input<number>(8);
 
   /**
-   * Overrides the row count announced to assistive technology and used as the table's
-   * description.
-   *
-   * A paginated caller knows something this component cannot: how many rows exist
-   * beyond the ones it was handed. Left empty, the default "N results" stands; set,
-   * it replaces it entirely, so a screen showing a visible "Showing 25 of 312" is not
-   * also announcing "25 results" from here.
+   * Replaces the default "N results" description, so a paginated caller can announce the total
+   * it knows rather than the rows it passed.
    */
   readonly summary = input<string>('');
 
@@ -73,37 +62,22 @@ export class DataTable<T> {
   readonly selectable = input<boolean>(false);
   readonly selectedIds = model<ReadonlySet<string>>(new Set<string>());
 
-  /**
-   * Whether the header row carries the select-all checkbox.
-   *
-   * Off for a caller whose board draws select-all in its own toolbar: two controls
-   * bound to one state is a defect, and below the breakpoint there is no header row
-   * to hold this one at all.
-   */
+  /** Off when the screen has its own select-all: two controls for one state is a defect. */
   readonly headerSelectAll = input<boolean>(true);
 
   protected readonly summaryId = `data-table-summary-${nextId++}`;
 
-  // descendants: true, because a consumer's cell templates are frequently wrapped —
-  // in an @if for a permission-gated column, or an <ng-container>. Without it the
-  // template is simply not found and the column silently renders blank.
+  // Cell templates are often wrapped in an @if or <ng-container>, and a missed one renders its
+  // column blank.
   protected readonly cells = contentChildren(TableCell<T>, { descendants: true });
 
-  /**
-   * The breakpoint is fixed at 768px rather than an input: `injectMediaQuery` reads
-   * its argument once at construction, so a per-instance value could not be honoured
-   * without rebuilding the listener, and no screen in the design wants a different one.
-   */
+  /** Fixed rather than an input: `injectMediaQuery` reads its query once at construction. */
   protected readonly isNarrow = injectMediaQuery(MOBILE_VIEWPORT);
 
   /** Between the two edges the table stays a table, minus the columns that cannot fit. */
   protected readonly isTablet = injectMediaQuery(TABLET_VIEWPORT);
 
-  /**
-   * What the table renders. The card branch deliberately reads `columns()` instead: a
-   * phone is a different layout, not a narrower tablet, and a column dropped for want of
-   * a grid track still has room on a card.
-   */
+  /** Table columns only; cards read `columns()`, since a card has room for a dropped column. */
   protected readonly visibleColumns = computed<readonly TableColumn<T>[]>(() =>
     this.isTablet() ? this.columns().filter((column) => !column.hideOnTablet) : this.columns(),
   );
@@ -112,14 +86,7 @@ export class DataTable<T> {
     () => new Map(this.cells().map((cell) => [cell.appTableCell(), cell.template])),
   );
 
-  /**
-   * Row contexts, memoised.
-   *
-   * Binding `[ngTemplateOutletContext]` to a method call would allocate a new object
-   * on every check, and `provideCheckNoChangesConfig({ exhaustive: true })` fails that
-   * immediately — correctly, because in a zoneless app it also means the view is
-   * dirtied on every pass.
-   */
+  /** Memoised: a per-check context object fails the exhaustive check-no-changes pass. */
   protected readonly rowViews = computed<readonly RowView<T>[]>(() => {
     const key = this.trackKey();
     const label = this.rowLabel();
@@ -127,21 +94,13 @@ export class DataTable<T> {
       $implicit: row,
       row,
       rowIndex,
-      // Precomputed rather than called per binding: `rowLabel` is consumer-supplied
-      // and would otherwise run once per row on every check, doubled by the
-      // exhaustive check-no-changes pass.
+      // Precomputed: `rowLabel` is consumer code that would otherwise run per row every check.
       key: key(row),
       selectLabel: `Select ${label(row)}`,
     }));
   });
 
-  /**
-   * Columns bucketed by mobile slot, once per column set.
-   *
-   * Filtering inside the template would allocate five fresh arrays per card row per
-   * change-detection pass — the same class of per-check allocation `rowViews` exists
-   * to remove.
-   */
+  /** Bucketed once per column set rather than filtered per card on every check. */
   protected readonly columnsBySlot = computed<
     Readonly<Record<MobileSlot, readonly TableColumn<T>[]>>
   >(() => {

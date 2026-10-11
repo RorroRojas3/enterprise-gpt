@@ -8,10 +8,6 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Conversations.Chat;
 
-/// <summary>
-/// Covers the mapping from a model's provider to the keyed chat client that serves it, including the
-/// two ways that mapping can come up empty.
-/// </summary>
 public sealed class ChatClientResolverTests : IDisposable
 {
     private readonly List<ServiceProvider> _providers = [];
@@ -53,11 +49,8 @@ public sealed class ChatClientResolverTests : IDisposable
     }
 
     /// <summary>
-    /// Azure OpenAI and Azure AI Foundry reach the same resource over the same v1 endpoint and differ
-    /// only in API surface, so a slip in <c>Providers.ServiceKeys</c> that collapsed one onto the
-    /// other would look entirely plausible — a turn would still stream, just without reasoning, or
-    /// with reasoning options a Chat Completions deployment rejects. Asserting each resolves to its
-    /// own client and specifically not the other's is what catches that.
+    /// Azure OpenAI and Foundry share one v1 endpoint and differ only in API surface, so a
+    /// <c>Providers.ServiceKeys</c> slip collapsing one onto the other would still stream plausibly.
     /// </summary>
     [Fact]
     public void Resolve_AzureAIFoundryProvider_ReturnsClientRegisteredUnderTheFoundryKey()
@@ -89,10 +82,8 @@ public sealed class ChatClientResolverTests : IDisposable
     }
 
     /// <summary>
-    /// Anthropic and Amazon Bedrock both serve Claude, so a copy-paste slip in
-    /// <c>Providers.ServiceKeys</c> that pointed Anthropic at the Bedrock key would still produce
-    /// plausible-looking answers in every other test. Asserting the client is the Anthropic one and
-    /// specifically not the Bedrock one is what catches that.
+    /// Anthropic and Bedrock both serve Claude, so a <c>Providers.ServiceKeys</c> slip pointing one at the
+    /// other would still answer plausibly.
     /// </summary>
     [Fact]
     public void Resolve_AnthropicProvider_ReturnsClientRegisteredUnderTheAnthropicKey()
@@ -127,9 +118,8 @@ public sealed class ChatClientResolverTests : IDisposable
     }
 
     /// <summary>
-    /// <c>Core.Ref.Provider</c> accepts rows the code knows nothing about, and model creation only
-    /// checks that the provider row exists — so an unmapped id has to fail here rather than resolve
-    /// to whichever client happens to be registered.
+    /// Model creation only checks the provider row exists, so an unmapped id must fail here rather than
+    /// resolve to whichever client is registered.
     /// </summary>
     [Fact]
     public void Resolve_UnknownProviderId_ThrowsProviderNotConfiguredException()

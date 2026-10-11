@@ -124,9 +124,8 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
     }
 
     /// <summary>
-    /// The only place the real <c>nvarchar(1024)</c> column and the real EF projection run — the
-    /// unit tests use SQLite and compile the projection rather than translating it, so an
-    /// untranslatable value-converted property surfaces here or nowhere.
+    /// The only place the real <c>nvarchar(1024)</c> column and EF projection run; the SQLite unit tests compile
+    /// the projection rather than translating it.
     /// </summary>
     [Fact]
     public async Task CreateMcpServer_Headers_RoundTrip()
@@ -409,9 +408,6 @@ public sealed class McpEndpointsIntegrationTests(IntegrationTestFixture fixture)
 
     private const string ApiKey = "github_pat_11ABCDEFGwxyz";
 
-    /// <summary>
-    /// Registers a server that takes a per-user key and grants it to the regular test user.
-    /// </summary>
     private async Task<Guid> AddPermittedUserApiKeyServerAsync(string name)
     {
         var (serverId, permissionId) = await _fixture.AddMcpServerAsync(

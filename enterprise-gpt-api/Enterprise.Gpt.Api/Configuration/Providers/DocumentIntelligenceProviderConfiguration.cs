@@ -7,16 +7,10 @@ using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Api.Configuration.Providers;
 
-/// <summary>
-/// Registers the Azure Document Intelligence client that OCRs uploaded documents.
-/// </summary>
 internal static class DocumentIntelligenceProviderConfiguration
 {
     #region Public static methods
 
-    /// <summary>
-    /// Registers the validated options and the client, which is built on first use.
-    /// </summary>
     internal static IServiceCollection AddDocumentIntelligenceProvider(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<IValidator<DocumentIntelligenceOptions>, DocumentIntelligenceOptionsValidator>();

@@ -13,18 +13,8 @@ namespace Enterprise.Gpt.Unit.Test.Api.Configuration.Providers;
 /// Pins the request the Anthropic SDK's Microsoft.Extensions.AI bridge actually puts on the wire.
 /// </summary>
 /// <remarks>
-/// <para>
-/// <see cref="AnthropicDefaultsTests"/> exercises the callback in isolation, which cannot see the
-/// behaviour the callback is written around: the bridge treats the raw parameters as an overlay base
-/// and merges messages, tools, and system content onto them, but leaves <c>Model</c> and
-/// <c>MaxTokens</c> untouched. That behaviour is the opposite of what the SDK's own documentation for
-/// <c>AsIChatClient</c> describes, so it is undocumented and could change in a package bump — and
-/// every isolated test would stay green while every conversation silently ran on the wrong model.
-/// </para>
-/// <para>
-/// No network is involved: the request is intercepted by a stub handler that records the body and
-/// answers with a minimal message.
-/// </para>
+/// The bridge leaves <c>Model</c> and <c>MaxTokens</c> un-overlaid, contrary to its documentation, so a
+/// package bump could change that while every isolated <see cref="AnthropicDefaultsTests"/> test stays green.
 /// </remarks>
 public sealed class AnthropicChatClientBridgeTests
 {
@@ -73,8 +63,7 @@ public sealed class AnthropicChatClientBridgeTests
             Effort = "xhigh"
         };
 
-        // MaxRetries is zeroed so an unexpected non-success answer surfaces immediately instead of
-        // being retried behind the assertion.
+        // No retries, so an unexpected failure surfaces immediately rather than behind the assertion.
         using var httpClient = new HttpClient(handler);
         var anthropicClient = new AnthropicClient
         {

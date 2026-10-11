@@ -49,10 +49,6 @@ public sealed class DocumentSummarizerTests : IDisposable
 
     #region Single pass
 
-    /// <summary>
-    /// A document that fits is summarized in exactly one call — a short document is not needlessly
-    /// split and recombined.
-    /// </summary>
     [Fact]
     public async Task SummarizeDocumentAsync_DocumentThatFits_MakesExactlyOneCall()
     {
@@ -79,8 +75,7 @@ public sealed class DocumentSummarizerTests : IDisposable
     }
 
     /// <summary>
-    /// The first call site in the codebase to put the option on the wire for any provider. Without
-    /// it a map phase's per-call output is unbounded, billed at the summarizer's rate on every one
+    /// Without the cap a map phase's per-call output is unbounded, billed at the summarizer's rate on each
     /// of potentially hundreds of calls.
     /// </summary>
     [Fact]
@@ -307,9 +302,8 @@ public sealed class DocumentSummarizerTests : IDisposable
     }
 
     /// <summary>
-    /// A unit already in flight is left to finish, but the run is doomed once one unit fails, so
-    /// units still queued behind the gate must not be dispatched — on a large document that is
-    /// hundreds of calls bought for a result nobody reads.
+    /// Once one unit fails the run is doomed, so units still queued behind the gate must not be
+    /// dispatched; units already in flight are left to finish.
     /// </summary>
     [Fact]
     public async Task SummarizeDocumentAsync_UnitFailure_StopsDispatchingQueuedUnits()
@@ -376,9 +370,8 @@ public sealed class DocumentSummarizerTests : IDisposable
     }
 
     /// <summary>
-    /// A collapse pass has to come back shorter or the loop never converges, while the reduce it
-    /// feeds is the summary that gets cached and is told to keep what it was given. Pointing both
-    /// stages at one template is the regression this catches.
+    /// A collapse pass must come back shorter to converge, while the reduce must keep what it was given;
+    /// pointing both stages at one template is the regression this catches.
     /// </summary>
     [Fact]
     public async Task SummarizeDocumentAsync_CollapsePass_CompressesBeforeTheFinalReduce()
@@ -679,10 +672,7 @@ public sealed class DocumentSummarizerTests : IDisposable
                 : text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
     }
 
-    /// <summary>
-    /// Records what each call was given and how many ran at once. A substituted
-    /// <see cref="IChatClient"/> cannot script a response, so the suite hand-rolls its fakes.
-    /// </summary>
+    // A substituted IChatClient cannot script these responses, so the fake is hand-rolled.
     private sealed class FakeChatClient : IChatClient
     {
         private readonly Lock _sync = new();
@@ -699,44 +689,23 @@ public sealed class DocumentSummarizerTests : IDisposable
 
         public string ResponseText { get; set; } = "A summary.";
 
-        /// <summary>
-        /// Gets or sets the share of its input a response carries, modelling a summarizer that
-        /// actually compresses. Left at zero, every response is <see cref="ResponseText"/>
-        /// regardless of input — a summarizer that never shrinks.
-        /// </summary>
+        // Zero returns ResponseText whatever the input: a summarizer that never shrinks.
         public double ResponseShrinkRatio { get; set; }
 
         public TimeSpan CallDelay { get; set; }
 
         public int FailuresBeforeSuccess { get; set; }
 
-        /// <summary>
-        /// Gets or sets the call ordinal from which every call fails permanently, standing in for a
-        /// fault no retry can clear. Zero leaves every call succeeding.
-        /// </summary>
+        // Zero leaves every call succeeding.
         public int FailPermanentlyFromCall { get; set; }
 
-        /// <summary>
-        /// Gets or sets how many calls answer with no text before one answers normally.
-        /// </summary>
         public int EmptyResponsesBeforeSuccess { get; set; }
 
-        /// <summary>
-        /// Gets or sets a value indicating whether a response echoes the map unit's position, so a
-        /// test can assert what order the partials reach the reduce prompt in.
-        /// </summary>
         public bool EchoUnitNumber { get; set; }
 
-        /// <summary>
-        /// Gets or sets a value indicating whether later units answer faster, making completion
-        /// order the reverse of dispatch order.
-        /// </summary>
         public bool DelayByUnitNumber { get; set; }
 
-        /// <summary>
-        /// Gets or sets the finish reason every answered call carries. Null stands in for a
-        /// provider that reports none.
-        /// </summary>
+        // Null stands in for a provider that reports none.
         public ChatFinishReason? FinishReason { get; set; }
 
         public async Task<ChatResponse> GetResponseAsync(

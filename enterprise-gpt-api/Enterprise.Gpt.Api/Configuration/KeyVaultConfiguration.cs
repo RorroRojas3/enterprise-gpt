@@ -9,24 +9,19 @@ using Enterprise.Gpt.Common.Constants;
 namespace Enterprise.Gpt.Api.Configuration;
 
 /// <summary>
-/// Adds Azure Key Vault to the configuration chain when the <c>KeyVault</c> section enables it.
+/// Appends Azure Key Vault last, so a vault secret outranks the same key from an environment variable (App
+/// Service Key Vault references included) or <c>appsettings.json</c>.
 /// </summary>
-/// <remarks>
-/// The source is appended last, so a vault secret outranks the same key from an environment variable
-/// or <c>appsettings.json</c>. A deployment that also resolves App Service Key Vault references into
-/// app settings would therefore be reading one key through two mechanisms.
-/// </remarks>
 internal static partial class KeyVaultConfiguration
 {
     #region Public static methods
 
     /// <summary>
-    /// Reads the vault into configuration, and does nothing at all when the section leaves it off.
+    /// Reads the vault into configuration; returns <see langword="null"/> when the section leaves it off.
     /// </summary>
-    /// <returns>The vault that was added, or <see langword="null"/> when none was.</returns>
     /// <remarks>
-    /// Must run before anything reads configuration: <c>builder.Configuration</c> rebuilds on every
-    /// source added, so the vault is read here and an unreachable one fails the host immediately.
+    /// Must run before anything reads configuration: <c>builder.Configuration</c> rebuilds on every source
+    /// added, so an unreachable vault fails the host here.
     /// </remarks>
     internal static KeyVaultSource? AddEnterpriseGptKeyVault(this WebApplicationBuilder builder)
     {
@@ -37,9 +32,8 @@ internal static partial class KeyVaultConfiguration
             return null;
         }
 
-        // Wider retry per Microsoft's throttling guidance, but with a per-attempt timeout: the 100s
-        // default would let a black-holed vault outlive the platform's startup probe, replacing the
-        // exception that explains the failure with a bare "container did not start".
+        // Wider retry per Microsoft's throttling guidance, with a per-attempt timeout: the 100s default lets
+        // a black-holed vault outlive the startup probe, leaving only "container did not start".
         var clientOptions = new SecretClientOptions
         {
             Retry =
@@ -62,13 +56,9 @@ internal static partial class KeyVaultConfiguration
     }
 
     /// <summary>
-    /// Builds the credential the vault is reached with.
+    /// Shared with the Data Protection registration so the key ring cannot silently authenticate as a different
+    /// principal than the one the secrets were granted to.
     /// </summary>
-    /// <remarks>
-    /// Shared with the Data Protection registration so both legs authenticate as the same identity;
-    /// two independently built credentials are what would let the key ring silently fall back to a
-    /// different principal than the one the secrets were granted to.
-    /// </remarks>
     internal static DefaultAzureCredential CreateCredential(KeyVaultSource source)
     {
         var credentialOptions = new DefaultAzureCredentialOptions();
@@ -87,9 +77,6 @@ internal static partial class KeyVaultConfiguration
     /// <summary>
     /// Decides whether a vault should be read, and rejects a section that half-describes one.
     /// </summary>
-    /// <param name="configuration">The configuration built so far, whose <c>KeyVault</c> section is read and validated.</param>
-    /// <param name="environment">The host environment, so a test host never reaches a vault.</param>
-    /// <returns>The validated vault, or <see langword="null"/> when none is to be read.</returns>
     /// <exception cref="InvalidOperationException">The section enables a vault it does not describe.</exception>
     internal static KeyVaultSource? Resolve(IConfiguration configuration, IHostEnvironment environment)
     {
@@ -117,10 +104,9 @@ internal static partial class KeyVaultConfiguration
 
     /// <summary>
     /// Reports that the vault is in the chain, so an operator can tell a resolved secret from an
-    /// environment variable that happened to carry the same key.
+    /// environment variable.
     /// </summary>
-    /// <param name="source">The result of <see cref="AddEnterpriseGptKeyVault"/>; <see langword="null"/> reports nothing.</param>
-    /// <param name="logger">The built application's logger: the vault is added before the host exists, so its status is reported afterwards.</param>
+    /// <remarks>Takes the built application's logger: the vault is added before the host exists.</remarks>
     internal static void LogStatus(KeyVaultSource? source, ILogger logger)
     {
         if (source is null)
@@ -128,8 +114,7 @@ internal static partial class KeyVaultConfiguration
             return;
         }
 
-        // The host, never the secret names: which secrets a deployment holds is itself worth not
-        // publishing to a log sink.
+        // The host, never the secret names: which secrets a deployment holds does not belong in a log sink.
         LogReadingKeyVaultSecrets(
             logger, source.VaultUri.Host, source.ManagedIdentityClientId is not null, source.ReloadInterval);
     }

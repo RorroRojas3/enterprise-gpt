@@ -53,9 +53,8 @@ public sealed partial class ExportThemeTests
     }
 
     /// <summary>
-    /// The two that splice a block, exactly once each. A stray second occurrence — a comment naming
-    /// one, say — is substituted too, and a theme block landing inside a CSS comment closes it only
-    /// by luck. The name and the date are small escaped values and legitimately appear twice.
+    /// The block-splicing placeholders appear exactly once: a stray one, say in a CSS comment, is
+    /// substituted too. The escaped name and date may legitimately repeat.
     /// </summary>
     [Theory]
     [InlineData("{{THEME}}")]

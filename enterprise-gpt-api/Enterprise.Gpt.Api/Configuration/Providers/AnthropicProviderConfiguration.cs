@@ -10,17 +10,10 @@ using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Api.Configuration.Providers;
 
-/// <summary>
-/// Registers Anthropic's first-party API.
-/// </summary>
 internal static class AnthropicProviderConfiguration
 {
     #region Public static methods
 
-    /// <summary>
-    /// Registers the validated options and, when <c>Anthropic:Enabled</c> is set, the SDK client and the keyed chat
-    /// client.
-    /// </summary>
     internal static IServiceCollection AddAnthropicProvider(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<IValidator<AnthropicOptions>, AnthropicOptionsValidator>();

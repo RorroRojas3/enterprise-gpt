@@ -2,8 +2,7 @@
 
 // Global rules the UI kit needs and component encapsulation cannot reach.
 // ── Skip link ────────────────────────────────────────────────────────────────
-// Off-screen until focused. Rendered by the shell (US-301) and styled here because it
-// has to sit outside every component.
+// Rendered by the shell but styled here, since it sits outside every component.
 .skip-link {
   position: absolute;
   left: -9999px;
@@ -34,8 +33,7 @@ dialog {
   background: transparent;
 }
 
-// The page must not scroll behind an open modal. `:has` avoids a body class that
-// would have to be added and removed by script, which is one more thing to leak.
+// No scroll behind an open modal; `:has` avoids a script-managed body class that could leak.
 html:has(dialog[open]) {
   overflow: hidden;
 }
@@ -45,16 +43,13 @@ html:has(dialog[open]) {
 // `.is-invalid` directly, and `.was-validated` is never used here.
 .form-control.is-invalid,
 .form-select.is-invalid,
-// A switch can be faulted by a cross-field rule even though nothing types into it — the
-// model form's default-versus-hidden refusal is one. Border only: the track and knob carry
-// the state, and `--fail` clears the 3:1 a non-text indicator needs in both themes.
+// A switch can fail a cross-field rule. Border only: `--fail` clears the 3:1 a non-text
+// indicator needs in both themes.
 .form-check-input.is-invalid {
   border-color: var(--fail);
 
-  // Solid rather than the 18% wash it replaced, for the same reason as the valid
-  // state above (US-1401). `--fail` measures 5.30:1 on `--surface`, so an invalid
-  // field keeps its own colour *and* a compliant indicator rather than trading one
-  // for the other.
+  // Solid, not a wash: `--fail` measures 5.30:1 on `--surface`, so the ring is both the error
+  // colour and a compliant indicator.
   &:focus {
     border-color: var(--fail);
     box-shadow: 0 0 0 2px var(--fail);
@@ -62,8 +57,7 @@ html:has(dialog[open]) {
 }
 
 // ── Spinner ──────────────────────────────────────────────────────────────────
-// The spinner: a ring on the existing `spin` keyframe, rather than
-// Bootstrap's `_spinners.scss`, which would add a keyframe of its own.
+// On the existing `spin` keyframe rather than Bootstrap's spinners, which add their own.
 .kit-spinner {
   display: inline-block;
   flex: 0 0 auto;
@@ -76,17 +70,9 @@ html:has(dialog[open]) {
 }
 
 // ── Tooltip ──────────────────────────────────────────────────────────────────
-// The flyout is created by the `appTooltip` directive through Renderer2, so it never
-// carries a component's encapsulation attribute and has to be styled globally.
-//
-// The colours are tokens rather than the board's literal #0B1F33 on white: that hex
-// *is* --bs-body-bg in dark, which would make the tooltip invisible in the theme it
-// gets used in most.
-//
-// Everything positional is inline, written by the directive against the host's measured
-// box. Fixed, because the hosts sit inside `overflow: hidden` ancestors that clip an
-// absolutely-positioned flyout however high its z-index; the origin here is only what it
-// is measured at, one phase before it is placed.
+// Created through Renderer2, so no encapsulation attribute. Token colours, since a literal
+// #0B1F33 is the dark body background. Fixed, because `overflow: hidden` ancestors clip an
+// absolute flyout; the directive writes the position inline after measuring at this origin.
 .app-tooltip {
   position: fixed;
   top: 0;
@@ -105,15 +91,8 @@ html:has(dialog[open]) {
 }
 
 // ── Safe areas ───────────────────────────────────────────────────────────────
-// The four device insets, once, as tokens. `index.html` carries `viewport-fit=cover`
-// (US-1403), which is what makes these resolve to anything but zero — and which also
-// means the layout viewport now extends under the notch and the home indicator, so a
-// surface that touches an edge has to add the inset back.
-//
-// Tokens rather than `env()` at the call sites for the reason `--toast-top` is a token:
-// the fallback belongs in one place. `env()` with no fallback is invalid in a browser
-// that does not know the keyword, and that failure mode is one dropped declaration
-// rather than a visible one.
+// Non-zero only because `index.html` sets `viewport-fit=cover`, so a surface touching an edge
+// must add its inset back. Tokens, so the `env()` fallback lives in one place.
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -129,9 +108,8 @@ html:has(dialog[open]) {
   --toast-right: 20px;
 }
 
-// Below the mobile breakpoint the bar above the toast is the shell's 54px navbar, not
-// the chat header — and with `viewport-fit=cover` it sits below the notch. Same 23px
-// gap as the desktop figure, so the two move together.
+// On mobile the toast clears the shell's 54px navbar below the notch, with the desktop's
+// 23px gap.
 @include bp.mobile {
   :root {
     --toast-top: calc(78px + var(--safe-top));

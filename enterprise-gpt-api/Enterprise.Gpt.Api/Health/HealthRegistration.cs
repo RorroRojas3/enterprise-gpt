@@ -6,38 +6,23 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Enterprise.Gpt.Api.Health;
 
-/// <summary>
-/// Registers and maps the liveness and readiness endpoints.
-/// </summary>
 /// <remarks>
-/// Two routes rather than one because they answer different questions: a host that is up but cannot
-/// reach its database must fail readiness without being recycled, which is what a liveness failure
-/// would cause.
+/// Two routes: a host that cannot reach its database must fail readiness without being recycled, which a
+/// liveness failure would cause.
 /// </remarks>
 internal static class HealthRegistration
 {
-    /// <summary>Tag carried by the checks that gate readiness.</summary>
     private const string ReadyTag = "ready";
 
     private static readonly string[] ReadyTags = [ReadyTag];
 
-    /// <summary>Ceiling on a single dependency probe.</summary>
-    /// <remarks>
-    /// An unreachable dependency has to fail fast rather than leave the platform to time the request
-    /// out, which it would report as an ambiguous failure rather than as an unready instance.
-    /// </remarks>
+    // Fail fast: a platform-side timeout reads as an ambiguous failure rather than an unready instance.
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
 
     #region Private methods
 
-    /// <summary>
-    /// Answers with the aggregate status and nothing else.
-    /// </summary>
-    /// <remarks>
-    /// Which dependency failed is what an operator wants and what an anonymous caller must not be told;
-    /// <see cref="ReadinessProbe"/> logs it instead. The body is deliberately not
-    /// <c>application/problem+json</c> — this one is read by a load balancer, not by a client of the API.
-    /// </remarks>
+    // Aggregate status only: which dependency failed must not reach an anonymous caller, so ReadinessProbe
+    // logs it. Deliberately not problem+json: a load balancer reads this, not an API client.
     private static async Task<IResult> ReadinessAsync(
         ReadinessProbe probe,
         CancellationToken cancellationToken)
@@ -58,18 +43,14 @@ internal static class HealthRegistration
 
     #region Public static methods
 
-    /// <summary>Registers the readiness checks and the cache in front of them.</summary>
-    /// <param name="services">The service collection to register into.</param>
-    /// <returns>The same <paramref name="services"/> for chaining.</returns>
     internal static IServiceCollection AddEnterpriseGptHealthChecks(this IServiceCollection services)
     {
         services.AddHealthChecks()
             .AddEnterpriseGptSqlHealthCheck("sql", ReadyTags)
             .AddEnterpriseGptCosmosHealthCheck("cosmos", ReadyTags);
 
-        // Applied afterwards rather than per registration: AddDbContextCheck takes no timeout, so the
-        // relational probe would otherwise be bounded only by SqlClient's own connect timeout — three
-        // times the ceiling above, on an anonymous route.
+        // Applied afterwards: AddDbContextCheck takes no timeout, which would leave the SQL probe bounded only
+        // by SqlClient's connect timeout, three times this ceiling, on an anonymous route.
         services.Configure<HealthCheckServiceOptions>(options =>
         {
             foreach (var registration in options.Registrations.Where(IsReadiness))
@@ -84,12 +65,9 @@ internal static class HealthRegistration
         return services;
     }
 
-    /// <summary>Maps <c>/health</c> and <c>/health/ready</c>.</summary>
-    /// <param name="app">The endpoint route builder to map into.</param>
-    /// <returns>The same <paramref name="app"/> for chaining.</returns>
     /// <remarks>
-    /// Both are anonymous. A platform probe carries no bearer token, and an endpoint that answers 401
-    /// to the load balancer is indistinguishable from one that is down.
+    /// Both are anonymous: a platform probe carries no bearer token, and a 401 to the load balancer is
+    /// indistinguishable from being down.
     /// </remarks>
     internal static IEndpointRouteBuilder MapEnterpriseGptHealthChecks(this IEndpointRouteBuilder app)
     {
@@ -100,10 +78,8 @@ internal static class HealthRegistration
             Predicate = _ => false
         }).AllowAnonymous().ExcludeFromDescription().WithName("Liveness");
 
-        // Mapped by hand rather than through MapHealthChecks, which offers no way to serve a cached
-        // report — see ReadinessProbe for why an anonymous route must not probe per request. HEAD is
-        // listed explicitly because routing does not fall it back to GET, and uptime monitors default
-        // to it; MapHealthChecks above accepts every verb already.
+        // By hand: MapHealthChecks cannot serve a cached report (see ReadinessProbe). HEAD is explicit because
+        // routing does not fall it back to GET, and uptime monitors default to it.
         app.MapMethods("/health/ready", [HttpMethods.Get, HttpMethods.Head], ReadinessAsync)
             .AllowAnonymous()
             .ExcludeFromDescription()

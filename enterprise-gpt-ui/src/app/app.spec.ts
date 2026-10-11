@@ -58,16 +58,12 @@ describe('App', () => {
   });
 
   it('runs without zone.js loaded', () => {
-    // Behavioural proof of the zoneless AC: no polyfill entry means no Zone global,
-    // which a grep over angular.json cannot establish.
     expect((globalThis as Record<string, unknown>)['Zone']).toBeUndefined();
   });
 
   it('latches and empties the session in one synchronous step', async () => {
-    // The invariant the whole design rests on, asserted before any await: if the latch
-    // and the state reset ever land in separate ticks, a render can fall between them
-    // and paint a signed-in shell over a cleared SessionStore. Awaiting first would let
-    // that pass unnoticed.
+    // Asserted before any await: a render between the latch and the reset would paint a
+    // signed-in shell over a cleared SessionStore.
     await session();
     const auth = TestBed.inject(AuthService);
 
@@ -94,10 +90,7 @@ describe('App', () => {
   });
 
   it('renders no signed-in chrome of its own, session or not', async () => {
-    // The chrome belongs to `Shell`, a layout route under sessionGuard. Rendered here
-    // it would put an avatar, a name and a live Sign out button over /auth,
-    // /login-failed, /session-error and /signed-out, every one of which is deliberately
-    // chrome-free.
+    // The chrome belongs to `Shell`; rendered here it would cover the chrome-free public routes.
     const fixture = await render();
     const host = fixture.nativeElement as HTMLElement;
 

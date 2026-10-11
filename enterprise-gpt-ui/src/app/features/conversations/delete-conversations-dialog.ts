@@ -12,20 +12,8 @@ import {
 import { Modal } from '@shared/overlay/modal/modal';
 
 /**
- * The bulk-delete confirmation for the conversations library (US-704, frame `4a`).
- *
- * Destructive actions always confirm via modal naming what is going — the board's own
- * note for this frame — and red lives only here and on the single-row delete.
- *
- * Unlike `DeleteConversationDialog` this takes inputs rather than a store. It has one
- * invoker rather than two features that must not import each other, and the same
- * "delete N selected rows" shape is what a project's conversations tab (US-908) will
- * want; a route-scoped store baked in here would have to be swapped out for that.
- *
- * Confirming removes every selected row, so the bulk bar that opened this — and the
- * button inside it that the modal would return focus to — is gone by the time it
- * closes. When focus has fallen through, it goes to `#main-content`, the one
- * always-present programmatic target.
+ * Takes inputs rather than a store, so other bulk-delete invokers can reuse it. Confirming
+ * removes the bulk bar that opened it, so fallen-through focus goes to `#main-content`.
  */
 @Component({
   selector: 'app-delete-conversations-dialog',

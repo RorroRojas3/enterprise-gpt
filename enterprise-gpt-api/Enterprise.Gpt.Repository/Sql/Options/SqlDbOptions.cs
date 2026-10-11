@@ -7,14 +7,11 @@ namespace Enterprise.Gpt.Repository.Sql.Options;
 /// </summary>
 public sealed class SqlDbOptions
 {
-    /// <summary>The configuration section these options are bound from.</summary>
     public const string SectionName = "ConnectionStrings";
 
-    /// <summary>The connection string of the application database.</summary>
     public string DefaultConnection { get; set; } = string.Empty;
 }
 
-/// <summary>Validates <see cref="SqlDbOptions"/>.</summary>
 internal sealed class SqlDbOptionsValidator : AbstractValidator<SqlDbOptions>
 {
     public SqlDbOptionsValidator()

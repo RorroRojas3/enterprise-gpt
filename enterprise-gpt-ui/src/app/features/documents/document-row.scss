@@ -1,8 +1,6 @@
 @use 'breakpoints' as bp;
 
-// Frame 4j's grid — glyph, name, size, date, badge, download — plus the flat view's
-// conversation column, which the frame's grouped rows carry in their group headers
-// instead; US-1003 is what makes that cell conditional here.
+// Tracks: glyph, name, size, date, badge, conversation, download.
 :host {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr) 90px 100px 110px minmax(0, 220px) 32px;
@@ -17,8 +15,7 @@
   }
 }
 
-// The grouped variant (US-1003): the conversation cell is in the group header, so its
-// track goes with it rather than leaving a phantom column before the download button.
+// Grouped rows drop the conversation track, so no phantom column precedes the download.
 :host(.document-row--no-conversation) {
   grid-template-columns: 30px minmax(0, 1fr) 90px 100px 110px 32px;
 }
@@ -109,9 +106,8 @@
   }
 }
 
-// Below the sidebar-in-flow width the row re-templates rather than clipping: glyph
-// and name keep the first line with the download control, and the meta wraps beneath
-// — so nothing overflows horizontally at any width (US-1403's rule).
+// Mobile re-templates rather than clipping: glyph, name and download share the first line and
+// the meta wraps beneath.
 @include bp.mobile {
   // Both variants: the media query adds no specificity, so without the second
   // selector the grouped variant's six-track rule above would win here too.

@@ -9,13 +9,11 @@ namespace Enterprise.Gpt.Service.Exceptions;
 /// </summary>
 public class ForbiddenException : ProblemException
 {
-    /// <summary>Initializes a new instance of the <see cref="ForbiddenException"/> class.</summary>
     public ForbiddenException(string message)
         : base(HttpStatusCode.Forbidden, ProblemCodes.Forbidden, message)
     {
     }
 
-    /// <summary>Initializes a new instance of the <see cref="ForbiddenException"/> class.</summary>
     public ForbiddenException(string message, Exception innerException)
         : base(HttpStatusCode.Forbidden, ProblemCodes.Forbidden, message, innerException)
     {

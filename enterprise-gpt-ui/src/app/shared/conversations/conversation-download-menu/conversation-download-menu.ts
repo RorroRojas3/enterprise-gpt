@@ -20,7 +20,6 @@ import { MenuItem } from '@shared/overlay/menu/menu-item';
 
 let nextId = 0;
 
-/** One row of the menu, in the order the panel draws them. */
 interface DownloadOption {
   readonly format: ExportFormat;
   readonly label: string;
@@ -28,22 +27,9 @@ interface DownloadOption {
 }
 
 /**
- * The download control, and the one menu behind both of its triggers.
- *
- * Rendered in the composer's control row and in the conversation header, which is why it
- * lives in `shared/`: `features/chat` may be imported by neither, and what is wanted is
- * *one* menu offered from both places rather than two that agree.
- *
- * Three behaviours are the whole of it:
- *
- * - **The menu stays open while a format is preparing.** That is `Menu`'s own `stayOpen`,
- *   built for the multi-select tools picker and exactly right here: the chosen item shows
- *   its ring and the rest dim, which requires the panel to still be on screen.
- * - **It closes when the download starts, and not when it fails.** The store reports an
- *   outcome per settle; this closes on a successful one and leaves the panel up otherwise,
- *   so the reader can try another format without reopening.
- * - **While a turn streams the trigger is disabled with a reason.** `aria-disabled` rather
- *   than the native attribute, so the trigger keeps focus and can still be read.
+ * In `shared/` so the composer and the conversation header offer one menu. It stays open while a
+ * format prepares and closes only once the download starts, so after a failure another format
+ * is one click away.
  */
 @Component({
   selector: 'app-conversation-download-menu',
@@ -82,14 +68,7 @@ export class ConversationDownloadMenu {
       : null;
   });
 
-  /**
-   * Whether any export is running — this conversation's or another's.
-   *
-   * The store takes one at a time, and the dimming has to say so however the export was
-   * started. Keying only on this conversation's would leave a second menu — after
-   * navigating away from a conversation whose PDF is still rendering — offering
-   * live-looking items that the store silently drops.
-   */
+  /** Any conversation's: the store runs one export at a time and silently drops the rest. */
   protected readonly exportInFlight = computed(() => this.exports.pending() !== null);
 
   protected readonly triggerLabel = computed(() =>
@@ -98,13 +77,7 @@ export class ConversationDownloadMenu {
       : `Download ${this.conversationName()}`,
   );
 
-  /**
-   * The last outcome this instance acted on.
-   *
-   * Tracked per instance because the store's outcome is replaced rather than consumed:
-   * the composer's menu and the header's menu are both mounted at desktop widths, and a
-   * one-shot either of them cleared would be invisible to the other.
-   */
+  /** Per instance: the store's outcome is replaced, not consumed, and both menus can be mounted. */
   private lastHandledOutcome = 0;
 
   constructor() {

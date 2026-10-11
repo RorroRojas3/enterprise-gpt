@@ -52,8 +52,7 @@ describe('UploadCancelClient', () => {
       .expectOne(CANCEL_URL)
       .flush({ title: 'Not found' }, { status: 404, statusText: 'Not Found' });
 
-    // The chip is off screen either way; a toast here would report a cleanup nobody is
-    // waiting on and offer no control to act on it.
+    // The chip is already gone, and a toast would report cleanup nobody can act on.
     expect(toasts.toasts()).toHaveLength(0);
   });
 

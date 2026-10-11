@@ -2,19 +2,13 @@ using FluentValidation;
 
 namespace Enterprise.Gpt.Api.Options;
 
-/// <summary>
-/// Selects and tunes the Azure Key Vault configuration source, bound from the <c>KeyVault</c> section.
-/// </summary>
+/// <summary>Selects and tunes the Azure Key Vault configuration source.</summary>
 internal sealed class KeyVaultOptions
 {
-    /// <summary>The configuration section these options are bound from.</summary>
     internal const string SectionName = "KeyVault";
 
     /// <summary>Whether secrets are loaded from a key vault at all.</summary>
-    /// <remarks>
-    /// Off ships as the default, and nothing about the vault is touched while it stays off: no
-    /// credential is constructed and no request leaves the process.
-    /// </remarks>
+    /// <remarks>While off, no credential is constructed and no request leaves the process.</remarks>
     public bool Enabled { get; set; }
 
     /// <summary>Vault URI, for example <c>https://contoso.vault.azure.net/</c>.</summary>
@@ -33,17 +27,15 @@ internal sealed class KeyVaultOptions
     /// <c>https://contoso.vault.azure.net/keys/data-protection</c>.
     /// </summary>
     /// <remarks>
-    /// Versionless, so rotating the vault key does not strand payloads written under the previous
-    /// version. Leave unset to persist the key ring unwrapped, which is only appropriate where the
-    /// database itself is the trust boundary — local development and the test host.
+    /// Versionless, so key rotation does not strand older payloads. Unset persists the key ring unwrapped,
+    /// fit only where the database is the trust boundary (local development, the test host).
     /// </remarks>
     public string? DataProtectionKeyUri { get; set; }
 
     /// <summary>How often to re-read the vault, or <see langword="null"/> to read it once at startup.</summary>
     /// <remarks>
-    /// A reload reaches only code that re-reads configuration or watches a change token; anything bound
-    /// through <c>IOptions&lt;T&gt;</c> keeps the value it started with. The provider swallows a failed
-    /// reload and logs nothing, so polling is only observable through the vault's own diagnostics.
+    /// <c>IOptions&lt;T&gt;</c> consumers keep their startup value. The provider swallows failed reloads
+    /// without logging, so polling is visible only in the vault's own diagnostics.
     /// </remarks>
     public TimeSpan? ReloadInterval { get; set; }
 }

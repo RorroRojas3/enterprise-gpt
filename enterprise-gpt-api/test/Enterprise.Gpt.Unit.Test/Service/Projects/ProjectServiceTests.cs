@@ -113,9 +113,6 @@ public sealed class ProjectServiceTests : IDisposable
         return document;
     }
 
-    /// <summary>
-    /// Whether every sheet, column and row of a document is soft-deleted.
-    /// </summary>
     private async Task<bool> SheetsAreDeactivatedAsync(Guid documentId)
     {
         using var ctx = _fixture.CreateContext();
@@ -241,8 +238,8 @@ public sealed class ProjectServiceTests : IDisposable
     [InlineData(0, 100_000)]
     public async Task SearchProjectsAsync_OutOfRangePagingArguments_AreClampedRatherThanFaulting(int skip, int take)
     {
-        // These arrive straight off the query string. take = 0 used to divide by zero when computing
-        // CurrentPage, turning a trivially reachable request into a 500.
+        // These arrive straight off the query string; take = 0 must not divide by zero computing
+        // CurrentPage and turn a trivially reachable request into a 500.
         await AddProjectAsync("Research");
 
         var result = await _service.SearchProjectsAsync(
@@ -322,8 +319,7 @@ public sealed class ProjectServiceTests : IDisposable
     [Fact]
     public async Task SearchProjectsAsync_NoOrderRequested_KeepsTheListingsOriginalOrder()
     {
-        // The order this route had before it accepted one, pinned so a later change to the sorted
-        // path cannot quietly move it: clients written against it are promised it unchanged.
+        // The pre-sorting default order, pinned: existing clients are promised it unchanged.
         var older = await AddProjectAsync("Older", created: DateTimeOffset.UtcNow.AddDays(-2));
         var newer = await AddProjectAsync("Newer", created: DateTimeOffset.UtcNow.AddDays(-1));
 

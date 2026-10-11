@@ -4,14 +4,11 @@ namespace Enterprise.Gpt.Dto.Actions.Projects;
 /// Request to mark one of the caller's projects as a favourite, or to clear the mark.
 /// </summary>
 /// <remarks>
-/// Deliberately its own action rather than a field on <see cref="UpdateProjectActionDto"/>: that PUT
-/// is a full representation, so a client renaming a project without echoing the flag back would
-/// silently un-favourite it. There is no validator — <see cref="IsFavorite"/> is a
-/// <see cref="bool"/>, so the only 400 it can produce is a binding failure, which carries no
-/// <c>errors</c> dictionary.
+/// Not a field on <see cref="UpdateProjectActionDto"/>: that PUT is a full representation, so a rename
+/// that omitted the flag would silently un-favourite. No validator: a bool can only fail binding.
 /// </remarks>
 public record SetProjectFavoriteActionDto
 {
-    /// <summary>Gets the state being asked for. A set, not a toggle, so the request is idempotent.</summary>
+    /// <summary>A set, not a toggle, so the request is idempotent.</summary>
     public bool IsFavorite { get; init; }
 }

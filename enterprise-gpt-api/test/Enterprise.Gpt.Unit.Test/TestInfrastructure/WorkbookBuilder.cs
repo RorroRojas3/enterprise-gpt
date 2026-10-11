@@ -10,8 +10,7 @@ namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
 /// Builds minimal in-memory <c>.xlsx</c> packages for tests.
 /// </summary>
 /// <remarks>
-/// Generating the fixture rather than checking in a binary keeps the expected text visible in the test
-/// that asserts on it, and avoids a committed file nobody can diff.
+/// Generated rather than checked in, so the expected text stays visible in the test and diffable.
 /// </remarks>
 public static class WorkbookBuilder
 {
@@ -24,13 +23,12 @@ public static class WorkbookBuilder
     /// <summary>Cell-format index carrying a custom format that is <em>not</em> a date.</summary>
     public const uint CustomNumberStyle = 3;
 
-    /// <param name="Name">The sheet's tab name, written to the workbook's sheet list as given.</param>
+    /// <param name="Name">The sheet's tab name.</param>
     /// <param name="Rows">
-    /// Each entry is one row. A <see cref="string"/> becomes a shared string, a <see cref="double"/> or
-    /// <see cref="int"/> a number, a <see cref="bool"/> a boolean, a <see cref="DateTime"/> a
-    /// date-styled serial, and <see langword="null"/> is omitted entirely so the row carries a real gap.
+    /// One entry per row: strings become shared strings, numbers numbers, <see cref="bool"/> booleans,
+    /// <see cref="DateTime"/> date-styled serials, and <see langword="null"/> is omitted to leave a real gap.
     /// </param>
-    /// <param name="Hidden">Whether the sheet is marked hidden, as a workbook's lookup tables often are.</param>
+    /// <param name="Hidden">Marks the sheet hidden, as lookup tables often are.</param>
     public sealed record SheetSpec(string Name, IReadOnlyList<object?[]> Rows, bool Hidden = false);
 
     public sealed record InlineText(string Value);
@@ -39,7 +37,6 @@ public static class WorkbookBuilder
 
     public sealed record CellError(string Value);
 
-    /// <summary>A value forced onto a particular cell-format index.</summary>
     public sealed record Styled(object? Value, uint StyleIndex);
 
     /// <summary>A shared-string cell whose index is written verbatim, valid or not.</summary>
@@ -169,13 +166,9 @@ public static class WorkbookBuilder
     }
 
     /// <summary>
-    /// Creates a package whose <c>Sheets</c> list references a relationship id that has no matching part.
+    /// Opens cleanly and faults only when the dangling relationship is dereferenced, so it tests exception
+    /// handling around the whole parse rather than around <c>Open()</c>.
     /// </summary>
-    /// <remarks>
-    /// The package opens without complaint; the fault only surfaces when the relationship is
-    /// dereferenced, which is what makes it a test of exception handling around the whole parse rather
-    /// than around <c>Open()</c>.
-    /// </remarks>
     public static byte[] CreateWithDanglingSheetRelationship()
     {
         using var stream = new MemoryStream();

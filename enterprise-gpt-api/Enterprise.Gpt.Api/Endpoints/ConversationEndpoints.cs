@@ -12,23 +12,15 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Enterprise.Gpt.Api.Endpoints;
 
-/// <summary>
-/// Minimal API endpoints for conversations: the chat turns themselves plus the transcript and the
-/// list the UI's sidebar is built from. Replaces the former <c>ConversationsController</c>, the last
-/// MVC controller in the API.
-/// </summary>
+/// <summary>Conversation routes: chat turns, transcripts and the sidebar list.</summary>
 /// <remarks>
-/// Every route is scoped to the signed-in user rather than gated on a permission, exactly as
-/// <see cref="ProjectEndpoints"/> is — a conversation is owned, and there is no administrative view
-/// of another user's chats. Uploading into a conversation lives on <see cref="DocumentEndpoints"/>.
+/// Scoped to the signed-in user rather than gated on a permission: there is no administrative view of another
+/// user's chats.
 /// </remarks>
 public static class ConversationEndpoints
 {
     #region Private methods
 
-    /// <summary>
-    /// Applies the response headers for a server-sent event stream.
-    /// </summary>
     private static void SetStreamingHeaders(HttpResponse response)
     {
         response.ContentType = "text/event-stream";
@@ -42,24 +34,17 @@ public static class ConversationEndpoints
 
     #region Public static methods
 
-    /// <summary>
-    /// Maps the <c>api/conversations</c> endpoint group.
-    /// </summary>
-    /// <param name="app">The route builder to map the group onto.</param>
-    /// <returns>The same <paramref name="app"/> for chaining.</returns>
+    /// <summary>Maps the <c>api/conversations</c> endpoint group.</summary>
     public static IEndpointRouteBuilder MapConversationEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("api/conversations")
             .RequireAuthorization()
             .WithTags("Conversations")
-            // Every route in the group is authorized, so the challenge applies uniformly.
             .ProducesProblem(StatusCodes.Status401Unauthorized);
 
-        // 404 rather than an empty page when ?projectId= names a project the caller does not own.
-        // ProducesValidationProblem() since US-706: ?sort= and ?dir= are rejected by the service with
-        // an errors dictionary naming the parameter. A binding failure on one of the typed query
-        // parameters still returns a 400 without one, and OpenAPI allows a single schema per status,
-        // so the richer of the two is declared — a client reading `errors` defensively handles both.
+        // 404 rather than an empty page when ?projectId= names a project the caller does not own. A bad ?sort=
+        // or ?dir= is a validation problem and a binding failure a bare 400; OpenAPI allows one schema per
+        // status, so the richer is declared.
         group.MapGet("search", SearchConversationsAsync)
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound);
@@ -72,11 +57,8 @@ public static class ConversationEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapGet("{id:guid}/documents", GetConversationDocumentsAsync)
             .ProducesProblem(StatusCodes.Status404NotFound);
-        // Content-negotiated by query parameter rather than by Accept header, so a plain browser
-        // link can request any format. The 400 carries an errors dictionary, because an unsupported
-        // ?format= is rejected by a validator rather than by binding. The 503 is the format this
-        // deployment cannot render — a PDF with no font, or a format configuration withdrew — and
-        // carries its own problem type so a client can tell it from transient unavailability.
+        // Format by query parameter rather than Accept header, so a plain browser link can request any. The 503
+        // is a format this deployment cannot render, with its own problem type to tell it from a transient one.
         group.MapGet("{id:guid}/export", ExportConversationAsync)
             .Produces(
                 StatusCodes.Status200OK,
@@ -99,16 +81,12 @@ public static class ConversationEndpoints
             .AddEndpointFilter<ValidationEndpointFilter<UpdateConversationActionDto>>()
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound);
-        // ProducesProblem(400) rather than ProducesValidationProblem(): the request has no
-        // FluentValidation validator, so its only 400 is a binding failure and carries no errors
-        // dictionary. OpenAPI allows one schema per status, so the two cannot both be declared.
+        // ProducesProblem(400): there is no validator, so the only 400 is a binding failure with no errors.
         group.MapPut("{id:guid}/favorite", SetConversationFavoriteAsync)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
-        // Its own route below the transcript rather than a field on anything above it: a rating is
-        // per message, and no other route in this group addresses one. The 400 comes in two shapes —
-        // a validation problem naming `messageId` when the target is not an assistant message,
-        // and a plain binding failure when the body names a rating the enum does not define.
+        // The 400 is a validation problem naming `messageId` when the target is not an assistant message, or a
+        // bare binding failure for a rating the enum does not define.
         group.MapPost("{id:guid}/messages/{messageId:guid}/feedback", SetMessageFeedbackAsync)
             .AddEndpointFilter<ValidationEndpointFilter<SetMessageFeedbackActionDto>>()
             .ProducesValidationProblem()
@@ -120,9 +98,8 @@ public static class ConversationEndpoints
         // deactivated logs a warning and returns, so this route only ever answers 204.
         group.MapDelete("{id:guid}", DeactivateConversationAsync);
 
-        // The stream carries no typed body, so the success response has to be declared by hand.
-        // Its error surface is the widest in the API because a turn resolves a model, acquires the
-        // conversation lock and connects to whatever MCP servers the caller selected.
+        // The widest error surface in the API: a turn resolves a model, takes the conversation lock and
+        // connects to the caller's MCP servers.
         group.MapPost("{id:guid}/stream", StreamConversationAsync)
             .AddEndpointFilter<ValidationEndpointFilter<CreateConversationStreamActionDto>>()
             .Produces(StatusCodes.Status200OK, contentType: "text/event-stream")
@@ -138,9 +115,8 @@ public static class ConversationEndpoints
         return app;
     }
 
-    // Query parameters follow the service here rather than leading, as elsewhere in the API:
-    // they need defaults so the paging arguments stay optional, and C# requires optional
-    // parameters last. Without defaults an absent ?skip= would fail binding with a 400.
+    // Query parameters follow the service, unlike elsewhere in the API: they need defaults, or an absent
+    // ?skip= fails binding with a 400.
     internal static async Task<Ok<PaginatedResponseDto<ConversationDto>>> SearchConversationsAsync(
         IConversationService conversationService, string? name = null, int skip = 0, int take = 20,
         bool? isFavorite = null, Guid? projectId = null, string? sort = null, string? dir = null,
@@ -150,9 +126,7 @@ public static class ConversationEndpoints
         return TypedResults.Ok(response);
     }
 
-    // Not-found paths throw NotFoundException in the service and surface as 404 through the
-    // exception-handler chain. A conversation belonging to another user is reported the same way, so
-    // this API cannot be used to probe for conversation ids.
+    // Another user's conversation is a 404 too, so ids cannot be probed.
     internal static async Task<Ok<ConversationDetailDto>> GetConversationAsync(
         Guid id, IConversationService conversationService, CancellationToken cancellationToken)
     {
@@ -160,13 +134,8 @@ public static class ConversationEndpoints
         return TypedResults.Ok(response);
     }
 
-    // Returns a file rather than a typed body, so it writes the response directly instead of going
-    // through TypedResults: the payload is a rendered document, which is not a DTO this API
-    // otherwise serializes, and two of the five formats are not text at all.
-    //
-    // Results.File writes Content-Disposition: attachment with both a plain filename and an RFC 5987
-    // filename*, so a conversation named in any script downloads under its own name; the CORS policy
-    // already exposes that header to the browser client.
+    // Results.File writes an RFC 5987 filename* beside the plain one, so a conversation named in any script
+    // downloads under its own name.
     internal static async Task<IResult> ExportConversationAsync(
         Guid id, IConversationExportService exportService, HttpResponse httpResponse,
         string? format = null, CancellationToken cancellationToken = default)
@@ -180,9 +149,7 @@ public static class ConversationEndpoints
         return Results.File(export.Content, export.ContentType, export.FileName);
     }
 
-    // Paging is opt-in: with neither parameter the whole transcript is returned, as it always was.
-    // Optional parameters must come last, as on the search route above, or an absent ?take= fails
-    // binding with a 400.
+    // Paging is opt-in: with neither parameter the whole transcript is returned.
     internal static async Task<Ok<ChatConversationDto>> GetConversationMessagesAsync(
         Guid id, IConversationService conversationService, int? take = null,
         DateTimeOffset? before = null, CancellationToken cancellationToken = default)
@@ -191,9 +158,7 @@ public static class ConversationEndpoints
         return TypedResults.Ok(response);
     }
 
-    // Not-found paths throw NotFoundException in the service and surface as 404 through the
-    // exception-handler chain. A conversation belonging to another user is reported the same way, so
-    // this route cannot be used to probe for conversation ids.
+    // Another user's conversation is a 404 too, so ids cannot be probed.
     internal static async Task<Ok<List<ConversationDocumentDto>>> GetConversationDocumentsAsync(
         Guid id, IConversationService conversationService, CancellationToken cancellationToken)
     {
@@ -208,9 +173,8 @@ public static class ConversationEndpoints
         return TypedResults.Created($"/api/conversations/{response.Id}", response);
     }
 
-    // The id travels in the body rather than the route, unlike the sibling modules: this is a
-    // full-representation PUT whose DTO already carries the id, and the shape predates the move off
-    // MVC. Changing it would break the UI's rename call for no gain.
+    // The id travels in the body, unlike the sibling modules: moving it to the route would break the UI's
+    // rename call for no gain.
     internal static async Task<Ok<ConversationDto>> UpdateConversationAsync(
         UpdateConversationActionDto request, IConversationService conversationService, CancellationToken cancellationToken)
     {
@@ -228,10 +192,7 @@ public static class ConversationEndpoints
         return TypedResults.NoContent();
     }
 
-    // Both identifiers are route parameters and neither is repeated in the body: the rating is the
-    // only thing the caller decides. 204 rather than the stored rating echoed back, matching the
-    // favourite route above — the client already knows what it asked for, and a reload reads the
-    // rating off the transcript.
+    // 204 rather than the stored rating: the client knows what it asked for, and a reload reads the transcript.
     internal static async Task<NoContent> SetMessageFeedbackAsync(
         Guid id, Guid messageId, SetMessageFeedbackActionDto request,
         IConversationService conversationService, CancellationToken cancellationToken)
@@ -247,8 +208,7 @@ public static class ConversationEndpoints
         return TypedResults.NoContent();
     }
 
-    // [FromBody] is required, not decorative: minimal APIs do not infer a body parameter for DELETE
-    // (nor GET, HEAD or OPTIONS), and without the attribute mapping this route throws at startup.
+    // [FromBody] is required: minimal APIs infer no body for DELETE, and mapping would throw at startup.
     // The verb stays DELETE because the UI already sends a body with it.
     internal static async Task<NoContent> DeactivateConversationsBulkAsync(
         [FromBody] DeactivateConversationsBulkActionDto request, IConversationService conversationService,
@@ -258,20 +218,11 @@ public static class ConversationEndpoints
         return TypedResults.NoContent();
     }
 
-    // Headers are set on the first frame rather than up front: setting them eagerly left an error
-    // response (a 409 for a conversation that is already streaming, say) carrying streaming headers
-    // alongside its JSON body. Connection is omitted deliberately — it is a hop-by-hop header Kestrel
-    // owns, and it is invalid under HTTP/2.
-    //
-    // TypedResults.ServerSentEvents is the obvious .NET 10 answer and still is not usable here: it
-    // commits the response before enumerating, and everything that can fail a turn — the conversation
-    // lock, the transcript read, resolving the model, leasing MCP servers — happens on the first move
-    // of the sequence. Under it, a 409 or a 404 would arrive after a 200 had already gone out.
-    //
-    // Each event is written as its own SSE frame with no event name, so a client reads them off a
-    // single default channel and switches on the payload's own "kind" discriminator. The payload is
-    // the tracking middleware's UI contract, which ships a matching TypeScript definition and fold
-    // function; the source-generated context is what keeps its JSON identical to that definition.
+    // Headers go out with the first frame, so an earlier failure (a 409, say) carries no streaming headers.
+    // Not TypedResults.ServerSentEvents: it commits a 200 before the first move, where the lock, the model and
+    // the MCP leases can still fail. Connection is omitted: it is hop-by-hop and invalid under HTTP/2.
+    // Frames carry no event name; clients switch on the payload's "kind", and the source-generated context
+    // keeps that JSON identical to the middleware's TypeScript contract.
     internal static async Task StreamConversationAsync(
         Guid id, CreateConversationStreamActionDto request, IConversationService conversationService,
         HttpResponse response, CancellationToken cancellationToken)

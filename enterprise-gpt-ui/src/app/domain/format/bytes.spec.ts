@@ -3,8 +3,7 @@ import { formatBytes } from './bytes';
 
 describe('formatBytes', () => {
   it('writes the upload cap exactly as the server does', () => {
-    // MaxUploadSizeEndpointFilter.FormatSize renders the same limit as "50 MB", and
-    // US-805's toast quotes both sides of the comparison in one sentence.
+    // The server's `FormatSize` renders the same limit as "50 MB".
     expect(formatBytes(52_428_800)).toBe('50 MB');
   });
 

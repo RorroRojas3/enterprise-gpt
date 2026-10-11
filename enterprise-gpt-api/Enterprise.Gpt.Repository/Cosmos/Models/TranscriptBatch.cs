@@ -7,23 +7,9 @@ namespace Enterprise.Gpt.Repository.Cosmos.Models;
 /// Accumulates the operations that will run as one transaction against a single partition.
 /// </summary>
 /// <remarks>
-/// A recorded operation list rather than the Cosmos <see cref="TransactionalBatch"/> itself:
-/// that type is abstract and obtainable only from a live <c>Container</c>, so exposing it on
-/// <see cref="ITranscriptStore"/> would make the interface impossible to substitute.
+/// A recorded list rather than <see cref="TransactionalBatch"/>, which only a live <c>Container</c> can
+/// create, so <see cref="ITranscriptStore"/> stays substitutable.
 /// </remarks>
-/// <example>
-/// <code language="csharp">
-/// var result = await store.ExecuteBatchAsync(new PartitionKey(pk), batch => batch
-///     .Create(userMessage.Id.ToString(), userMessage)
-///     .Create(assistantMessage.Id.ToString(), assistantMessage)
-///     .Patch(header.Id.ToString(),
-///     [
-///         PatchOperation.Increment("/messageCount", 2),
-///         PatchOperation.Increment("/contextTokens", contextTokens),
-///         PatchOperation.Set("/dateModified", completedAt),
-///     ]), cancellationToken);
-/// </code>
-/// </example>
 public sealed class TranscriptBatch
 {
     /// <summary>
@@ -39,12 +25,8 @@ public sealed class TranscriptBatch
     public IReadOnlyList<TranscriptBatchOperation> Operations => _operations;
 
     /// <summary>
-    /// Adds a document creation to the batch.
+    /// Adds a document creation to the batch; <paramref name="id"/> only describes the operation.
     /// </summary>
-    /// <typeparam name="T">The document type.</typeparam>
-    /// <param name="id">The document's identifier, used only to describe the operation.</param>
-    /// <param name="item">The document to create.</param>
-    /// <returns>The same batch, so operations can be chained.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="item"/> is <see langword="null"/>.</exception>
     public TranscriptBatch Create<T>(string id, T item)
     {
@@ -60,9 +42,6 @@ public sealed class TranscriptBatch
     /// <summary>
     /// Adds a partial update to the batch.
     /// </summary>
-    /// <param name="id">The identifier of the document to patch.</param>
-    /// <param name="operations">The updates to apply, in order.</param>
-    /// <returns>The same batch, so operations can be chained.</returns>
     /// <exception cref="ArgumentOutOfRangeException">
     /// Thrown when more than <see cref="CosmosTranscriptStore.MaxPatchOperations"/> updates are supplied,
     /// which Cosmos DB rejects.

@@ -23,7 +23,7 @@ const PERMISSIONS_URL = `${TEST_API_BASE_URL}/api/permissions`;
 
 const CATALOGUE = [ADMINISTRATOR_GRANT, UPLOAD_FILE_GRANT, MCP_GRANT];
 
-describe('UserEditPanel (US-1203)', () => {
+describe('UserEditPanel', () => {
   let backend: HttpTestingController;
   let fixture: ComponentFixture<UserEditPanel>;
   let actions: InstanceType<typeof UserActionsStore>;
@@ -177,7 +177,7 @@ describe('UserEditPanel (US-1203)', () => {
     );
     await fixture.whenStable();
 
-    // The board's second-person wording, not the server's third-person one.
+    // The app's second-person wording, not the server's third-person one.
     const message = host().querySelector('.checklist__error');
     expect(message?.textContent).toContain(SELF_REVOKE_ADMIN_MESSAGE);
     expect(host().textContent).not.toContain('Administrators cannot revoke');
@@ -198,8 +198,7 @@ describe('UserEditPanel (US-1203)', () => {
     saveButton().click();
     await fixture.whenStable();
 
-    // The request validator's per-element rule, which FluentValidation keys with the
-    // index rather than with the bare property name.
+    // FluentValidation keys the per-element rule by index, not the bare property name.
     expectPut(somebodyElse.id).flush(
       {
         ...PROBLEM_FIXTURES.validationError,
@@ -209,8 +208,7 @@ describe('UserEditPanel (US-1203)', () => {
     );
     await fixture.whenStable();
 
-    // A message that is not the self-revocation refusal still has to be shown, and never
-    // in the board's wording.
+    // Any other message still shows, and never in the self-revocation wording.
     expect(host().textContent).not.toContain(SELF_REVOKE_ADMIN_MESSAGE);
     expect(host().textContent).toContain('Permission ids cannot be empty.');
   });
@@ -223,9 +221,8 @@ describe('UserEditPanel (US-1203)', () => {
     saveButton().click();
     await fixture.whenStable();
 
-    // `PUT api/users/{id}` answers 404 for a row somebody else deactivated, and for a
-    // permission id that no longer exists. This panel has no email field to render it
-    // against, so it must not take the create form's inline path and fall silent.
+    // A 404 (row deactivated elsewhere, or a vanished permission) has no field to render at
+    // here, so it must not take the create form's inline path and fall silent.
     expectPut(user.id).flush(
       {
         type: '/problems/resource-not-found',
@@ -263,9 +260,8 @@ describe('UserEditPanel (US-1203)', () => {
     );
     await fixture.whenStable();
 
-    // The bare key is suppressed from the summary because it is already said at the
-    // checkbox in the board's wording; the indexed key has no row to blame, so it must
-    // still surface rather than being filtered out with it.
+    // The bare key is already said at the checkbox; the indexed key has no row, so it must
+    // still surface.
     expect(host().querySelector('.checklist__error')?.textContent).toContain(
       SELF_REVOKE_ADMIN_MESSAGE,
     );

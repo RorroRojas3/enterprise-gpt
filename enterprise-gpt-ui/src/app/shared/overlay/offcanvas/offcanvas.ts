@@ -16,13 +16,7 @@ import { tabbableWithin } from '@shared/a11y/tabbable';
 
 let nextId = 0;
 
-/**
- * An edge-anchored panel — the admin detail drawer of frame `5c`.
- *
- * Mechanically identical to {@link Modal}: a native `<dialog>` in the top layer, with
- * `margin` pinning it to one edge instead of centring it. Sharing the mechanism keeps
- * one set of focus and dismissal semantics rather than two.
- */
+/** A native `<dialog>` pinned to an edge by `margin`, sharing {@link Modal}'s focus semantics. */
 @Component({
   selector: 'app-offcanvas',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -38,14 +32,8 @@ export class Offcanvas {
   readonly side = input<'start' | 'end'>('end');
   readonly width = input<string>('420px');
   /**
-   * Strips the panel's own chrome for content that already owns its edges — the shell's
-   * mobile sidebar drawer (US-1403), whose sidebar draws its own brand row, padding and
-   * scroll container.
-   *
-   * The heading is **clipped, not removed**. A modal `<dialog>` needs an accessible
-   * name and `aria-labelledby` points at that `<h2>`; `display: none` would take it out
-   * of the accessibility tree and leave the dialog unnamed. Same call, for the same
-   * reason, as the order explanation in `conversations.scss`.
+   * Strips the chrome for content that owns its edges, such as the mobile sidebar. The heading is
+   * clipped, not removed: it is the dialog's accessible name via `aria-labelledby`.
    */
   readonly bare = input<boolean>(false);
 

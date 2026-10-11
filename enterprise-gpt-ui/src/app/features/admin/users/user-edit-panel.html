@@ -6,14 +6,8 @@
 >
   @if (target(); as user) {
     <div class="edit-user">
-      <!--
-        The identity block is body content, not header content: the board puts it under
-        the title bar, and `Offcanvas` owns its own <h2>.
-
-        Frame `5c` also writes "· last active yesterday" here. It is absent, because
-        `UserDto` carries no timestamp of any kind — `dateModified` moves only when an
-        administrator edits the row, never when the user signs in.
-      -->
+      <!-- In the body, not the header: `Offcanvas` owns its own <h2>. No "last active" line,
+           since `UserDto` carries no sign-in timestamp. -->
       <div class="edit-user__identity">
         <app-avatar-initials
           [name]="user.fullName"
@@ -27,11 +21,7 @@
         </div>
       </div>
 
-      <!--
-        The warning is not decoration: `PUT api/users/{id}` treats `permissionIds` as the
-        complete desired set, so an administrator who unchecks nothing but forgets to look
-        can still revoke a grant by leaving it unchecked.
-      -->
+      <!-- The PUT treats `permissionIds` as the complete set, so leaving one unchecked revokes. -->
       <div class="edit-user__warning">
         <app-icon name="bi-exclamation-triangle-fill" />
         <p>

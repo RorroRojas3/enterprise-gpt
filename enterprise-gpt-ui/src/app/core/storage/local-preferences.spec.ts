@@ -28,9 +28,7 @@ describe('local preferences', () => {
   });
 
   it('allows only values about this browser, never about the user', () => {
-    // US-205's second criterion, stated as data. A key added here without a matching
-    // entry in the story's rule — "about the browser, not about the user" — is the
-    // failure this list exists to make visible in review.
+    // Every key must be about the browser, not the user; this list surfaces a new one in review.
     expect([...ALLOWED_PREFERENCE_KEYS].sort()).toEqual(['egpt.sidebar', 'egpt.theme']);
   });
 });

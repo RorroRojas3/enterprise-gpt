@@ -3,97 +3,54 @@ using FluentValidation;
 
 namespace Enterprise.Gpt.Service.Options;
 
-/// <summary>
-/// Connection settings for the Azure OpenAI chat and embedding clients, bound from the
-/// <c>AzureOpenAI</c> configuration section and validated at startup.
-/// </summary>
+/// <summary>Settings for the Azure OpenAI chat and embedding clients.</summary>
 /// <remarks>
-/// <para>
-/// This is the Responses-API provider: it is the only one that can serve a reasoning model, because
-/// reasoning summaries exist on no other surface. <c>AzureAIFoundryOptions</c> is its
-/// Chat-Completions counterpart on the same endpoint.
-/// </para>
-/// <para>
-/// Unlike <c>AmazonBedrockOptions</c>, <c>AnthropicOptions</c> and
-/// <c>AzureAIFoundryOptions</c> there is no <c>Enabled</c> flag: this provider always serves
-/// the default model and owns the embedding generator, so a deployment missing its settings is
-/// broken rather than opted out. Before this type existed the four keys were read with raw
-/// <c>GetValue&lt;string&gt;</c> and a blank URL became <c>new Uri("")</c> inside a lazy client
-/// factory — a startup mistake that surfaced on the first conversation instead of at startup.
-/// </para>
+/// The Responses-API provider, the only one that can serve reasoning models. No <c>Enabled</c> flag: it
+/// serves the default model and owns the embedding generator, so missing settings must fail startup.
 /// </remarks>
 public sealed class AzureOpenAIOptions : AzureV1EndpointOptions
 {
-    /// <summary>
-    /// The configuration section this type binds from.
-    /// </summary>
     public const string SectionName = "AzureOpenAI";
 
     /// <summary>
-    /// The values <see cref="ReasoningSummary"/> accepts, compared case-insensitively.
+    /// Accepted <see cref="ReasoningSummary"/> values. <c>none</c> is this app's own, turning summaries off
+    /// globally without editing every model row.
     /// </summary>
-    /// <remarks>
-    /// <c>none</c> is this application's own value, not the service's: it means "ask for no summary
-    /// at all", which is how a deployment turns reasoning summaries off globally without editing
-    /// every model row.
-    /// </remarks>
     public static readonly FrozenSet<string> ReasoningSummaries =
         FrozenSet.Create(StringComparer.OrdinalIgnoreCase, "auto", "concise", "detailed", "none");
 
-    /// <summary>
-    /// The values <see cref="ReasoningEffort"/> accepts, compared case-insensitively.
-    /// </summary>
     public static readonly FrozenSet<string> ReasoningEfforts =
         FrozenSet.Create(StringComparer.OrdinalIgnoreCase, "minimal", "low", "medium", "high");
 
     /// <summary>
-    /// Gets or sets the embedding deployment name used to index and search documents.
+    /// The embedding deployment. It must return 1536-dimension vectors (the stored column width) and selects
+    /// the chunker's tokenizer, so changing it invalidates every stored embedding.
     /// </summary>
-    /// <remarks>
-    /// It must natively return 1536-dimension vectors, because the stored column is fixed at that
-    /// width, and it also selects the tokenizer the chunker uses. Changing it invalidates every
-    /// stored embedding.
-    /// </remarks>
     public string EmbeddingModel { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets or sets how verbose a reasoning summary to request: <c>auto</c>, <c>concise</c>,
-    /// <c>detailed</c>, or <c>none</c> to request none at all.
+    /// Reasoning summary verbosity, or <c>none</c>. Sent only to models with <c>IsReasoningEnabled</c>, since
+    /// other deployments reject reasoning options outright.
     /// </summary>
-    /// <remarks>
-    /// Applies only to models whose catalog row sets <c>IsReasoningEnabled</c>; every other model is
-    /// called without reasoning options, because a deployment that does not support them rejects
-    /// the request outright.
-    /// </remarks>
     public string ReasoningSummary { get; set; } = "auto";
 
     /// <summary>
-    /// Gets or sets how much reasoning the model applies: <c>minimal</c>, <c>low</c>,
-    /// <c>medium</c>, or <c>high</c>.
+    /// Reasoning effort for every reasoning-enabled model; there is no per-model override. Reasoning tokens
+    /// bill as output.
     /// </summary>
-    /// <remarks>
-    /// Applies to every reasoning-enabled model in the catalog, because a model row carries no
-    /// per-model override. Raising it buys depth at the cost of latency and tokens — reasoning
-    /// tokens are billed as output tokens.
-    /// </remarks>
     public string ReasoningEffort { get; set; } = "medium";
 
-    /// <summary>
-    /// Gets a value indicating whether a reasoning summary is wanted at all.
-    /// </summary>
     public bool IsReasoningSummaryRequested =>
         !string.Equals(ReasoningSummary, "none", StringComparison.OrdinalIgnoreCase);
 }
 
-/// <summary>Validates <see cref="AzureOpenAIOptions"/>.</summary>
 public sealed class AzureOpenAIOptionsValidator : AbstractValidator<AzureOpenAIOptions>
 {
     public AzureOpenAIOptionsValidator()
     {
         RuleFor(options => options.Url).Must((options, _) => options.IsUrlAbsolute)
             .WithMessage("AzureOpenAI:Url must be an absolute http or https URI, for example https://my-resource.services.ai.azure.com/.");
-        // The client appends the v1 path itself; configured here, every request goes to /openai/v1/openai/v1/…
-        // and the 404 that produces names neither the setting nor the cause.
+        // The client appends the v1 path, so configuring it here doubles it into an unexplained 404.
         RuleFor(options => options.Url).Must((options, _) => options.IsUrlResourceRoot)
             .WithMessage("AzureOpenAI:Url must be the resource root, without /openai/v1 — the client appends it.");
         RuleFor(options => options.ApiKey).NotEmpty().WithMessage("AzureOpenAI:ApiKey is required.");

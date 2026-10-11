@@ -17,15 +17,9 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Documents.Retrieval;
 
-/// <summary>
-/// Covers the parts of <see cref="DocumentRetrievalService"/> that decide what the model sees:
-/// scope resolution, term extraction, rank fusion, neighbour expansion, passage merging and the
-/// token budget.
-/// </summary>
 /// <remarks>
-/// The SQL passes themselves are absent by necessity — the SQLite fixture strips
-/// <c>SqlVector&lt;float&gt;</c> from the model, so <c>VECTOR_DISTANCE</c> cannot run here. Those live in
-/// <c>Enterprise.Gpt.Integration.Test</c> against SQL Server 2025.
+/// No SQL passes here: the SQLite fixture strips <c>SqlVector&lt;float&gt;</c>, so <c>VECTOR_DISTANCE</c>
+/// cannot run. Those live in <c>Enterprise.Gpt.Integration.Test</c> against SQL Server 2025.
 /// </remarks>
 public sealed class DocumentRetrievalServiceTests : IDisposable
 {
@@ -599,9 +593,8 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
             new RetrievableDocument(vector, DocumentSources.Conversation, "essay.pdf")
         ]);
 
-        // A keyword-only hit has no distance until read-back, and by construction its distance is worse
-        // than every hit that passed the gate. Ordering passages by distance would therefore rank the
-        // exact-token match — the whole reason the keyword pass exists — last, every single time.
+        // A keyword-only hit's distance is worse than every gated hit by construction, so ordering by
+        // distance would always rank the exact-token match last.
         var hits = new[]
         {
             new ScoredChunk(new ChunkKey(keyword, DocumentSources.Conversation, 0), 0.9, null, 3),

@@ -15,7 +15,7 @@ import { ProjectDocumentsStore } from './project-documents-store';
 const PROJECT_ID = '11111111-5555-4666-8777-888888888888';
 const DOCUMENTS_URL = `${TEST_API_BASE_URL}/api/projects/${PROJECT_ID}/documents`;
 
-describe('ProjectDocumentsStore (US-905)', () => {
+describe('ProjectDocumentsStore', () => {
   let backend: HttpTestingController;
   let store: InstanceType<typeof ProjectDocumentsStore>;
   let projectId: ReturnType<typeof signal<string | null>>;
@@ -84,8 +84,7 @@ describe('ProjectDocumentsStore (US-905)', () => {
       });
     TestBed.tick();
 
-    // Back where it was, not at either end: the reader's mental model of the list is
-    // its order.
+    // Back where it was, not at either end of the list.
     expect(store.documents().map((row) => row.id)).toEqual([first.id, target.id, last.id]);
     expect(store.isRowPending(target.id)).toBe(false);
   });
@@ -130,8 +129,7 @@ describe('ProjectDocumentsStore (US-905)', () => {
     store.refresh();
     TestBed.tick();
 
-    // The upload route answers with a job id, never a document, so the name, size and
-    // created date can only come from asking for the list again.
+    // The upload route answers with a job id, so the new row can only come from a re-read.
     expectList().flush([projectDocumentFixture()]);
     TestBed.tick();
 

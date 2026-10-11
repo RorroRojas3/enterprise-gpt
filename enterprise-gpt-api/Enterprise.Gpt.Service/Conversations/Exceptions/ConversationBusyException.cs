@@ -12,13 +12,11 @@ namespace Enterprise.Gpt.Service.Conversations.Exceptions;
 /// </remarks>
 public class ConversationBusyException : ConflictException
 {
-    /// <summary>Initializes a new instance of the <see cref="ConversationBusyException"/> class.</summary>
     public ConversationBusyException(string message)
         : base(ProblemCodes.ConversationBusy, message)
     {
     }
 
-    /// <summary>Initializes a new instance of the <see cref="ConversationBusyException"/> class.</summary>
     public ConversationBusyException(string message, Exception innerException)
         : base(ProblemCodes.ConversationBusy, message, innerException)
     {

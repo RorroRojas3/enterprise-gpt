@@ -11,36 +11,19 @@ namespace Enterprise.Gpt.Service.BackgroundJobs;
 /// </summary>
 public interface IBackgroundJobQueue
 {
-    /// <summary>
-    /// Enqueues a unit of work for asynchronous processing.
-    /// </summary>
-    /// <param name="item">The work item to enqueue.</param>
-    /// <param name="cancellationToken">Cancels the enqueue operation only; the work itself runs under the processor's stopping token.</param>
-    /// <returns>A task that completes when the item is accepted by the queue.</returns>
+    /// <summary>Enqueues work, waiting while the queue is full.</summary>
+    /// <remarks>The token cancels only the enqueue; the work runs under the processor's token.</remarks>
     ValueTask EnqueueAsync(JobWorkItem item, CancellationToken cancellationToken);
 
-    /// <summary>
-    /// Awaits and returns the next work item from the queue.
-    /// </summary>
-    /// <param name="cancellationToken">Cancels the wait when the host stops.</param>
-    /// <returns>The next available <see cref="JobWorkItem"/>.</returns>
+    /// <summary>Awaits the next work item.</summary>
     ValueTask<JobWorkItem> DequeueAsync(CancellationToken cancellationToken);
 }
 
-/// <summary>
-/// Default <see cref="IBackgroundJobQueue"/> backed by a bounded <see cref="Channel{T}"/> with a single reader
-/// (the <see cref="BackgroundJobProcessor"/>) and many writers (request threads).
-/// </summary>
+/// <summary>A bounded single-reader <see cref="Channel{T}"/>; writers wait when it is full.</summary>
 /// <remarks>
-/// The channel is bounded, and a full channel makes writers wait rather than dropping work. Each queued
-/// item holds the whole uploaded file in memory until it is processed, so an unbounded queue would let a
-/// burst of large uploads grow without limit and exhaust the host; waiting pushes that backpressure out
-/// to the caller's request instead. The capacity is derived from <c>Documents:MaxQueuedBytes</c> divided
-/// by the maximum upload size, so the worst-case memory held by the queue is a configured number of
-/// bytes rather than an unbounded product of two independent settings.
+/// Each item holds a whole upload in memory, so capacity is <c>Documents:MaxQueuedBytes</c> over the maximum
+/// upload size, and backpressure falls on the caller's request.
 /// </remarks>
-/// <param name="options">Supplies the queue's byte budget and the maximum upload size.</param>
-/// <param name="logger">Logger used to record the resolved capacity at startup.</param>
 public sealed partial class BackgroundJobQueue(IOptions<DocumentOptions> options, ILogger<BackgroundJobQueue> logger)
     : IBackgroundJobQueue
 {

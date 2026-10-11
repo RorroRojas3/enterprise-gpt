@@ -1,13 +1,6 @@
 #!/usr/bin/env node
-// Fails the build when a template or a source file names a `bi-` glyph that is not
-// in the checked-in sprite manifest. US-108.
-//
-// `strictTemplates` already rejects `<app-icon name="bi-typo">` and any expression
-// not typed `IconName`, because the input type is derived from the manifest. This
-// covers what the type system cannot see: a raw `class="bi bi-…"` in a template, and
-// a `bi-*` literal in TypeScript that flows into a class binding instead of the
-// typed input. A name assembled at run time (`'bi-' + kind`) is caught by neither —
-// `Icon` logs that one in development instead.
+// Fails on a `bi-` glyph missing from the sprite manifest, covering what `strictTemplates` cannot:
+// a raw `class="bi bi-…"` or a `bi-*` literal bound as a class. `Icon` logs run-time names in dev.
 import { readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,7 +28,7 @@ let manifestSource;
 try {
   manifestSource = readFileSync(MANIFEST, 'utf8');
 } catch {
-  die(`Icon manifest not found: ${MANIFEST} (US-109).`, 'This check cannot run without it.');
+  die(`Icon manifest not found: ${MANIFEST}.`, 'This check cannot run without it.');
 }
 
 const declaration = manifestSource.match(/ICON_NAMES\s*=\s*\[([\s\S]*?)\]\s*as const/);

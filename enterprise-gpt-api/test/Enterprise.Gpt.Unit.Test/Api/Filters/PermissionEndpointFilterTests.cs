@@ -36,8 +36,7 @@ public sealed class PermissionEndpointFilterTests : IDisposable
     }
 
     /// <summary>
-    /// Builds a request context wired to <paramref name="cache"/>. <paramref name="ctx"/> is left
-    /// unregistered by default so a test proves a cache hit never resolves a <c>DbContext</c>.
+    /// <paramref name="ctx"/> is unregistered by default, so a cache hit that touches EF throws.
     /// </summary>
     private static EndpointFilterInvocationContext CreateContext(
         Guid oid, IUserPermissionCache cache, EnterpriseGptDbContext? ctx = null)
@@ -49,9 +48,7 @@ public sealed class PermissionEndpointFilterTests : IDisposable
         services.AddSingleton(tokenService);
         services.AddSingleton(cache);
 
-        // The real reader over the substituted cache: the filter now asks the same question through
-        // the same type the services do, so a test that stubbed the reader would stop covering the
-        // loader the filter actually runs on a miss.
+        // The real reader, so a miss runs the same loader the services use rather than a stub.
         services.AddScoped<IUserGrantReader, UserGrantReader>();
 
         if (ctx is not null)
@@ -199,8 +196,7 @@ public sealed class PermissionEndpointFilterTests : IDisposable
     [Fact]
     public async Task Filter_CacheHit_NeverResolvesTheDbContext()
     {
-        // No EnterpriseGptDbContext is registered, so a hit that touched EF would throw. This is
-        // the whole point of the change: a warm request costs no database round trip.
+        // No EnterpriseGptDbContext is registered, so a hit that touched EF would throw.
         var oid = Guid.NewGuid();
         var filter = PermissionEndpointFilter.Require(PermissionIds.Administrator);
         var cache = CreateRealCache();

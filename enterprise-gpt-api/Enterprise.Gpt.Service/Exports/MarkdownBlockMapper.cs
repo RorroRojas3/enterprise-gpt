@@ -24,14 +24,9 @@ public interface IMarkdownBlockMapper
     /// <summary>
     /// Maps markdown into blocks.
     /// </summary>
-    /// <param name="markdown">The message text.</param>
-    /// <returns>
-    /// The blocks, in document order. Empty input maps to an empty list, and text that parses to
-    /// nothing renderable does too.
-    /// </returns>
+    /// <returns>The blocks in document order; empty when nothing is renderable.</returns>
     /// <remarks>
-    /// Never throws: a message that cannot be parsed still belongs in an export, and degrades to a
-    /// single paragraph holding its own text.
+    /// Never throws: an unparseable message degrades to one paragraph of its own text.
     /// </remarks>
     IReadOnlyList<ExportBlock> Map(string? markdown);
 }
@@ -40,43 +35,22 @@ public interface IMarkdownBlockMapper
 /// Walks Markdig's syntax tree into <see cref="ExportBlock"/>s.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Parsed through <see cref="MarkdownPipelines.Parse"/>, so the link-scheme allowlist and the raw-HTML
-/// refusal that guard the stored HTML guard an exported document too. That matters more here than it
-/// looks: a <c>javascript:</c> hyperlink is live in Word and in most PDF readers.
-/// </para>
-/// <para>
-/// The mapping is deliberately lossy in one place. <strong>Images are dropped and their alt text kept
-/// as ordinary runs</strong> — embedding one means the API issuing an outbound request to a URL that
-/// model output chose, from inside the network position the API holds, which is a server-side request
-/// forgery surface that a transcript export has no reason to open.
-/// </para>
+/// Parsed through <see cref="MarkdownPipelines.Parse"/> so the link-scheme allowlist and raw-HTML refusal
+/// apply here too; a <c>javascript:</c> link is live in Word and most PDF readers. Images are dropped (alt
+/// text kept): fetching a model-chosen URL from the API's network position would be an SSRF surface.
 /// </remarks>
 public sealed class MarkdownBlockMapper : IMarkdownBlockMapper
 {
     /// <summary>
-    /// How deep a nested structure is followed before the walk stops descending.
+    /// Fidelity limit: deeper containers keep their text but lose their structure. Markdig itself refuses
+    /// input past 128 levels (pinned 1.3.2), which <see cref="Map"/>'s catch absorbs.
     /// </summary>
-    /// <remarks>
-    /// A fidelity limit: past it a container keeps its own text and loses its structure, because
-    /// sixteen levels of nesting is already past what any of these formats renders legibly. The stack
-    /// is bounded separately, by <see cref="MaxFlattenDepth"/> — and, outside this class, by Markdig
-    /// itself, which refuses input nested deeper than 128 levels (measured against the pinned 1.3.2)
-    /// and whose refusal is what <see cref="Map"/>'s catch turns into a plain paragraph. That last
-    /// one matters: a <see cref="StackOverflowException"/> is not catchable.
-    /// </remarks>
     private const int MaxDepth = 16;
 
     /// <summary>
-    /// Where the walk stops recursing at all, rather than merely stopping preserving structure.
+    /// Past this, text is gathered iteratively rather than by recursive flattening, because a
+    /// <see cref="StackOverflowException"/> cannot be caught. No words are dropped.
     /// </summary>
-    /// <remarks>
-    /// Past <see cref="MaxDepth"/> a container is flattened into its text, and flattening is itself
-    /// recursive — so without a second bound the descent would be limited only by Markdig's refusal to
-    /// parse past 128 levels. Past this one the text is gathered iteratively instead. Nothing is
-    /// dropped: losing a reader's words to bound a stack would be the same trade
-    /// <see cref="Map"/>'s catch already refuses.
-    /// </remarks>
     private const int MaxFlattenDepth = MaxDepth * 2;
 
     /// <inheritdoc />
@@ -107,17 +81,15 @@ public sealed class MarkdownBlockMapper : IMarkdownBlockMapper
 
         foreach (var block in container)
         {
-            // A composed email is fenced so the client can offer to open it in a mail client,
-            // not because it is code. Exported, it is the message itself and reads as prose —
-            // quoted, so a reader can still see where the email starts and stops.
+            // An email is fenced only so the client can offer a mail client; exported, it reads as prose,
+            // quoted to show where it starts and stops.
             if (block is FencedCodeBlock fenced && EmailFence.Matches(fenced))
             {
                 var lines = EmailFence.Lines(fenced)
                     .Select(ExportBlock (line) => new ParagraphBlock([new ExportRun(line)]))
                     .ToList();
 
-                // An empty fence would otherwise map to nothing at all, and a message whose whole
-                // text was one would export blank.
+                // Otherwise an empty fence maps to nothing, and a message that was only one exports blank.
                 blocks.Add(lines.Count == 0 ? new ParagraphBlock([]) : new QuoteBlock(lines));
                 continue;
             }
@@ -137,8 +109,6 @@ public sealed class MarkdownBlockMapper : IMarkdownBlockMapper
     {
         Md.HeadingBlock heading => new HeadingBlock(
             Math.Clamp(heading.Level, 1, 6), MapInlines(heading.Inline)),
-        // FencedCodeBlock must precede CodeBlock, which it derives from: only the fenced form carries
-        // an info string, and the base arm would swallow it.
         FencedCodeBlock fenced => new CodeBlock(
             string.IsNullOrWhiteSpace(fenced.Info) ? null : fenced.Info, LinesOf(fenced)),
         Md.CodeBlock code => new CodeBlock(null, LinesOf(code)),
@@ -152,10 +122,8 @@ public sealed class MarkdownBlockMapper : IMarkdownBlockMapper
         // A container past the depth limit: its structure is gone, its text is not.
         ContainerBlock nested when depth < MaxFlattenDepth => new ParagraphBlock(
             [.. MapBlocks(nested, depth + 1).OfType<ParagraphBlock>().SelectMany(paragraph => paragraph.Runs)]),
-        // Past the recursion bound the same text is gathered without recursing: Markdig's Descendants
-        // walks with an explicit stack, so this terminates at any nesting depth while the message
-        // still keeps its words. Styling and links are gone by here, which at thirty-two levels of
-        // nesting is not a distinction anything could render.
+        // Past the recursion bound: Descendants walks with an explicit stack, so any depth terminates with
+        // its words intact, though styling and links are lost.
         ContainerBlock deepest => new ParagraphBlock(FlattenText(deepest)),
         _ => null
     };
@@ -293,9 +261,7 @@ public sealed class MarkdownBlockMapper : IMarkdownBlockMapper
                     Append(runs, code.Content ?? string.Empty, styles | ExportRunStyles.Code, linkUrl);
                     break;
 
-                // Two delimiters is strong emphasis and one is ordinary emphasis. Three is both,
-                // which Markdig nests as an EmphasisInline inside an EmphasisInline — handled by the
-                // recursion rather than by a third case.
+                // Triple emphasis nests as EmphasisInline in EmphasisInline, so the recursion covers it.
                 case EmphasisInline emphasis:
                     AppendInlines(
                         emphasis,
@@ -323,8 +289,7 @@ public sealed class MarkdownBlockMapper : IMarkdownBlockMapper
                         autolink.IsEmail ? $"mailto:{autolink.Url}" : NullIfEmpty(autolink.Url) ?? linkUrl);
                     break;
 
-                // A hard break is a line break inside one paragraph; a soft one is source wrapping,
-                // which every target format re-wraps for itself.
+                // A soft break is source wrapping, which every target format re-wraps for itself.
                 case LineBreakInline lineBreak:
                     Append(runs, lineBreak.IsHard ? "\n" : " ", styles, linkUrl);
                     break;
@@ -356,9 +321,8 @@ public sealed class MarkdownBlockMapper : IMarkdownBlockMapper
         }
     }
 
-    // Markdig emits a literal per parse event, so ordinary prose arrives as a dozen adjacent runs
-    // wearing identical styling. Merging them keeps one Word paragraph from becoming a dozen w:r
-    // elements, and keeps a PDF line from being laid out in a dozen measured pieces.
+    // Markdig emits a literal per parse event; merging same-styled runs avoids a dozen w:r elements per
+    // Word paragraph and a dozen measured pieces per PDF line.
     private static List<ExportRun> Coalesce(List<ExportRun> runs)
     {
         List<ExportRun> merged = [];

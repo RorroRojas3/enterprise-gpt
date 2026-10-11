@@ -5,14 +5,11 @@ using Microsoft.Extensions.AI;
 namespace Enterprise.Gpt.Api.Configuration.Providers;
 
 /// <summary>
-/// Builds the callback that stamps Anthropic-native request settings onto every turn served by the
-/// Anthropic chat client.
+/// Stamps Anthropic-native request settings onto every turn served by the Anthropic chat client.
 /// </summary>
 /// <remarks>
-/// Kept apart from <see cref="AnthropicProviderConfiguration"/> for two reasons: it is the only place that needs
-/// <c>Anthropic.Models.Messages</c>, whose <c>Model</c> type would otherwise collide with
-/// <see cref="Enterprise.Gpt.Entity.ChatModels.Model"/>, and confining the SDK's request types to one file keeps
-/// them out of the provider-agnostic <c>ChatOptions</c> that <c>ConversationService</c> builds.
+/// A file of its own so <c>Anthropic.Models.Messages</c>, whose <c>Model</c> collides with
+/// <see cref="Enterprise.Gpt.Entity.ChatModels.Model"/>, stays out of the provider-agnostic code.
 /// </remarks>
 internal static class AnthropicDefaults
 {
@@ -43,20 +40,13 @@ internal static class AnthropicDefaults
 
     #region Public static methods
 
-    /// <summary>
-    /// Creates the <see cref="ChatOptions"/> callback for a configured Anthropic provider.
-    /// </summary>
-    /// <param name="settings">The validated Anthropic settings.</param>
-    /// <returns>A callback suitable for <c>ChatClientBuilder.ConfigureOptions</c>.</returns>
+    /// <summary>Creates the <see cref="ChatOptions"/> callback for a configured Anthropic provider.</summary>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="settings"/> carries a thinking mode or effort level the parsers do not know.
-    /// The startup validators reject those first, and <c>AnthropicDefaultsTests</c> pins every
-    /// value they accept — the two vocabularies drifting apart is what this guards.
     /// </exception>
     /// <remarks>
-    /// Both values are parsed once here rather than per request. Note that the keyed chat client is
-    /// built lazily on first resolution, so a parse failure would surface on the first conversation
-    /// rather than at startup; the tests, not the validators, are what keep that unreachable.
+    /// The keyed client is built lazily, so a parse failure would surface on the first conversation, not
+    /// at startup; <c>AnthropicDefaultsTests</c> pins every value the validators accept.
     /// </remarks>
     public static Action<ChatOptions> Create(AnthropicOptions settings)
     {
@@ -67,10 +57,8 @@ internal static class AnthropicDefaults
 
         return options =>
         {
-            // temperature, top_p, and top_k were removed from the request surface on the models this
-            // provider targets — Opus 4.7 and later, Sonnet 5, Fable 5 — where sending one is a 400 on
-            // every turn regardless of the thinking mode. Clearing them here means a caller that sets
-            // them for the other providers does not silently break only this one.
+            // temperature, top_p and top_k are a 400 on the models this provider targets (Opus 4.7+, Sonnet 5,
+            // Fable 5); cleared so a caller setting them for the other providers does not break only this one.
             options.Temperature = null;
             options.TopP = null;
             options.TopK = null;
@@ -79,11 +67,8 @@ internal static class AnthropicDefaults
             // parameters for a single turn keeps the escape hatch Microsoft.Extensions.AI provides.
             options.RawRepresentationFactory ??= _ => new MessageCreateParams
             {
-                // The bridge merges the messages, tools, and system content it derives from
-                // ChatOptions onto this object, but it does *not* overlay Model or MaxTokens — the
-                // values set here are what reach the wire. Reading them back off ChatOptions is what
-                // keeps per-model routing working; hardcoding either would pin every Anthropic
-                // conversation to one model.
+                // The bridge does not overlay Model or MaxTokens, so these reach the wire; reading them off
+                // ChatOptions keeps per-model routing working.
                 Model = string.IsNullOrWhiteSpace(options.ModelId) ? defaultModelId : options.ModelId,
                 MaxTokens = options.MaxOutputTokens ?? defaultMaxOutputTokens,
                 // Empty, not a placeholder: the bridge concatenates this list ahead of the real

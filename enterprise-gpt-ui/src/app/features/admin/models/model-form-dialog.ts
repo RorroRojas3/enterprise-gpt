@@ -21,25 +21,9 @@ import { serverMessagesFor, unmatchedServerMessages } from '@core/errors/server-
 import { Modal } from '@shared/overlay/modal/modal';
 
 /**
- * The add-and-edit model dialog, frame `5f` (US-1207).
- *
- * **One component, two modes**, as `ProjectFormDialog` is — every invoker talks to
- * `ModelActionsStore` and none of them talks to this dialog.
- *
- * It binds **twelve** fields where frame `5f` draws eight. The four extra —
- * `isReasoningEnabled`, `isUserSelectable` and the two prices — are on `CreateModelActionDto` and
- * `UpdateModelActionDto`, and `ModelMapper` assigns all four unconditionally: an edit
- * that omitted a price would silently clear a figure a report is built on, and this is
- * the only surface in the app that can set one. Frame `5f`'s caption rules out an API
- * key, an endpoint URL and an "available to" selector, and none of those exists here —
- * that is the part of the caption this dialog is bound by.
- *
- * **No API key, no endpoint URL, no "available to".** Those do not exist in this system.
- *
- * The four numeric fields are bound as text rather than `type="number"`. The native
- * numeric control hands back `null` for anything it cannot parse, which loses what the
- * reader typed — and frame `5f` draws `400000.5` still sitting in its field beneath the
- * refusal. It is also the only way blank (unpriced) stays distinct from unparseable.
+ * Binds every field the PUT echoes, prices included, since an omitted one would be cleared.
+ * Numeric fields are text inputs, so an unparseable entry stays visible and blank (unpriced)
+ * stays distinct from invalid.
  */
 @Component({
   selector: 'app-model-form-dialog',
@@ -57,9 +41,7 @@ export class ModelFormDialog {
   private readonly model = signal<ModelFormValue>(toModelFormValue(null));
 
   protected readonly f = form(this.model, (path) => {
-    // A schema rule rather than a `[disabled]` binding: the `[formField]` directive owns
-    // that attribute (NG8022), exactly as it owns `maxlength`. One rule at the root
-    // covers every field.
+    // A schema rule, since `[formField]` owns the `disabled` attribute (NG8022).
     disabled(path, () => this.actions.formBusy());
 
     required(path.providerId, { message: 'Choose a provider.' });
@@ -76,27 +58,22 @@ export class ModelFormDialog {
       message: `Descriptions are limited to ${MODEL_FIELD_LENGTHS.description} characters.`,
     });
 
-    // The whole-number rule is the client's own: the columns are `decimal(18,2)` and
-    // their validator carries only `GreaterThan(0)`, so the server would accept
-    // `400000.5`. Frame `5f` draws the refusal, so it has to live somewhere.
+    // Whole numbers are a client-only rule: the server's `GreaterThan(0)` accepts `400000.5`.
     validate(path.contextWindowSize, ({ value }) => clientError(tokenCountError(value())));
     validate(path.maxOutputTokens, ({ value }) => clientError(tokenCountError(value())));
     validate(path.inputPricePerMillionTokens, ({ value }) => clientError(priceError(value())));
     validate(path.outputPricePerMillionTokens, ({ value }) => clientError(priceError(value())));
 
-    // A hidden model cannot be the default: `GET api/models` filters it out, so the
-    // catalog would resolve no default at all and every composer would refuse to send.
-    // Both server validators refuse this too; the rule here is what keeps it from being a
-    // save that leaves and comes back as a banner.
+    // A hidden model cannot be the default: `GET api/models` would then resolve no default
+    // and every composer would refuse to send.
     validate(path.isDefault, ({ value, valueOf }) =>
       value() && !valueOf(path.isUserSelectable)
         ? { kind: 'conflict', message: DEFAULT_CONFLICT_MESSAGE }
         : null,
     );
 
-    // The server's verdict, per field, reported only while the field still holds the
-    // exact value that was sent — which is what clears it on the next keystroke, since
-    // Signal Forms has no `setErrors` for an imperative reset to clear.
+    // Shown only while the field holds the value that was sent, so the next keystroke
+    // clears it; Signal Forms has no `setErrors`.
     for (const field of SERVER_FIELDS) {
       validate(path[field], ({ value }) => {
         const rejected = this.actions.formRejectedValue();
@@ -120,12 +97,8 @@ export class ModelFormDialog {
   protected readonly canSubmit = computed(() => !this.f().invalid() && !this.actions.formBusy());
 
   /**
-   * The default-versus-hidden conflict, read back off the field's own rule.
-   *
-   * `isDefault` is not in `SERVER_FIELDS` — a bool cannot be faulted per-field by the
-   * server — so it has no `fieldErrors()` entry, and without this the rule above would
-   * block Save while saying nothing. Shown as soon as it applies rather than on touch:
-   * the reader may have created it by toggling the *other* switch.
+   * `isDefault` has no `fieldErrors()` entry, so this surfaces its rule. Shown at once, not on
+   * touch: toggling the other switch can create the conflict.
    */
   protected readonly defaultConflict = computed(() => {
     const state = this.f.isDefault();
@@ -136,15 +109,8 @@ export class ModelFormDialog {
   });
 
   /**
-   * Every field's messages and whether they are ready to show, in one computed.
-   *
-   * One object rather than sixteen members, and a computed rather than a method:
-   * `provideCheckNoChangesConfig({ exhaustive: true })` compares bindings between passes,
-   * and a method returning a fresh array would be a new value on every check. The
-   * computed's cached object is stable until a dependency actually changes.
-   *
-   * Field errors render once the reader has interacted with the field — or immediately
-   * when they came from the server, which no amount of prior interaction predicts.
+   * A computed rather than a method, which would return a new array on every check. Server
+   * errors show without prior interaction.
    */
   protected readonly fieldErrors = computed(() => {
     const fromServer = this.actions.formError() !== null || this.actions.formNotFound() !== null;
@@ -166,23 +132,14 @@ export class ModelFormDialog {
   });
 
   /**
-   * Messages the eight fields above cannot carry — object-level rules, and any property
-   * the server faults that no control here *renders*. Rendered rather than dropped,
-   * because a server message the reader cannot see is a save that silently fails.
-   *
-   * `SERVER_FIELDS`, not every key the form models: the four toggles are bound but carry
-   * no per-field server message and no `fieldErrors()` entry, so passing them here would
-   * mark a message about one as "matched" and then show it nowhere. `isDefault` does have
-   * a `validate` rule, rendered by `defaultConflict` rather than through that map.
+   * Server messages no rendered field carries, shown so a save never fails silently. Keyed on
+   * `SERVER_FIELDS`: the toggles have no `fieldErrors()` entry to show a match in.
    */
   protected readonly unmatched = computed(() =>
     unmatchedServerMessages(this.actions.formError(), SERVER_FIELDS),
   );
 
-  /**
-   * The provider 404, which reaches the Provider field by a different route than
-   * `formError` does — it carries no `errors` dictionary at all.
-   */
+  /** The provider 404 carries no `errors` dictionary, so it reaches the field this way. */
   protected readonly providerNotFound = computed(() => {
     const rejected = this.actions.formRejectedValue();
     const message = this.actions.formNotFound();
@@ -193,8 +150,7 @@ export class ModelFormDialog {
   });
 
   constructor() {
-    // Both are tracked: the mode is the open, and the target is what decides whether the
-    // fields are seeded from a model or from nothing.
+    // Both tracked: the mode opens the dialog, and the target decides how it is seeded.
     effect(() => {
       const mode = this.actions.formMode();
       const target = this.actions.formTarget();
@@ -205,8 +161,7 @@ export class ModelFormDialog {
 
       untracked(() => {
         this.model.set(toModelFormValue(target));
-        // Clears touched/dirty left over from a previous open — the component is mounted
-        // once and lives as long as the models tab.
+        // Mounted once for the whole tab, so clear touched/dirty from the previous open.
         this.f().reset();
       });
     });
@@ -214,10 +169,8 @@ export class ModelFormDialog {
 
   protected submit(event: Event): void {
     event.preventDefault();
-    // Enter submits without a blur, so `touched` would still be false and a client-rule
-    // message would stay hidden exactly when it matters. Each field is marked in turn:
-    // `markAsTouched` sets the status of the field it is called on, and `touched` on a
-    // parent aggregates its descendants rather than propagating down to them.
+    // Enter submits without a blur. Each field is marked in turn, since `touched` on a
+    // parent only aggregates its descendants.
     for (const field of SERVER_FIELDS) {
       this.f[field]().markAsTouched();
     }
@@ -244,7 +197,6 @@ const SERVER_FIELDS = [
 
 type FieldName = (typeof SERVER_FIELDS)[number];
 
-/** One field's rendered state: whether to show messages, and which ones. */
 interface FieldErrors {
   readonly show: boolean;
   readonly messages: readonly string[];

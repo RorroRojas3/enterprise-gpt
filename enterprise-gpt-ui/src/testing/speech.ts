@@ -18,13 +18,8 @@ function resultsOf(phrases: { text: string; isFinal: boolean }[]): SpeechRecogni
 }
 
 /**
- * A scriptable stand-in for the Web Speech API, provided through
- * `SPEECH_RECOGNITION` (US-413).
- *
- * The real interface exists in no test environment — jsdom has none, and it is
- * vendor-prefixed even where it does exist — so dictation is only testable
- * against a fake. Its counters are what let a spec assert that a session was
- * ended rather than abandoned.
+ * A scriptable Web Speech API for `SPEECH_RECOGNITION`, which no test environment has. Its
+ * counters let a spec tell an ended session from an abandoned one.
  */
 export class FakeRecognition implements SpeechRecognitionLike {
   continuous = false;

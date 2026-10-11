@@ -1,10 +1,7 @@
 ﻿namespace Enterprise.Gpt.Service.Documents.Retrieval.Models;
 
 /// <summary>
-/// A chunk with its fused rank-fusion score and the evidence each pass contributed.
+/// A chunk with its fused rank-fusion score (higher is better) and the evidence each pass contributed:
+/// <c>Distance</c> is null if only the keyword pass found it, <c>MatchCount</c> zero if only the vector one.
 /// </summary>
-/// <param name="Key">Which chunk this is.</param>
-/// <param name="Score">The Reciprocal Rank Fusion score across both passes; higher is better.</param>
-/// <param name="Distance">The cosine distance, or <see langword="null"/> when only the keyword pass found it.</param>
-/// <param name="MatchCount">The number of query terms found in the chunk; zero when only the vector pass found it.</param>
 internal readonly record struct ScoredChunk(ChunkKey Key, double Score, double? Distance, int MatchCount);

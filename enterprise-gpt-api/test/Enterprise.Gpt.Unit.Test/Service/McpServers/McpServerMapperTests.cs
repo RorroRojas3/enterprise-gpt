@@ -111,9 +111,8 @@ public class McpServerMapperTests
         Assert.False(dto.HasUserApiKey);
         Assert.Null(dto.ApiKeyHint);
 
-        // `McpDto` carries no headers, for the reason it carries no url, auth type or scope:
-        // they are connection details, and this projection is the one non-administrators read.
-        // Asserted on the type rather than a value, so adding the property is what fails.
+        // McpDto omits connection details because non-administrators read it. Asserted on the type, so
+        // adding the property is what fails.
         Assert.Null(typeof(McpDto).GetProperty(nameof(McpServerDto.Headers)));
     }
 

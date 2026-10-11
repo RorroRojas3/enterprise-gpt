@@ -9,22 +9,14 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Service.Options;
 
 /// <summary>
-/// Covers the summarization section against the same options pipeline the host builds, so
-/// a range or a cross-field rule that contradicts the shipped defaults fails here rather than at
-/// host start.
+/// Runs the host's options pipeline: constructing <see cref="SummarizationOptions"/> never validates, so a
+/// rule contradicting the shipped defaults would pass every other test yet stop the API from booting.
 /// </summary>
-/// <remarks>
-/// Constructing <see cref="SummarizationOptions"/> directly — which every other test in this suite
-/// does — never runs a validator, so a validator that rejects the committed configuration passes
-/// every test and still stops the API from booting. This class exists to close that gap.
-/// </remarks>
 public sealed class SummarizationOptionsTests
 {
     /// <remarks>
-    /// The API's own <c>appsettings.json</c>, linked into this project's output rather than copied
-    /// into a literal here. A duplicated table would drift: raising a fraction past its range in the
-    /// real file would leave every test in this class green while the host refused to boot, which is
-    /// precisely what this class exists to prevent.
+    /// The API's own <c>appsettings.json</c>, linked into the output rather than copied into a literal, so
+    /// editing the real file cannot leave these tests green.
     /// </remarks>
     private static Dictionary<string, string?> ShippedDefaults =>
         new ConfigurationBuilder()
@@ -74,10 +66,8 @@ public sealed class SummarizationOptionsTests
     /// An environment that overrides nothing does not silently switch the feature on.
     /// </summary>
     /// <remarks>
-    /// The class default is what <c>US-601</c>'s "fresh environment with no explicit setting" means,
-    /// and it is the only default this asserts. The committed <c>appsettings.json</c> deliberately
-    /// sets the key — an explicit setting is not a default — so what it happens to say is an
-    /// environment's own choice rather than a rule a test enforces.
+    /// Only the class default is asserted: the committed <c>appsettings.json</c> sets the key explicitly,
+    /// which is an environment's choice rather than a default.
     /// </remarks>
     [Fact]
     public void Bind_OnlyTheModelId_LeavesSummarizationDisabled()
@@ -131,9 +121,8 @@ public sealed class SummarizationOptionsTests
     }
 
     /// <summary>
-    /// The two fractions are applied at different levels — the map-unit fraction multiplies what the
-    /// safety fraction already produced — so a map unit is smaller than a call's budget by
-    /// construction, and neither needs to be bounded by the other.
+    /// The map-unit fraction multiplies what the safety fraction produced, so a map unit is smaller than a
+    /// call's budget by construction and neither needs to bound the other.
     /// </summary>
     [Fact]
     public void Bind_MapUnitFractionAboveTheSafetyFraction_IsAccepted()
@@ -155,8 +144,7 @@ public sealed class SummarizationOptionsTests
     /// rather than a budget the fit decision silently acts on.
     /// </summary>
     /// <remarks>
-    /// Booleans are excluded, not overlooked: a switch has exactly two valid values and a range
-    /// over them would assert nothing. Adding a numeric knob without a range is still a failure.
+    /// Booleans are excluded: a range over two valid values would assert nothing.
     /// </remarks>
     [Fact]
     public void Options_EverySettableTuningProperty_HasAValidationRule()

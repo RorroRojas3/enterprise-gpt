@@ -7,13 +7,8 @@ namespace Enterprise.Gpt.Dto.Conversations;
 /// returned to a client.
 /// </summary>
 /// <remarks>
-/// An identity and never a credential: a download link is minted on click through the document
-/// download route, so nothing here is usable on its own.
-/// <para>
-/// The <see cref="JsonPropertyNameAttribute"/>s are load-bearing beyond the HTTP wire: this type is
-/// also serialized with default options onto the streamed turn's metadata, where they are the only
-/// thing making the payload camelCase for the client that reads it.
-/// </para>
+/// Never a credential: download links are minted on click. The <see cref="JsonPropertyNameAttribute"/>s
+/// also camelCase this type on the streamed turn's metadata, which is serialized with default options.
 /// </remarks>
 public sealed class MessageAttachmentDto
 {

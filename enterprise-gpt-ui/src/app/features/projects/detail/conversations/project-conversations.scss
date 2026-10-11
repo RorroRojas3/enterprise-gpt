@@ -16,8 +16,6 @@
   font-size: 12px;
 }
 
-// A bare icon button: frame 4g draws the glyph alone, and the accessible name comes
-// from `aria-label` rather than from any text.
 .project-conversations__star {
   display: inline-flex;
   padding: 4px;
@@ -47,7 +45,6 @@
   }
 }
 
-// Frame 3a's submenu affordance, as on every other kebab this story touched.
 .project-conversations__menu-label {
   flex: 1;
 }

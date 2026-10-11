@@ -4,11 +4,8 @@ namespace Enterprise.Gpt.Dto.Documents;
 /// A contiguous span of text produced by a document text extractor, before chunking.
 /// </summary>
 /// <remarks>
-/// A segment is whatever natural division the source format offers — a page for PDF and Word, a slide
-/// for PowerPoint, a row window or a schema card for a sheet, the whole file for plain text and
-/// Markdown.
-/// Segments are <em>not</em> the retrieval unit; the chunker repacks them into token-sized chunks.
-/// Their only lasting role is provenance.
+/// The format's natural division: a page, slide, sheet row window or schema card, or the whole text file.
+/// Not the retrieval unit — the chunker repacks segments, which survive only as provenance.
 /// </remarks>
 public class DocumentSegmentDto
 {
@@ -18,8 +15,5 @@ public class DocumentSegmentDto
     /// </summary>
     public int? SourceNumber { get; set; }
 
-    /// <summary>
-    /// The extracted text of the segment.
-    /// </summary>
     public string Text { get; set; } = null!;
 }

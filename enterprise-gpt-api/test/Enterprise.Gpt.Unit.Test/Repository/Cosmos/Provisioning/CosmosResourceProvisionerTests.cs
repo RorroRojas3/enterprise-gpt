@@ -5,9 +5,8 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Repository.Cosmos.Provisioning;
 
 /// <summary>
-/// The indexing policy is asserted here rather than against the Cosmos emulator: the Linux emulator
-/// accepts a custom indexing policy and then ignores it, so reading one back there would prove
-/// nothing about what production is provisioned with.
+/// The indexing policy is asserted here, not on the Linux emulator, which accepts a custom one and then
+/// ignores it.
 /// </summary>
 public sealed class CosmosResourceProvisionerTests
 {
@@ -40,9 +39,8 @@ public sealed class CosmosResourceProvisionerTests
     {
         var properties = CosmosResourceProvisioner.CreateTranscriptContainerProperties("transcript");
 
-        // The read predicate filters on type and conversationId and orders by dateCreated, so all
-        // three must be indexed; including /* covers them without naming each one and going stale
-        // the moment a property is added.
+        // Reads filter on type and conversationId and order by dateCreated; /* covers all three without
+        // going stale when a property is added.
         Assert.Contains(properties.IndexingPolicy.IncludedPaths, x => x.Path == "/*");
         Assert.DoesNotContain(properties.IndexingPolicy.ExcludedPaths, x => x.Path.StartsWith("/type", StringComparison.Ordinal));
         Assert.DoesNotContain(properties.IndexingPolicy.ExcludedPaths, x => x.Path.StartsWith("/conversationId", StringComparison.Ordinal));

@@ -8,36 +8,14 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
 
 /// <summary>
-/// Adapts the SQL Server-specific parts of the <c>EnterpriseGptDbContext</c> model so it can
-/// run on in-memory SQLite:
-/// <list type="bullet">
-/// <item><description>
-/// The rowversion column (<see cref="BaseModifiedEntity{TKey}.Version"/>, mapped with <c>IsRowVersion</c>)
-/// becomes an ordinary optional column. SQLite never generates rowversion values, so the
-/// store-generated NOT NULL column would otherwise fail every insert — including the HasData
-/// seeds applied by <c>EnsureCreated()</c> (see dotnet/efcore#20475). Concurrency-token
-/// behavior is exercised against real SQL Server in the integration test project instead.
-/// </description></item>
-/// <item><description>
-/// <see cref="SqlVector{T}"/> columns (SQL Server 2025 vector search) are removed — SQLite
-/// has no type mapping for them and model validation would reject the whole model otherwise.
-/// </description></item>
-/// <item><description>
-/// Explicit SQL Server column types (e.g. <c>[Column(TypeName = "nvarchar(max)")]</c>) are
-/// stripped so SQLite derives its own store types from the CLR types instead of emitting
-/// DDL it cannot parse.
-/// </description></item>
-/// <item><description>
-/// <see cref="DateTimeOffset"/> columns are stored as UTC ticks. The SQLite provider refuses
-/// to translate them in <c>ORDER BY</c> and comparison clauses because two rows can carry the
-/// same instant under different offsets, so any paged query ordered by <c>DateCreated</c>
-/// would throw. Every value the application writes is <c>DateTimeOffset.UtcNow</c>, and
-/// <see cref="DateTimeOffset.Equals(DateTimeOffset)"/> compares instants rather than offsets,
-/// so the round trip is lossless for these tests.
-/// </description></item>
-/// </list>
+/// Adapts the SQL Server-specific parts of the <c>EnterpriseGptDbContext</c> model to in-memory SQLite.
 /// </summary>
-/// <param name="dependencies">Service dependencies required by the base customizer.</param>
+/// <remarks>
+/// Rowversion becomes a plain optional column: SQLite never generates it, so every insert would fail
+/// (dotnet/efcore#20475); concurrency is tested against SQL Server instead. Vector columns and explicit
+/// column types are dropped because SQLite cannot map them. <see cref="DateTimeOffset"/> is stored as UTC
+/// ticks so ordering and comparison translate, lossless because every written value is UTC.
+/// </remarks>
 public class SqliteRowVersionModelCustomizer(ModelCustomizerDependencies dependencies)
     : RelationalModelCustomizer(dependencies)
 {

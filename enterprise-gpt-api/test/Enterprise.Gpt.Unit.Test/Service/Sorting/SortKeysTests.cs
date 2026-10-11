@@ -9,12 +9,8 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Service.Sorting;
 
 /// <summary>
-/// Each listing's sort keys are written down three times over — as an enumeration, as the advertised
-/// <c>Supported</c> set, and as the private parse lookup — and nothing but this keeps them in step.
-/// Drift fails silently and client-facing in both directions: a token in the lookup but not in
-/// <c>Supported</c> vanishes from the rejection message a client learns the supported set from, and a
-/// token in <c>Supported</c> but not in the lookup is advertised and then refused by a message that
-/// lists it.
+/// Keeps each listing's enumeration, advertised <c>Supported</c> set and parse lookup in step; drift
+/// either hides an accepted token from the rejection message or advertises one that is then refused.
 /// </summary>
 public sealed class SortKeysTests
 {
@@ -101,8 +97,7 @@ public sealed class SortKeysTests
     [Fact]
     public void Resolve_BlankField_FallsBackWithoutRejecting()
     {
-        // A caller who sends only `?dir=` has named no field, and the listing's own default is the
-        // one that must answer — not a 400 about a parameter they left out.
+        // `?dir=` alone names no field, so the listing's default answers rather than a 400.
         Assert.Equal(ProjectSortKeys.Created, ProjectSortKeyNames.Resolve(null, "asc").Key);
         Assert.Equal(ConversationSortKeys.Created, ConversationSortKeyNames.Resolve("   ", null).Key);
         Assert.Equal(UserSortKeys.Name, UserSortKeyNames.Resolve(null, null).Key);

@@ -3,17 +3,12 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Options;
 
-/// <summary>
-/// Covers the predicates <c>AzureOpenAIOptionsValidator</c> checks at startup, and the endpoint the chat
-/// client is built against.
-/// </summary>
 public sealed class AzureOpenAIOptionsTests
 {
     [Theory]
     [InlineData("https://test.services.ai.azure.com/", "https://test.services.ai.azure.com/openai/v1/")]
-    // Azure documents both hosts, and a resource root copied out of the portal often lacks the
-    // trailing slash — without one, resolving a relative path replaces the last segment instead of
-    // extending it, which is the difference between /openai/v1/ and /.
+    // Azure documents both hosts, and a portal-copied root often lacks the trailing slash, without which
+    // a relative path replaces the last segment instead of extending it.
     [InlineData("https://test.services.ai.azure.com", "https://test.services.ai.azure.com/openai/v1/")]
     public void V1Endpoint_FromAResourceRoot_AppendsTheOpenAIV1Path(string url, string expected)
     {
@@ -62,9 +57,8 @@ public sealed class AzureOpenAIOptionsTests
 
     [Theory]
     [InlineData("")]
-    // A path, not a URL: Uri accepts this as an implicit file path on Unix but not on Windows, so
-    // deriving the endpoint straight from the Uri constructor passed here and shipped file:///openai/v1/
-    // to the Linux hosts. The theory runs the same on both.
+    // A path, not a URL: Uri accepts it as a file path on Unix but not on Windows, so deriving the
+    // endpoint from the Uri constructor shipped file:///openai/v1/ to Linux hosts.
     [InlineData("/openai/v1/")]
     public void V1Endpoint_WithoutAnAbsoluteHttpUrl_ThrowsOnEveryPlatform(string url)
     {

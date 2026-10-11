@@ -131,8 +131,7 @@ describe('UploadStatusClient', () => {
 
     run.subscription.unsubscribe();
 
-    // The store's `cancel(id)` depends on this: a chip removed mid-ingest must stop
-    // costing requests, and the pending timer has to go with it.
+    // The store's `cancel(id)` relies on the pending timer going with the subscription.
     await vi.advanceTimersByTimeAsync(60_000);
     backend.expectNone(STATUS_URL);
   });

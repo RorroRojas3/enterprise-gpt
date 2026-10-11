@@ -15,13 +15,11 @@ using Xunit;
 namespace Enterprise.Gpt.Integration.Test.Documents;
 
 /// <summary>
-/// Measures how the shipped retrieval defaults behave over a corpus mixing prose with the
-/// header-repeating row windows a spreadsheet is chunked into.
+/// Measures the shipped retrieval defaults over prose mixed with header-repeating spreadsheet row windows.
 /// </summary>
 /// <remarks>
-/// The corpus text is real, but the distances are assigned rather than measured, so these numbers
-/// describe the gate, the fusion and the caps over a row-window corpus — not embedding geometry. See
-/// <c>docs/documents/retrieval.md</c>.
+/// Distances are assigned, not measured, so the results describe the gate, fusion and caps rather than
+/// embedding geometry. See <c>docs/documents/retrieval.md</c>.
 /// </remarks>
 [Collection(IntegrationTestCollection.Name)]
 [Trait("Category", "Integration")]
@@ -50,9 +48,8 @@ public sealed class SheetRetrievalBenchmarkTests(IntegrationTestFixture fixture)
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     /// <summary>
-    /// The sweep behind the shipped threshold, over a corpus whose spreadsheet half repeats its header
-    /// in almost every chunk: 0.40 loses the on-topic prose entirely, 0.85 admits prose about something
-    /// else, and 0.62 is the one that takes the first without the second.
+    /// The sweep behind the shipped threshold: 0.40 loses on-topic prose, 0.85 admits off-topic prose, and
+    /// 0.62 keeps the first without the second.
     /// </summary>
     [Theory]
     [InlineData(0.40, false, false)]
@@ -77,8 +74,7 @@ public sealed class SheetRetrievalBenchmarkTests(IntegrationTestFixture fixture)
     }
 
     /// <summary>
-    /// Seeds a workbook chunked by the real extractor and chunker, plus two prose documents, so the
-    /// search runs over the chunk shapes ingestion actually produces.
+    /// Seeds a workbook chunked by the real extractor and chunker, so searches see real chunk shapes.
     /// </summary>
     private async Task<Guid> SeedMixedCorpusAsync()
     {
@@ -105,10 +101,7 @@ public sealed class SheetRetrievalBenchmarkTests(IntegrationTestFixture fixture)
         return conversationId;
     }
 
-    /// <summary>
-    /// Runs a workbook through the real extractor and a chunker configured the way the application's is,
-    /// rather than the reduced budget the integration host uses for upload tests.
-    /// </summary>
+    /// <summary>Chunks with the application's budget, not the integration host's reduced one.</summary>
     private static async Task<IReadOnlyList<TextChunkDto>> ChunkWorkbookAsync()
     {
         var chunker = new TokenTextChunker(

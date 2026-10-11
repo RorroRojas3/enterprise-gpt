@@ -43,8 +43,6 @@ describe('ConversationRow', () => {
   }
 
   it('keeps the kebab outside the navigation link', () => {
-    // An interactive element nested inside an <a> is invalid HTML and would fold the
-    // menu into the link's accessible name.
     expect(element().querySelector('a app-menu')).toBeNull();
     expect(element().querySelector('.row app-menu')).not.toBeNull();
   });
@@ -63,7 +61,6 @@ describe('ConversationRow', () => {
     const danger = items.filter((item) => item.classList.contains('menu__item--danger'));
     expect(danger).toHaveLength(1);
     expect(danger[0]?.textContent).toContain('Delete');
-    // Frame 3a: every item leads with its glyph, decorative beside the text.
     expect(items.every((item) => item.querySelector('app-icon') !== null)).toBe(true);
 
     danger[0]?.click();
@@ -106,8 +103,7 @@ describe('ConversationRow', () => {
     await fixture.whenStable();
 
     const items = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')];
-    // Frame 3a's order: Rename, Favourite, Move to project, then the separator and
-    // Delete. Remove from project is absent here — this fixture is standalone (US-307).
+    // No Remove from project: this fixture is standalone.
     expect(items.map((item) => item.textContent?.trim())).toEqual([
       'Rename',
       'Favourite',
@@ -139,10 +135,7 @@ describe('ConversationRow', () => {
     expect(item?.querySelector('use')?.getAttribute('href')).toBe('#bi-star-fill');
   });
 
-  it('opens the picker from the kebab, anchored where the kebab was (US-307)', async () => {
-    // The gesture path the code calls load-bearing: the menu closes on this same click,
-    // so the anchor is captured from `Menu.triggerElement()` at the press rather than
-    // read through a binding that would evaluate before the menu's view exists.
+  it('opens the picker from the kebab, anchored where the kebab was', async () => {
     const trigger = element().querySelector<HTMLButtonElement>('.menu__trigger');
     trigger?.click();
     await fixture.whenStable();
@@ -152,7 +145,6 @@ describe('ConversationRow', () => {
       ?.click();
     await fixture.whenStable();
 
-    // The kebab is gone and the picker is in its place.
     expect(element().querySelector('.menu__panel')).toBeNull();
     const picker = element().querySelector('.picker');
     expect(picker?.getAttribute('role')).toBe('dialog');

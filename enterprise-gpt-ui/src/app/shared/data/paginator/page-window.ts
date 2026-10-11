@@ -4,17 +4,8 @@ export const PAGE_GAP = 'gap' as const;
 export type PageWindowEntry = number | typeof PAGE_GAP;
 
 /**
- * The page numbers to render, with gaps where the run is broken.
- *
- * A pure function with its own spec, because numbered pagers always break at the same
- * four places: fewer pages than the window, the current page at either end, and the
- * boundary where a gap of exactly one page should be the page itself rather than an
- * ellipsis.
- *
- * @param current The 1-based current page.
- * @param total The total number of pages.
- * @param edge How many pages to always show at each end.
- * @param around How many pages to show either side of the current one.
+ * The page numbers to render for 1-based `current`, keeping `edge` pages at each end and `around`
+ * either side, with gaps where the run breaks.
  */
 export function pageWindow(
   current: number,

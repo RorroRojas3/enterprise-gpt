@@ -6,21 +6,18 @@ namespace Enterprise.Gpt.Api.Health;
 /// Runs the readiness checks at most once per <see cref="Ttl"/>, however often the route is called.
 /// </summary>
 /// <remarks>
-/// The route is anonymous because a platform probe carries no token, which makes it a request anyone
-/// can make. Without this, each one would open a SQL connection and read the Cosmos account — an
-/// unauthenticated caller could drive both backends for the cost of an HTTP GET. Single-flight rather
-/// than a plain expiry, so a burst arriving on a cold entry produces one probe and not one each.
+/// The route is anonymous, so otherwise any caller could drive SQL and Cosmos for the cost of a GET.
+/// Single-flight, so a burst arriving on a cold entry produces one probe.
 /// </remarks>
-/// <param name="health">Runs the registered checks.</param>
-/// <param name="timeProvider">Supplies the monotonic timestamps a snapshot ages against.</param>
-/// <param name="logger">Receives which dependency failed, which the anonymous response cannot carry.</param>
 internal sealed partial class ReadinessProbe(
     HealthCheckService health,
     TimeProvider timeProvider,
     ILogger<ReadinessProbe> logger) : IDisposable
 {
-    /// <summary>How long one report is served for.</summary>
-    /// <remarks>Below every platform's probe interval, so a real state change is never hidden for long.</remarks>
+    /// <summary>
+    /// How long one report is served; below every platform's probe interval, so a real change is never
+    /// hidden for long.
+    /// </summary>
     internal static readonly TimeSpan Ttl = TimeSpan.FromSeconds(3);
 
     private readonly HealthCheckService _health = health;
@@ -34,8 +31,7 @@ internal sealed partial class ReadinessProbe(
     public void Dispose() => _gate.Dispose();
 
     /// <summary>Returns the current report, running the checks only when the last one has aged out.</summary>
-    /// <param name="predicate">Selects the checks that gate readiness.</param>
-    /// <param name="cancellationToken">Cancels the wait for the gate, and nothing beyond it.</param>
+    /// <remarks><paramref name="cancellationToken"/> cancels only the wait for the gate.</remarks>
     internal async Task<HealthReport> CheckAsync(
         Func<HealthCheckRegistration, bool> predicate,
         CancellationToken cancellationToken)
@@ -56,15 +52,12 @@ internal sealed partial class ReadinessProbe(
                 return filled;
             }
 
-            // Not the caller's token. This probe is shared, so a caller that walks away — or a platform
-            // whose own probe timeout is shorter than the registrations' — must not cancel work the
-            // others are waiting for, which would leave the cache cold under exactly the degraded
-            // conditions it exists for. Each registration carries its own timeout, so the work is bounded.
+            // Not the caller's token: the probe is shared, and a caller walking away must not leave the cache
+            // cold exactly when degraded. Each registration's own timeout bounds the work.
             var report = await _health.CheckHealthAsync(predicate, CancellationToken.None).ConfigureAwait(false);
 
-            // Logged here rather than per reader: which dependency failed is what the anonymous response
-            // deliberately omits, and writing it once per probe rather than once per request is what
-            // keeps that detail from becoming its own amplification path into log ingestion.
+            // Once per probe, not per request, so the detail the anonymous response omits cannot amplify into
+            // log ingestion.
             LogFailures(report);
 
             _snapshot = new Snapshot(report, _timeProvider.GetTimestamp());
@@ -77,10 +70,7 @@ internal sealed partial class ReadinessProbe(
         }
     }
 
-    /// <summary>
-    /// Report and timestamp published as one reference, so the lock-free read cannot pair a fresh
-    /// timestamp with a stale report.
-    /// </summary>
+    // One reference, so the lock-free read cannot pair a fresh timestamp with a stale report.
     private sealed record Snapshot(HealthReport Report, long TakenAt);
 
     #region Private methods

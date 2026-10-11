@@ -9,17 +9,13 @@
 } @else if (rows().length === 0) {
   <ng-content select="[tableEmpty]" />
 } @else if (isNarrow()) {
-  <!-- Below the breakpoint the row is restructured, not reflowed, so the table
-       semantics go with it rather than lying about a list of cards. -->
+  <!-- Cards restructure the row, so the table semantics give way to a list. -->
   <ul class="table-cards" [attr.aria-label]="label()">
     @for (view of rowViews(); track view.key) {
       @let slots = columnsBySlot();
       <li>
         <app-card-row>
-          <!-- Without this, selection simply does not exist below the breakpoint:
-               the card has no header row to inherit a checkbox from, and a caller
-               that set `selectable` would silently get a table on a laptop and an
-               unselectable list on a phone. -->
+          <!-- A card has no header row to inherit a checkbox from, so it carries its own. -->
           @if (selectable()) {
             <input
               cardRowLead
@@ -31,9 +27,8 @@
             />
           }
 
-          <!-- The template/text fallback below is repeated per slot rather than shared:
-               one `ng-template` fed a context object would allocate that object on every
-               check, which the exhaustive check-no-changes pass fails outright. -->
+          <!-- Repeated per slot, not shared: a shared ng-template's context object would be
+               reallocated every check, which the exhaustive check-no-changes pass fails. -->
           <div cardRowTitle>
             @for (column of slots.title; track column.key) {
               @let template = cellTemplates().get(column.key) ?? null;
@@ -54,9 +49,7 @@
               }
             }
           </div>
-          <!-- Labelled, because the column header that gives a value its meaning on the
-               desktop table has nowhere to go on a card: three stacked numbers under a
-               model name say nothing about which is the context window. -->
+          <!-- Labelled: a card has no column header to give each value its meaning. -->
           <dl cardRowMeta class="card-meta">
             @for (column of slots.meta; track column.key) {
               <div class="card-meta__pair">
@@ -107,9 +100,7 @@
     }
   </ul>
 } @else {
-  <!-- Every ARIA role below is stated rather than implied. `display: grid` on a table
-       strips the implicit roles in Chrome and Firefox, and the boards draw these rows
-       as a grid. -->
+  <!-- Explicit roles: `display: grid` strips a table's implicit ones in Chrome and Firefox. -->
   <table
     class="data-table"
     role="table"
@@ -175,8 +166,6 @@
   </table>
 }
 
-<!-- Polite, so a filter that narrows the list is announced without interrupting. It
-     also describes the table, which is why the table carries aria-describedby. -->
 <p class="visually-hidden" [id]="summaryId" aria-live="polite">
   {{ loading() ? '' : resultSummary() }}
 </p>

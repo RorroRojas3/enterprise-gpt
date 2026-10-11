@@ -5,8 +5,7 @@
   line-height: 0;
 }
 
-// Deliberately no `fill: currentColor`: these symbols carry their owner's
-// colours, which is the whole reason they are a separate lane from `app-icon`.
+// No `fill: currentColor`: these symbols carry their owner's colours.
 svg {
   width: 1em;
   height: 1em;

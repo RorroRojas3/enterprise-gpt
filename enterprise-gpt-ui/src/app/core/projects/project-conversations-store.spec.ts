@@ -22,7 +22,7 @@ import {
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
 const PROJECT_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 
-describe('ProjectConversationsStore (US-908)', () => {
+describe('ProjectConversationsStore', () => {
   let backend: HttpTestingController;
   let store: InstanceType<typeof ProjectConversationsStore>;
   let projectId: ReturnType<typeof signal<string | null>>;
@@ -70,8 +70,6 @@ describe('ProjectConversationsStore (US-908)', () => {
   }
 
   it('issues one filtered request, with no drain and no ceiling', () => {
-    // US-908's second criterion. The first describes an interim client-side drain to a
-    // 500-item ceiling; US-907 landed with this story, so that behaviour never shipped.
     bind();
 
     const request = expectSearch();
@@ -93,7 +91,6 @@ describe('ProjectConversationsStore (US-908)', () => {
   });
 
   it('withholds the tab count until the list has been read', () => {
-    // "Conversations 0" on a project that has four is a worse answer than no count.
     bind();
     expect(store.count()).toBeNull();
 
@@ -223,9 +220,6 @@ describe('ProjectConversationsStore (US-908)', () => {
     });
 
     it('re-reads when a conversation is moved *into* this project from elsewhere', () => {
-      // Reachable with both surfaces on screen: the sidebar row kebab opens the same
-      // picker while this screen is up. Without this the panel and the tab count would
-      // under-report until the reader left the route and came back.
       load([conversationFixture({ projectId: PROJECT_ID })], 1);
       const arriving = conversationFixture({ projectId: PROJECT_ID });
 
@@ -234,8 +228,7 @@ describe('ProjectConversationsStore (US-908)', () => {
 
       const refetch = expectSearch();
       expect(refetch.request.params.get('projectId')).toBe(PROJECT_ID);
-      // The loaded rows stay on screen while it flies — `isFirstLoad` is false with
-      // entities in hand, so the panel does not blank.
+      // The loaded rows stay on screen while it flies, so the panel does not blank.
       expect(store.entities()).toHaveLength(1);
 
       refetch.flush(
@@ -264,8 +257,8 @@ describe('ProjectConversationsStore (US-908)', () => {
   });
 
   it('cancels the request in flight when the user signs out', () => {
-    // `withResetOnSignOut` clears state and does not cancel work: without the takeUntil
-    // this response would land on the emptied store as the next user's list.
+    // `withResetOnSignOut` clears state but cancels no work; without `takeUntil` this response
+    // would land as the next user's list.
     bind();
     const request = expectSearch();
 

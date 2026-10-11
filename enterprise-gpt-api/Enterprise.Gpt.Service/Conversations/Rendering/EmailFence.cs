@@ -6,10 +6,8 @@ namespace Enterprise.Gpt.Service.Conversations.Rendering;
 /// The fenced block the assistant marks a composed email with.
 /// </summary>
 /// <remarks>
-/// One definition for the whole server, because the fence means the same thing to the HTML renderer
-/// and to the export mapper, and because the client matches this exact spelling to decide whether to
-/// offer its mail-client control — a fence the two sides disagree about is an email in one surface
-/// and a code block in the other.
+/// Shared by the HTML renderer and the export mapper, and the client matches this exact spelling to offer
+/// its mail-client control, so any disagreement renders an email in one surface and code in another.
 /// </remarks>
 public static class EmailFence
 {
@@ -20,16 +18,10 @@ public static class EmailFence
 
     #region Public static methods
 
-    /// <summary>
-    /// Whether a fenced block is a composed email.
-    /// </summary>
-    /// <param name="block">The block to test.</param>
-    /// <returns><see langword="true"/> when the block's whole info string is <see cref="Info"/>.</returns>
+    /// <summary>Whether a fenced block's whole info string is <see cref="Info"/>.</summary>
     /// <remarks>
-    /// Markdig splits an info string at the first space, so <c>```email draft</c> parses as info
-    /// <c>email</c> with arguments <c>draft</c>. That is deliberately <em>not</em> a match: the
-    /// client requires the entire string, and recognising a wider set here would render the same
-    /// message as prose in an export and as code in the chat.
+    /// <c>```email draft</c> deliberately does not match: the client requires the entire string, and a
+    /// wider match would render the message as prose in an export but as code in the chat.
     /// </remarks>
     public static bool Matches(FencedCodeBlock block)
     {
@@ -39,22 +31,16 @@ public static class EmailFence
             && string.Equals(block.Info, Info, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// The block's content, one entry per non-blank line.
-    /// </summary>
-    /// <param name="block">The fenced block.</param>
-    /// <returns>The lines, in order.</returns>
+    /// <summary>The block's non-blank lines, in order.</summary>
     /// <remarks>
-    /// Per line rather than per blank-line-separated paragraph, because the header lines and a
-    /// sign-off are single lines that must not be run together. A body the model hard wrapped is the
-    /// case this reads worse for: its wrapped lines become separate paragraphs.
+    /// Per line, not per paragraph, so header lines and a sign-off are not run together; a hard-wrapped
+    /// body becomes separate paragraphs as a result.
     /// </remarks>
     public static IEnumerable<string> Lines(LeafBlock block)
     {
         ArgumentNullException.ThrowIfNull(block);
 
-        // Split so the guard runs at the call rather than at the first enumeration, which is where
-        // an iterator method would otherwise defer it to.
+        // Split so the guard throws at the call, not on first enumeration.
         return Iterate(block);
 
         static IEnumerable<string> Iterate(LeafBlock block)

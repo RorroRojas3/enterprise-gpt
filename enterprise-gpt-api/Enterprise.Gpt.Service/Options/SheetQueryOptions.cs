@@ -3,84 +3,39 @@ using FluentValidation;
 
 namespace Enterprise.Gpt.Service.Options;
 
-/// <summary>
-/// Bounds for the deterministic spreadsheet lookup tool, bound from the <c>SheetQuery</c>
-/// configuration section and validated at startup.
-/// </summary>
 /// <remarks>
-/// Deliberately separate from <c>Documents:Retrieval</c>'s own caps: this tool returns structured
-/// rows rather than prose passages, and it scans a whole sheet rather than a narrowed candidate set,
+/// Separate from <c>Documents:Retrieval</c>'s caps: this tool returns structured rows and scans whole sheets,
 /// so neither its size nor its time budget follows from retrieval's.
 /// </remarks>
 public sealed class SheetQueryOptions
 {
-    /// <summary>
-    /// Configuration section this type binds from.
-    /// </summary>
     public const string SectionName = "SheetQuery";
 
     /// <summary>
-    /// Gets or sets a value indicating whether the tool is attached to turns.
-    /// Default: <see langword="false"/>.
+    /// Off by default. Read through <see cref="ISheetQueryOptionsProvider"/> so a flip reaches the next turn
+    /// on configuration reload; spreadsheet ingestion is unaffected.
     /// </summary>
-    /// <remarks>
-    /// Off unless a deployment asks for it, and read through <see cref="ISheetQueryOptionsProvider"/> so
-    /// flipping it reaches the next turn as soon as the configuration source reloads, without a restart.
-    /// Upload, extraction, chunking and storage for spreadsheets are unaffected either way.
-    /// </remarks>
     public bool Enabled { get; set; }
 
-    /// <summary>
-    /// Largest number of rows one filter result may return. Default: 50.
-    /// </summary>
     public int MaxResultRows { get; set; } = 50;
 
-    /// <summary>
-    /// Largest number of characters of cell text one filter result may return. Default: 20,000.
-    /// </summary>
-    /// <remarks>
-    /// The row cap alone bounds nothing about width: fifty rows of a two-hundred-column export is
-    /// tens of thousands of characters competing with the answer for the model's context window.
-    /// </remarks>
+    /// <summary>Bounds result width, which the row cap alone does not.</summary>
     public int MaxResultCharacters { get; set; } = 20_000;
 
-    /// <summary>
-    /// Largest number of groups a grouped aggregate may return. Default: 200.
-    /// </summary>
     public int MaxGroups { get; set; } = 200;
 
     /// <summary>
-    /// Largest number of filters one call may supply. Default: 5.
+    /// Refused past this, not trimmed: a dropped filter would return rows the model believes it excluded.
     /// </summary>
-    /// <remarks>
-    /// Each filter is one more comparison arm evaluated per row of the sheet, and a request past
-    /// this is refused rather than trimmed — silently dropping a filter would return rows the model
-    /// believes it excluded.
-    /// </remarks>
     public int MaxFilters { get; set; } = 5;
 
-    /// <summary>
-    /// Per-statement command timeout, in seconds. Default: 10.
-    /// </summary>
-    /// <remarks>
-    /// The tool runs inside a live chat turn, so a degraded query has to fail fast rather than hold
-    /// the stream open behind the provider's own timeout.
-    /// </remarks>
+    /// <summary>Per statement; short because the tool runs inside a live chat turn.</summary>
     public int TimeoutSeconds { get; set; } = 10;
 
-    /// <summary>
-    /// Deadline for one whole tool invocation, in seconds. Default: 30.
-    /// </summary>
-    /// <remarks>
-    /// Bounds name resolution and the statement together, so it must be at least
-    /// <see cref="TimeoutSeconds"/> — a call deadline shorter than its own statement's timeout would
-    /// abandon every query before that timeout could report one, which reads as a broken tool rather
-    /// than a slow database. Startup validation enforces it.
-    /// </remarks>
+    /// <summary>Deadline for the whole invocation, name resolution and statement together.</summary>
     public int ToolTimeoutSeconds { get; set; } = 30;
 }
 
-/// <summary>Validates <see cref="SheetQueryOptions"/>.</summary>
 public sealed class SheetQueryOptionsValidator : AbstractValidator<SheetQueryOptions>
 {
     public SheetQueryOptionsValidator()

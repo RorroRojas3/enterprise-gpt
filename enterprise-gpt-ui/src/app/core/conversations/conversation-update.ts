@@ -14,20 +14,9 @@ export interface ConversationChanges {
 }
 
 /**
- * Builds the `PUT api/conversations` body for a conversation update.
- *
- * The endpoint is a full-representation PUT: a body that omits `projectId` — or sends
- * null — removes the conversation from its project. Every update path goes through
- * this one builder so no caller can unlink a project by forgetting to echo the field
- * (US-307's stated invariant, in force since US-304, the first update path).
- *
- * Only an explicit `null` unlinks. An `undefined` — including one passed explicitly,
- * as `{ projectId: selectedProject()?.id }` naturally produces — echoes the current
- * value, because "looks omitted" behaving as "remove" is exactly the accident this
- * builder exists to prevent.
- *
- * @param current The conversation as last seen from the server.
- * @param changes The fields this update means to change.
+ * The endpoint is a full-representation PUT, so every update goes through here: an omitted
+ * `projectId` would unlink. Only an explicit `null` unlinks; `undefined`, as
+ * `{ projectId: selectedProject()?.id }` produces, echoes the current value.
  */
 export function toUpdateBody(
   current: ConversationDto,

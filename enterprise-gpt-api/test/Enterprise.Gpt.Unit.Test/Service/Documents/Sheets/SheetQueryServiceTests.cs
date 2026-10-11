@@ -12,14 +12,9 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Documents.Sheets;
 
-/// <summary>
-/// Covers everything the sheet query decides before it builds a statement: which sheets a turn can
-/// reach, how a named sheet or column resolves, and what it refuses rather than guessing.
-/// </summary>
 /// <remarks>
-/// The statements themselves are absent by necessity — SQLite derives its own store type for the
-/// <c>json</c> cells column and has no <c>JSON_VALUE</c> of SQL Server's shape — so every test here stops
-/// at a refusal. Execution lives in <c>Enterprise.Gpt.Integration.Test</c> against SQL Server 2025.
+/// Every test stops at a refusal: SQLite has no SQL Server-shaped <c>JSON_VALUE</c> for the <c>json</c>
+/// cells column. Execution lives in <c>Enterprise.Gpt.Integration.Test</c> against SQL Server 2025.
 /// </remarks>
 public sealed class SheetQueryServiceTests : IDisposable
 {

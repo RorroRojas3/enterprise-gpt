@@ -5,16 +5,8 @@ using Enterprise.Gpt.Entity.Projects;
 
 namespace Enterprise.Gpt.Service.Projects;
 
-/// <summary>
-/// Maps between <see cref="Project"/> and its DTOs, in both the materialized and the
-/// server-side-projection forms.
-/// </summary>
 public static class ProjectMapper
 {
-    /// <summary>
-    /// LINQ projection from <see cref="Project"/> to <see cref="ProjectDto"/> for use inside
-    /// <c>IQueryable.Select(...)</c>.
-    /// </summary>
     public static Expression<Func<Project, ProjectDto>> MapToProjectDtoExpression { get; } =
         project => new ProjectDto
         {
@@ -28,12 +20,8 @@ public static class ProjectMapper
         };
 
     /// <summary>
-    /// LINQ projection from <see cref="Project"/> to <see cref="ProjectSummaryDto"/> for listings.
+    /// Listing projection; omits <see cref="ProjectDto.Instructions"/>, which no listing renders.
     /// </summary>
-    /// <remarks>
-    /// Deliberately omits <see cref="ProjectDto.Instructions"/>: a page of projects would otherwise
-    /// carry up to a hundred instruction bodies that no listing renders.
-    /// </remarks>
     public static Expression<Func<Project, ProjectSummaryDto>> MapToProjectSummaryDtoExpression { get; } =
         project => new ProjectSummaryDto
         {
@@ -47,11 +35,6 @@ public static class ProjectMapper
 
     #region Public static methods
 
-    /// <summary>
-    /// Maps a materialized <see cref="Project"/> entity to <see cref="ProjectDto"/>.
-    /// </summary>
-    /// <param name="project">The loaded project entity.</param>
-    /// <returns>The mapped DTO.</returns>
     public static ProjectDto MapToProjectDto(this Project project)
     {
         return new ProjectDto
@@ -66,12 +49,7 @@ public static class ProjectMapper
         };
     }
 
-    /// <summary>
-    /// Creates a new <see cref="Project"/> entity from a <see cref="CreateProjectActionDto"/>.
-    /// Callers set <c>Id</c> and <c>UserId</c>; the audit interceptor stamps the dates.
-    /// </summary>
-    /// <param name="dto">The action DTO carrying the new values.</param>
-    /// <returns>The new, untracked entity.</returns>
+    /// <summary>Creates an untracked project; callers set <c>Id</c> and <c>UserId</c>.</summary>
     public static Project FromCreateProjectActionDtoToProject(this CreateProjectActionDto dto)
     {
         return new Project
@@ -83,16 +61,9 @@ public static class ProjectMapper
     }
 
     /// <summary>
-    /// Applies an <see cref="UpdateProjectActionDto"/> to an existing <see cref="Project"/> entity in
-    /// place. Callers save; the audit interceptor stamps <c>DateModified</c>.
+    /// Deliberately leaves <c>IsFavorite</c> alone: the update DTO does not carry it, so assigning it would
+    /// clear the star on every rename. <see cref="SetProjectFavoriteActionDto"/> has its own route.
     /// </summary>
-    /// <param name="dto">The action DTO carrying the new values.</param>
-    /// <param name="project">The tracked entity to mutate.</param>
-    /// <remarks>
-    /// <c>IsFavorite</c> is deliberately not assigned here. This PUT is a full representation and the
-    /// update DTO does not carry the flag, so writing it would clear the star on every rename — the
-    /// trap <see cref="SetProjectFavoriteActionDto"/> exists as a separate route to avoid.
-    /// </remarks>
     public static void FromUpdateProjectActionDtoToProject(this UpdateProjectActionDto dto, Project project)
     {
         project.Name = dto.Name;

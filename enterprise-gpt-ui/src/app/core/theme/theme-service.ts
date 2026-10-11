@@ -18,11 +18,8 @@ function readStoredPreference(): ThemePreference {
 }
 
 /**
- * Owns `data-bs-theme` and `color-scheme` on `<html>` for the lifetime of the app.
- *
- * The pre-paint script in `index.html` sets both before this class exists — that is
- * what prevents a light frame — and this service takes over from the same stored
- * value, so the handover changes nothing on screen.
+ * Owns `data-bs-theme` and `color-scheme` on `<html>`, taking over from the pre-paint script in
+ * `index.html` with the same stored value so the handover changes nothing on screen.
  */
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
@@ -31,21 +28,10 @@ export class ThemeService {
   private readonly systemDark = signal(false);
   private readonly preferenceValue = signal<ThemePreference>('system');
 
-  /**
-   * The user's choice, including the tri-state `system`.
-   *
-   * Read-only outside this class on purpose. `apply()` is imperative rather than an
-   * effect (see its comment), so a writable signal here would let a caller flip
-   * `theme()` — and every consumer reading it — while `<html>` kept the old value and
-   * nothing was persisted. Writes go through {@link set} and {@link toggle}.
-   */
+  /** Read-only so every write goes through {@link set}, which also applies and persists it. */
   readonly preference = this.preferenceValue.asReadonly();
 
-  /**
-   * The theme in effect. Separate from {@link preference} because every consumer
-   * wants the resolved value; folding both into one signal would make each caller
-   * re-derive this.
-   */
+  /** The theme in effect, with `system` resolved. */
   readonly theme = computed<ResolvedTheme>(() => {
     const preference = this.preference();
     return preference === 'system' ? (this.systemDark() ? 'dark' : 'light') : preference;
@@ -80,12 +66,7 @@ export class ThemeService {
     this.set(this.theme() === 'dark' ? 'light' : 'dark');
   }
 
-  /**
-   * Deliberately not an `effect()`. This is a DOM write outside Angular's render
-   * tree; an effect would defer it to the next flush and entangle it with the
-   * exhaustive check-no-changes pass for no benefit. Writing synchronously is what
-   * puts the flip in the same frame as the gesture that caused it.
-   */
+  /** Not an `effect()`: writing synchronously puts the flip in the same frame as the gesture. */
   private apply(): void {
     const root = this.document.documentElement;
     const resolved = this.theme();

@@ -6,10 +6,8 @@ namespace Enterprise.Gpt.Service.Documents.Sheets.Models;
 /// The result of one <c>sheet_query</c> call, serialized straight back to the model.
 /// </summary>
 /// <remarks>
-/// A refusal is a successful result carrying <see cref="Note"/> and whichever of
-/// <see cref="AvailableSheets"/> and <see cref="AvailableColumns"/> lets the model correct itself,
-/// never an exception: a sheet or column that does not exist is something the model can fix on its
-/// next call.
+/// A refusal is a successful result carrying <see cref="Note"/> and <see cref="AvailableSheets"/> or
+/// <see cref="AvailableColumns"/>, never an exception: the model can fix a bad name on its next call.
 /// </remarks>
 public sealed class SheetQueryResult
 {
@@ -89,8 +87,8 @@ public sealed class SheetQueryResult
     /// empty or its value could not be read as the column's own type.
     /// </summary>
     /// <remarks>
-    /// A column's inferred type comes from a bounded sample, so a stray cell can disagree with it.
-    /// Reporting the count is what keeps a total that skipped rows from reading as a complete one.
+    /// Types are inferred from a bounded sample, so a stray cell can disagree; the count keeps a partial
+    /// total from reading as complete.
     /// </remarks>
     [JsonPropertyOrder(10)]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
@@ -124,8 +122,7 @@ public sealed class SheetQueryResult
     /// Gets or sets a value indicating whether nothing was queried because a name did not resolve.
     /// </summary>
     /// <remarks>
-    /// Not <see cref="Note"/>: a query that ran perfectly well also carries one when it matched no rows,
-    /// hit a cap, or read a column whose values disagree with its type.
+    /// Not inferred from <see cref="Note"/>, which a successful query can also carry.
     /// </remarks>
     [JsonIgnore]
     public bool IsRefusal { get; set; }

@@ -7,15 +7,8 @@ namespace Enterprise.Gpt.Service.Conversations.Tokenization;
 /// Decides which of a conversation's messages fit the model that is about to answer.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Deliberately pure: no database, no chat client, no Cosmos. Trimming is the decision most likely
-/// to be wrong in a way nobody notices — a conversation quietly losing its early context — so it is
-/// the decision that most needs to be testable without a running turn.
-/// </para>
-/// <para>
-/// It decides what is <em>sent</em>, never what is <em>stored</em>. The transcript keeps every
-/// message regardless.
-/// </para>
+/// Deliberately pure so trimming, the decision most likely to fail unnoticed, is testable without a
+/// running turn. It decides what is <em>sent</em>, never what is <em>stored</em>.
 /// </remarks>
 public static class ContextBudgetCalculator
 {
@@ -24,29 +17,14 @@ public static class ContextBudgetCalculator
     /// <summary>
     /// Applies a model's context window to a candidate message list.
     /// </summary>
-    /// <param name="messages">
-    /// The messages in chronological order, with the current prompt last.
-    /// </param>
+    /// <param name="messages">Chronological, with the current prompt last.</param>
     /// <param name="contextWindowSize">The model's total context window, in tokens.</param>
     /// <param name="maxOutputTokens">The tokens the model reserves for its answer.</param>
-    /// <param name="turnOverhead">
-    /// The prompt tokens belonging to no message — tool schemas, instructions and framing.
-    /// </param>
-    /// <returns>Which messages fit, and what dropping the rest cost.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="messages"/> is <see langword="null"/>.</exception>
+    /// <param name="turnOverhead">Tokens belonging to no message (schemas, instructions, framing).</param>
+    /// <exception cref="ArgumentNullException"><paramref name="messages"/> is null.</exception>
     /// <remarks>
-    /// <para>
-    /// A <paramref name="contextWindowSize"/> of zero is the seeded default for a catalog row nobody
-    /// has filled in. It is treated as unbounded rather than as a budget of zero, because trimming
-    /// every conversation to nothing over an unset catalog field would be a far worse failure than
-    /// sending a prompt that might be rejected.
-    /// </para>
-    /// <para>
-    /// The system message and the last message are never dropped: the first is the assistant's
-    /// standing instructions, and the second is the question being asked. When a user message is
-    /// dropped the assistant message answering it goes too, so the model never sees an answer to a
-    /// question that is no longer there.
-    /// </para>
+    /// A zero <paramref name="contextWindowSize"/> (an unset catalog row) means unbounded: trimming
+    /// everything is worse than a prompt that might be rejected. System and last messages are never dropped.
     /// </remarks>
     public static ContextBudgetResult Apply(
         IReadOnlyList<BudgetMessage> messages,
@@ -71,8 +49,7 @@ public static class ContextBudgetCalculator
             return new ContextBudgetResult(all, 0, 0, IsUnbounded: false, Fits: true);
         }
 
-        // Protected regardless of budget: the system message carries the assistant's standing
-        // instructions, and the final message is the question this turn exists to answer.
+        // Never dropped: the standing instructions and the question this turn answers.
         var protectedIndexes = new HashSet<int>(
             messages.Select((message, index) => (message, index))
                 .Where(x => x.message.Role is ChatRoles.System)

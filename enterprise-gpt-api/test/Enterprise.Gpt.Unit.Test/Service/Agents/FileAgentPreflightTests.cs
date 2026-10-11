@@ -5,13 +5,9 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Agents;
 
-/// <summary>
-/// Covers what a run refuses before it opens a sandbox session — and, just as importantly, what it
-/// declines to refuse.
-/// </summary>
 /// <remarks>
-/// The pair enumerated below is the whole published matrix. A structural conversion quietly refused
-/// costs a user a file they could have had, and nothing else in the suite would notice.
+/// The pairs enumerated below are the whole published matrix: a structural conversion quietly refused
+/// costs a user a file, and nothing else in the suite would notice.
 /// </remarks>
 public sealed class FileAgentPreflightTests
 {
@@ -135,9 +131,8 @@ public sealed class FileAgentPreflightTests
         Assert.Null(FileAgentPreflight.Evaluate(resolution, "Create random.docx with sample content", _matrix));
     }
 
-    // How a create that proposes a name for its own answer reaches the tool. The format is named in
-    // words as often as in the extension, so neither reading may stand in for "this file must exist".
-    // The unresolved name is carried per row because the name is itself part of what is read.
+    // A create naming its own answer: the format appears in words as often as by extension, so neither
+    // may stand in for "this file must exist". The name is per row because it is part of what is read.
     [Theory]
     [InlineData("Create summary.docx about last quarter", "summary.docx")]
     [InlineData("Create a Word document called notes.docx", "notes.docx")]
@@ -162,8 +157,7 @@ public sealed class FileAgentPreflightTests
             resolution, "Edit report.docx and save it as report-v2.docx", _matrix));
     }
 
-    // The other side of the same boundary. The last rows are the ones a bag of words gets wrong on its
-    // own: "draft" and "output" are ordinary file names, and a request to write something *from* a file
+    // The other side: "draft" and "output" are ordinary file names, and writing something *from* a file
     // is a read whatever verb opens it.
     [Theory]
     [InlineData("Summarize missing.docx", "missing.docx")]

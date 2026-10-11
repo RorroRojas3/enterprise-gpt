@@ -3,16 +3,10 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Api.Options;
 
-/// <summary>
-/// Covers the accepted-value sets and the cross-field rule <c>AnthropicOptionsValidator</c>
-/// reads from, so the one non-obvious configuration constraint is pinned without
-/// booting a host.
-/// </summary>
 public sealed class AnthropicOptionsTests
 {
-    // FrozenSet implements both ISet and IReadOnlySet, which makes Assert.Contains ambiguous against
-    // it. Narrowing to one of them picks an overload that still compares through the set's own
-    // case-insensitive comparer, which is what the startup validators rely on.
+    // FrozenSet is both ISet and IReadOnlySet, making Assert.Contains ambiguous; narrowing keeps the
+    // set's case-insensitive comparer, which the startup validators rely on.
     private static IReadOnlySet<string> ThinkingModes => AnthropicOptions.ThinkingModes;
 
     private static IReadOnlySet<string> EffortLevels => AnthropicOptions.EffortLevels;
@@ -25,8 +19,7 @@ public sealed class AnthropicOptionsTests
     }
 
     /// <summary>
-    /// A fixed thinking budget is rejected by every model this provider targets; <c>Effort</c> is
-    /// what replaced it. Naming it here stops it being reintroduced as a third mode.
+    /// Every targeted model rejects a fixed thinking budget; naming it stops it returning as a third mode.
     /// </summary>
     [Theory]
     [InlineData("enabled")]

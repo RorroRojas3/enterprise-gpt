@@ -22,13 +22,8 @@
         />
       }
     }
-    <!--
-      Not a live region, and deliberately still not one after US-1402. A region
-      inserted together with its content announces nothing, and one *inside* the
-      transcript is deferred by its `aria-busy` for the whole turn anyway. The
-      running commentary a reader hears is `Chat`'s status region; this stays a
-      plain label, read when the card itself is.
-    -->
+    <!-- Deliberately not a live region: the transcript's `aria-busy` defers it for the whole
+         turn, and `Chat`'s status region carries the running commentary. -->
     <span class="visually-hidden">{{ stateLabel() }}</span>
     <span
       class="activity-card__name"
@@ -72,9 +67,7 @@
   }
 
   @if (expanded()) {
-    <!-- US-504: what this activity cost. The token columns are absent until a
-         server attributes usage per activity; the duration is what it can
-         answer today, and the frame prints it here as well as in the header. -->
+    <!-- Token columns are absent until the server attributes usage per activity. -->
     <div class="activity-card__usage font-mono" [id]="detailId">
       @for (part of usageEntries(); track part) {
         <span>{{ part }}</span>
@@ -82,9 +75,6 @@
     </div>
   }
 
-  <!-- US-502: the work this activity invoked, behind the frame's indent rail.
-       The component recurses into itself — a standalone component is in scope
-       of its own template, so it needs no entry in its own `imports`. -->
   @if (activity().children.length > 0) {
     <div class="activity-card__children">
       @for (child of activity().children; track child.scopeId || $index) {

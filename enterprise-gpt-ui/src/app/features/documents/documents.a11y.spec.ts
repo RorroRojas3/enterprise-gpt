@@ -21,20 +21,13 @@ import { DOCUMENT_PAGE_SIZE } from './document-library-store';
 import { Documents } from './documents';
 
 /**
- * The documents library route US-1405's first criterion names, in both themes and in
- * both of US-1003's view modes — the grouped default and `?view=flat` — because the
- * two render different anatomies: group headers with chevrons and links on one side,
- * the conversation link column on the other.
- *
- * These run in Chromium through the `test-a11y` target — see `src/testing/a11y.ts` for
- * why jsdom cannot host them. The screen is rendered with rows from two conversations
- * rather than empty, because an empty listing has no glyphs, no badges, no links and no
- * download controls in it — which is most of the surface worth auditing.
+ * Audits both view modes, which render different anatomies, and with rows: an empty listing has
+ * almost nothing to audit. Runs in Chromium; see `src/testing/a11y.ts` for why.
  */
 
 const DOCUMENTS_URL = `${TEST_API_BASE_URL}/api/documents`;
 
-describe('documents accessibility (US-1405)', () => {
+describe('documents accessibility', () => {
   let backend: HttpTestingController;
   let harness: RouterTestingHarness;
   let attached: HTMLElement | null = null;
@@ -74,10 +67,7 @@ describe('documents accessibility (US-1405)', () => {
     return element;
   }
 
-  /**
-   * Rows from two conversations, so the grouped default has two groups to draw — and one
-   * of each origin, so both source badges are measured rather than only the muted one.
-   */
+  /** Two conversations for two groups, and one of each origin so both badges are measured. */
   function flushListing(): void {
     backend
       .expectOne((request) => request.url === DOCUMENTS_URL)
@@ -197,8 +187,7 @@ describe('documents accessibility (US-1405)', () => {
       element.querySelector<HTMLButtonElement>('.documents__more button')?.click();
       await harness.fixture.whenStable();
 
-      // `aria-disabled`, never the native attribute: a disabled button would drop focus
-      // mid-press, which is the state this case exists to audit.
+      // aria-disabled, not `disabled`, which would drop focus mid-press.
       expect(element.querySelector('.documents__more button')?.getAttribute('aria-disabled')).toBe(
         'true',
       );

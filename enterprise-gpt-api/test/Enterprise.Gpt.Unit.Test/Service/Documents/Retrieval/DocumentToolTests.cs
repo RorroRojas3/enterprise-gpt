@@ -10,11 +10,6 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Documents.Retrieval;
 
-/// <summary>
-/// Covers the function the model actually sees: its name and schema, that a search reaches the
-/// retrieval service with the turn's own scope, and that a failure inside it never reaches the model
-/// verbatim.
-/// </summary>
 public sealed class DocumentToolTests
 {
     private readonly IDocumentRetrievalService _retrievalService = Substitute.For<IDocumentRetrievalService>();

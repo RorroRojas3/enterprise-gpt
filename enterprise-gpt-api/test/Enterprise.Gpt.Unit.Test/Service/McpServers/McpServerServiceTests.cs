@@ -157,10 +157,6 @@ public sealed class McpServerServiceTests : IDisposable
         return credential;
     }
 
-    /// <summary>
-    /// Seeds a server with its linked permission and, optionally, an active grant for the
-    /// seed user — the shape <c>CreateMcpServerAsync</c> plus a grant would produce.
-    /// </summary>
     private async Task<(McpServer Server, Permission Permission)> AddPermittedServerAsync(
         string name, bool granted = true)
     {
@@ -674,17 +670,10 @@ public sealed class McpServerServiceTests : IDisposable
         Assert.Null(persisted.Headers);
     }
 
-    /// <summary>
-    /// A mutation of the dictionary already on a tracked entity is saved, rather than being missed
-    /// because the reference did not change.
-    /// </summary>
+    /// <summary>An in-place mutation of a tracked entity's dictionary is saved.</summary>
     /// <remarks>
-    /// This does <b>not</b> pin the explicit <c>ValueComparer</c>: EF Core 10 infers a structural,
-    /// deep-snapshotting comparer for a <c>Dictionary&lt;string, string&gt;</c> even behind a value
-    /// converter, so it passes with that argument deleted. The explicit comparer is kept for what
-    /// inference does not give — ordinal ordering in equality and hashing, so the result cannot
-    /// move with the ambient culture — and as insulation against that inference changing. What
-    /// this test pins is the behaviour, which is the thing that must not regress.
+    /// Passes without the explicit <c>ValueComparer</c>, since EF Core 10 infers a deep one; that comparer is
+    /// kept for culture-independent ordinal equality and as insulation against the inference changing.
     /// </remarks>
     [Fact]
     public async Task SaveChangesAsync_HeadersMutatedInPlace_IsDetectedAsAChange()

@@ -19,24 +19,8 @@ import { ModelFormDialog } from './model-form-dialog';
 import { formatContext, formatTokens } from './model-format';
 
 /**
- * The administration model catalog, frame `5e` (US-1207).
- *
- * **Regime C, so there is no URL contract.** `GET api/models/all` is unpaginated, so the
- * screen holds the whole catalog and the search field filters it in memory. That is why
- * this screen — unlike `AdminUsers` next door — has no route inputs, no `_applyQuery`
- * and no pager: a client-side filter is screen state, and putting it in the address bar
- * would promise a link that reproduces a server result it never asked the server for.
- *
- * **Retired models are rendered, not hidden.** `DELETE api/models/{id}` is a soft delete
- * and this route is the only one that returns the rows it produces, so a table that
- * dropped them would make Delete look like it did nothing — and the model would then be
- * invisible everywhere in the app. They render muted with a Status marker borrowed from
- * frame `5g`, which frame `5e` does not draw, and their kebab offers no items at all:
- * there is no reactivate route, and an affordance that is present and inert is the thing
- * US-203 already rejected.
- *
- * Frame `5e` draws no sort control and none is offered. The comparators are wired in the
- * store, so US-902's sibling story on this tab is a template change.
+ * Retired models render muted, not hidden: Delete is a soft delete and this is the only route
+ * that returns them. Their kebab offers nothing, since there is no reactivate route.
  */
 @Component({
   selector: 'app-admin-models',
@@ -75,11 +59,7 @@ export class AdminModels {
     () => `No models match “${this.models.query().trim()}”`,
   );
 
-  /**
-   * Fields rather than template literals. `provideCheckNoChangesConfig({ exhaustive:
-   * true })` compares bindings between passes, and an array or an arrow allocated in the
-   * template is a new value on every check.
-   */
+  /** A field, since an array allocated in the template is a new binding on every check. */
   protected readonly columns: readonly TableColumn<ModelDto>[] = [
     { key: 'model', header: 'Model', width: 'minmax(0, 1.5fr)', mobile: 'title' },
     { key: 'provider', header: 'Provider', width: 'minmax(0, 1.1fr)', mobile: 'subtitle' },
@@ -107,11 +87,9 @@ export class AdminModels {
       mobile: 'badges',
       hideOnTablet: true,
     },
-    // Not in frame `5e`, which draws no status at all. It is here because this route
-    // returns retired models and the frame's table has no other way to tell one apart.
+    // Not in the design, but nothing else tells a retired model apart.
     { key: 'status', header: 'Status', width: '100px', mobile: 'badges' },
-    // headerHidden rather than an empty header: the column still needs a name for a
-    // screen reader listing the table's columns, and the board draws no label here.
+    // Hidden rather than empty, so a screen reader can still name the column.
     {
       key: 'actions',
       header: 'Actions',
@@ -128,25 +106,13 @@ export class AdminModels {
   constructor() {
     this.models.load();
 
-    // `ModelActionsStore` is root-scoped and outlives this route, while an open dialog is
-    // about one visit to it. Without these two, opening Add model, leaving for another
-    // admin tab and coming back would re-mount the dialog with `open()` still true and
-    // `Modal` would `showModal()` a surface the reader never asked for — the same leak
-    // `AdminUsers` closes for its own standing refusal.
-    //
-    // Neither clears `formBusy`, which tracks a request rather than a surface.
+    // `ModelActionsStore` is root-scoped, so a dialog left open on a past visit would reopen
+    // on return. Neither clears `formBusy`, which tracks a request rather than a surface.
     this.actions.cancelForm();
     this.actions.cancelDeactivate();
   }
 
-  /**
-   * The provider's presentation, or null for an id this build does not know.
-   *
-   * There is no `GET api/providers` — no endpoint exposes provider names to any caller,
-   * administrator included — so `providerMeta` is a mirror of the seeded rows. A
-   * provider added server-side after this build degrades to a muted dot and its raw id,
-   * which is honest, rather than breaking the row.
-   */
+  /** Null for a provider newer than this build, which degrades to a muted dot and its raw id. */
   protected provider(model: ModelDto): ProviderMeta | null {
     return providerMeta(model.providerId);
   }
@@ -157,9 +123,8 @@ export class AdminModels {
 
   protected clearSearch(): void {
     this.onSearched('');
-    // The button removes itself the moment rows come back, and focus would fall to
-    // `<body>` inside a table the reader then has to find again. The field is outside
-    // every branch of the template, so it is always connected.
+    // The button removes itself once rows return, so focus would fall to `<body>`; the field
+    // sits outside every template branch and is always connected.
     this._search().focusField();
   }
 }

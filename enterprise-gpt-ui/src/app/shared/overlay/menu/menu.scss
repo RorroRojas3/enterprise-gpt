@@ -29,10 +29,8 @@
     outline-offset: 2px;
   }
 
-  // A projected trigger face (the model and tools pills) brings its own box:
-  // the 28px icon square and its hover fill would fight the pill's own styling.
-  // `min-width: 0` because a projected face may have to shrink; whether it does is the
-  // wrapping component's call, and only the model pill takes it up.
+  // A projected face brings its own box, so the icon square and hover fill drop away.
+  // `min-width: 0` lets it shrink if the wrapping component chooses to.
   &--content {
     width: auto;
     height: auto;
@@ -90,8 +88,7 @@
     box-shadow: inset 0 0 0 2px var(--focus-ring);
   }
 
-  // Frame 3a: 13px leading icons on the muted tone, whatever the item's own text
-  // colour — except the danger item, whose icon shares its red.
+  // Leading icons stay muted whatever the item's text colour, except on the danger item.
   app-icon {
     flex: 0 0 auto;
     color: var(--muted);
@@ -107,9 +104,8 @@
     }
   }
 
-  // Disabled items use aria-disabled, never the native attribute: a natively
-  // disabled button cannot take focus, which breaks the roving focus the panel's
-  // keyboard handling depends on and leaves Escape with nowhere to fire from.
+  // aria-disabled, never the native attribute: a natively disabled button cannot take focus,
+  // which breaks roving focus and leaves Escape nowhere to fire from.
   &[aria-disabled='true'] {
     color: var(--muted);
     cursor: default;

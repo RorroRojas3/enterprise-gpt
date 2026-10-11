@@ -1,12 +1,6 @@
 /**
- * A controllable `ResizeObserver` for tests.
- *
- * jsdom implements none, and could not usefully: without layout nothing ever
- * changes size. Specs say when an element grew with {@link resizeElement}, which
- * is the honest shape for the code under test — US-606 reacts to the fact of a
- * height change, never to the number.
- *
- * `setup-dom.ts` installs it before every test file.
+ * A controllable `ResizeObserver`: jsdom has no layout, so specs report a size change with
+ * {@link resizeElement}. `setup-dom.ts` installs it before every test file.
  */
 
 interface Registry {
@@ -15,7 +9,7 @@ interface Registry {
 
 const REGISTRY_KEY = '__egptResizeObserverRegistry';
 
-/** On `globalThis` for the reason the media-query registry is: see that file. */
+/** On `globalThis`: the setup file and a spec can load distinct copies of this module. */
 function registry(): Registry {
   const global = globalThis as Record<string, unknown>;
   global[REGISTRY_KEY] ??= { instances: new Set() } satisfies Registry;

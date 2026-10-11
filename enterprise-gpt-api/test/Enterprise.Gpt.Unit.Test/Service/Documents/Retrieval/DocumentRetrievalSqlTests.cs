@@ -4,10 +4,8 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Service.Documents.Retrieval;
 
 /// <summary>
-/// Covers the generated retrieval SQL. The statements cannot be executed here — SQLite has no
-/// <c>vector</c> type — so what is asserted is the part that is decided in C#: that only the shape of a
-/// statement varies with the query, never its content, and that the identifiers SQL Server treats
-/// specially are written the way it needs them.
+/// SQLite has no <c>vector</c> type, so this asserts what C# decides: only a statement's shape varies with
+/// the query, never its content, and identifiers SQL Server treats specially are written as it needs.
 /// </summary>
 public sealed class DocumentRetrievalSqlTests
 {
@@ -18,10 +16,8 @@ public sealed class DocumentRetrievalSqlTests
 
         Assert.Contains("VECTOR_DISTANCE('cosine', @queryVector, c.[Embedding])", sql, StringComparison.Ordinal);
 
-        // Returning the column would ship 6 KB per candidate row for a value the caller never reads,
-        // which is the whole reason this statement is hand-written rather than a LINQ query. The inner
-        // derived table may name it — SQL Server projects only what the outer query asks for — but the
-        // outer select list must mention it exactly once, inside VECTOR_DISTANCE.
+        // The statement is hand-written to avoid shipping 6 KB per row for an unread column, so the outer
+        // select list may mention it only inside VECTOR_DISTANCE.
         var projection = sql[..sql.IndexOf("FROM (", StringComparison.Ordinal)];
         Assert.Equal(1, CountOccurrences(projection, "[Embedding]"));
     }
@@ -79,10 +75,8 @@ public sealed class DocumentRetrievalSqlTests
     }
 
     /// <summary>
-    /// The tie-break that decides a mixed corpus: at equal match count the shorter chunk wins, and a
-    /// spreadsheet's row windows are short and dense by construction, so they outrank prose that used the
-    /// same term. Kept, not changed — for the identifiers this pass exists for, the denser chunk is the
-    /// better evidence.
+    /// At equal match count the shorter chunk wins, so dense spreadsheet row windows outrank prose. Kept
+    /// deliberately: for identifiers the denser chunk is the better evidence.
     /// </summary>
     [Fact]
     public void BuildLexicalSearch_TiesOnMatchCount_BreakTowardsTheShorterChunk()
@@ -164,9 +158,8 @@ public sealed class DocumentRetrievalSqlTests
     [Fact]
     public void GeneratedStatements_ContainNoLiteralValues()
     {
-        // The single check that matters most for review: the number of comparison arms and value rows
-        // varies with the query, but nothing derived from user input is ever concatenated into the text.
-        // Every varying fragment is a parameter placeholder.
+        // The check that matters most: arms and value rows vary with the query, but every varying
+        // fragment is a parameter placeholder, never concatenated input.
         var statements = new[]
         {
             DocumentRetrievalSql.BuildLexicalSearch(4),

@@ -1,22 +1,6 @@
-// Syntax highlighting, driven entirely by tokens. US-105 / US-604.
-//
-// No prismjs stylesheet is imported. Its shipped pair would be `prism.css` (light,
-// #f5f2f0) and `prism-tomorrow.css` (dark, #2d2d2d), and neither matches the design:
-// `--code-bg` is #0B1F33 in light and #081827 in dark, so the code surface is dark in
-// *both* themes and there is no light variant to swap to.
-//
-// Because every colour below is a custom property, a theme change re-tints the code
-// block on the identical paint as `data-bs-theme` flipping — no second stylesheet, no
-// `<link>` toggle, no script, and no frame where the old palette is still on screen.
-// prismjs stays a dependency for tokenising; only its themes go unused, and
-// `scripts/check-forbidden-apis.mjs` fails the build if one is ever imported.
-//
-// With no light variant to fall back to, every value here has to be legible on a dark
-// surface on its own merits. `scripts/check-tokens.mjs` measures each of them against
-// `--code-bg` in both theme maps and fails below 4.5:1, so a palette edit is told which
-// colour it broke rather than shipping one that only looks right in the editor. It also
-// fails on a `var(--code-*)` added here that it does not know how to measure, so the
-// gate cannot silently fall behind the stylesheet.
+// Token-driven, not a prismjs theme: the code surface is dark in both themes, so neither shipped
+// theme fits, and a theme flip re-tints in the same paint. `check-tokens.mjs` holds every colour
+// here to 4.5:1 on `--code-bg` in both themes.
 pre[class*='language-'],
 code[class*='language-'] {
   background: var(--code-bg);

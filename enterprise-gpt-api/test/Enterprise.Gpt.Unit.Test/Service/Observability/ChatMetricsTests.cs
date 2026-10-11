@@ -5,13 +5,9 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Observability;
 
-/// <summary>
-/// Covers the spreadsheet instruments, including the dimensions they must never carry.
-/// </summary>
 /// <remarks>
-/// The instruments are process-global, so every assertion looks for a measurement carrying the values
-/// under test rather than for an exact count: another test recording to the same instrument at the same
-/// moment is normal.
+/// The instruments are process-global, so assertions look for a matching measurement rather than an
+/// exact count.
 /// </remarks>
 public sealed class ChatMetricsTests
 {

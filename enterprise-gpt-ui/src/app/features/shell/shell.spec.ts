@@ -104,10 +104,8 @@ describe('Shell', () => {
   }
 
   /**
-   * Releases the root project lookup and answers it, as `SessionBootstrap` would.
-   *
-   * Every other test in this file leaves it unreleased, which is why the Favorite
-   * projects section is absent from all of them without any of them saying so.
+   * Releases the root project lookup and answers it, as `SessionBootstrap` would. Other tests
+   * leave it unreleased, which is why they show no Favorite projects section.
    */
   async function loadProjects(
     fixture: ComponentFixture<Shell>,
@@ -140,21 +138,17 @@ describe('Shell', () => {
     element.querySelector<HTMLAnchorElement>('a.skip-link')?.click();
     await fixture.whenStable();
 
-    // Focus really moves, and the fragment never reaches the router — a bare href
-    // would navigate to /chat#main-content and re-run the guards.
+    // Focus moves, and the fragment never reaches the router.
     expect(document.activeElement).toBe(element.querySelector('#main-content'));
     expect(TestBed.inject(Router).url).not.toContain('#');
   });
 
-  describe('favorite projects (US-910)', () => {
+  describe('favorite projects', () => {
     it('does not render the section when nothing is starred', async () => {
       const fixture = await render();
       await loadConversations(fixture);
       await loadProjects(fixture, [projectFixture(), projectFixture()]);
 
-      // Absent rather than an empty section with a heading over nothing — and the
-      // strip's stand-in goes with it, since expanding to a section that is not there
-      // is an affordance with nothing behind it.
       expect(host(fixture).querySelector('app-sidebar-favorites .favorites')).toBeNull();
     });
 
@@ -171,8 +165,7 @@ describe('Shell', () => {
       expect(element.querySelector('#sidebar-favorites-heading')?.textContent).toContain(
         'Favorite projects',
       );
-      // No device-local notice: US-909 landed in the same batch, so the pins the story's
-      // first criterion describes were never built.
+      // No device-local pins notice: pins were never built.
       expect(element.querySelector('.favorites')?.textContent ?? '').not.toContain(
         'Pinned on this device',
       );
@@ -195,7 +188,7 @@ describe('Shell', () => {
       disclosure?.click();
       await fixture.whenStable();
 
-      // US-907's filter — one request, no drain over the whole conversation list.
+      // One project-filtered request, not a drain over the whole conversation list.
       const request = expectNested(project.id);
       request.flush(conversationPage([conversationFixture({ name: 'Helios 2.4 release status' })]));
       await fixture.whenStable();
@@ -271,8 +264,7 @@ describe('Shell', () => {
     });
 
     it('keeps two open nodes on their own results', async () => {
-      // The reason the store is provided per node rather than once on the row: two
-      // sections open at the same time each need their own projectId-filtered query.
+      // Why the store is provided per node: two open sections each need their own query.
       const first = projectFixture({ name: 'Data Platform Migration', isFavorite: true });
       const second = projectFixture({ name: 'RFP Responses', isFavorite: true });
       const fixture = await render();
@@ -318,9 +310,8 @@ describe('Shell', () => {
     }
 
     it('moves focus to the heading when unfavouriting evicts the row it was invoked from', async () => {
-      // The write is not optimistic, so the <li> holding the menu trigger focus was
-      // returned to is destroyed a round trip after the click. Without the rescue focus
-      // lands on <body>, and the next Tab restarts at the top of the page.
+      // The write isn't optimistic, so the row focus was returned to is destroyed a round trip
+      // after the click; without a rescue, focus lands on <body>.
       const first = projectFixture({ name: 'Data Platform Migration', isFavorite: true });
       const second = projectFixture({ name: 'RFP Responses', isFavorite: true });
       const fixture = await render();
@@ -353,8 +344,7 @@ describe('Shell', () => {
         .flush(null, { status: 204, statusText: 'No Content' });
       await fixture.whenStable();
 
-      // The section is gone, so the heading the previous test focuses is gone too. The
-      // nearest control above where it stood is the sidebar's own search field.
+      // The heading went with the section; the search field is the nearest control above it.
       expect(element.querySelector('.favorites')).toBeNull();
       expect(document.activeElement).toBe(element.querySelector('.search__field'));
     });
@@ -372,8 +362,7 @@ describe('Shell', () => {
         .flush(PROBLEM_FIXTURES.resourceNotFound, { status: 404, statusText: 'Not Found' });
       await fixture.whenStable();
 
-      // The row survived, so the intent must be dropped rather than left armed to fire
-      // against some unrelated later removal.
+      // The row survived, so the focus intent must be dropped, not left armed.
       expect(element.querySelector('.project__title')?.textContent).toContain(
         'Data Platform Migration',
       );
@@ -398,10 +387,7 @@ describe('Shell', () => {
       star?.click();
       await fixture.whenStable();
 
-      // Expanding is the whole action: the tree is what the icon stands in for, so
-      // pressing it reveals the tree rather than navigating away. Focus follows through
-      // two nested render hooks — the sidebar's, which waits for the expanded branch,
-      // and the section's, which waits for its own heading.
+      // The star expands rather than navigates; focus follows through two nested render hooks.
       expect(element.querySelector('.favorites')).not.toBeNull();
       expect(document.activeElement).toBe(element.querySelector('#sidebar-favorites-heading'));
     });
@@ -441,8 +427,7 @@ describe('Shell', () => {
       await TestBed.inject(Router).navigateByUrl(`/chat/${open.id}`);
       await fixture.whenStable();
 
-      // Since US-304 the row is a wrapper around the link and its kebab: the wrapper
-      // paints the selected surface, while `aria-current` stays on the link element.
+      // The row wrapper paints the selected surface; `aria-current` stays on the link.
       const rows = [...host(fixture).querySelectorAll<HTMLElement>('.row')];
       const links = [...host(fixture).querySelectorAll<HTMLAnchorElement>('a.row__link')];
       expect(links[0]?.getAttribute('aria-current')).toBe('page');
@@ -530,12 +515,10 @@ describe('Shell', () => {
       field!.dispatchEvent(new Event('input'));
       await fixture.whenStable();
 
-      // Nothing yet — SearchInput debounces, which is why the store deliberately
-      // carries no second debounce of its own.
+      // Nothing yet: `SearchInput` debounces, so the store carries no debounce of its own.
       backend.expectNone((request) => request.url === SEARCH_URL);
 
-      // Real timers rather than vi.useFakeTimers(): the debounce is a setTimeout inside
-      // an effect, and faking the clock also stalls the scheduler `whenStable` awaits.
+      // Real timers: faking the clock also stalls the scheduler `whenStable` awaits.
       await new Promise((resolve) => setTimeout(resolve, SEARCH_DEBOUNCE_MS + 50));
       await fixture.whenStable();
 
@@ -584,8 +567,7 @@ describe('Shell', () => {
     });
 
     it('keeps Load more focusable while its page is in flight', async () => {
-      // `disabled` on the element just activated blurs it, dropping the user back to
-      // <body> inside a scrolling list they then have to find again.
+      // `disabled` would blur the button just pressed, dropping focus to <body>.
       const fixture = await render();
       await loadConversations(fixture, [conversationFixture()], 40);
 
@@ -611,7 +593,6 @@ describe('Shell', () => {
         (n) => n.textContent,
       );
 
-      // US-203: absent, not shown-and-disabled.
       expect(labels).toEqual(['Chat', 'Conversations', 'Projects', 'Documents']);
     });
 
@@ -619,8 +600,6 @@ describe('Shell', () => {
       const fixture = await render();
       await loadConversations(fixture);
 
-      // US-701 built the route, so the entry the board draws can finally exist —
-      // the sidebar renders only the ones that do.
       const link = [...host(fixture).querySelectorAll('a')].find(
         (anchor) => anchor.querySelector('.sidebar__nav-label')?.textContent === 'Conversations',
       );
@@ -631,8 +610,6 @@ describe('Shell', () => {
       const fixture = await render();
       await loadConversations(fixture);
 
-      // US-901 built the route, so the entry the board draws can finally exist — the
-      // sidebar renders only the ones that do.
       const link = [...host(fixture).querySelectorAll('a')].find(
         (anchor) => anchor.querySelector('.sidebar__nav-label')?.textContent === 'Projects',
       );
@@ -643,8 +620,6 @@ describe('Shell', () => {
       const fixture = await render();
       await loadConversations(fixture);
 
-      // US-1002 built the route, so the entry the board draws can finally exist — the
-      // sidebar renders only the ones that do.
       const link = [...host(fixture).querySelectorAll('a')].find(
         (anchor) => anchor.querySelector('.sidebar__nav-label')?.textContent === 'Documents',
       );
@@ -672,7 +647,7 @@ describe('Shell', () => {
       link?.click();
       await fixture.whenStable();
 
-      // US-303: nothing is posted until the first prompt.
+      // Nothing is posted until the first prompt.
       backend.verify();
     });
   });
@@ -701,10 +676,8 @@ describe('Shell', () => {
 
       const collapse = element.querySelector<HTMLButtonElement>('.sidebar__collapse');
       expect(collapse?.getAttribute('aria-expanded')).toBe('true');
-      // No aria-controls: both branches put the id on the <nav> that *contains* the
-      // toggle, so the reference would resolve to the element the user is already in
-      // and tell them nothing. aria-expanded alone is the honest claim — the list, the
-      // search field and the labels really are gone in the strip.
+      // No aria-controls: the id is on the <nav> containing the toggle, so it would name the
+      // element the user is already in.
       expect(collapse?.hasAttribute('aria-controls')).toBe(false);
 
       collapse?.click();
@@ -723,8 +696,7 @@ describe('Shell', () => {
       element.querySelector<HTMLButtonElement>('.sidebar__collapse')?.click();
       await fixture.whenStable();
 
-      // The tooltip directive supplies the accessible name for a control that has no
-      // text of its own, which is what keeps the strip usable by screen reader.
+      // The tooltip directive supplies each name.
       for (const control of element.querySelectorAll('.strip__button')) {
         expect(control.getAttribute('aria-label')).toBeTruthy();
       }
@@ -765,8 +737,7 @@ describe('Shell', () => {
     });
 
     it('withholds the width transition until after the first render', async () => {
-      // Otherwise a returning user with a collapsed sidebar watches it animate shut on
-      // every load — an animation of a state change that never happened.
+      // Or a restored collapsed sidebar would animate shut on every load.
       const fixture = TestBed.createComponent(Shell);
 
       expect((fixture.nativeElement as HTMLElement).classList.contains('shell--animated')).toBe(
@@ -781,11 +752,9 @@ describe('Shell', () => {
     });
   });
 
-  describe('keyboard operability (US-1401)', () => {
-    // jsdom implements no `<dialog>`, so the shell's own dialogs need the same
-    // shim the overlay specs use. What it cannot stand in for is the top layer,
-    // `::backdrop` or native inerting — those are checked in a browser through
-    // `/ui-kit`, which is why this spec asserts focus movement and not the trap.
+  describe('keyboard operability', () => {
+    // jsdom has no `<dialog>`, hence the shim; the top layer and native inerting are checked in
+    // a browser, so this asserts focus movement, not the trap.
     let attached: HTMLElement | null = null;
 
     beforeEach(() => {
@@ -800,16 +769,8 @@ describe('Shell', () => {
     });
 
     it('runs rename and delete end to end from the keyboard', async () => {
-      // Criterion 3's two remaining paths, and criterion 2's focus contract, in
-      // the place they actually meet: the sidebar row's kebab and the dialogs
-      // US-307 moved onto the shell.
-      //
-      // Activation is `.click()` throughout, and deliberately: every one of these
-      // is a native `<button>`, so Enter and Space are the platform's guarantee
-      // rather than the app's, and jsdom synthesises no click from a key event.
-      // What this pins is everything the app *is* responsible for — that each
-      // step is reachable, that focus lands where the next step needs it, and
-      // that it comes back.
+      // `.click()` throughout: these are native buttons, so Enter and Space are the platform's
+      // job, and jsdom synthesises no click from a key event. This pins reachability and focus.
       const fixture = await render();
       const conversation = conversationFixture({ name: 'Helios 2.4 release status' });
       await loadConversations(fixture, [conversation]);
@@ -818,9 +779,7 @@ describe('Shell', () => {
       document.body.append(element);
       attached = element;
 
-      // Both conversation dialogs mount on the shell (US-307), so a bare
-      // `dialog` selector finds whichever is first in the DOM rather than the
-      // one that opened.
+      // Both dialogs mount on the shell, so find the open one rather than the first.
       const openDialog = () =>
         [...element.querySelectorAll<HTMLDialogElement>('app-modal dialog')].find(
           (node) => node.open,
@@ -830,8 +789,7 @@ describe('Shell', () => {
       expect(kebab).not.toBeNull();
       kebab!.focus();
 
-      // ArrowDown opens the menu *and* puts focus on the first item, which is
-      // what makes a menu button operable without a pointer at all.
+      // ArrowDown opens the menu and focuses its first item.
       kebab!.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
       );
@@ -852,14 +810,8 @@ describe('Shell', () => {
       expect(dialog?.contains(document.activeElement)).toBe(true);
       expect(dialog?.textContent).toContain('Rename conversation');
 
-      // Closing hands focus back to the control that opened it, rather than to
-      // `<body>`, which would drop a keyboard user at the top of the page.
-      //
-      // `close()`, not Escape: Escape belongs to the native `<dialog>`, and the
-      // jsdom shim implements neither it nor `cancel`. That the app does not
-      // *refuse* Escape is `modal.spec.ts`'s ("swallows Escape while a save is in
-      // flight"); what is the app's own job, and is what this pins, is where
-      // focus lands afterwards.
+      // `close()`, not Escape: the jsdom shim implements neither Escape nor `cancel`. What this
+      // pins is that focus returns to the kebab.
       dialog!.close();
       await fixture.whenStable();
 
@@ -882,10 +834,8 @@ describe('Shell', () => {
       expect(confirm).toBeDefined();
       expect(confirm?.textContent).toContain('Delete conversation?');
 
-      // On **Cancel**, and the identity is the assertion rather than "somewhere
-      // inside": Enter on a freshly opened destructive confirm must not destroy
-      // anything, and `contains()` would pass just as happily with focus on
-      // Delete.
+      // Exactly Cancel, not merely inside: Enter on a freshly opened destructive confirm must
+      // not destroy anything.
       const cancel = [...confirm!.querySelectorAll<HTMLButtonElement>('button')].find((button) =>
         button.textContent?.includes('Cancel'),
       );

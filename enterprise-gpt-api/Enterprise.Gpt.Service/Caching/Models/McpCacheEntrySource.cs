@@ -8,16 +8,10 @@ namespace Enterprise.Gpt.Service.Caching.Models;
 /// </summary>
 public sealed class McpCacheEntrySource
 {
-    /// <summary>
-    /// The connected MCP client. Abstracted as <see cref="IAsyncDisposable"/> so tests can
-    /// substitute it; the cache disposes it once evicted and no longer leased.
-    /// </summary>
+    /// <summary>The connected MCP client; <see cref="IAsyncDisposable"/> so tests can substitute it.</summary>
     public required IAsyncDisposable Client { get; init; }
 
-    /// <summary>
-    /// The tools listed from <see cref="Client"/>. They are bound to that client and are
-    /// only invocable while it is alive.
-    /// </summary>
+    /// <summary>The tools listed from <see cref="Client"/>, invocable only while it is alive.</summary>
     public required IReadOnlyList<AITool> Tools { get; init; }
 
     /// <summary>

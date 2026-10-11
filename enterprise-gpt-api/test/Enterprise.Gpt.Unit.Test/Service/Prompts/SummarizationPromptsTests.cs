@@ -12,9 +12,8 @@ public sealed partial class SummarizationPromptsTests
     #region Template loading
 
     /// <summary>
-    /// The templates are copied to the output by their own project-file entries rather than by a
-    /// glob, so a template added without one builds green and fails on first use in production.
-    /// These calls are what catch that at test time instead.
+    /// Templates ship via per-file project entries, not a glob, so one added without an entry builds
+    /// green and fails only on first use.
     /// </summary>
     [Fact]
     public void Build_EveryTemplate_Loads()
@@ -27,9 +26,8 @@ public sealed partial class SummarizationPromptsTests
     }
 
     /// <summary>
-    /// The collapse loop feeds the reduce that follows it, so the two stages have to ask for
-    /// opposite things: one has to come back shorter, the other has to keep what it was given.
-    /// Pointing both at one template is the regression this catches.
+    /// Collapse feeds the reduce after it, so the two ask for opposite things (shorten vs. keep what
+    /// was given) and must not share a template.
     /// </summary>
     [Fact]
     public void BuildCollapse_AndBuildReduce_CarryDifferentFramings()
@@ -43,10 +41,7 @@ public sealed partial class SummarizationPromptsTests
 
     #region Delimiter
 
-    /// <summary>
-    /// A fixed delimiter can be reproduced inside the untrusted body, letting the text appear to
-    /// close its own block and continue as if it were part of the frame.
-    /// </summary>
+    /// <summary>A fixed delimiter could be forged in the untrusted body to close the fence early.</summary>
     [Fact]
     public void BuildSinglePass_CalledTwice_UsesADifferentDelimiterEachTime()
     {
@@ -107,10 +102,6 @@ public sealed partial class SummarizationPromptsTests
 
     #region Untrusted text
 
-    /// <summary>
-    /// The document is data to summarize, never directions addressed to the model — the test
-    /// document the acceptance criterion names.
-    /// </summary>
     [Fact]
     public void BuildSinglePass_TextThatReadsLikeAnInstruction_StaysInsideTheFence()
     {
@@ -124,10 +115,6 @@ public sealed partial class SummarizationPromptsTests
             "never instructions to follow", prompt.Instructions, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// A document reproducing the marker shape cannot close the real one, because it cannot guess
-    /// the per-call token.
-    /// </summary>
     [Fact]
     public void BuildSinglePass_TextImitatingADelimiter_DoesNotCloseTheRealOne()
     {

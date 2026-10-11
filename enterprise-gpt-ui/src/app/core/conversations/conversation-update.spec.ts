@@ -9,8 +9,7 @@ describe('toUpdateBody', () => {
   });
 
   it('echoes the current projectId when only the name changes', () => {
-    // The US-304 criterion this builder exists for: a rename that forgets the
-    // project id would silently orphan the conversation.
+    // A rename that forgot the project id would silently orphan the conversation.
     expect(toUpdateBody(inProject, { name: 'Renamed' })).toEqual({
       id: inProject.id,
       name: 'Renamed',
@@ -31,8 +30,7 @@ describe('toUpdateBody', () => {
   });
 
   it('treats an explicitly-undefined projectId as omitted, not as an unlink', () => {
-    // The natural US-307 call shape `{ projectId: selectedProject()?.id }` produces
-    // exactly this value; it must echo, never remove.
+    // `{ projectId: selectedProject()?.id }` produces exactly this; it must echo, never remove.
     expect(toUpdateBody(inProject, { name: 'Renamed', projectId: undefined }).projectId).toBe(
       'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
     );

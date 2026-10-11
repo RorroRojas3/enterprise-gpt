@@ -5,7 +5,10 @@ import {
   UsageSeriesPointDto,
 } from '../app/domain/api/usage-report';
 
-/** Period figures, with every field explicit so a fixture cannot pass against a shape the API never sends. */
+/**
+ * Period figures with every field explicit, so a fixture cannot pass against a shape the API
+ * never sends.
+ */
 export function usageTotalsFixture(
   overrides: Partial<UsageReportTotalsDto> = {},
 ): UsageReportTotalsDto {

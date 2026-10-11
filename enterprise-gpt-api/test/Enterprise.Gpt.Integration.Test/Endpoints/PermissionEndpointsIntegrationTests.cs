@@ -247,10 +247,8 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
     [Fact]
     public async Task GrantPermission_ThenRevoke_TakesEffectOnTheNextRequest()
     {
-        // Exercises IPermissionService's own cache invalidation end to end: every mutation here goes
-        // through the API, so none of the fixture's out-of-band helpers (which clear the cache
-        // wholesale) can mask a missing eviction. Administrator is the permission under test because
-        // it is the one every admin route's filter reads.
+        // Every mutation goes through the API, so the fixture's cache-clearing helpers cannot mask a
+        // missing eviction. Administrator is used because every admin route's filter reads it.
         var oid = Guid.NewGuid();
         _fixture.Factory.GraphService.AddUser(oid, "Cache", "Probe", "cache.probe@example.com");
         using var adminClient = _fixture.Factory.CreateAdminClient();

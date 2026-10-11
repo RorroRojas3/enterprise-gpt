@@ -5,10 +5,6 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Enterprise.Gpt.Repository.Sql.Configurations.Documents;
 
-/// <summary>
-/// Maps <see cref="ProjectDocumentChunk"/> to <c>Core.ProjectDocumentChunk</c> and the unique
-/// ordinal index that keeps a document's chunks dense.
-/// </summary>
 public sealed class ProjectDocumentChunkConfiguration : BaseDocumentChunkConfiguration<ProjectDocumentChunk, Guid>
 {
     protected override void ConfigureEntity(EntityTypeBuilder<ProjectDocumentChunk> builder)

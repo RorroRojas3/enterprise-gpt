@@ -37,103 +37,68 @@ public interface IDocumentService
     /// <summary>
     /// Validates an uploaded file and queues it for ingestion into a conversation.
     /// </summary>
-    /// <param name="conversationId">The conversation to attach the document to.</param>
-    /// <param name="file">The uploaded file.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
-    /// <returns>The identifier of the queued job, for polling upload status.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="file"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ValidationException">Thrown when the file is empty, too large, or an unsupported format.</exception>
-    /// <exception cref="NotFoundException">Thrown when the conversation does not exist or belongs to another user.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="file"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ValidationException">The file is empty, too large, or unsupported.</exception>
+    /// <exception cref="NotFoundException">The conversation is missing or another user's.</exception>
     Task<JobDto> QueueConversationDocumentAsync(Guid conversationId, FileDto file, CancellationToken cancellationToken);
 
     /// <summary>
     /// Runs the ingestion pipeline for a queued upload: store, extract, chunk, embed, persist.
     /// </summary>
     /// <remarks>
-    /// Invoked by <see cref="BackgroundJobProcessor"/> on a background scope, never from a request
-    /// thread, so <paramref name="userId"/> is passed in rather than read from the current principal.
+    /// Runs on a <see cref="BackgroundJobProcessor"/> scope, so <paramref name="userId"/> is passed in rather
+    /// than read from the current principal.
     /// </remarks>
-    /// <param name="jobId">The job identifier used to report progress.</param>
-    /// <param name="file">The uploaded file.</param>
-    /// <param name="userId">The owner of the document.</param>
-    /// <param name="conversationId">The conversation the document belongs to.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
-    /// <returns>The persisted document.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="file"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="jobId"/> is <see langword="null"/> or whitespace.</exception>
-    /// <exception cref="ValidationException">Thrown when the document contains no readable text.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="file"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="jobId"/> is null or whitespace.</exception>
+    /// <exception cref="ValidationException">The document contains no readable text.</exception>
     Task<ConversationDocumentDto> CreateConversationDocumentAsync(string jobId, FileDto file, Guid userId, Guid conversationId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Validates an uploaded file and queues it for ingestion into a project.
     /// </summary>
     /// <remarks>
-    /// A project document is shared by every conversation in the project, which is what separates
-    /// it from a conversation document: uploading into a conversation never adds to the project.
+    /// Shared by every conversation in the project; a conversation upload never adds to the project.
     /// </remarks>
-    /// <param name="projectId">The project to attach the document to.</param>
-    /// <param name="file">The uploaded file.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
-    /// <returns>The identifier of the queued job, for polling upload status.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="file"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ValidationException">Thrown when the file is empty, too large, or an unsupported format.</exception>
-    /// <exception cref="NotFoundException">Thrown when the project does not exist or belongs to another user.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="file"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ValidationException">The file is empty, too large, or unsupported.</exception>
+    /// <exception cref="NotFoundException">The project does not exist or belongs to another user.</exception>
     Task<JobDto> QueueProjectDocumentAsync(Guid projectId, FileDto file, CancellationToken cancellationToken);
 
     /// <summary>
     /// Runs the ingestion pipeline for a queued project upload: store, extract, chunk, embed, persist.
     /// </summary>
     /// <remarks>
-    /// Invoked by <see cref="BackgroundJobProcessor"/> on a background scope, never from a request
-    /// thread, so <paramref name="userId"/> is passed in rather than read from the current principal.
+    /// Runs on a <see cref="BackgroundJobProcessor"/> scope, so <paramref name="userId"/> is passed in rather
+    /// than read from the current principal.
     /// </remarks>
-    /// <param name="jobId">The job identifier used to report progress.</param>
-    /// <param name="file">The uploaded file.</param>
-    /// <param name="userId">The owner of the document.</param>
-    /// <param name="projectId">The project the document belongs to.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
-    /// <returns>The persisted document.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="file"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="jobId"/> is <see langword="null"/> or whitespace.</exception>
-    /// <exception cref="ValidationException">Thrown when the document contains no readable text.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="file"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="jobId"/> is null or whitespace.</exception>
+    /// <exception cref="ValidationException">The document contains no readable text.</exception>
     Task<ProjectDocumentDto> CreateProjectDocumentAsync(string jobId, FileDto file, Guid userId, Guid projectId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Issues a short-lived link to the original file behind a conversation document.
     /// </summary>
     /// <remarks>
-    /// The bytes are never proxied through this process: the caller is authorized here, and storage
-    /// serves the download itself. See <see cref="DocumentDownloadDto"/> for what that means for the
-    /// link's confidentiality.
+    /// Storage serves the bytes itself; see <see cref="DocumentDownloadDto"/> for the link's confidentiality.
     /// </remarks>
-    /// <param name="conversationId">The conversation the document belongs to.</param>
-    /// <param name="documentId">The document to download.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
-    /// <returns>The signed link and the file name to save it under.</returns>
     /// <exception cref="NotFoundException">
-    /// Thrown when the document does not exist, is deactivated, or belongs to a conversation the
-    /// caller does not own.
+    /// The document does not exist, is deactivated, or belongs to a conversation the caller does not own.
     /// </exception>
-    /// <exception cref="StorageNotConfiguredException">Thrown when storage cannot sign a link.</exception>
+    /// <exception cref="StorageNotConfiguredException">Storage cannot sign a link.</exception>
     Task<DocumentDownloadDto> GetConversationDocumentDownloadAsync(Guid conversationId, Guid documentId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Issues a short-lived link to the original file behind a project document.
     /// </summary>
     /// <remarks>
-    /// The bytes are never proxied through this process: the caller is authorized here, and storage
-    /// serves the download itself. See <see cref="DocumentDownloadDto"/> for what that means for the
-    /// link's confidentiality.
+    /// Storage serves the bytes itself; see <see cref="DocumentDownloadDto"/> for the link's confidentiality.
     /// </remarks>
-    /// <param name="projectId">The project the document belongs to.</param>
-    /// <param name="documentId">The document to download.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
-    /// <returns>The signed link and the file name to save it under.</returns>
     /// <exception cref="NotFoundException">
-    /// Thrown when the document does not exist, is deactivated, or belongs to a project the caller
-    /// does not own.
+    /// The document does not exist, is deactivated, or belongs to a project the caller does not own.
     /// </exception>
-    /// <exception cref="StorageNotConfiguredException">Thrown when storage cannot sign a link.</exception>
+    /// <exception cref="StorageNotConfiguredException">Storage cannot sign a link.</exception>
     Task<DocumentDownloadDto> GetProjectDocumentDownloadAsync(Guid projectId, Guid documentId, CancellationToken cancellationToken);
 
     /// <summary>
@@ -141,17 +106,10 @@ public interface IDocumentService
     /// as one page for the documents library.
     /// </summary>
     /// <remarks>
-    /// Paging arguments are clamped rather than rejected — <paramref name="skip"/> to zero or
-    /// above and <paramref name="take"/> to 1..100 — while an unrecognised
-    /// <paramref name="type"/> is rejected. A blank <paramref name="name"/> narrows nothing.
+    /// Paging is clamped (<paramref name="take"/> to 1..100), not rejected. <paramref name="type"/> narrows by
+    /// origin and <paramref name="name"/> by case-insensitive substring; blank narrows nothing.
     /// </remarks>
-    /// <param name="skip">The number of documents to skip.</param>
-    /// <param name="take">The maximum number of documents to return.</param>
-    /// <param name="type">The origin to narrow to; <see langword="null"/> or blank for every document.</param>
-    /// <param name="name">An optional case-insensitive substring of the document name to filter on.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
-    /// <returns>A page of the caller's conversation documents.</returns>
-    /// <exception cref="ValidationException">Thrown when <paramref name="type"/> names no supported origin.</exception>
+    /// <exception cref="ValidationException"><paramref name="type"/> names no supported origin.</exception>
     Task<PaginatedResponseDto<UserDocumentDto>> GetUserDocumentsAsync(int skip = 0, int take = 20, string? type = null, string? name = null, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -159,15 +117,11 @@ public interface IDocumentService
     /// summary, sheets and chunks.
     /// </summary>
     /// <remarks>
-    /// Only an uploaded document; a generated one is reported as missing. The stored blob is left in
-    /// place, and reclaiming it belongs to a retention job.
+    /// The blob is left for a retention job to reclaim.
     /// </remarks>
-    /// <param name="conversationId">The conversation the document belongs to.</param>
-    /// <param name="documentId">The document to remove.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
     /// <exception cref="NotFoundException">
-    /// Thrown when the conversation or the document does not exist, is deactivated, is generated
-    /// rather than uploaded, or does not belong to the caller.
+    /// The conversation or document does not exist, is deactivated, is generated rather than uploaded, or is
+    /// not the caller's.
     /// </exception>
     Task DeactivateConversationDocumentAsync(Guid conversationId, Guid documentId, CancellationToken cancellationToken = default);
 
@@ -175,24 +129,19 @@ public interface IDocumentService
     /// Cancels a queued or running upload and removes whatever it already produced.
     /// </summary>
     /// <remarks>
-    /// Idempotent: a job that already succeeded has its document soft-deleted, and one that already
-    /// failed or was already cancelled is left alone. Another user job, and one that never existed,
-    /// are reported as missing on the same terms as reading the status.
+    /// Idempotent: a succeeded job has its document soft-deleted; a failed or cancelled one is left alone.
     /// </remarks>
-    /// <param name="jobId">The job identifier the upload returned.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
-    /// <exception cref="NotFoundException">Thrown when no such job exists, or it belongs to another user.</exception>
+    /// <exception cref="NotFoundException">No such job exists, or it belongs to another user.</exception>
     Task CancelUploadAsync(string jobId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
-/// Orchestrates document ingestion. Format-specific reading lives in
-/// <see cref="IDocumentTextExtractor"/> implementations and splitting in <see cref="ITextChunker"/>;
-/// this type owns sequencing, persistence and progress reporting.
+/// Orchestrates document ingestion: sequencing, persistence and progress. Reading is delegated to
+/// <see cref="IDocumentTextExtractor"/> and splitting to <see cref="ITextChunker"/>.
 /// </summary>
 /// <remarks>
-/// Conversation and project uploads share one pipeline: they differ only in the ownership check,
-/// the blob key, and the entity persisted at the end.
+/// Conversation and project uploads share one pipeline, differing only in the ownership check, blob key
+/// and entity.
 /// </remarks>
 public partial class DocumentService(ILogger<DocumentService> logger,
     IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
@@ -209,9 +158,7 @@ public partial class DocumentService(ILogger<DocumentService> logger,
     EnterpriseGptDbContext ctx,
     TimeProvider timeProvider) : IDocumentService
 {
-    // Each stage owns a slice of the 0..100 range, sized roughly by how long it takes. Embedding gets
-    // the widest band because it is the longest phase and the only one whose progress is countable, so
-    // that is where a moving percentage is worth the most.
+    // Progress bands sized by stage duration; embedding is widest as the longest and only countable stage.
     private const int UploadStart = 0;
     private const int ExtractStart = 10;
     private const int ChunkStart = 45;
@@ -232,17 +179,11 @@ public partial class DocumentService(ILogger<DocumentService> logger,
     private readonly EnterpriseGptDbContext _ctx = ctx;
     private readonly TimeProvider _timeProvider = timeProvider;
 
-    /// <summary>The container every uploaded document blob lives in.</summary>
-    /// <exception cref="StorageNotConfiguredException">Thrown when the container name is not configured.</exception>
     private string DocumentsContainer =>
         DocumentStorage.RequireDocumentsContainer(_storageOptions.CurrentValue, _logger);
 
-    /// <summary>The container every generated document blob lives in.</summary>
-    /// <remarks>
-    /// A container of its own rather than a prefix inside the uploads one, so a generated file and an
-    /// uploaded file never share a retention policy, an access policy or a lifecycle rule.
-    /// </remarks>
-    /// <exception cref="StorageNotConfiguredException">Thrown when the container name is not configured.</exception>
+    // Its own container, not a prefix in the uploads one, so generated and uploaded files never share
+    // retention, access or lifecycle policy.
     private string GeneratedContainer =>
         DocumentStorage.RequireGeneratedContainer(_storageOptions.CurrentValue, _logger);
 
@@ -262,8 +203,7 @@ public partial class DocumentService(ILogger<DocumentService> logger,
 
         if (!conversationExists)
         {
-            // Deliberately indistinguishable from "does not exist" so the endpoint cannot be used to
-            // probe for conversation ids belonging to other users.
+            // Indistinguishable from "does not exist" so other users' conversation ids cannot be probed.
             LogConversationUploadRejected(_logger, conversationId, userId);
             throw new NotFoundException($"Conversation with id '{conversationId}' was not found.");
         }
@@ -290,9 +230,7 @@ public partial class DocumentService(ILogger<DocumentService> logger,
         var documentId = Guid.NewGuid();
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
 
-        // Keyed by document id rather than file name: two uploads of the same name into the same
-        // conversation are legitimate, and a name-based path made the second one collide with the first
-        // and fail the whole job.
+        // Keyed by document id, not file name: same-name uploads into one conversation must not collide.
         var blobPath = $"{userId}/{conversationId}/{documentId}{extension}";
 
         try
@@ -320,10 +258,8 @@ public partial class DocumentService(ILogger<DocumentService> logger,
             _ctx.Add(document);
             await _ctx.SaveChangesAsync(cancellationToken);
 
-            // Ingestion spans seconds to minutes, and a conversation deactivated meanwhile has already
-            // run its document cascade, which never re-runs — so this insert would otherwise leave an
-            // active document under a deactivated conversation, which the listings treat as impossible.
-            // Re-checking after the save shrinks that window to the cascade's own statement gap.
+            // A conversation deactivated mid-ingestion has already run its one-shot document cascade, so
+            // re-check after the save rather than leave an active document under it.
             var conversationStillActive = await _ctx.Conversations
                 .AsNoTracking()
                 .AnyAsync(x => x.Id == conversationId, cancellationToken);
@@ -334,10 +270,8 @@ public partial class DocumentService(ILogger<DocumentService> logger,
                 throw new NotFoundException($"Conversation with id '{conversationId}' was not found.");
             }
 
-            // The pipeline's ordering point against a concurrent cancel. Whichever of the two installs
-            // its terminal snapshot first decides the outcome, and the loser is the one that cleans up —
-            // the database cannot arbitrate, because a delete issued before this insert commits would
-            // match nothing.
+            // Ordering point against a concurrent cancel: the first terminal snapshot wins and the loser
+            // cleans up. The database cannot arbitrate: a delete before this insert commits matches nothing.
             if (!_jobStatusStore.Complete(jobId, documentId, $"Ready — {ingestion.Chunks.Count} chunk(s) indexed"))
             {
                 throw new JobCancelledException($"Upload job {jobId} was cancelled.");
@@ -395,8 +329,7 @@ public partial class DocumentService(ILogger<DocumentService> logger,
         var documentId = Guid.NewGuid();
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
 
-        // The literal "projects" segment is what keeps this from ever colliding with a conversation
-        // key: both are "{userId}/{ownerId}/..." and the two id spaces are unrelated guids.
+        // The "projects" segment keeps this from ever colliding with a "{userId}/{conversationId}/..." key.
         var blobPath = $"{userId}/projects/{projectId}/{documentId}{extension}";
 
         try
@@ -424,8 +357,7 @@ public partial class DocumentService(ILogger<DocumentService> logger,
             _ctx.Add(document);
             await _ctx.SaveChangesAsync(cancellationToken);
 
-            // Same mid-ingest deactivation window as the conversation path: the project's document
-            // cascade never re-runs, so a row persisted after it must deactivate itself to match.
+            // Same mid-ingest deactivation window as the conversation path.
             var projectStillActive = await _ctx.Projects
                 .AsNoTracking()
                 .AnyAsync(x => x.Id == projectId, cancellationToken);
@@ -457,10 +389,8 @@ public partial class DocumentService(ILogger<DocumentService> logger,
     {
         var userId = _tokenService.GetOid();
 
-        // Ownership is read off the conversation rather than ConversationDocument.UserId, so the rule
-        // that decides a document is downloadable is the same one that made it visible. One query
-        // authorizes and reads the blob reference together; projecting to a record keeps the chunk
-        // rows and their embeddings out of it.
+        // Ownership comes off the conversation, not ConversationDocument.UserId, so the download rule
+        // is the same one that made the document visible.
         var document = await _ctx.ConversationDocuments
             .AsNoTracking()
             .Where(x => x.Id == documentId
@@ -492,24 +422,17 @@ public partial class DocumentService(ILogger<DocumentService> logger,
     /// <inheritdoc />
     public async Task<PaginatedResponseDto<UserDocumentDto>> GetUserDocumentsAsync(int skip = 0, int take = 20, string? type = null, string? name = null, CancellationToken cancellationToken = default)
     {
-        // Resolved before any database work, so a misspelled origin costs a round trip to nothing
-        // rather than a page the caller then has to distrust.
+        // Resolved first, so a misspelled origin fails before any database work.
         var origin = DocumentTypeNames.Resolve(type);
 
-        // Clamped rather than validated: the paging arguments come straight off the query
-        // string, and take = 0 would divide by zero when computing CurrentPage below.
+        // Clamped, not validated: these come off the query string, and take = 0 would divide by zero below.
         skip = Math.Max(skip, 0);
         take = Math.Clamp(take, 1, 100);
 
         var userId = _tokenService.GetOid();
 
-        // No conversation-active predicate: DeactivateConversationAsync and its bulk sibling
-        // deactivate the conversation's documents in the same operation, and ingestion re-checks
-        // the conversation after persisting, so an active document implies an active conversation.
-        // The Conversation join in the projection exists only to carry the name, and the
-        // (UserId, DateDeactivated) index serves this filter.
-        // Both origins: a generated row's own write path re-checks the conversation after
-        // persisting, so the invariant above holds for it too.
+        // No conversation-active predicate: deactivation cascades to documents and both write paths
+        // re-check the conversation after persisting, so an active document implies an active conversation.
         var query = _ctx.ConversationDocuments
             .AsNoTracking()
             .Where(x => x.UserId == userId);
@@ -519,9 +442,7 @@ public partial class DocumentService(ILogger<DocumentService> logger,
             query = query.Where(x => x.Type == origin.Value);
         }
 
-        // Before the count, so TotalCount describes the filtered set rather than the whole listing.
-        // Server-side rather than in the client, because a name filter over whatever page happened
-        // to be loaded cannot reach a document ranked past it.
+        // Before the count so TotalCount is filtered; server-side so it reaches past the loaded page.
         if (!string.IsNullOrWhiteSpace(name))
         {
             query = query.Where(x => EF.Functions.Like(x.Name, $"%{name}%"));
@@ -530,8 +451,7 @@ public partial class DocumentService(ILogger<DocumentService> logger,
         var totalCount = await query.CountAsync(cancellationToken);
 
         var items = await query
-            // Id breaks ties: DateCreated alone is not a total order, so two documents ingested
-            // in the same tick could straddle a page boundary and be duplicated or skipped.
+            // Id breaks DateCreated ties so same-tick rows cannot straddle a page boundary.
             .OrderByDescending(x => x.DateCreated)
             .ThenByDescending(x => x.Id)
             .Skip(skip)
@@ -563,9 +483,8 @@ public partial class DocumentService(ILogger<DocumentService> logger,
             throw new NotFoundException($"Conversation with id '{conversationId}' was not found.");
         }
 
-        // Uploaded only. A generated file's identity also lives in the Cosmos transcript, on the
-        // assistant message that produced it, and nothing here patches that — deleting the row would
-        // leave a chip that renders forever and 404s when clicked.
+        // Uploaded only: a generated file is also referenced from the Cosmos transcript, which nothing here
+        // patches, so deleting it would leave a chip that 404s.
         var exists = await _ctx.ConversationDocuments
             .AsNoTracking()
             .AnyAsync(x => x.Id == documentId
@@ -580,8 +499,7 @@ public partial class DocumentService(ILogger<DocumentService> logger,
 
         await DeactivateConversationDocumentRowsAsync(documentId, cancellationToken);
 
-        // The blob is deliberately left behind, as the project cascade leaves its own: reclaiming
-        // storage belongs to a retention job that can also reach blobs orphaned by failed ingestion.
+        // Blob deliberately left for a retention job, which also reaches blobs orphaned by failed ingestion.
         LogConversationDocumentDeactivated(_logger, documentId, userId);
     }
 
@@ -591,63 +509,41 @@ public partial class DocumentService(ILogger<DocumentService> logger,
         var userId = _tokenService.GetOid();
         var snapshot = _jobStatusStore.Get(jobId);
 
-        // The status route rule exactly, so the two agree on what a caller may see and one message
-        // covers the unknown and the not-yours case alike.
+        // The status route's rule exactly, so unknown and not-yours look alike.
         if (snapshot is null || snapshot.UserId != userId)
         {
             LogCancelRejected(_logger, jobId, userId);
             throw new NotFoundException("Upload job not found.");
         }
 
-        // Before the signal, deliberately. This write is the ordering point against the worker own
-        // completion, so doing it first decides the outcome regardless of how fast cancellation
-        // propagates: either the job has not finished and this claims the terminal slot, or it has
-        // and the snapshot returned here carries the document to remove.
+        // Before the signal, deliberately: this write orders against the worker's completion, so either it
+        // claims the terminal slot or the returned snapshot carries the document to remove.
         var outcome = _jobStatusStore.Cancel(jobId, JobMessages.Cancelled) ?? snapshot;
 
         await _jobCancellationRegistry.CancelAsync(jobId);
 
         if (outcome.DocumentId is { } documentId && outcome.Target is { } target)
         {
-            // CancellationToken.None: the terminal state is already published, so a caller that hangs
-            // up mid-request must not leave behind the document it asked to remove. The blob stays,
-            // as it does for any other delete of a persisted document.
+            // None: the terminal state is already published, so a caller hanging up must not leave the
+            // document behind. The blob stays, as for any delete.
             await DeactivateDocumentRowsAsync(target.Kind, documentId, CancellationToken.None);
         }
 
         LogUploadJobCancelled(_logger, jobId, userId);
     }
 
-    /// <summary>
-    /// The columns a download needs, projected server-side so no chunk or embedding data is read.
-    /// </summary>
-    /// <param name="Name">The file name the download is saved under, sent as the link's <c>Content-Disposition</c>.</param>
-    /// <param name="Extension">The stored extension, including its dot, which picks the link's content type.</param>
-    /// <param name="Path">The blob's key within whichever container <paramref name="IsGenerated"/> selects.</param>
-    /// <param name="IsGenerated">
-    /// Whether the blob lives in the generated-documents container. Read off the row rather than
-    /// inferred from the extension: both containers hold the same seven formats.
-    /// </param>
+    // Projected so no chunk or embedding data is read. IsGenerated comes off the row because both
+    // containers hold the same formats.
     private sealed record DocumentBlobRef(string Name, string Extension, string Path, bool IsGenerated);
 
-    /// <summary>
-    /// The output of the owner-agnostic pipeline: chunks and their positionally aligned vectors,
-    /// plus the structured sheets a spreadsheet also yielded.
-    /// </summary>
+    // Embeddings align positionally with Chunks.
     private sealed record IngestionResult(
         IReadOnlyList<TextChunkDto> Chunks,
         IReadOnlyList<ReadOnlyMemory<float>> Embeddings,
         IReadOnlyList<SheetStructureDto> Sheets);
 
-    /// <summary>
-    /// An <see cref="IProgress{T}"/> that runs its callback on the calling thread.
-    /// </summary>
-    /// <remarks>
-    /// <see cref="Progress{T}"/> posts each report to the thread pool, which lets reports arrive out of
-    /// order and land after the stage that raised them has finished — so a stale message could overwrite
-    /// a newer one. Reporting inline keeps the status feed ordered; the callback only touches a
-    /// concurrent dictionary, so there is nothing to offload.
-    /// </remarks>
+    // Progress<T> posts to the thread pool, so a stale report could overwrite a newer one; reporting
+    // inline keeps the status feed ordered.
     private sealed class InlineProgress<T>(Action<T> handler) : IProgress<T>
     {
         private readonly Action<T> _handler = handler;
@@ -657,28 +553,18 @@ public partial class DocumentService(ILogger<DocumentService> logger,
 
     #region Private methods
 
-    /// <summary>
-    /// Turns a resolved blob reference into a signed, expiring download link.
-    /// </summary>
-    /// <param name="document">The blob reference, or <see langword="null"/> when the query matched nothing.</param>
-    /// <param name="documentId">The requested document, for the failure message and the audit line.</param>
-    /// <param name="userId">The caller, for the audit line.</param>
-    /// <returns>The link and the file name to save it under.</returns>
     private DocumentDownloadDto BuildDownload(DocumentBlobRef? document, Guid documentId, Guid userId)
     {
         if (document is null)
         {
-            // One message covers all four ways the query can miss — no such document, deactivated,
-            // wrong owner id in the route, or someone else's parent — so this route cannot be used
-            // to probe for document ids. 404 rather than 403, as everywhere else here.
+            // One 404 for every way the query can miss, so document ids cannot be probed.
             LogDownloadRejected(_logger, documentId, userId);
             throw new NotFoundException($"Document with id '{documentId}' was not found.");
         }
 
         var lifetime = TimeSpan.FromMinutes(_options.DownloadUrlLifetimeMinutes);
 
-        // Recomputed rather than read back off the URI: the token's expiry is not exposed, and the
-        // two are set from the same clock microseconds apart.
+        // Recomputed: the SAS expiry is not exposed, and both come from the same clock.
         var expiresAt = _timeProvider.GetUtcNow().Add(lifetime);
 
         var sasUri = _documentStore.GenerateReadUri(
@@ -700,17 +586,8 @@ public partial class DocumentService(ILogger<DocumentService> logger,
         };
     }
 
-    /// <summary>
-    /// Builds the RFC 6266 <c>Content-Disposition</c> the download link overrides the blob's with.
-    /// </summary>
-    /// <param name="fileName">The original file name.</param>
-    /// <returns>An <c>attachment</c> disposition naming the file.</returns>
-    /// <remarks>
-    /// Both forms are emitted: <c>filename*</c> carries the real name so a non-ASCII one survives,
-    /// and the quoted <c>filename</c> is the fallback. The fallback is the only part that is not
-    /// percent-encoded, so quotes, backslashes and control characters are stripped out of it rather
-    /// than allowed to terminate the header early.
-    /// </remarks>
+    // RFC 6266: filename* carries the real (possibly non-ASCII) name. The quoted fallback is not
+    // percent-encoded, so quotes, backslashes and control characters are stripped from it.
     private static string BuildContentDisposition(string fileName)
     {
         var fallback = string.Concat(fileName.Where(c =>
@@ -724,14 +601,6 @@ public partial class DocumentService(ILogger<DocumentService> logger,
         return $"attachment; filename=\"{fallback}\"; filename*=UTF-8''{Uri.EscapeDataString(fileName)}";
     }
 
-    /// <summary>
-    /// Registers a job and enqueues the ingestion work for it.
-    /// </summary>
-    /// <param name="userId">The caller, recorded on the job so only they can poll it.</param>
-    /// <param name="target">The conversation or project the upload ingests into, recorded on the job so a cancel can undo it.</param>
-    /// <param name="work">The ingestion call to make on the background scope's service.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
-    /// <returns>The registered job.</returns>
     private async Task<JobDto> EnqueueAsync(
         Guid userId,
         JobTarget target,
@@ -743,8 +612,7 @@ public partial class DocumentService(ILogger<DocumentService> logger,
 
         try
         {
-            // Registered here rather than when the job starts: the queue is bounded, so the enqueue
-            // below can block, and a caller who can already poll must also be able to cancel.
+            // Before enqueueing: the bounded queue can block, and a caller who can poll must also cancel.
             _jobCancellationRegistry.Register(jobId);
 
             await _backgroundJobQueue.EnqueueAsync(new JobWorkItem(
@@ -757,10 +625,8 @@ public partial class DocumentService(ILogger<DocumentService> logger,
         }
         catch
         {
-            // Register succeeded but enqueue did not — the snapshot would otherwise sit in Queued
-            // forever (JobStatusStore only evicts terminal states). Mark it Failed so retention can
-            // reclaim it and any racing poll sees a deterministic terminal state.
-            // Released before the snapshot is failed, so a registration can never outlive its job.
+            // Fail the snapshot or it sits in Queued forever (only terminal states are evicted). Released
+            // first so a registration never outlives its job.
             _jobCancellationRegistry.Release(jobId);
             _jobStatusStore.Fail(jobId, "The upload could not be queued for processing. Please try again.");
             throw;
@@ -769,22 +635,12 @@ public partial class DocumentService(ILogger<DocumentService> logger,
         return new JobDto { Id = jobId };
     }
 
-    /// <summary>
-    /// Runs the owner-agnostic half of ingestion: store the original, read it, split it, embed it.
-    /// </summary>
-    /// <param name="jobId">The job identifier used to report progress.</param>
-    /// <param name="file">The uploaded file.</param>
-    /// <param name="blobPath">The storage key to write the original to.</param>
-    /// <param name="metadata">Blob metadata describing the upload and its owner.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
-    /// <returns>The chunks and their embeddings, positionally aligned.</returns>
     private async Task<IngestionResult> IngestAsync(
         string jobId, FileDto file, string blobPath,
         Dictionary<string, string> metadata, CancellationToken cancellationToken)
     {
-        // Cleanup belongs to the caller, not here: the blob has to survive a failure of the persist
-        // too, and the store call itself can be cancelled partway. One boundary around the whole
-        // write path is what makes every one of those leave nothing behind.
+        // Cleanup is the caller's: one boundary around the whole write path also covers a failed persist
+        // and a store cancelled partway.
         await StoreAsync(jobId, file, blobPath, metadata, cancellationToken);
 
         var extraction = await ExtractAsync(jobId, file, cancellationToken);
@@ -794,49 +650,31 @@ public partial class DocumentService(ILogger<DocumentService> logger,
         return new IngestionResult(chunks, embeddings, extraction.Sheets);
     }
 
-    /// <summary>
-    /// Undoes an ingestion that did not finish: soft-deletes whatever rows reached the database and
-    /// removes the stored original.
-    /// </summary>
-    /// <remarks>
-    /// Never throws, and never observes the caller token — the caller is already unwinding, usually
-    /// because that very token was cancelled, so a cleanup honouring it would do nothing. Losing the
-    /// cleanup must not replace the error the processor needs in order to classify the job.
-    /// </remarks>
+    // Never throws and ignores the caller's (usually cancelled) token: a cleanup failure must not replace
+    // the error the processor classifies the job by.
     private async Task TryCleanUpAsync(JobTargetKinds kind, Guid documentId, string blobPath)
     {
         try
         {
-            // Unconditional rather than guarded by a "did we persist" flag: SaveChangesAsync can be
-            // cancelled after the insert commits but before it returns, so such a flag would read
-            // false while rows exist. With nothing persisted this is a handful of no-op updates on a
-            // path that is already failing.
+            // Unconditional: SaveChangesAsync can be cancelled after the insert commits, so a
+            // "did we persist" flag could read false while rows exist.
             await DeactivateDocumentRowsAsync(kind, documentId, CancellationToken.None);
         }
         catch (Exception ex)
         {
-            // After a cancelled save the connection state is not guaranteed, so opening a transaction
-            // here can itself fail. That must not become the exception the caller sees.
+            // After a cancelled save the connection may be unusable; that must not surface to the caller.
             LogDeactivateRowsFailed(_logger, ex, documentId);
 
-            // The blob stays. An orphaned blob is a retention sweep away from being reclaimed; an
-            // active row over deleted bytes is a document that lists, matches retrieval and 404s on
-            // download, with the original gone for good.
+            // The blob stays: an orphaned blob is reclaimable, but an active row over deleted bytes lists,
+            // matches retrieval and 404s on download.
             return;
         }
 
-        // The rows are gone, so nothing can reach these bytes again and no sweep keyed on a live
-        // document would find them.
+        // With the rows gone, no sweep keyed on a live document would find these bytes.
         await TryDeleteBlobAsync(blobPath, documentId);
     }
 
-    /// <summary>
-    /// Soft-deletes one document and every row hanging off it, leaf first, in one transaction.
-    /// </summary>
-    /// <remarks>
-    /// Authorization belongs to the caller: this is reached from the public delete, from a cancel, and
-    /// from the ingestion cleanup, and only the first of those has a caller to authorize.
-    /// </remarks>
+    // Authorization is the caller's: of the delete, cancel and cleanup paths, only the delete has one.
     private Task DeactivateDocumentRowsAsync(JobTargetKinds kind, Guid documentId, CancellationToken cancellationToken) =>
         kind == JobTargetKinds.Project
             ? DeactivateProjectDocumentRowsAsync(documentId, cancellationToken)
@@ -846,10 +684,8 @@ public partial class DocumentService(ILogger<DocumentService> logger,
     {
         var date = _timeProvider.GetUtcNow();
 
-        // One transaction across all five child sets and the document: a partial failure would leave
-        // chunks alive under a deleted document, which retrieval would still match. Set-based rather
-        // than through the tracked entities, so a row whose rowversion moved underneath us is a no-op
-        // rather than a DbUpdateConcurrencyException.
+        // One transaction, so retrieval never matches chunks under a deleted document. Set-based, so a
+        // moved rowversion is a no-op rather than a DbUpdateConcurrencyException.
         await using var transaction = await _ctx.Database.BeginTransactionAsync(cancellationToken);
 
         await _ctx.ConversationDocumentSummaries
@@ -961,13 +797,7 @@ public partial class DocumentService(ILogger<DocumentService> logger,
         };
     }
 
-    /// <summary>
-    /// Builds the persisted chunk rows for a document from an ingestion result.
-    /// </summary>
-    /// <remarks>
-    /// Vectors are matched to chunks by position, which <see cref="EmbedAsync"/> guarantees by
-    /// rejecting a short or padded response from the generator.
-    /// </remarks>
+    // Matched by position; EmbedAsync rejects a short or padded generator response.
     private static List<TChunk> BuildChunks<TChunk>(IngestionResult ingestion)
         where TChunk : BaseDocumentChunk<Guid>, new()
     {
@@ -981,16 +811,8 @@ public partial class DocumentService(ILogger<DocumentService> logger,
         })];
     }
 
-    /// <summary>
-    /// Builds the persisted sheet rows, with their columns and cell rows, for a spreadsheet.
-    /// </summary>
-    /// <param name="ingestion">The pipeline's output, whose structured sheets are mapped; a document that is not a spreadsheet carries none.</param>
-    /// <param name="selectColumns">Reaches the sheet's own column collection.</param>
-    /// <param name="selectRows">Reaches the sheet's own row collection.</param>
-    /// <remarks>
-    /// The two selectors are what keeps this one implementation: the child collections are declared
-    /// on each document family's own sheet type, so no shared base exposes them.
-    /// </remarks>
+    // The selectors exist because each document family declares its child collections on its own sheet
+    // type; no shared base exposes them.
     private static List<TSheet> BuildSheets<TSheet, TColumn, TRow>(
         IngestionResult ingestion,
         Func<TSheet, List<TColumn>> selectColumns,
@@ -1030,16 +852,7 @@ public partial class DocumentService(ILogger<DocumentService> logger,
         return sheets;
     }
 
-    /// <summary>
-    /// Removes a stored blob whose document was never persisted, so a failed ingestion leaves nothing
-    /// behind.
-    /// </summary>
-    /// <remarks>
-    /// Best-effort and never throws: the caller is already unwinding a failure, and losing the cleanup
-    /// must not replace the real error with a storage one. A leaked blob is logged for later reaping.
-    /// The cancellation token is deliberately not passed on — the common reason to be here is that the
-    /// token was cancelled, and cleanup still needs to run.
-    /// </remarks>
+    // Best-effort, without the (usually cancelled) token: a storage error must not replace the real one.
     private async Task TryDeleteBlobAsync(string blobPath, Guid documentId)
     {
         try
@@ -1052,9 +865,6 @@ public partial class DocumentService(ILogger<DocumentService> logger,
         }
     }
 
-    /// <summary>
-    /// Reads the file into segments, and into the sheets behind them where the format has any.
-    /// </summary>
     private async Task<SheetExtractionResult> ExtractAsync(string jobId, FileDto file, CancellationToken cancellationToken)
     {
         _jobStatusStore.Report(jobId, JobStatuses.Extracting, ExtractStart, "Reading the document");
@@ -1063,9 +873,7 @@ public partial class DocumentService(ILogger<DocumentService> logger,
 
         var progress = new InlineProgress<DocumentExtractionProgress>(report =>
         {
-            // A null fraction means the reader cannot measure itself (a remote OCR call is opaque until
-            // it returns). Reporting the band's floor keeps the percentage honest while the refreshed
-            // message and timestamp still show the job is alive.
+            // A null fraction means the reader cannot measure itself (remote OCR); report the band's floor.
             var percent = report.Fraction is { } fraction
                 ? ExtractStart + (int)((ChunkStart - ExtractStart) * Math.Clamp(fraction, 0d, 1d))
                 : ExtractStart;
@@ -1073,8 +881,7 @@ public partial class DocumentService(ILogger<DocumentService> logger,
             _jobStatusStore.Report(jobId, JobStatuses.Extracting, percent, report.Message);
         });
 
-        // One call, not two: a spreadsheet's text and its grid come out of the same parse, and
-        // asking for them separately would open the package twice for nothing.
+        // One call: a spreadsheet's text and grid come out of the same parse.
         var extraction = extractor is ISheetStructureExtractor sheetExtractor
             ? await ExtractSheetsAsync(sheetExtractor, file, progress, cancellationToken)
             : new SheetExtractionResult(await extractor.ExtractAsync(file, progress, cancellationToken), []);
@@ -1091,13 +898,8 @@ public partial class DocumentService(ILogger<DocumentService> logger,
         return extraction;
     }
 
-    /// <summary>
-    /// Reads a spreadsheet's text and grid, recording the shape and cost of the read.
-    /// </summary>
-    /// <remarks>
-    /// Measured here rather than inside the extractors, so both formats report through one site and a
-    /// ceiling refusal is counted as the outcome it is rather than as a read that never happened.
-    /// </remarks>
+    // Measured here, not in the extractors, so both formats report through one site and a ceiling
+    // refusal counts as an outcome.
     private static async Task<SheetExtractionResult> ExtractSheetsAsync(
         ISheetStructureExtractor extractor,
         FileDto file,
@@ -1160,14 +962,6 @@ public partial class DocumentService(ILogger<DocumentService> logger,
         return chunks;
     }
 
-    /// <summary>
-    /// Generates one embedding per chunk, in batches, reporting progress after each batch.
-    /// </summary>
-    /// <remarks>
-    /// Uses the generator's batch overload rather than issuing one request per chunk: a single request
-    /// carrying 64 inputs replaces 64 round-trips, and each completed batch is a natural, truthful
-    /// progress tick.
-    /// </remarks>
     private async Task<IReadOnlyList<ReadOnlyMemory<float>>> EmbedAsync(string jobId, IReadOnlyList<TextChunkDto> chunks, CancellationToken cancellationToken)
     {
         _jobStatusStore.Report(jobId, JobStatuses.Embedding, EmbedStart, $"Generating embeddings for {chunks.Count} chunk(s)", 0, chunks.Count);
@@ -1184,8 +978,8 @@ public partial class DocumentService(ILogger<DocumentService> logger,
 
             if (generated.Count != batch.Count)
             {
-                // Vectors are matched to chunks by position, so a short or padded response would
-                // silently attach the wrong embedding to every chunk after the gap.
+                // Vectors match chunks by position, so a short or padded response would misattach every
+                // later embedding.
                 throw new InvalidOperationException(
                     $"The embedding generator returned {generated.Count} vector(s) for {batch.Count} input(s).");
             }

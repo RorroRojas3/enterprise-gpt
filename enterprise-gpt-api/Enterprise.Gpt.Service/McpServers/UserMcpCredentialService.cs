@@ -16,39 +16,22 @@ namespace Enterprise.Gpt.Service.McpServers;
 
 public interface IUserMcpCredentialService
 {
-    /// <summary>
-    /// Stores the calling user's credential for an MCP server, replacing any it already holds,
-    /// and evicts that user's cached client so the next request connects with the new one.
-    /// </summary>
-    /// <param name="mcpServerId">The server the credential is for.</param>
-    /// <param name="request">The credential as the user supplied it.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>What the caller may know about the stored credential.</returns>
+    /// <summary>Stores or replaces the caller's credential and evicts their cached client.</summary>
     /// <exception cref="ValidationException">The server takes no user credential.</exception>
     /// <exception cref="NotFoundException">No active server with <paramref name="mcpServerId"/> exists.</exception>
     /// <exception cref="ForbiddenException">The caller does not hold the server's permission.</exception>
     Task<McpCredentialStatusDto> SaveAsync(
         Guid mcpServerId, SaveMcpCredentialActionDto request, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Removes the calling user's credential for an MCP server and evicts their cached client.
-    /// </summary>
-    /// <param name="mcpServerId">The server the credential is for.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <summary>Removes the caller's credential for a server and evicts their cached client.</summary>
     /// <exception cref="NotFoundException">No active server exists, or the caller holds no credential for it.</exception>
     /// <exception cref="ForbiddenException">The caller does not hold the server's permission.</exception>
     Task DeleteAsync(Guid mcpServerId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Records that a server refused a user's stored credential, so it stops being offered.
+    /// Marks a user's stored credential refused so it stops being offered; a no-op when none is held, so a
+    /// race with the user removing theirs cannot resurrect a row.
     /// </summary>
-    /// <param name="mcpServerId">The server that refused it.</param>
-    /// <param name="userOid">The user whose credential was refused.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <remarks>
-    /// Does nothing when no active credential is held, so a race with the user removing theirs
-    /// cannot resurrect a row.
-    /// </remarks>
     Task MarkRejectedAsync(Guid mcpServerId, Guid userOid, CancellationToken cancellationToken = default);
 }
 
@@ -116,9 +99,8 @@ public partial class UserMcpCredentialService(ILogger<UserMcpCredentialService> 
     {
         var date = _timeProvider.GetUtcNow();
 
-        // ExecuteUpdate rather than load-and-save: this is called mid-turn on the streaming
-        // request's own scoped context, and SaveChangesAsync there would flush whatever else
-        // that request happens to be tracking.
+        // ExecuteUpdate, not load-and-save: this runs mid-turn on the streaming request's context, where
+        // SaveChangesAsync would flush whatever else that request is tracking.
         var updated = await _ctx.UserMcpCredentials
             .Where(c => c.UserId == userOid && c.McpServerId == mcpServerId && !c.DateRejected.HasValue)
             .ExecuteUpdateAsync(
@@ -133,9 +115,8 @@ public partial class UserMcpCredentialService(ILogger<UserMcpCredentialService> 
             return;
         }
 
-        // ExecuteUpdate writes past the change tracker, so a copy this context already holds
-        // would answer the next read with the pre-rejection value — and the save that clears a
-        // rejection would then find nothing to change.
+        // ExecuteUpdate bypasses the tracker: a tracked copy would serve the next read the pre-rejection
+        // value, and the save that clears a rejection would then find nothing to change.
         foreach (var entry in _ctx.ChangeTracker
             .Entries<UserMcpCredential>()
             .Where(e => e.Entity.UserId == userOid && e.Entity.McpServerId == mcpServerId)
@@ -149,15 +130,8 @@ public partial class UserMcpCredentialService(ILogger<UserMcpCredentialService> 
 
     #region Private methods
 
-    /// <summary>
-    /// Writes the user's key, inserting or updating, and retries once when a concurrent save
-    /// took the row first.
-    /// </summary>
-    /// <remarks>
-    /// The retry is what keeps a double-clicked Save off the 500 path: the filtered unique
-    /// index on <c>(UserId, McpServerId)</c> is the only thing serializing two inserts, and
-    /// the loser sees a row it can update rather than a conflict it caused.
-    /// </remarks>
+    // Retries once when a concurrent save took the row first: the filtered unique index on
+    // (UserId, McpServerId) alone serializes two inserts, so a double-clicked Save updates instead of a 500.
     private async Task<UserMcpCredential> UpsertAsync(
         string apiKey, Guid mcpServerId, Guid oid, CancellationToken cancellationToken)
     {
@@ -181,8 +155,7 @@ public partial class UserMcpCredentialService(ILogger<UserMcpCredentialService> 
 
             credential.Ciphertext = _protector.Protect(oid, mcpServerId, apiKey);
             credential.ApiKeyHint = Hint(apiKey);
-            // A save is the user asserting the key is good again, so a stale rejection must
-            // not keep the server hidden from them.
+            // Saving reasserts the key, so a stale rejection must not keep hiding the server.
             credential.DateRejected = null;
             credential.ModifiedById = oid;
 
@@ -199,21 +172,14 @@ public partial class UserMcpCredentialService(ILogger<UserMcpCredentialService> 
             }
             catch (DbUpdateException) when (attempt == 1)
             {
-                // Detached so the second read is not answered from the change tracker with
-                // the very entity that failed to insert.
+                // Detached so the retry's read is not answered with the entity that failed to insert.
                 _ctx.Entry(credential).State = EntityState.Detached;
             }
         }
     }
 
-    /// <summary>
-    /// Loads an active server the caller is permitted to use.
-    /// </summary>
-    /// <remarks>
-    /// Reads the database rather than <c>IUserPermissionCache</c> for the reason
-    /// <c>McpToolProvider</c> gives: storing a credential against a server is as much a use of
-    /// it as calling one, so a revoked grant has to take effect on the next request.
-    /// </remarks>
+    // Not IUserPermissionCache, as in McpToolProvider: storing a credential is a use of the server, so a
+    // revoked grant must apply on the next request.
     private async Task<McpServer> LoadPermittedServerAsync(
         Guid mcpServerId, Guid oid, CancellationToken cancellationToken)
     {
@@ -233,14 +199,8 @@ public partial class UserMcpCredentialService(ILogger<UserMcpCredentialService> 
             : throw new ForbiddenException($"You do not have permission to use MCP server '{result.Server.Name}'.");
     }
 
-    /// <summary>
-    /// The last four characters of a credential, which is all any route ever discloses.
-    /// </summary>
-    /// <remarks>
-    /// Empty rather than the whole value for anything shorter, so the defensive branch of a
-    /// function that feeds <c>GET api/mcps</c> cannot disclose a credential. The validator's
-    /// minimum length makes it unreachable; that is not a reason for it to fail open.
-    /// </remarks>
+    // The last four characters, all any route discloses. Empty for shorter keys so this never fails open
+    // into GET api/mcps, though the validator's minimum length makes that branch unreachable.
     private static string Hint(string apiKey)
     {
         return apiKey.Length <= 4 ? string.Empty : apiKey[^4..];

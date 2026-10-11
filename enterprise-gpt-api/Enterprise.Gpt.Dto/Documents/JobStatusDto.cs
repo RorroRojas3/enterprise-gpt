@@ -6,13 +6,11 @@ namespace Enterprise.Gpt.Dto.Documents;
 /// Upload job status returned to polling clients.
 /// </summary>
 /// <remarks>
-/// <see cref="Id"/>, <see cref="State"/>, <see cref="Status"/> and <see cref="Progress"/> keep their
-/// original names and semantics; everything else is additive, so a client written against the previous
-/// shape keeps working unchanged.
+/// <see cref="Id"/>, <see cref="State"/>, <see cref="Status"/> and <see cref="Progress"/> are the original
+/// contract and must keep their names and semantics; every other member is additive.
 /// </remarks>
 public class JobStatusDto
 {
-    /// <summary>The job identifier.</summary>
     [JsonPropertyName("id")]
     public string Id { get; set; } = null!;
 

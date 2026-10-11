@@ -50,8 +50,7 @@ describe('scanFences', () => {
   });
 
   it('records the info string of the line that closed the block', () => {
-    // CommonMark forbids an info string on a closer, so a non-empty one means the
-    // block was closed by what was meant to be a nested opener.
+    // An info string on the closer means a nested opener closed the block.
     expect(scanFences('```email\nx\n```ts\ny\n```').closed[0]?.closerInfo).toBe('ts');
     expect(scanFences('```email\nx\n```').closed[0]?.closerInfo).toBe('');
   });

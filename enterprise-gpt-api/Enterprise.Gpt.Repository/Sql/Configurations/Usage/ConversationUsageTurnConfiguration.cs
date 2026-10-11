@@ -22,11 +22,8 @@ public sealed class ConversationUsageTurnConfiguration : BaseCreatedEntityConfig
             .WithMany(x => x.Turns)
             .HasForeignKey(x => x.ConversationUsageId);
 
-        // Reading a call's turns back in order, which is also every query that attributes a tool's
-        // prompt cost: those pair turn N with turn N+1, so the seek and the ordering come off one
-        // index. Unique because a call reports each iteration once — and unfiltered, like the other
-        // unique index in this trail, because these rows are append-only and no soft-deleted row
-        // can ever block a replacement.
+        // A call's turns in order, which tool prompt-cost attribution reads to pair turn N with N+1.
+        // Unfiltered because these rows are append-only and never soft-deleted.
         builder.HasIndex(x => new { x.ConversationUsageId, x.Iteration }).IsUnique();
     }
 }

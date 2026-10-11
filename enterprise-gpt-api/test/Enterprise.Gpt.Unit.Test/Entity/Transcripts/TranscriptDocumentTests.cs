@@ -139,8 +139,7 @@ public sealed class TranscriptDocumentTests
     }
 
     /// <summary>
-    /// The one property of a message that is written long after the document was created (US-1102),
-    /// and the only one a reader can change.
+    /// The only message property written long after creation, and the only one a reader can change.
     /// </summary>
     [Fact]
     public void Message_Feedback_RoundTripsWithACamelCasedRating()

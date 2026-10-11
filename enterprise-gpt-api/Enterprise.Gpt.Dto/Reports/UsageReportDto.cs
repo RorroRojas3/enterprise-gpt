@@ -7,25 +7,10 @@ namespace Enterprise.Gpt.Dto.Reports;
 /// <c>GET api/reports/usage</c> returns it.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Deliberately not a <see cref="PaginatedResponseDto{T}"/>: this is period totals, a
-/// prior-period comparison and several differently-shaped row sets answered together, not a page
-/// of one collection. One request serves the whole dashboard, because four round trips for four
-/// cards on one screen would make the range control feel broken.
-/// </para>
-/// <para>
-/// Every figure here counts <em>both</em> kinds of call — a chat turn and the out-of-band naming
-/// completion alike. Spend is spend, and a naming call is billed against a real deployment like
-/// any other; <see cref="UsageReportTotalsDto.NamingTurns"/> carries the overhead separately for
-/// anyone who needs to see it apart. This departs from the outcome query in
-/// <c>docs/conversations/usage-and-reporting.md</c>, which filters <c>Kind = 1</c>: that
-/// cookbook is SQL for an analyst, and a donut whose turn count disagreed with the table beside
-/// it would be a defect on screen.
-/// </para>
-/// <para>
-/// It carries no prompt content, no tool arguments and no tool results, and structurally cannot:
-/// nothing in it is sourced from the transcript or from <c>Core.ConversationUsageToolCall</c>.
-/// </para>
+/// Not a <see cref="PaginatedResponseDto{T}"/>: one request serves the whole dashboard. Figures include
+/// naming calls (see <see cref="UsageReportTotalsDto.NamingTurns"/>), unlike the <c>Kind = 1</c> query in
+/// <c>docs/conversations/usage-and-reporting.md</c>, so every card agrees. Nothing is sourced from the
+/// transcript or <c>Core.ConversationUsageToolCall</c>, so no prompt or tool content can leak.
 /// </remarks>
 public record UsageReportDto
 {
@@ -33,8 +18,7 @@ public record UsageReportDto
     /// The inclusive start of the reported window, as the server resolved it.
     /// </summary>
     /// <remarks>
-    /// Echoed rather than assumed, because the caller may send neither bound. The client renders
-    /// its date range from these two values, so what it displays is always what was measured.
+    /// Echoed because the caller may omit both bounds; the client renders its range from these.
     /// </remarks>
     public DateTimeOffset From { get; init; }
 
@@ -58,9 +42,7 @@ public record UsageReportDto
     /// The same figures over the equal-length window ending where <see cref="From"/> begins.
     /// </summary>
     /// <remarks>
-    /// Supplied rather than a percentage, so the client decides how to render a delta — and so a
-    /// prior period of zero is distinguishable from a prior period that was not measured, which a
-    /// precomputed percentage could not express.
+    /// Raw figures, not a percentage, so a zero prior period is distinguishable from an unmeasured one.
     /// </remarks>
     public UsageReportTotalsDto PriorTotals { get; init; } = null!;
 
@@ -74,8 +56,7 @@ public record UsageReportDto
     /// One entry per UTC day in the window, including days with no traffic.
     /// </summary>
     /// <remarks>
-    /// Dense on purpose. A sparse series drawn as a line silently rescales the horizontal axis, so
-    /// a quiet fortnight and a busy one occupy the same width and the shape of the chart lies.
+    /// Dense on purpose: a sparse series drawn as a line silently rescales the time axis.
     /// </remarks>
     public IReadOnlyList<UsageSeriesPointDto> Series { get; init; } = [];
 
@@ -88,11 +69,8 @@ public record UsageReportDto
     /// The ten models that consumed the most tokens in the window, ordered descending.
     /// </summary>
     /// <remarks>
-    /// Always by model, whatever <see cref="GroupBy"/> says, because the chart it feeds asks a
-    /// fixed question — which models cost the most — that does not change when the table beside it
-    /// is re-cut. Answered here rather than by a second request so one grouping change is one
-    /// round trip. When <see cref="GroupBy"/> is <c>model</c> this is the head of
-    /// <see cref="Groups"/>, and the duplication is the price of the two staying independent.
+    /// Always by model, whatever <see cref="GroupBy"/> says, to save a round trip per regrouping; it
+    /// duplicates the head of <see cref="Groups"/> when grouping by model.
     /// </remarks>
     public IReadOnlyList<UsageGroupDto> TopModels { get; init; } = [];
 
@@ -100,10 +78,7 @@ public record UsageReportDto
     /// Whether <see cref="Groups"/> was cut short at <see cref="GroupLimit"/>.
     /// </summary>
     /// <remarks>
-    /// Reachable in practice only when grouping by user, where the number of groups is the number
-    /// of people who used the platform. <see cref="Totals"/> is always computed over the whole
-    /// window regardless, so a truncated list never makes the headline figures wrong — only
-    /// incomplete as a breakdown, which is what this flag exists to say.
+    /// In practice only when grouping by user. <see cref="Totals"/> always covers the whole window.
     /// </remarks>
     public bool GroupsTruncated { get; init; }
 

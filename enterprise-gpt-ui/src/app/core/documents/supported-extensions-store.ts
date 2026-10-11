@@ -31,22 +31,8 @@ interface SupportedExtensionsState {
 const initialState: SupportedExtensionsState = { extensions: [] };
 
 /**
- * The file types this deployment can actually read, from `GET api/documents/file-extensions`.
- *
- * The server derives the list from its registered extractors rather than from
- * configuration, so it cannot advertise a format nothing can parse — which is why the
- * picker and the client-side refusal both read it instead of hard-coding a set. The
- * design board's own copy is already wrong about this (it names XLSX and CSV, neither
- * supported, and omits PPTX), so nothing in the app quotes the board here.
- *
- * Root-scoped and loaded once per session: it is deployment-shaped, not user-shaped,
- * but a sign-out still clears it because the next user's deployment is only *usually*
- * the same one, and a stale list would be silently wrong rather than visibly so.
- *
- * **A failed load does not block uploading.** {@link isSupported} answers `true` when
- * the list is unknown, so the file goes to the server and is refused there with a real
- * reason. Refusing everything locally because a side request failed would be worse than
- * the round trip it saves.
+ * The server derives the list from its registered extractors, so never hard-code a set.
+ * Cleared on sign-out, since the next user's deployment is only usually the same one.
  */
 export const SupportedExtensionsStore = signalStore(
   { providedIn: 'root' },
@@ -70,8 +56,7 @@ export const SupportedExtensionsStore = signalStore(
   })),
   withMethods((store) => {
     async function load(): Promise<boolean> {
-      // Newest-attempt-wins, as the catalog stores do: a retry started while an earlier
-      // load is still in flight must not be overwritten by the one it replaced.
+      // Newest attempt wins: a retry must not be overwritten by the load it replaced.
       const generation = ++store._load.generation;
       const isCurrent = (): boolean => generation === store._load.generation;
 
@@ -112,14 +97,7 @@ export const SupportedExtensionsStore = signalStore(
     }
 
     return {
-      /**
-       * Loads the list once per session, memoized **only on success**.
-       *
-       * Unlike the model and MCP catalogs, a failure here is silent: the picker stops
-       * narrowing and every client-side refusal disappears, with no error surface of
-       * its own to notice it by. Memoizing a failure would make one transient blip
-       * last the whole session, so a later composer simply asks again.
-       */
+      /** Memoized only on success: a failure here is silent, and must not last the session. */
       ensureLoaded(): Promise<boolean> {
         return (store._load.promise ??= load().then((loaded) => {
           if (!loaded) {
@@ -134,13 +112,7 @@ export const SupportedExtensionsStore = signalStore(
         return (store._load.promise = load());
       },
 
-      /**
-       * Whether a file name's extension is one this deployment can read.
-       *
-       * Answers `true` when the list has not loaded — see the note on the store.
-       *
-       * @param fileName The name as the user's file system reports it.
-       */
+      /** `true` while the list is unknown, so the server refuses the file with a real reason. */
       isSupported(fileName: string): boolean {
         const known = store.extensions();
 
@@ -160,14 +132,7 @@ export const SupportedExtensionsStore = signalStore(
   withResetOnSignOut(),
 );
 
-/**
- * A file name's extension, lower-cased and dotted, or `''` when it has none.
- *
- * A leading-dot file (`.gitignore`) has no extension by this reading, which matches the
- * server: `FileDto.FileExtension` parses the same way and refuses it.
- *
- * @param fileName The name as the user's file system reports it.
- */
+/** Lower-cased and dotted, or `''`; `.gitignore` has none, matching `FileDto.FileExtension`. */
 export function extensionOf(fileName: string): string {
   const dot = fileName.lastIndexOf('.');
 

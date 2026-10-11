@@ -13,11 +13,6 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Documents.Summarization;
 
-/// <summary>
-/// Covers the function the model actually sees: its name and schema, how it resolves a document
-/// name, and that neither a provider's message nor a stalled run reaches the model as anything but
-/// a sentence it can act on.
-/// </summary>
 public sealed class DocumentSummaryToolTests
 {
     private const int TimeoutSeconds = 300;
@@ -189,9 +184,8 @@ public sealed class DocumentSummaryToolTests
     }
 
     /// <summary>
-    /// The engine and the summary service both funnel terminal failures into a
-    /// <see cref="ValidationException"/> carrying a sentence written for a person, which is why it
-    /// is relayed rather than replaced.
+    /// Terminal failures arrive as a <see cref="ValidationException"/> worded for a person, so it is
+    /// relayed rather than replaced.
     /// </summary>
     [Fact]
     public async Task InvokeAsync_RunRefused_RelaysTheSanitizedReasonToTheModel()

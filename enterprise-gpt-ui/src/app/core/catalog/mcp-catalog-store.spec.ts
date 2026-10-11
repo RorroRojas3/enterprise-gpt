@@ -62,15 +62,13 @@ describe('McpCatalogStore', () => {
     expect(store.servers()).toHaveLength(1);
   });
 
-  it('reloads when an administrator changes the registry (US-1208)', async () => {
+  it('reloads when an administrator changes the registry', async () => {
     const loaded = store.ensureLoaded();
     backend.expectOne(MCPS_URL).flush([mcpFixture({ name: 'SAP Ledger' })]);
     await expect(loaded).resolves.toBe(true);
 
     TestBed.inject(Dispatcher).dispatch(adminEvents.mcpCatalogChanged());
 
-    // Deactivating a server revokes its permission from everyone who held it, so the
-    // composer's Tools menu must not go on offering it for the rest of the session.
     backend.expectOne(MCPS_URL).flush([]);
     await Promise.resolve();
     await Promise.resolve();
@@ -78,7 +76,7 @@ describe('McpCatalogStore', () => {
     expect(store.servers()).toEqual([]);
   });
 
-  it('replaces the memo, so a later ensureLoaded sees the fresh list (US-1208)', async () => {
+  it('replaces the memo, so a later ensureLoaded sees the fresh list', async () => {
     const loaded = store.ensureLoaded();
     backend.expectOne(MCPS_URL).flush([mcpFixture({ name: 'SAP Ledger' })]);
     await expect(loaded).resolves.toBe(true);
@@ -86,9 +84,7 @@ describe('McpCatalogStore', () => {
     TestBed.inject(Dispatcher).dispatch(adminEvents.mcpCatalogChanged());
     backend.expectOne(MCPS_URL).flush([mcpFixture({ name: 'Jira Cloud' })]);
 
-    // `reload()` assigns the memo rather than reading it, which is why this issues no
-    // second request and still hands back the list the reload fetched — an
-    // `ensureLoaded()` here would otherwise resolve against the stale first call.
+    // The reload replaced the memo, so this issues no request yet resolves to the fresh list.
     await expect(store.ensureLoaded()).resolves.toBe(true);
     backend.expectNone(MCPS_URL);
     expect(store.servers().map((server) => server.name)).toEqual(['Jira Cloud']);

@@ -5,10 +5,6 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Enterprise.Gpt.Repository.Sql.Configurations.Documents;
 
-/// <summary>
-/// Maps <see cref="ConversationDocumentSheetRow"/> to <c>Core.ConversationDocumentSheetRow</c>, its
-/// native <c>json</c> cells column, and the unique ordinal index that keeps a sheet's rows dense.
-/// </summary>
 public sealed class ConversationDocumentSheetRowConfiguration : BaseDocumentSheetRowConfiguration<ConversationDocumentSheetRow, Guid>
 {
     protected override void ConfigureEntity(EntityTypeBuilder<ConversationDocumentSheetRow> builder)

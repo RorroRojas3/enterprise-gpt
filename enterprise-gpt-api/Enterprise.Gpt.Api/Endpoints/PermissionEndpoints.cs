@@ -8,27 +8,21 @@ using Microsoft.AspNetCore.Http.HttpResults;
 namespace Enterprise.Gpt.Api.Endpoints;
 
 /// <summary>
-/// Minimal API endpoints for permission management and user grants. Every route is gated
-/// on the built-in Administrator permission: permissions are an administrative concern, and
-/// regular users receive theirs through the user profile endpoints. Built-in and
-/// MCP-managed permissions reject mutations in the service layer.
+/// Permission and grant routes, all administrator-only; users read their own through the profile routes.
+/// Built-in and MCP-managed permissions reject mutations in the service.
 /// </summary>
 public static class PermissionEndpoints
 {
     #region Public static methods
 
     /// <summary>
-    /// Maps the <c>api/permissions</c> group and the <c>api/users/{userId}/permissions</c>
-    /// grant routes.
+    /// Maps the <c>api/permissions</c> group and the <c>api/users/{userId}/permissions</c> grant routes.
     /// </summary>
-    /// <param name="app">The route builder to map the groups onto.</param>
-    /// <returns>The same <paramref name="app"/> for chaining.</returns>
     public static IEndpointRouteBuilder MapPermissionEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("api/permissions")
             .RequireAuthorization()
             .WithTags("Permissions")
-            // Every route in the group is authorized, so the challenge applies uniformly.
             .ProducesProblem(StatusCodes.Status401Unauthorized);
 
         group.MapGet("", GetPermissionsAsync)
@@ -63,7 +57,6 @@ public static class PermissionEndpoints
         var grants = app.MapGroup("api/users/{userId:guid}/permissions")
             .RequireAuthorization()
             .WithTags("Permissions")
-            // Every route in the group is authorized, so the challenge applies uniformly.
             .ProducesProblem(StatusCodes.Status401Unauthorized);
 
         grants.MapPost("{permissionId:guid}", GrantPermissionAsync)
@@ -93,8 +86,6 @@ public static class PermissionEndpoints
         return TypedResults.Ok(response);
     }
 
-    // Not-found paths throw NotFoundException in the service and surface as 404
-    // through the exception-handler chain, matching the model endpoints' contract.
     internal static async Task<Ok<PermissionDto>> GetPermissionAsync(
         Guid id, IPermissionService permissionService, CancellationToken cancellationToken)
     {

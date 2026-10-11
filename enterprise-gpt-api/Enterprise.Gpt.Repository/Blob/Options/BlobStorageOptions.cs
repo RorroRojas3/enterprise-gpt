@@ -9,10 +9,8 @@ namespace Enterprise.Gpt.Repository.Blob.Options;
 /// </remarks>
 public sealed class BlobStorageOptions
 {
-    /// <summary>The configuration section these options are bound from.</summary>
     public const string SectionName = "AzureStorage";
 
-    /// <summary>The storage account connection string.</summary>
     public string ConnectionString { get; set; } = string.Empty;
 
     /// <summary>The container uploaded documents are stored in.</summary>

@@ -51,10 +51,7 @@ public sealed class GeneratedDocumentIntegrationTests(IntegrationTestFixture fix
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", query["rsct"]);
     }
 
-    /// <summary>
-    /// The index the usage table deferred until an agent could write a non-null <c>ModelId</c>, which
-    /// the per-user ceiling reads and which only exists if the migration actually applied.
-    /// </summary>
+    /// <summary>The per-user ceiling reads this index, which exists only if the migration applied.</summary>
     [Fact]
     public async Task Schema_ConversationUsageToolCall_CarriesTheModelAndDateIndex()
     {

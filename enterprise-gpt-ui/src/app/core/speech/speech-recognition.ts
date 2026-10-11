@@ -1,14 +1,8 @@
 import { InjectionToken } from '@angular/core';
 
 /**
- * The Web Speech API's recognition object, as much of it as US-413 uses.
- *
- * Declared here because TypeScript 5.9's `lib.dom.d.ts` ships
- * `SpeechRecognitionResult`, `SpeechRecognitionResultList`, and
- * `SpeechRecognitionAlternative` but **not** `SpeechRecognition` itself, its
- * event types, or the `webkit`-prefixed constructor — the interface is still
- * behind a vendor prefix everywhere it exists. A local declaration keeps that
- * gap to one file rather than adding a dependency for four members.
+ * Declared locally: `lib.dom.d.ts` ships the result types but not `SpeechRecognition`, its events
+ * or the `webkit`-prefixed constructor.
  */
 export interface SpeechRecognitionLike {
   continuous: boolean;
@@ -29,9 +23,8 @@ export interface SpeechRecognitionResultEventLike {
 }
 
 /**
- * The `error` event. `not-allowed` and `service-not-allowed` are the two the
- * spec defines for a refused microphone; everything else is a failure the user
- * can do nothing about.
+ * `not-allowed` and `service-not-allowed` mean a refused microphone; anything else is a failure
+ * the user can do nothing about.
  */
 export interface SpeechRecognitionErrorEventLike {
   readonly error: string;
@@ -46,15 +39,8 @@ interface SpeechRecognitionWindow {
 }
 
 /**
- * A factory for speech recognition sessions, or **null** where the browser has
- * none — Firefox today, and any non-secure origin.
- *
- * Null rather than a throwing stub, because US-413's criterion is that the
- * control is *absent* in an unsupported browser rather than present and
- * disabled: the composer asks this token whether to render the control at all.
- *
- * A DI token for the same reason as `STREAM_FETCH`: specs substitute a fake
- * through a provider override instead of assigning to `window`.
+ * Null where the browser has no recognition (Firefox, non-secure origins), so the composer omits
+ * the control rather than disabling it.
  */
 export const SPEECH_RECOGNITION = new InjectionToken<SpeechRecognitionFactory | null>(
   'SPEECH_RECOGNITION',

@@ -5,9 +5,6 @@ namespace Enterprise.Gpt.Common.Enums;
 /// </summary>
 public enum McpAuthTypes
 {
-    /// <summary>
-    /// The MCP server requires no authentication.
-    /// </summary>
     None = 1,
 
     /// <summary>

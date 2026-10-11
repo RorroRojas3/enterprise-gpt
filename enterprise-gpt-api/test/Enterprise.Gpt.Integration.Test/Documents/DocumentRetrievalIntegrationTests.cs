@@ -15,14 +15,10 @@ using Xunit;
 namespace Enterprise.Gpt.Integration.Test.Documents;
 
 /// <summary>
-/// Covers document retrieval against a real SQL Server 2025, which is the only place it can run: the
-/// unit-test fixture strips <c>SqlVector&lt;float&gt;</c> from the model, so <c>VECTOR_DISTANCE</c>, the
-/// <c>UNION ALL</c> over both chunk tables and the neighbour read-back have no coverage anywhere else.
+/// Covers retrieval on real SQL Server 2025: the unit-test fixture strips <c>SqlVector&lt;float&gt;</c>, so
+/// <c>VECTOR_DISTANCE</c>, the chunk-table <c>UNION ALL</c> and neighbour read-back are covered nowhere else.
 /// </summary>
-/// <remarks>
-/// The service is constructed here rather than resolved from the container so each test can set its own
-/// retrieval options; the DbContext, the chunker and the schema are all the real ones.
-/// </remarks>
+/// <remarks>The service is constructed directly so each test can set its own retrieval options.</remarks>
 [Collection(IntegrationTestCollection.Name)]
 [Trait("Category", "Integration")]
 public sealed class DocumentRetrievalIntegrationTests(IntegrationTestFixture fixture) : IAsyncLifetime
@@ -165,8 +161,7 @@ public sealed class DocumentRetrievalIntegrationTests(IntegrationTestFixture fix
 
         var result = await SearchAsync(conversationId, "ORA-01555 snapshot too old", options);
 
-        // The counterpart of the previous test: it is the keyword pass doing the work, not the gate
-        // happening to be generous.
+        // Proves the previous test's match came from the keyword pass, not a generous gate.
         Assert.Equal(0, result.ResultCount);
     }
 
@@ -389,10 +384,7 @@ public sealed class DocumentRetrievalIntegrationTests(IntegrationTestFixture fix
 
     private static DocumentRetrievalOptions DefaultOptions() => new();
 
-    /// <summary>
-    /// Options with expansion switched off, so a test asserting on ranking sees one passage per matching
-    /// chunk instead of runs merged by adjacency.
-    /// </summary>
+    /// <summary>Expansion off, so ranking tests see one passage per matching chunk.</summary>
     private static DocumentRetrievalOptions NoNeighbours() => new() { NeighborWindow = 0 };
 
     private DocumentRetrievalService CreateService(IServiceScope scope, DocumentRetrievalOptions options) => new(
@@ -403,8 +395,7 @@ public sealed class DocumentRetrievalIntegrationTests(IntegrationTestFixture fix
         scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>());
 
     /// <summary>
-    /// Runs a search with the query embedded as the unit vector on <see cref="QueryAxis"/>, so every
-    /// seeded chunk's distance from it is exactly what <see cref="SeedChunk.Blend"/> was asked for.
+    /// Embeds the query as the <see cref="QueryAxis"/> unit vector, so each seeded chunk's distance is exact.
     /// </summary>
     private async Task<DocumentSearchResult> SearchAsync(
         Guid conversationId, string query, DocumentRetrievalOptions options, string? documentName = null)

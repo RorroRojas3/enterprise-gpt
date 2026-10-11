@@ -9,14 +9,8 @@ import {
   reasoningSeconds,
 } from './reasoning-timing';
 
-/**
- * US-503. The pill's duration is measured here rather than read off the wire,
- * and the server's seeded first delta is measured out of the text, so these
- * specs are where "what the number means" and "whose words those are" are
- * pinned.
- */
 describe('foldReasoningTiming', () => {
-  /** The opening pair every turn carries (streaming contract §4.3). */
+  /** The server-seeded first delta every turn carries. */
   const SEED = 'Reviewing the request and preparing a response.\n\n';
 
   function fold(steps: readonly (readonly [ReturnType<typeof assistantEvent>, number])[]) {
@@ -38,8 +32,7 @@ describe('foldReasoningTiming', () => {
   });
 
   it('does not start the clock on the server’s seeded delta', () => {
-    // The seed arrives ahead of the model's first event, so opening on it would
-    // report the stream's own latency as thinking time.
+    // Opening on the seed would count the stream's own latency as thinking time.
     const timing = fold([
       [assistantEvent('ReasoningDelta', { text: SEED }), 500],
       [assistantEvent('TextDelta', { text: 'Hello' }), 9_000],

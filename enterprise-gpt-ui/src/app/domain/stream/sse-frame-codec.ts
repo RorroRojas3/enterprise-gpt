@@ -1,12 +1,7 @@
 import { AssistantUiEvent, AssistantUiEventKind } from './andes/assistant-ui.contract';
 import { StreamCodec } from './stream-codec';
 
-/**
- * The eight kinds this client understands. `satisfies` makes the table
- * exhaustive in both directions: a contract upgrade that adds a ninth kind
- * fails compilation here, forcing a decision instead of silently dropping the
- * new events in production.
- */
+/** Exhaustive via `satisfies`, so a contract upgrade that adds a kind fails to compile here. */
 const KNOWN_EVENT_KINDS = {
   Status: true,
   ActivityStarted: true,
@@ -26,11 +21,8 @@ function isKnownKind(kind: unknown): kind is AssistantUiEventKind {
 }
 
 /**
- * Parses one `data: {json}` frame, or returns null for anything that is not a
- * well-formed known event. Skipping rather than throwing is deliberate: the
- * stream has no error surface after the first frame, so throwing would destroy
- * the rest of a live turn's output over a single defective frame — and an
- * unknown `kind` is the documented forward-compatibility path, not an error.
+ * Returns null rather than throwing: the stream has no error surface after the first frame, and
+ * an unknown `kind` is the contract's forward-compatibility path.
  */
 function parseFrame(frame: string): AssistantUiEvent | null {
   if (!frame.startsWith(DATA_PREFIX)) {
@@ -50,17 +42,14 @@ function parseFrame(frame: string): AssistantUiEvent | null {
   if (!isKnownKind((parsed as { kind?: unknown }).kind)) {
     return null;
   }
-  // A known kind is trusted for the rest of its fields, matching the
-  // contract's "nulls omitted" serialization — the fold's own `?? ''`
-  // defaults absorb anything absent.
+  // A known kind is trusted for its other fields: the contract omits nulls and the fold's
+  // defaults absorb them.
   return parsed as AssistantUiEvent;
 }
 
 /**
- * Decodes the framed chat stream: `data: {json}\n\n`, one event per frame, no
- * `event:`/`id:` lines (see docs/conversations/streaming.md). A
- * chunk can end anywhere — mid-frame, mid-JSON, mid-character — so both the
- * text decoder and a partial-frame buffer carry state across reads.
+ * Decodes `data: {json}\n\n` frames (docs/conversations/streaming.md). A chunk can end mid-frame
+ * or mid-character, so both the decoder and a frame buffer carry state across reads.
  */
 export function createSseFrameCodec(): StreamCodec {
   const decoder = new TextDecoder('utf-8');
@@ -83,8 +72,6 @@ export function createSseFrameCodec(): StreamCodec {
 
   return {
     decode(chunk: Uint8Array): AssistantUiEvent[] {
-      // `stream: true` holds back an incomplete multi-byte sequence at the end
-      // of the chunk instead of emitting U+FFFD for it.
       buffer += decoder.decode(chunk, { stream: true });
       return drain();
     },
@@ -92,10 +79,8 @@ export function createSseFrameCodec(): StreamCodec {
     flush(): AssistantUiEvent[] {
       buffer += decoder.decode();
       const events = drain();
-      // A final frame that lost only its terminating blank line to truncation
-      // is still a complete event; a tail cut mid-JSON parses as nothing and
-      // is dropped — that is precisely the "body just stops" ending the
-      // contract says a client must tolerate.
+      // A final frame missing only its blank line is still complete; a tail cut mid-JSON is
+      // dropped, the "body just stops" ending the contract says clients must tolerate.
       const salvaged = parseFrame(buffer);
       buffer = '';
       if (salvaged !== null) {

@@ -15,9 +15,8 @@
   </span>
 
   <!--
-    The status arms are disabled menu items, not <p> text: role="menu" allows
-    only menuitem* children, and a menu with zero items both fails AXE and
-    strands the roving focus. A dimmed, focusable row is what native menus do.
+    Disabled menu items, not <p>: role="menu" allows only menuitem children, and an empty menu
+    fails axe and strands the roving focus.
   -->
   @if (models.error() !== null && settings.selectedModel() === null) {
     <button appMenuItem type="button" aria-disabled="true" class="model-menu__status">

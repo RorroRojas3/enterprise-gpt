@@ -20,7 +20,7 @@ const PROJECT = projectDetailFixture({
 });
 const PROJECT_URL = `${TEST_API_BASE_URL}/api/projects/${PROJECT.id}`;
 
-describe('InstructionsPanel (US-904)', () => {
+describe('InstructionsPanel', () => {
   let backend: HttpTestingController;
   let fixture: ComponentFixture<InstructionsPanel>;
   let panel: InstructionsPanel;
@@ -76,8 +76,7 @@ describe('InstructionsPanel (US-904)', () => {
   }
 
   it('seeds the field from the only route that carries instructions', () => {
-    // The listing shape omits the column entirely, so a card could never have filled
-    // this.
+    // The listing shape omits instructions, so only the detail route could have filled this.
     expect(field().value).toBe('Cite Jira keys.');
   });
 
@@ -119,8 +118,7 @@ describe('InstructionsPanel (US-904)', () => {
     await fixture.whenStable();
 
     await expect(decision).resolves.toBe(true);
-    // Reset before the navigation is released, so the guard cannot fire a second time
-    // against an edit the reader has already agreed to lose.
+    // Reset before the navigation is released, so the guard cannot fire a second time.
     expect(field().value).toBe('Cite Jira keys.');
   });
 

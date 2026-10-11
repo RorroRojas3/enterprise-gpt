@@ -10,16 +10,9 @@ namespace Enterprise.Gpt.Service.Documents.Retrieval;
 /// Exposes retrieval over a conversation's documents to the assistant as a callable function.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The tool is built per turn and closes over the corpus resolved for that turn, so a search can only
-/// ever reach the documents the caller was already entitled to read. Nothing about the conversation or
-/// the user is taken from the tool's arguments, which means a model that hallucinates an argument
-/// cannot widen what it sees.
-/// </para>
-/// <para>
-/// It is attached only when the conversation actually has documents. A tool that is always present and
-/// always returns nothing teaches the model to stop calling it.
-/// </para>
+/// Built per turn over the resolved scope; nothing about the conversation or user comes from tool
+/// arguments, so a hallucinated argument cannot widen access. Attached only when there are documents,
+/// since an always-empty tool teaches the model to stop calling it.
 /// </remarks>
 public static partial class DocumentTool
 {
@@ -28,9 +21,8 @@ public static partial class DocumentTool
     /// the usage audit.
     /// </summary>
     /// <remarks>
-    /// Chosen not to begin with a word that could be an MCP server name. Tool-call usage is attributed
-    /// to a server by matching the longest <c>{server}_</c> prefix, so a name such as
-    /// <c>search_documents</c> would be credited to a server called "search" if one ever existed.
+    /// Must not start with a possible MCP server name: usage is attributed by the longest <c>{server}_</c>
+    /// prefix, so <c>search_documents</c> would be credited to a server called "search".
     /// </remarks>
     public const string ToolName = "document_search";
 
@@ -40,10 +32,6 @@ public static partial class DocumentTool
         "before answering from your own knowledge. Search more than once with different wording if the first " +
         "attempt returns nothing useful. Every passage comes back with a citation to quote.";
 
-    /// <summary>
-    /// Holds the per-turn state the function body needs, so the state is captured once rather than
-    /// resolved on every call.
-    /// </summary>
     private sealed partial class DocumentSearchInvoker(
         DocumentRetrievalScope scope,
         IDocumentRetrievalService retrievalService,
@@ -53,14 +41,8 @@ public static partial class DocumentTool
         private readonly IDocumentRetrievalService _retrievalService = retrievalService;
         private readonly ILogger _logger = logger;
 
-        /// <summary>
-        /// Searches the conversation's documents.
-        /// </summary>
-        /// <remarks>
-        /// Progress is reported through the ambient <see cref="ChatProgress"/> reporter, which is the only
-        /// channel that reaches the activity feed: tool arguments and results are deliberately never
-        /// streamed, so the query itself must not be put in a progress message.
-        /// </remarks>
+        // ChatProgress is the only channel to the activity feed. Tool arguments are deliberately never
+        // streamed, so the query must not appear in a progress message.
         public async Task<DocumentSearchResult> SearchAsync(
             [Description("What to look for. A natural-language question works best, but exact terms such as an error code or a part number are matched literally too.")]
             string query,
@@ -86,15 +68,13 @@ public static partial class DocumentTool
             }
             catch (OperationCanceledException)
             {
-                // The turn is being torn down; let cancellation stay cancellation rather than turning it
-                // into a tool error the model would try to work around.
+                // Stays cancellation, not a tool error the model would try to work around.
                 throw;
             }
             catch (Exception ex)
             {
-                // Function invocation is configured with detailed errors, so whatever is thrown here is
-                // handed to the model verbatim. The real exception goes to the log; the model gets a
-                // sentence it can act on and nothing about the database behind it.
+                // Detailed errors are on, so the model sees this verbatim: the real exception goes to the
+                // log, and the model gets an actionable sentence.
                 LogSearchFailed(_logger, ex, _scope.ConversationId);
 
                 throw new InvalidOperationException("The document search could not be completed. Answer from the conversation so far, and tell the user their documents could not be searched.");
@@ -114,10 +94,6 @@ public static partial class DocumentTool
     /// <summary>
     /// Builds the retrieval function for one turn.
     /// </summary>
-    /// <param name="scope">The corpus this turn may search, from <see cref="IDocumentRetrievalService.GetScopeAsync"/>.</param>
-    /// <param name="retrievalService">The retrieval service backing the tool.</param>
-    /// <param name="logger">Logger for failures that must not reach the model verbatim.</param>
-    /// <returns>The function to attach to <see cref="ChatOptions.Tools"/>.</returns>
     /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
     public static AIFunction Create(DocumentRetrievalScope scope, IDocumentRetrievalService retrievalService, ILogger logger)
     {

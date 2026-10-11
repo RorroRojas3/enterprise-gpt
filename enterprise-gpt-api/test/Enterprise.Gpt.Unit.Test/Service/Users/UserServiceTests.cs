@@ -144,10 +144,6 @@ public sealed class UserServiceTests : IDisposable
             .FirstOrDefaultAsync(x => x.Id == id, TestContext.Current.CancellationToken);
     }
 
-    /// <summary>
-    /// Deactivates the seeded built-in default permission so a test can exercise the
-    /// "no default permissions exist" case that the seed would otherwise make unreachable.
-    /// </summary>
     private async Task DeactivateSeededDefaultsAsync()
     {
         using var ctx = _fixture.CreateContext();
@@ -244,8 +240,7 @@ public sealed class UserServiceTests : IDisposable
         Assert.Equal("Ada", user.FirstName);
         Assert.Equal("ada.lovelace@example.com", user.Email);
 
-        // The seeded built-in Upload File permission is itself a default, so it is granted alongside the
-        // one this test adds; the specialized permission must not be.
+        // The seeded Upload File permission is also a default, so it is granted too.
         Assert.Equal(
             new[] { defaultPermission.Id, KnownIds.UploadFilePermissionId }.Order(),
             user.Permissions.Select(p => p.Id).Order());
@@ -345,8 +340,7 @@ public sealed class UserServiceTests : IDisposable
         _graphService.GetUserAsync(oid, Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
-                // Simulates the concurrent caller committing between this call's existence check
-                // and its own insert, which is what makes the insert collide on the primary key.
+                // A concurrent caller commits between the existence check and the insert.
                 using var ctx = _fixture.CreateContext();
                 if (!ctx.Users.Any(x => x.Id == oid))
                 {
@@ -815,11 +809,8 @@ public sealed class UserServiceTests : IDisposable
     [Fact]
     public async Task GetOrCreateCurrentUserAsync_RevokeCommittingMidRequest_IsNotUndoneByTheWarmFill()
     {
-        // Drives the real cache and evicts from inside the Graph call — i.e. after the stamp is
-        // captured but before the Set — so the Set must be skipped. Capturing the stamp any later
-        // would republish the pre-revoke snapshot for a whole entry lifetime, and this test is the
-        // only thing that catches that: substitute call ordering cannot, because the grant read
-        // goes to the DbContext rather than to the cache.
+        // Evicts between the stamp capture and the Set, so the Set must be skipped or it republishes
+        // pre-revoke grants. Uses the real cache: a substitute can't order against the DbContext read.
         var oid = Guid.NewGuid();
         _tokenService.GetOid().Returns(oid);
 
@@ -1000,9 +991,8 @@ public sealed class UserServiceTests : IDisposable
     [Fact]
     public async Task SearchUsersAsync_NoOrderRequested_KeepsTheListingsOriginalOrder()
     {
-        // The order this route had before it accepted one, pinned so a later change to the sorted
-        // path cannot quietly move it: clients written against it are promised it unchanged. The
-        // term is only here to hold the seeded row out of the assertion.
+        // Pinned: clients written before sorting existed rely on this default order.
+        // The term only holds the seeded row out of the assertion.
         await AddUserAsync(lastName: "Zulu", firstName: "Ada", email: "ada@ordercheck.example");
         await AddUserAsync(lastName: "Alpha", firstName: "Grace", email: "grace@ordercheck.example");
 
@@ -1162,9 +1152,8 @@ public sealed class UserServiceTests : IDisposable
     [Fact]
     public async Task SearchUsersAsync_DeactivatedPermissionId_IsRefusedWithTheAbsentOnes()
     {
-        // The filter is offered from GET api/permissions, which returns neither absent nor
-        // deactivated permissions, so accepting one would answer an empty page for a control that
-        // could never have shown it.
+        // The filter is offered from GET api/permissions, which hides deactivated permissions, so
+        // accepting one would answer an empty page for a control that could never have shown it.
         var retired = await AddPermissionAsync("Retired", dateDeactivated: DateTimeOffset.UtcNow);
 
         var failure = await Assert.ThrowsAsync<ValidationException>(() => _service.SearchUsersAsync(

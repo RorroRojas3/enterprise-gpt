@@ -16,15 +16,10 @@ using Xunit;
 
 namespace Enterprise.Gpt.Integration.Test.Endpoints;
 
-/// <summary>
-/// <c>GET api/reports/usage</c> end to end (US-1301).
-/// </summary>
+/// <summary><c>GET api/reports/usage</c> end to end.</summary>
 /// <remarks>
-/// The aggregate is verified here rather than in a unit test because SQLite cannot bucket a
-/// <c>DateTimeOffset</c> by day — no member of it is translated by that provider — so the query
-/// behind the usage-over-time series does not compile there at all. Everything this suite asserts
-/// therefore runs against the engine the report will actually run on, including the decimal cost
-/// arithmetic and the day bucketing that motivated the move.
+/// Integration rather than unit tests because SQLite cannot translate <c>DateTimeOffset</c> day bucketing, so
+/// the series query does not compile there.
 /// </remarks>
 [Collection(IntegrationTestCollection.Name)]
 [Trait("Category", "Integration")]
@@ -78,7 +73,6 @@ public sealed class ReportEndpointsIntegrationTests(IntegrationTestFixture fixtu
             outputPricePerMillionTokens: outputPrice,
             cancellationToken: TestContext.Current.CancellationToken);
 
-    /// <summary>Seeds one row against a model other than the seeded default.</summary>
     private Task SeedForModelAsync(Guid modelId, long input) =>
         _fixture.AddConversationUsageAsync(
             _conversationId,
@@ -416,11 +410,8 @@ public sealed class ReportEndpointsIntegrationTests(IntegrationTestFixture fixtu
         using var document = await JsonDocument.ParseAsync(
             body, cancellationToken: TestContext.Current.CancellationToken);
 
-        // Nothing in this API configures a naming policy, so minimal APIs' Web defaults apply.
-        // Asserting it rather than assuming it, because the TypeScript mirror in
-        // `domain/api/usage-report.ts` is written against these exact names, and a deserializer
-        // reading case-insensitively — which every test that round-trips a DTO does — would hide
-        // the day that stopped being true.
+        // Asserted rather than assumed: the TypeScript mirror in `domain/api/usage-report.ts` uses these
+        // exact names, and case-insensitive round-trip tests would hide a naming-policy change.
         var names = PropertyNames(document.RootElement).ToHashSet(StringComparer.Ordinal);
 
         Assert.Contains("groupBy", names);
@@ -443,10 +434,8 @@ public sealed class ReportEndpointsIntegrationTests(IntegrationTestFixture fixtu
             Route(_anchor.AddDays(-5), _anchor), TestContext.Current.CancellationToken);
         using var document = await JsonDocument.ParseAsync(body, cancellationToken: TestContext.Current.CancellationToken);
 
-        // Property names, not the whole document. The audit trail stores no message text, no tool
-        // arguments and no tool results anywhere, so the guarantee is that no *field* on the wire
-        // could carry one — and scanning values instead would fail the day a model is called
-        // "Prompt Engineer" while proving nothing extra.
+        // Property names, not values: the audit trail stores no message or tool content, so the guarantee is
+        // that no field could carry it, and scanning values would fail on a model named "Prompt Engineer".
         foreach (var name in PropertyNames(document.RootElement))
         {
             Assert.DoesNotContain("content", name, StringComparison.OrdinalIgnoreCase);
@@ -496,9 +485,8 @@ public sealed class ReportEndpointsIntegrationTests(IntegrationTestFixture fixtu
             Route(_anchor.AddDays(-5), _anchor.AddYears(1)), TestContext.Current.CancellationToken);
 
         Assert.NotNull(report);
-        // Honoured, the window would be a year of dense zero days drawn as a collapse in spending
-        // rather than as time that has not happened. `To` is on the contract so the clamp is
-        // visible rather than silent.
+        // Honoured, a future window would draw trailing zero days as a collapse in spending; `To` makes
+        // the clamp visible.
         Assert.True(report.To <= DateTimeOffset.UtcNow.AddMinutes(1));
         Assert.True(report.Series.Count < 400);
     }
@@ -515,9 +503,8 @@ public sealed class ReportEndpointsIntegrationTests(IntegrationTestFixture fixtu
         var one = await GetAsync(groupBy: "model");
         var two = await GetAsync(groupBy: "model");
 
-        // Without a tiebreaker the order among equal-token groups is whatever the engine returns,
-        // which decides *which* groups survive `MaxGroups` — so the same request could answer with
-        // a different set of rows twice in a row. The turn count breaks it.
+        // Without the turn-count tie-break, which groups survive `MaxGroups` could vary between identical
+        // requests.
         Assert.Equal(one.Groups.Select(group => group.Key), two.Groups.Select(group => group.Key));
         Assert.Equal("tie-b", one.Groups[0].Label);
     }
@@ -525,9 +512,7 @@ public sealed class ReportEndpointsIntegrationTests(IntegrationTestFixture fixtu
     [Fact]
     public async Task GetUsageReport_GroupPricedAtZero_ReportsZeroRatherThanNull()
     {
-        // A genuinely free model is priced, and its cost is zero. The distinction this asserts is
-        // the one the whole nullable-cost design exists for: zero means free, null means nobody
-        // knows, and a group must not collapse the first into the second.
+        // Zero means free and null means unpriced; a group must not collapse the first into the second.
         var free = await _fixture.AddModelAsync("free-model", cancellationToken: TestContext.Current.CancellationToken);
         await _fixture.AddConversationUsageAsync(
             _conversationId, free, _anchor.AddDays(-1),
@@ -693,14 +678,9 @@ public sealed class ReportEndpointsIntegrationTests(IntegrationTestFixture fixtu
     }
 
     /// <summary>
-    /// Runs the service directly against the real database, for the behaviours that need a
-    /// configuration the shared test host does not carry.
+    /// Runs the service directly against the real database, since the one shared host cannot vary
+    /// <c>Reports:MaxGroups</c>.
     /// </summary>
-    /// <remarks>
-    /// One factory serves the whole integration collection, so <c>Reports:MaxGroups</c> cannot be
-    /// varied over HTTP without standing up a second host. The engine, the schema and the query
-    /// are the same either way; only the transport is skipped.
-    /// </remarks>
     private async Task<UsageReportDto> ReportWithOptionsAsync(ReportOptions options, string? groupBy)
     {
         using var scope = _fixture.Factory.Services.CreateScope();

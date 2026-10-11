@@ -14,13 +14,8 @@ using Text = DocumentFormat.OpenXml.Wordprocessing.Text;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Agents;
 
-/// <summary>
-/// Covers the check every produced artifact passes before it is stored: that it opens with the library
-/// that owns its format, is not empty, and reports what it holds.
-/// </summary>
 /// <remarks>
-/// Every fixture is built here rather than committed, so a format's expectations and the bytes that
-/// meet them cannot drift apart, and so a failure names the shape rather than a checked-in blob.
+/// Fixtures are built here rather than committed, so expectations and bytes cannot drift apart.
 /// </remarks>
 public sealed class GeneratedArtifactVerifierTests
 {

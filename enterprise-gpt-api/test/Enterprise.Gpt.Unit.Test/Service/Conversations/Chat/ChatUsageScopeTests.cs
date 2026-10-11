@@ -7,11 +7,6 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Conversations.Chat;
 
-/// <summary>
-/// Covers <see cref="ChatUsageScope"/> against the real tool-tracking middleware: that a completed
-/// request's report reaches the flow that opened the scope, that an abandoned one still does, and
-/// that scopes nest without one request's report landing in another's.
-/// </summary>
 public sealed class ChatUsageScopeTests
 {
     private static IChatClient BuildTrackedClient(IChatClient inner)
@@ -24,9 +19,8 @@ public sealed class ChatUsageScopeTests
     }
 
     /// <summary>
-    /// Drains a streamed request the way <c>ConversationService</c> does — by hand, re-entering the
-    /// scope around every move and around the disposal — from inside an async iterator, which is
-    /// the execution-context shape that makes the re-entry necessary.
+    /// Drains by hand as <c>ConversationService</c> does, re-entering the scope around every move and the
+    /// disposal, inside an async iterator: the execution-context shape that needs the re-entry.
     /// </summary>
     private static async IAsyncEnumerable<string> DrainAsync(IChatClient client, ChatUsageScope scope)
     {
@@ -179,11 +173,8 @@ public sealed class ChatUsageScopeTests
     }
 
     /// <summary>
-    /// ChatClientsConfiguration registers the observer in the container and never hands it to
-    /// <c>UseToolTracking</c> explicitly, relying on the middleware to collect every registered
-    /// <see cref="IChatProgressObserver"/> when the client is built. That is the single point of
-    /// failure for the whole feature — miss it and every turn silently records zero tokens — so the
-    /// contract is pinned here rather than assumed.
+    /// ChatClientsConfiguration never passes the observer to <c>UseToolTracking</c>, relying on it to collect
+    /// every registered <see cref="IChatProgressObserver"/>; miss that and every turn records zero tokens.
     /// </summary>
     [Fact]
     public async Task UseToolTracking_ObserverRegisteredInTheContainer_IsPickedUpWithoutBeingPassedIn()
@@ -208,17 +199,12 @@ public sealed class ChatUsageScopeTests
         Assert.Equal(4, scope.Report.AssistantUsage.InputTokenCount);
     }
 
-    /// <summary>
-    /// A chat client that answers with one text update and, unless <see cref="Usage"/> is left
-    /// unset, a usage update after it.
-    /// </summary>
     private sealed class ScriptedChatClient : IChatClient
     {
         public UsageDetails? Usage { get; init; }
 
         /// <summary>
-        /// Gets an exception thrown after the usage update, standing in for a provider that drops
-        /// the connection having already reported what the turn consumed.
+        /// Thrown after the usage update, like a provider that drops the connection after reporting usage.
         /// </summary>
         public Exception? Failure { get; init; }
 

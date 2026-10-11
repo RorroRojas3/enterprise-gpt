@@ -6,9 +6,8 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Service.Documents;
 
 /// <summary>
-/// The accepted <c>?type=</c> tokens are written down twice — as the advertised <c>Supported</c> set
-/// and as the private parse lookup — and nothing but this keeps them in step. Drift fails silently
-/// and client-facing in both directions, exactly as <c>SortKeysTests</c> records for the sort keys.
+/// The <c>?type=</c> tokens live in both the advertised <c>Supported</c> set and the private parse
+/// lookup, and only this keeps them in step; drift fails silently and client-facing.
 /// </summary>
 public sealed class DocumentTypeNamesTests
 {

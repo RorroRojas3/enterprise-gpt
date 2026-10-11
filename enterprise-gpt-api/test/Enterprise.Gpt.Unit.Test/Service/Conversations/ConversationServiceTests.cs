@@ -54,11 +54,6 @@ using Conversation = Enterprise.Gpt.Entity.Conversations.Conversation;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Conversations;
 
-/// <summary>
-/// Covers the MCP chat-wiring surface of <see cref="ConversationService.StreamConversationAsync"/>:
-/// how selected MCP servers turn into tools on the <see cref="ChatOptions"/> handed to the
-/// chat client, and how the tool leases are released when the stream ends.
-/// </summary>
 public sealed class ConversationServiceTests : IDisposable
 {
     private readonly SqliteDbContextFixture _fixture = new();
@@ -88,9 +83,7 @@ public sealed class ConversationServiceTests : IDisposable
 
         SetUpSuccessfulTranscriptWrites();
 
-        // A real estimator over the real vocabulary rather than a substitute returning a constant:
-        // the counts these tests assert on are the ones production writes, and a stub would only be
-        // asserting its own arrangement.
+        // A real estimator, not a constant stub, so the asserted counts are the ones production writes.
         var tokenizerOptions = Microsoft.Extensions.Options.Options.Create(new TokenEstimationOptions());
         var estimator = new TiktokenTokenEstimator(
             Guid.Empty,
@@ -101,32 +94,27 @@ public sealed class ConversationServiceTests : IDisposable
 
         _markdownRenderer.Render(Arg.Any<string?>()).Returns(callInfo => $"<p>{callInfo.ArgAt<string?>(0)}</p>");
 
-        // The real middleware, in the real order, over the fake provider: token accounting is a
-        // property of this pipeline rather than of the service, so a test that stubbed the report
-        // would be asserting its own arrangement. The observer is added by hand because nothing
-        // here builds through a container, which is what would otherwise supply it.
+        // The real middleware in production order: token accounting lives in this pipeline, not the
+        // service. The observer is added by hand because no container builds this client.
         _trackedChatClient = _chatClient
             .AsBuilder()
             .UseToolTracking(options =>
             {
                 options.Observers.Add(new ChatUsageObserver());
 
-                // As ChatClientPipeline installs it, so an agent exposed as a function classifies here the way
-                // it does in production rather than as an anonymous function.
+                // As ChatClientPipeline installs it, so an agent function classifies as in production.
                 options.UseAgentToolClassification();
             })
             .UseFunctionInvocation()
             .Build();
         _chatClientResolver.Resolve(Arg.Any<Guid>()).Returns(_trackedChatClient);
 
-        // No documents by default, so the retrieval tool stays off every turn that does not opt into it.
-        // A substitute returning null here would fault every stream before the first fragment.
+        // No documents by default; a substitute returning null would fault every stream.
         _documentRetrievalService
             .GetScopeAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => new DocumentRetrievalScope(callInfo.ArgAt<Guid>(0), null, []));
 
-        // Granted by default, so a test that switches summarization or the File Agent on is testing
-        // the switch rather than the grant. The tests that care about a grant arrange it themselves.
+        // Granted by default, so a test switching summarization or the File Agent on tests the switch.
         _userGrantReader
             .GetGrantsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns<IReadOnlySet<Guid>>(_ => new HashSet<Guid>
@@ -135,14 +123,12 @@ public sealed class ConversationServiceTests : IDisposable
                 PermissionIds.GenerateFiles
             });
 
-        // Sheets present by default, so a test that switches the sheet query on is testing the switch
-        // rather than whether the workbook was ever ingested.
+        // Sheets present by default, so a test switching the sheet query on tests the switch.
         _sheetQueryService
             .HasQueryableSheetsAsync(Arg.Any<DocumentRetrievalScope>(), Arg.Any<CancellationToken>())
             .Returns(true);
 
-        // No ceiling by default, so a test that switches the agent on is testing the switch rather
-        // than the quota. The tests that care about the ceiling arrange it themselves.
+        // No ceiling by default, so a test switching the agent on tests the switch, not the quota.
         _fileAgentQuotaService
             .CheckAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns(FileAgentQuotaDecision.Unbounded);
@@ -171,10 +157,7 @@ public sealed class ConversationServiceTests : IDisposable
             TimeProvider.System);
     }
 
-    /// <summary>
-    /// Builds a service with document summarization switched on. Options are captured at
-    /// construction, so a test that wants the tool cannot reuse the shared instance.
-    /// </summary>
+    // Options are captured at construction, so a test that switches a tool on needs its own instance.
     private ConversationService CreateServiceWithSummaryTool(IDocumentSummaryService? summaryService = null) =>
         new(NullLogger<ConversationService>.Instance,
             _modelService,
@@ -198,10 +181,6 @@ public sealed class ConversationServiceTests : IDisposable
             _fixture.Context,
             TimeProvider.System);
 
-    /// <summary>
-    /// Builds a service with the sheet query switched on. Options are captured at construction, so a
-    /// test that wants the tool cannot reuse the shared instance.
-    /// </summary>
     private ConversationService CreateServiceWithSheetQueryTool() =>
         new(NullLogger<ConversationService>.Instance,
             _modelService,
@@ -297,10 +276,7 @@ public sealed class ConversationServiceTests : IDisposable
         return user;
     }
 
-    /// <summary>
-    /// Seeds the transcript header and two messages, so the conversation-naming path — taken only
-    /// when the header reports a single message — is skipped.
-    /// </summary>
+    // Two messages, so the naming path (taken only on a single-message header) is skipped.
     private void SetUpTranscript(Guid conversationId)
     {
         var date = DateTimeOffset.UtcNow;
@@ -329,15 +305,8 @@ public sealed class ConversationServiceTests : IDisposable
             .Returns(new TranscriptPage<TranscriptMessageDocument>(messages, null));
     }
 
-    /// <summary>
-    /// Seeds a transcript whose query honours the page size and the continuation token, so the
-    /// service's own drain loop is exercised rather than short-circuited by a fake that always
-    /// returns everything in one page.
-    /// </summary>
-    /// <remarks>
-    /// Cosmos treats a page size as a ceiling it may return fewer than, which is exactly the
-    /// behaviour a fake returning the whole set would hide.
-    /// </remarks>
+    // Honours page size and continuation, returning short pages as Cosmos may, so the service's
+    // drain loop is exercised rather than short-circuited by a single page.
     private void SetUpPagedTranscript(
         Guid conversationId, IReadOnlyList<TranscriptMessageDocument> messages, int serverPageSize = 3)
     {
@@ -360,8 +329,7 @@ public sealed class ConversationServiceTests : IDisposable
 
                 var descending = query.Contains("DESC", StringComparison.Ordinal);
 
-                // The @before predicate, applied as Cosmos would: strictly earlier than the cursor,
-                // and inert when the parameter is null.
+                // @before as Cosmos applies it: strictly earlier than the cursor, inert when null.
                 var before = callInfo.ArgAt<QueryDefinition>(0).GetQueryParameters()
                     .FirstOrDefault(x => x.Name == "@before").Value as DateTimeOffset?;
 
@@ -383,10 +351,6 @@ public sealed class ConversationServiceTests : IDisposable
             });
     }
 
-    /// <summary>
-    /// Makes every batch report success, which is the shape the write path branches on. Individual
-    /// tests override it when they need a failure.
-    /// </summary>
     private void SetUpSuccessfulTranscriptWrites()
     {
         _transcriptStore.ExecuteBatchAsync(
@@ -394,9 +358,6 @@ public sealed class ConversationServiceTests : IDisposable
             .Returns(new TranscriptBatchResult(true, System.Net.HttpStatusCode.OK, null, null));
     }
 
-    /// <summary>
-    /// Captures the operations a batch recorded, by replaying the caller's builder delegate.
-    /// </summary>
     private IReadOnlyList<TranscriptBatchOperation> CapturedBatchOperations()
     {
         var call = _transcriptStore.ReceivedCalls()
@@ -413,10 +374,7 @@ public sealed class ConversationServiceTests : IDisposable
         return batch.Operations;
     }
 
-    /// <summary>
-    /// Substitutes the model on <c>IModelService</c> and seeds the matching catalog row, which the
-    /// usage audit row's foreign key requires.
-    /// </summary>
+    // Also seeds the catalog row, which the usage audit row's foreign key requires.
     private ModelDto SetUpModel(bool isToolEnabled, bool isReasoningEnabled = false)
     {
         var model = new ModelDto
@@ -456,12 +414,8 @@ public sealed class ConversationServiceTests : IDisposable
         return model;
     }
 
-    /// <summary>
-    /// Seeds an MCP server together with its linked permission and, unless
-    /// <paramref name="granted"/> is off, a grant of that permission to the calling user — the shape
-    /// <c>McpServerService.CreateMcpServerAsync</c> creates. The grant matters because the read that
-    /// restores a conversation's MCP selection only returns servers the caller may still use.
-    /// </summary>
+    // Seeds the grant by default: restoring a conversation's MCP selection returns only servers the
+    // caller may still use.
     private async Task<McpServer> AddMcpServerAsync(string name, bool granted = true)
     {
         var date = DateTimeOffset.UtcNow;
@@ -512,10 +466,6 @@ public sealed class ConversationServiceTests : IDisposable
         return server;
     }
 
-    /// <summary>
-    /// Substitutes a lease set that reports <paramref name="servers"/> as attached, so the usage
-    /// audit sees the same servers the tools came from.
-    /// </summary>
     private IMcpToolLeaseSet SetUpLeaseSet(params McpServer[] servers)
     {
         return SetUpLeaseSet(new FakeTool(), servers);
@@ -567,10 +517,6 @@ public sealed class ConversationServiceTests : IDisposable
             .ToListAsync(TestContext.Current.CancellationToken);
     }
 
-    /// <summary>
-    /// Drains the turn and returns just the answer fragments, so assertions about what the model
-    /// said are not entangled with the activity events interleaved among them.
-    /// </summary>
     private async Task<List<string?>> StreamToEndAsync(
         Guid conversationId,
         CreateConversationStreamActionDto request,
@@ -598,11 +544,6 @@ public sealed class ConversationServiceTests : IDisposable
         return events;
     }
 
-    /// <summary>
-    /// The Cosmos document must be created from the transcript projection, not the relational
-    /// entity: writing the entity left the conversation with no messages array and no system
-    /// prompt, which the model never saw and the first-turn naming path could never detect.
-    /// </summary>
     [Fact]
     public async Task CreateConversationAsync_WhenCalled_PersistsTranscriptWithSystemPrompt()
     {
@@ -620,23 +561,16 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal(1, header.MessageCount);
         Assert.Equal(ChatRoles.System, message.Role);
         Assert.NotEmpty(message.Content);
-        // The seeded system message is not privileged: it goes through the same estimator as user
-        // text, so the header's counters describe every message beneath them on one basis.
+        // The system message is counted like user text, so the header counters share one basis.
         Assert.True(message.Tokens > 0);
         Assert.Equal(message.Tokens, header.ContextTokens);
 
-        // Both roll-ups start from the same message. Seeding only the header would leave the
-        // relational counter understated by the system prompt for the life of the conversation,
-        // because every later turn moves the two by the same delta.
+        // Both roll-ups must start equal: every later turn moves them by the same delta.
         using var ctx = _fixture.CreateContext();
         var stored = await ctx.Conversations.SingleAsync(TestContext.Current.CancellationToken);
         Assert.Equal(header.ContextTokens, stored.ContextTokens);
     }
 
-    /// <summary>
-    /// The audit interceptor stamps the row, and the transcript takes that stamp, so both stores agree on when
-    /// the conversation began and the seeded message sorts first.
-    /// </summary>
     [Fact]
     public async Task CreateConversationAsync_WhenCalled_StampsTheTranscriptWithTheRowsCreationDate()
     {
@@ -653,18 +587,13 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal(stored.DateCreated, message.DateCreated);
     }
 
-    /// <summary>
-    /// Renaming used to hand the relational entity to a full-document replace, overwriting the
-    /// transcript with the relational shape — and it runs from inside a live stream.
-    /// </summary>
     [Fact]
     public async Task UpdateConversationNameAsync_WhenNamed_PatchesNameWithoutReplacingDocument()
     {
         var conversation = await AddConversationAsync();
         SetUpTranscript(conversation.Id);
         _chatClient.NamingResponse = "Named Conversation";
-        // The seeded model id, not a substituted one: this path resolves the model name straight
-        // from the database rather than through IModelService.
+        // The seeded model: this path reads the model from SQL, not through IModelService.
         var request = new CreateConversationStreamActionDto
         {
             Prompt = "Hello",
@@ -685,10 +614,8 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The naming path is the only place that reads the deployment name straight from SQL with a
-    /// hand-rolled projection rather than through <c>IModelService</c>, so a Name/DeploymentName
-    /// mix-up there survives a green build unless it is pinned here. The seeded model carries the
-    /// label in <c>Name</c> and the deployment in <c>DeploymentName</c>, so the two are separable.
+    /// The naming path projects the deployment name from SQL by hand, so a Name/DeploymentName mix-up
+    /// would otherwise build green. The seeded model's two values differ.
     /// </summary>
     [Fact]
     public async Task UpdateConversationNameAsync_WhenNamed_SendsTheDeploymentNameToTheModelsProvider()
@@ -730,10 +657,7 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Null(_chatClient.CapturedOptions);
     }
 
-    /// <summary>
-    /// Contention surfaces on the first <c>MoveNextAsync</c> — before any fragment is produced —
-    /// so the controller can still answer with a 409 rather than a half-shaped stream.
-    /// </summary>
+    /// <summary>Contention surfaces before any fragment, so the caller can still answer 409.</summary>
     [Fact]
     public async Task StreamConversationAsync_WhenConversationLockUnavailable_ThrowsOnFirstMoveNext()
     {
@@ -776,10 +700,7 @@ public sealed class ConversationServiceTests : IDisposable
         releaser.Received(1).Dispose();
     }
 
-    /// <summary>
-    /// The turn is appended with a patch rather than a read-modify-replace, so a write that lands
-    /// between loading the history and persisting the answer is not reverted.
-    /// </summary>
+    /// <summary>Appending by patch, not read-modify-replace, so a concurrent write is not reverted.</summary>
     [Fact]
     public async Task StreamConversationAsync_WhenStreamCompletes_AppendsMessagesWithoutReplacingDocument()
     {
@@ -797,9 +718,7 @@ public sealed class ConversationServiceTests : IDisposable
 
         var operations = CapturedBatchOperations();
 
-        // Exactly three operations, in one transaction on one partition: the two message documents
-        // and the header patch that counts them. Atomicity is what makes messageCount exact rather
-        // than advisory.
+        // Two messages and the header patch in one batch: atomicity keeps messageCount exact.
         Assert.Equal(3, operations.Count);
         Assert.Equal(TranscriptBatchOperationKinds.Create, operations[0].Kind);
         Assert.Equal(TranscriptBatchOperationKinds.Create, operations[1].Kind);
@@ -856,8 +775,7 @@ public sealed class ConversationServiceTests : IDisposable
     [Fact]
     public async Task StreamConversationAsync_WhenTheFileAgentProducedAFile_NamesItOnTheFinishedFrame()
     {
-        // The chip on the turn that made the file. A reload reads the same identities off the
-        // transcript, so this key is the live path rather than the only one.
+        // The live path; a reload reads the same identities off the transcript.
         var conversation = await AddConversationAsync();
         SetUpTranscript(conversation.Id);
         var model = SetUpModel(isToolEnabled: true);
@@ -945,10 +863,7 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Null(_chatClient.CapturedOptions?.Instructions);
     }
 
-    /// <summary>
-    /// The standing rule for every grant here: administration is a permission of its own, not a
-    /// superset of the others.
-    /// </summary>
+    /// <summary>Administration is a permission of its own, not a superset of the others.</summary>
     [Fact]
     public async Task StreamConversationAsync_AdministratorWithoutTheGenerateFilesGrant_HasNoFileAgent()
     {
@@ -972,10 +887,7 @@ public sealed class ConversationServiceTests : IDisposable
             _chatClient.CapturedOptions?.Tools ?? [], tool => tool.Name == FileAgentToolNames.Agent);
     }
 
-    /// <summary>
-    /// The grant is read per turn rather than per conversation, which is the whole of what makes a
-    /// revocation take effect without waiting for the conversation to end.
-    /// </summary>
+    /// <summary>The grant is read per turn, so a revocation applies before the conversation ends.</summary>
     [Fact]
     public async Task StreamConversationAsync_WhenTheGrantIsRevokedBetweenTurns_TheSecondTurnHasNoFileAgent()
     {
@@ -1050,8 +962,7 @@ public sealed class ConversationServiceTests : IDisposable
             "limit of 3 generated file(s)", _chatClient.CapturedOptions?.Instructions ?? string.Empty, StringComparison.Ordinal);
     }
 
-    // Every other reason the agent is absent is a capability the user never had, and saying so would
-    // advertise one they cannot use.
+    // Only the ceiling is explained; any other absence is a capability the user never had.
     [Fact]
     public async Task StreamConversationAsync_WhenTheUserIsUnderTheirCeiling_TellsTheAssistantNothingAboutIt()
     {
@@ -1071,8 +982,7 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// A generated file reaches the transcript only on a completed turn, so one stored by a turn that
-    /// was stopped would sit in the conversation's files with no message introducing it.
+    /// Files reach the transcript only on a completed turn, so a stopped turn's files would be orphaned.
     /// </summary>
     [Fact]
     public async Task StreamConversationAsync_WhenTheTurnIsStopped_WithdrawsWhatTheAgentHadAlreadyStored()
@@ -1119,8 +1029,8 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The test a wrong <c>trackUsage</c> fails on. With it set the other way the agent's tokens either
-    /// double or vanish, and the row-versus-counter comparison below is what catches either.
+    /// Pins <c>trackUsage</c>: set wrong, the agent's tokens double or vanish, which the row-versus-counter
+    /// comparison catches.
     /// </summary>
     [Fact]
     public async Task StreamConversationAsync_WhenTheFileAgentRuns_ItsTokensAreItsOwnAndTheTurnsAreUnchanged()
@@ -1167,11 +1077,7 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal(usage.OutputTokens + usage.ToolOutputTokens, stored.OutputTokens);
     }
 
-    /// <summary>
-    /// The mechanism the agent's own steps ride on: a scope opened inside a tool reaches the stream as
-    /// a child of that tool's activity, which is what draws "Running code" and "Checking …" beneath the
-    /// agent's card rather than as flat sub-status lines on it.
-    /// </summary>
+    /// <summary>The nesting draws the agent's steps beneath its card, not as sub-status lines.</summary>
     [Fact]
     public async Task StreamConversationAsync_WhenAToolOpensANestedScope_ItReachesTheStreamAsAChildActivity()
     {
@@ -1214,8 +1120,7 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal(2, child.Depth);
         Assert.Equal(parent.ScopeId, child.ParentScopeId);
 
-        // The card reads its label off the descriptor's Name, not its DisplayName — which is why the
-        // production descriptors carry prose in both rather than a code identifier in the first.
+        // The card labels from Name, not DisplayName, so production descriptors carry prose in both.
         Assert.Equal(ToolKind.Agent.ToString(), child.ToolKind.ToString());
 
         // The sub-status belongs to the child, not to the agent's own card.
@@ -1223,7 +1128,6 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal(child.ScopeId, progress.ScopeId);
     }
 
-    /// <summary>The agent as the tracked tool the assistant actually calls, over a client of its own.</summary>
     private static AITool TrackedAgent(long input, long output)
     {
         var client = new FakeAgentChatClient
@@ -1243,7 +1147,6 @@ public sealed class ConversationServiceTests : IDisposable
             new AIFunctionFactoryOptions { Name = FileAgentToolNames.Agent }, trackUsage: true);
     }
 
-    /// <summary>Builds a service with the File Agent switched on; options are captured at construction.</summary>
     private ConversationService CreateServiceWithFileAgent() =>
         new(NullLogger<ConversationService>.Instance,
             _modelService,
@@ -1267,7 +1170,6 @@ public sealed class ConversationServiceTests : IDisposable
             _fixture.Context,
             TimeProvider.System);
 
-    /// <summary>Stands the File Agent up as a lease that reports the given files as produced.</summary>
     private MessageAttachmentDto SetUpFileAgentProducing(params MessageAttachmentDto[] produced)
     {
         var lease = SetUpFileAgentLease(AIFunctionFactory.Create(() => "done", FileAgentToolNames.Agent));
@@ -1276,7 +1178,6 @@ public sealed class ConversationServiceTests : IDisposable
         return produced.FirstOrDefault()!;
     }
 
-    /// <summary>Stands the File Agent up as a lease over a given tool, and returns the lease itself.</summary>
     private IFileAgentToolLease SetUpFileAgentLease(AITool tool)
     {
         var lease = Substitute.For<IFileAgentToolLease>();
@@ -1291,7 +1192,6 @@ public sealed class ConversationServiceTests : IDisposable
         return lease;
     }
 
-    /// <summary>The agent's own client: one non-streamed answer, with the usage the run reports.</summary>
     private sealed class FakeAgentChatClient : IChatClient
     {
         public UsageDetails? Usage { get; init; }
@@ -1299,8 +1199,7 @@ public sealed class ConversationServiceTests : IDisposable
         public Task<ChatResponse> GetResponseAsync(
             IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
         {
-            // On the message as well as the response: the agent's own usage is what WithTracking
-            // attributes, and it is read off whichever of the two the bridge carries through.
+            // On both message and response: WithTracking reads whichever the bridge carries through.
             var message = new ChatMessage(ChatRole.Assistant, "Made it.");
 
             if (Usage is not null)
@@ -1323,9 +1222,8 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// A conversation created before the transcript cutover has a SQL row and no header document.
-    /// Patching a header that is absent fails the whole batch, so the turn has to create one — and
-    /// its counters start from this turn, because everything before the cutover was destroyed.
+    /// A pre-cutover conversation has no header, and patching an absent header fails the whole batch,
+    /// so the turn creates one with counters starting from this turn.
     /// </summary>
     [Fact]
     public async Task StreamConversationAsync_WhenHeaderAbsent_CreatesItInsteadOfPatching()
@@ -1351,8 +1249,7 @@ public sealed class ConversationServiceTests : IDisposable
 
         var operations = CapturedBatchOperations();
 
-        // The turn's two messages, the reseeded system message, and the header — all creates, no
-        // patch, because there is no header to patch.
+        // The turn's two messages, the reseeded system message and the header: all creates.
         Assert.Equal(4, operations.Count);
         Assert.All(operations, x => Assert.Equal(TranscriptBatchOperationKinds.Create, x.Kind));
 
@@ -1360,8 +1257,7 @@ public sealed class ConversationServiceTests : IDisposable
         var header = Assert.IsType<TranscriptHeaderDocument>(operations[3].Item);
         var user = Assert.IsType<TranscriptMessageDocument>(operations[0].Item);
 
-        // The standing instructions come back, and sort ahead of the prompt. Without them every
-        // later turn would run with no system message and nothing would report it.
+        // The system message is reseeded ahead of the prompt; without it later turns silently lose it.
         Assert.Equal(ChatRoles.System, system.Role);
         Assert.True(system.DateCreated < user.DateCreated);
 
@@ -1423,10 +1319,6 @@ public sealed class ConversationServiceTests : IDisposable
             .AcquireToolsAsync(default!, TestContext.Current.CancellationToken);
     }
 
-    /// <summary>
-    /// The client is chosen from the model's provider, not injected once at construction, so a
-    /// catalog spanning several providers reaches the right one on every turn.
-    /// </summary>
     [Fact]
     public async Task StreamConversationAsync_WhenCalled_ResolvesChatClientForTheModelsProvider()
     {
@@ -1445,12 +1337,7 @@ public sealed class ConversationServiceTests : IDisposable
         _chatClientResolver.Received(1).Resolve(model.ProviderId);
     }
 
-    /// <summary>
-    /// Resolution happens after the lock is taken and the conversation is loaded, but still ahead of
-    /// tool acquisition and every write — so a model whose provider has no client costs the caller a
-    /// clean 503 and leaves no half-written turn behind. The lock is released by the iterator's
-    /// <c>using</c> on the way out.
-    /// </summary>
+    /// <summary>Resolved before tools or any write, so a missing client is a clean 503.</summary>
     [Fact]
     public async Task StreamConversationAsync_WhenProviderHasNoChatClient_ThrowsWithoutAcquiringToolsOrWriting()
     {
@@ -1533,8 +1420,7 @@ public sealed class ConversationServiceTests : IDisposable
 
         await StreamToEndAsync(conversation.Id, request);
 
-        // Without the names the model cannot tell whether a question is worth a search, so it answers
-        // from its own knowledge and never calls the tool at all.
+        // Without the names the model cannot judge a search worthwhile and never calls the tool.
         var instructions = _chatClient.CapturedOptions?.Instructions;
         Assert.NotNull(instructions);
         Assert.Contains("handbook.pdf", instructions, StringComparison.Ordinal);
@@ -1573,18 +1459,14 @@ public sealed class ConversationServiceTests : IDisposable
 
         await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSummaryTool());
 
-        // Two tools over the same corpus with no guidance is a model that summarizes a whole
-        // document to answer a question one passage would have answered.
+        // Without guidance the model summarizes a whole document where one passage would answer.
         var instructions = _chatClient.CapturedOptions?.Instructions;
         Assert.NotNull(instructions);
         Assert.Contains(DocumentSummaryTool.ToolName, instructions, StringComparison.Ordinal);
         Assert.Contains(DocumentTool.ToolName, instructions, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// The rollback: with the flag off the model cannot call the tool, so the feature costs nothing
-    /// whatever a user asks for.
-    /// </summary>
+    /// <summary>The rollback switch: with the flag off the feature costs nothing.</summary>
     [Fact]
     public async Task StreamConversationAsync_SummarizationDisabled_AttachesOnlyRetrieval()
     {
@@ -1602,10 +1484,7 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Contains(tools, t => t.Name == DocumentTool.ToolName);
     }
 
-    /// <summary>
-    /// Gated more tightly than retrieval on purpose: reading a document back costs nothing and is
-    /// gated on ownership alone, while summarizing spends money on a cache miss.
-    /// </summary>
+    /// <summary>Gated tighter than retrieval: summarizing spends money on a cache miss.</summary>
     [Fact]
     public async Task StreamConversationAsync_CallerWithoutTheUploadGrant_AttachesOnlyRetrieval()
     {
@@ -1650,8 +1529,7 @@ public sealed class ConversationServiceTests : IDisposable
         SetUpDocumentScope(conversation.Id, null, "handbook.pdf");
         var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
 
-        // It stands down for the same reason retrieval does: nothing about it is worth failing a
-        // turn over.
+        // Stands down like retrieval does: nothing about it is worth failing a turn over.
         var events = await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSummaryTool());
 
         Assert.Contains(events, e => e.Kind == AssistantUiEventKind.TextDelta);
@@ -1659,19 +1537,9 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The accounting invariant this whole design rests on. The summarizer resolves its client
-    /// through the same <see cref="IChatClientResolver"/> the turn does, so its calls run on the
-    /// fully decorated pipeline — tool tracking included — from inside an already-tracked tool
-    /// invocation, and the tracker's ambient scope would otherwise claim them.
+    /// Undetached, the summarizer's calls inside a tracked tool would be claimed by the turn at the chat
+    /// model's rate and billed again by the summary row; the real service runs so the detach is exercised.
     /// </summary>
-    /// <remarks>
-    /// Left attributed, those tokens land in <see cref="ConversationUsage.ToolInputTokens"/>, where
-    /// <see cref="ConversationUsage.EstimatedCost"/> prices them at the <em>driving</em> model's
-    /// rate and <c>ConversationUsageToolCall.ModelId</c> is hard-null — so a summarization run would
-    /// be billed as if the conversation's own chat model had made it, and billed a second time by
-    /// the row the summary service writes. This runs the real service over a substituted engine
-    /// precisely so the detach is exercised rather than stubbed past.
-    /// </remarks>
     [Fact]
     public async Task StreamConversationAsync_SummaryToolMakesItsOwnModelCall_DoesNotBillItToTheTurn()
     {
@@ -1689,8 +1557,7 @@ public sealed class ConversationServiceTests : IDisposable
                 null,
                 [new RetrievableDocument(document.Id, DocumentSources.Conversation, document.Name)]));
 
-        // Stands in for the summarizer's own call: non-streaming, on the same decorated client,
-        // reaching it from inside the tool's invocation, reporting a run-sized prompt.
+        // The summarizer's own call: non-streaming, on the same decorated client, from inside the tool.
         _chatClient.NamingResponse = "A summary.";
         _chatClient.NamingUsage = new UsageDetails
         {
@@ -1819,8 +1686,7 @@ public sealed class ConversationServiceTests : IDisposable
 
         await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool());
 
-        // A model that cannot tell which of the attached files are spreadsheets falls back to adding up
-        // figures it read in a passage.
+        // Unless told which files are spreadsheets, the model adds up figures read from passages.
         var instructions = _chatClient.CapturedOptions?.Instructions;
         Assert.NotNull(instructions);
         Assert.Contains(SheetQueryTool.ToolName, instructions, StringComparison.Ordinal);
@@ -1828,10 +1694,7 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Contains("- budget.xlsx", instructions, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// The rollback: with the flag off the model cannot call the tool, so the feature costs nothing
-    /// whatever a user asks for, and everything else about a spreadsheet keeps working.
-    /// </summary>
+    /// <summary>The rollback switch: with the flag off the feature costs nothing.</summary>
     [Fact]
     public async Task StreamConversationAsync_SheetQueryDisabled_AttachesOnlyRetrieval()
     {
@@ -1860,8 +1723,7 @@ public sealed class ConversationServiceTests : IDisposable
 
         await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool());
 
-        // A tool that is always present and always answers that there is nothing to query teaches the
-        // model to stop calling it.
+        // An always-present tool that always finds nothing teaches the model to stop calling it.
         var tools = _chatClient.CapturedOptions?.Tools;
         Assert.NotNull(tools);
         Assert.DoesNotContain(tools, t => t.Name == SheetQueryTool.ToolName);
@@ -1869,8 +1731,8 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// A file uploaded before the sheet tables existed has chunks and no rows, so naming it in the prompt
-    /// would advertise a workbook every call then denies exists.
+    /// A file uploaded before the sheet tables existed has no rows, so naming it would advertise a
+    /// workbook every call then denies exists.
     /// </summary>
     [Fact]
     public async Task StreamConversationAsync_SpreadsheetWithNoIngestedSheet_AttachesOnlyRetrieval()
@@ -1908,8 +1770,7 @@ public sealed class ConversationServiceTests : IDisposable
 
         var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
 
-        // Costs the tool, not the turn: a conversation that happens to hold a workbook must not become a
-        // new way for chat to fail.
+        // Costs the tool, not the turn: holding a workbook must not become a new way for chat to fail.
         await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool());
 
         var tools = _chatClient.CapturedOptions?.Tools;
@@ -1931,10 +1792,7 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Null(_chatClient.CapturedOptions?.Tools);
     }
 
-    /// <summary>
-    /// The sheet prompt names the retrieval tool and tells the model when to prefer one over the other,
-    /// so it cannot ship on a request retrieval itself is absent from.
-    /// </summary>
+    /// <summary>The sheet prompt refers to the retrieval tool, so it cannot ship without it.</summary>
     [Fact]
     public async Task StreamConversationAsync_RetrievalStandsDown_TheSheetQueryStandsDownWithIt()
     {
@@ -2004,19 +1862,16 @@ public sealed class ConversationServiceTests : IDisposable
 
         await StreamToEndAsync(conversation.Id, request);
 
-        // This project cannot express a reasoning request — it holds no provider SDK — so the flag
-        // travels as a plain property and the provider's own client turns it into one. Written even
-        // when false, so the reading end can tell "does not reason" from "nobody said".
+        // No provider SDK here, so the flag travels as a property the provider's client maps. Written
+        // even when false, so the reader can tell "does not reason" from "nobody said".
         var captured = _chatClient.CapturedOptions;
         var properties = captured?.AdditionalProperties;
         Assert.NotNull(properties);
         Assert.True(properties.TryGetValue(ChatRequestProperties.IsReasoningEnabled, out var value));
         Assert.Equal(isReasoningEnabled, value);
 
-        // The provider-agnostic request is what carries the flag to Bedrock and Anthropic, and it
-        // is conditional: the OpenAI Responses adapter fills its raw reasoning options from this
-        // when they are empty, so setting it for a model that cannot reason would put reasoning on
-        // the wire for a deployment that rejects the whole request for it.
+        // Conditional: the OpenAI Responses adapter copies this into empty raw options, so setting it
+        // for a non-reasoning model would send reasoning to a deployment that rejects it.
         Assert.Equal(isReasoningEnabled, captured?.Reasoning is not null);
     }
 
@@ -2031,8 +1886,7 @@ public sealed class ConversationServiceTests : IDisposable
 
         var updates = await StreamToEndAsync(conversation.Id, request);
 
-        // Unlike an MCP selection, retrieval is attached implicitly; failing the turn over it would
-        // break every conversation that happens to hold a file.
+        // Retrieval is implicit, unlike an MCP selection, so it stands down rather than fail the turn.
         Assert.Equal(["Hello", " world"], updates);
         Assert.Null(_chatClient.CapturedOptions?.Tools);
     }
@@ -2099,10 +1953,8 @@ public sealed class ConversationServiceTests : IDisposable
 
         await StreamToEndAsync(conversation.Id, request);
 
-        // An MCP server named "document" exposing a tool named "search" produces exactly this name. Two
-        // identically named functions on one request are rejected outright by OpenAI-shaped providers, so
-        // the implicit tool stands down and the user's explicit selection survives. The instruction block
-        // has to go with it, or the model is told to call a tool it does not have.
+        // OpenAI-shaped providers reject duplicate function names, so the implicit tool stands down,
+        // and its instruction block with it.
         var capturedOptions = _chatClient.CapturedOptions;
         Assert.NotNull(capturedOptions);
         Assert.Equal([collidingTool], capturedOptions.Tools);
@@ -2122,16 +1974,11 @@ public sealed class ConversationServiceTests : IDisposable
 
         var updates = await StreamToEndAsync(conversation.Id, request);
 
-        // Scope resolution now runs for every conversation, including the ones with no documents at all,
-        // so letting it fault would turn a feature nobody in that turn is using into a new way for chat
-        // to break.
+        // Scope resolution runs on every turn, documents or not, so its fault must not break chat.
         Assert.Equal(["Hello", " world"], updates);
         Assert.Null(_chatClient.CapturedOptions?.Tools);
     }
 
-    /// <summary>
-    /// Substitutes a document scope for the conversation so the retrieval tool is attached.
-    /// </summary>
     private void SetUpDocumentScope(Guid conversationId, Guid? projectId, params string[] documentNames)
     {
         var scope = new DocumentRetrievalScope(
@@ -2206,8 +2053,7 @@ public sealed class ConversationServiceTests : IDisposable
     [Fact]
     public async Task UpdateConversationAsync_WithoutProjectId_RemovesTheConversationFromItsProject()
     {
-        // Full-representation PUT semantics: an absent project id means "no project", which is what
-        // makes moving a conversation out of one possible without a second route.
+        // PUT semantics: an absent project id means "no project", so moving out needs no second route.
         var project = await AddProjectAsync();
         var conversation = await AddConversationAsync(projectId: project.Id);
 
@@ -2257,8 +2103,7 @@ public sealed class ConversationServiceTests : IDisposable
 
         Assert.Contains("Always answer in British English.", _chatClient.CapturedOptions?.Instructions);
 
-        // The seeded transcript is one system message plus one user message, and the turn adds one
-        // more user message. Nothing was injected into it.
+        // Two seeded messages plus the prompt: nothing was injected.
         Assert.Equal(3, _chatClient.CapturedMessages.Count);
         Assert.Equal("System prompt.", _chatClient.CapturedMessages[0].Text);
         Assert.DoesNotContain(_chatClient.CapturedMessages, m => (m.Text ?? string.Empty).Contains("British English"));
@@ -2396,10 +2241,7 @@ public sealed class ConversationServiceTests : IDisposable
         return messages;
     }
 
-    /// <summary>
-    /// The default is unchanged from before paging existed: every message, so a client written
-    /// against the old contract keeps working.
-    /// </summary>
+    /// <summary>The default returns everything, so pre-paging clients keep working.</summary>
     [Fact]
     public async Task GetConversationMessagesAsync_NoPagingParameters_ReturnsTheWholeTranscript()
     {
@@ -2432,10 +2274,7 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal("Question 0", result.Messages[0].Text);
     }
 
-    /// <summary>
-    /// A bounded read asks for the newest N. The fake returns fewer per page than asked for, which
-    /// is what Cosmos is entitled to do, so this fails if the drain loop stops at the first page.
-    /// </summary>
+    /// <summary>The fake returns short pages, so this fails if the drain loop stops early.</summary>
     [Fact]
     public async Task GetConversationMessagesAsync_WithTake_ReturnsTheNewestThatManyDespiteSmallServerPages()
     {
@@ -2467,10 +2306,7 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Empty(older.Messages.Select(x => x.Id).Intersect(newest.Messages.Select(x => x.Id)));
     }
 
-    /// <summary>
-    /// Walking the whole transcript backwards must visit every message exactly once and terminate.
-    /// The client's only stopping condition is <c>hasMore</c>, because a page can be short.
-    /// </summary>
+    /// <summary>A page can be short, so <c>hasMore</c> is the client's only stopping condition.</summary>
     [Fact]
     public async Task GetConversationMessagesAsync_WalkedBackwards_VisitsEveryMessageOnceAndTerminates()
     {
@@ -2538,9 +2374,8 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// What the turn was billed, beside the message it produced (US-1101). It is read off the
-    /// document the transcript already stores rather than joined from the usage row, which is keyed
-    /// the other way and would cost a query per page.
+    /// Read off the transcript document rather than joined from the usage row, which is keyed the other
+    /// way and would cost a query per page.
     /// </summary>
     [Fact]
     public async Task GetConversationMessagesAsync_AssistantMessages_CarryTheirTurnsUsage()
@@ -2561,8 +2396,7 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal(812, assistant.Usage?.InputTokens);
         Assert.Equal(146, assistant.Usage?.OutputTokens);
 
-        // Null rather than zero on a message no turn was billed for. Zero would claim the turn ran
-        // and cost nothing, which is a different fact from "this message has no usage".
+        // Null, not zero: zero would claim a turn ran and cost nothing.
         Assert.Null(result.Messages[0].Usage);
     }
 
@@ -2620,10 +2454,6 @@ public sealed class ConversationServiceTests : IDisposable
     #endregion
 
     #region Message feedback
-    /// <summary>
-    /// Seeds one message document for the point read the feedback write opens with, and lets the
-    /// patch succeed. Tests that need the patch to miss override the last arrangement.
-    /// </summary>
     private TranscriptMessageDocument SetUpRatableMessage(
         Guid conversationId, Guid messageId, ChatRoles role = ChatRoles.Assistant,
         TranscriptMessageFeedback? feedback = null)
@@ -2657,10 +2487,7 @@ public sealed class ConversationServiceTests : IDisposable
                 TestContext.Current.CancellationToken);
     }
 
-    /// <summary>
-    /// The transcript document is where a rating has to land, because the transcript response is
-    /// what a reader gets back on a reload. The relational row beside it is a projection.
-    /// </summary>
+    /// <summary>A reload reads the transcript; the relational row is only a projection.</summary>
     [Fact]
     public async Task SetMessageFeedbackAsync_AssistantMessage_PatchesTheTranscriptAndProjectsTheRow()
     {
@@ -2687,10 +2514,7 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal(KnownIds.SeedUserId, row.UserId);
     }
 
-    /// <summary>
-    /// Re-rating replaces rather than accumulates. The unique index is what guarantees it, and this
-    /// pins that the upsert seeks the existing row rather than inserting a second one.
-    /// </summary>
+    /// <summary>Pins that the upsert seeks the existing row rather than inserting a second one.</summary>
     [Fact]
     public async Task SetMessageFeedbackAsync_RatedTwice_ReplacesTheRatingWithoutASecondRow()
     {
@@ -2725,9 +2549,7 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Withdrawing removes the block from the document and nulls the projection, rather than
-    /// deleting the row: the row records that this message was considered, which is itself the
-    /// reportable fact.
+    /// The row is nulled, not deleted: that the message was considered is itself the reportable fact.
     /// </summary>
     [Fact]
     public async Task SetMessageFeedbackAsync_NullRatingOnARatedMessage_RemovesTheBlockAndKeepsTheRow()
@@ -2763,10 +2585,8 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The end state asked for is already the one the message is in, so nothing is written to
-    /// either store. Skipping the projection matters as much as skipping the patch: a row here
-    /// claims the message was considered, and any client could otherwise mint one per message by
-    /// posting a null rating across a transcript.
+    /// No projection either: a row claims the message was considered, and posting null ratings across a
+    /// transcript would otherwise mint one per message.
     /// </summary>
     [Fact]
     public async Task SetMessageFeedbackAsync_NullRatingOnAnUnratedMessage_WritesNothingToEitherStore()
@@ -2786,10 +2606,8 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The header document shares the partition under the conversation's own id, and the message id
-    /// comes straight off the route — so without the discriminator check this point-reads the
-    /// header, deserializes it into the message shape with every unmapped member dropped, and
-    /// answers 400 about a role the caller never named.
+    /// The header shares this partition under the conversation id, so without the type check this would
+    /// point-read the header as a message.
     /// </summary>
     [Fact]
     public async Task SetMessageFeedbackAsync_ConversationIdPassedAsTheMessageId_ThrowsNotFound()
@@ -2877,9 +2695,8 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The projection row is best-effort by design. A 204 has to mean the rating comes back on the
-    /// next reload, and the transcript patch is what decides that — so a failure to write the
-    /// reporting row is logged and swallowed rather than costing the reader their rating.
+    /// The projection is best-effort: the transcript patch alone decides whether the rating survives a
+    /// reload, so a failed projection write is logged and swallowed.
     /// </summary>
     [Fact]
     public async Task SetMessageFeedbackAsync_ProjectionWriteFails_StillSucceedsBecauseTheTranscriptHoldsTheRating()
@@ -2888,9 +2705,8 @@ public sealed class ConversationServiceTests : IDisposable
         var messageId = Guid.NewGuid();
         SetUpRatableMessage(conversation.Id, messageId);
 
-        // The projection table is dropped rather than the context disposed: the guard that
-        // establishes the 404 reads the relational side too, so disposing would fail the request
-        // before it ever reached the write this test is about.
+        // Drop the table rather than dispose the context: the 404 guard reads SQL too, so disposing
+        // would fail the request before it reached the write under test.
         await _fixture.Context.Database.ExecuteSqlRawAsync(
             "DROP TABLE MessageFeedback", TestContext.Current.CancellationToken);
 
@@ -2903,10 +2719,6 @@ public sealed class ConversationServiceTests : IDisposable
             Arg.Any<IReadOnlyList<PatchOperation>>(), Arg.Any<CancellationToken>());
     }
 
-    /// <summary>
-    /// The rating on the way back out (US-1102's fourth criterion): read off the document beside the
-    /// message, exactly as its usage block is.
-    /// </summary>
     [Fact]
     public async Task GetConversationMessagesAsync_RatedAssistantMessage_CarriesItsFeedback()
     {
@@ -2930,18 +2742,13 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal(MessageFeedbackRatings.Up, assistant.Feedback?.Rating);
         Assert.Equal(ratedAt, assistant.Feedback?.DateModified);
 
-        // Absent rather than a default verdict on a message nobody rated: "not rated" and "rated
-        // up" are different facts, and the UI draws neither thumb for the first.
+        // Absent, not a default verdict: "not rated" is a different fact from "rated up".
         Assert.Null(result.Messages[0].Feedback);
     }
     #endregion
 
     #region Per-message tokenization and rendering
-    /// <summary>
-    /// The two messages of one turn are stamped at genuinely different moments — the prompt when it
-    /// arrived, the answer when it finished. With no array position and no sequence field, that
-    /// difference is the only thing that orders them.
-    /// </summary>
+    /// <summary>With no sequence field, timestamps alone order a turn's messages.</summary>
     [Fact]
     public async Task StreamConversationAsync_WhenStreamCompletes_StampsTheTwoMessagesAtDifferentMoments()
     {
@@ -3003,16 +2810,11 @@ public sealed class ConversationServiceTests : IDisposable
 
         var operations = CapturedBatchOperations();
 
-        // A user prompt is rendered by the same pipeline as assistant text, so an export needs one
-        // rendering path rather than two.
+        // Prompts render through the same pipeline as answers, so an export needs one rendering path.
         Assert.NotNull(Assert.IsType<TranscriptMessageDocument>(operations[0].Item).HtmlContent);
         Assert.NotNull(Assert.IsType<TranscriptMessageDocument>(operations[1].Item).HtmlContent);
     }
 
-    /// <summary>
-    /// The header moves by the turn's <em>context</em> cost, which is the sum of the two messages'
-    /// own token counts — explicitly not the billed input-plus-output figure written to SQL.
-    /// </summary>
     [Fact]
     public async Task StreamConversationAsync_WhenStreamCompletes_MovesTheHeaderByTheMessageTokenSum()
     {
@@ -3095,9 +2897,7 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// An assistant message's <c>tokens</c> counts only the transcribed answer, so it does not equal
-    /// the turn's reported output tokens — tool-call arguments are generated and billed but never
-    /// transcribed. The inequality is the design, not a defect.
+    /// Tool-call arguments are billed but never transcribed, so the inequality is the design, not a defect.
     /// </summary>
     [Fact]
     public async Task StreamConversationAsync_WhenAToolRuns_AssistantTokensDoNotEqualReportedOutputTokens()
@@ -3172,11 +2972,7 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Empty(usage.McpServers);
     }
 
-    /// <summary>
-    /// Drives one real two-iteration tool loop: the model asks for the <c>GetWeather</c> tool, the
-    /// function-invocation client runs it, the tool attributes tokens to itself, and the model
-    /// answers. Returns the conversation the turn ran on.
-    /// </summary>
+    // One real two-iteration tool loop whose tool reports its own usage.
     private async Task<Conversation> RunToolTurnAsync()
     {
         const string toolName = "GetWeather";
@@ -3253,10 +3049,6 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal(usage.OutputTokens, turns.Sum(turn => turn.OutputTokens ?? 0));
     }
 
-    /// <summary>
-    /// The split the whole feature exists for: what the assistant's own turns cost is kept apart
-    /// from what its tools cost, and both are on the same audit row.
-    /// </summary>
     [Fact]
     public async Task StreamConversationAsync_WhenAToolReportsUsage_SplitsAssistantAndToolTokensOnTheUsageRow()
     {
@@ -3271,10 +3063,7 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal(32, usage.TotalTokens);
     }
 
-    /// <summary>
-    /// The conversation's counters have to account for everything the turn was billed for, tools
-    /// included, and stay equal to the sum of its usage rows.
-    /// </summary>
+    /// <summary>The counters stay equal to the sum of the usage rows, tools included.</summary>
     [Fact]
     public async Task StreamConversationAsync_WhenAToolReportsUsage_BumpsTheConversationCountersByToolTokensToo()
     {
@@ -3312,10 +3101,8 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Contains(events, e => e.Kind == AssistantUiEventKind.TextDelta);
     }
 
-    // Every turn opens with a synthetic status line and reasoning line, ahead of the first model
-    // event. They sit after the lock, the reads, naming, model resolution, and tool acquisition —
-    // those failures still answer with problem JSON — but ahead of the model's first token, whose
-    // faults are the deliberate trade-off the service comment records.
+    // The synthetic lines follow every step that can still fail with problem JSON, and precede the
+    // model's first token.
     [Fact]
     public async Task StreamConversationAsync_WhenStreamOpens_EmitsStartingStatusThenReasoningFirst()
     {
@@ -3343,8 +3130,7 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Contains(events.Skip(2), e => e.Kind == AssistantUiEventKind.TextDelta);
     }
 
-    // Only the answer belongs in the transcript: the activity is live status, and replaying it to
-    // the model on the next turn would be neither useful nor what providers expect back.
+    // Activity is live status; replaying it to the model next turn is not what providers expect.
     [Fact]
     public async Task StreamConversationAsync_WhenAToolRuns_TranscribesOnlyTheAnswerText()
     {
@@ -3430,9 +3216,8 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The identifier a client needs to act on the message it just watched arrive (US-1101). It is
-    /// the transcript's own id rather than a correlation token, so a rating or a permalink can be
-    /// sent against it without refetching the transcript first.
+    /// The transcript's own id rather than a correlation token, so a client can rate or link the message
+    /// without refetching the transcript.
     /// </summary>
     [Fact]
     public async Task StreamConversationAsync_WhenStreamCompletes_StampsTheFinishedFrameWithThePersistedMessageId()
@@ -3463,10 +3248,8 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The frame is held until the transcript write answers, which is the whole reason it can carry
-    /// an identifier at all — the id does not exist until then. Asserted against the store rather
-    /// than against the clock: by the time the client can see the frame, the message it names is
-    /// already readable.
+    /// The frame waits for the transcript write, since the id it carries does not exist until then.
+    /// Asserted against the store rather than the clock.
     /// </summary>
     [Fact]
     public async Task StreamConversationAsync_WhenTheFinishedFrameArrives_TheTranscriptIsAlreadyWritten()
@@ -3491,9 +3274,8 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The usage row still asserts an <c>AssistantMessageId</c> here, because it commits before the
-    /// append is attempted — but nothing was written, so the wire must not repeat the claim. A
-    /// client that acted on the id would address a message the transcript will never return.
+    /// The usage row commits its <c>AssistantMessageId</c> before the append, but nothing was written, so
+    /// the wire must not repeat the claim.
     /// </summary>
     [Fact]
     public async Task StreamConversationAsync_WhenTheTranscriptWriteFails_TheFinishedFrameClaimsNoMessageId()
@@ -3521,11 +3303,8 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The third abandonment mode, and the only one that rests on compiler semantics rather than on
-    /// an exception: a client that disconnects leaves the enumerator suspended at a
-    /// <c>yield return</c>, and disposing it resumes the state machine in dispose mode — which runs
-    /// the finally that records the turn and then terminates, never reaching the statement that
-    /// would emit the frame.
+    /// A disconnect disposes the enumerator at a <c>yield return</c>, which runs the finally that records
+    /// the turn and never reaches the frame.
     /// </summary>
     [Fact]
     public async Task StreamConversationAsync_WhenTheClientDisconnects_RecordsTheTurnAndEmitsNoFinishedFrame()
@@ -3543,8 +3322,7 @@ public sealed class ConversationServiceTests : IDisposable
         {
             events.Add(uiEvent);
 
-            // What `await foreach` compiles a client disconnect into: the enumerator is disposed
-            // while suspended, rather than drained.
+            // How a client disconnect plays out: the enumerator is disposed while suspended, not drained.
             break;
         }
 
@@ -3557,10 +3335,8 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// A completed turn is owed its <c>Finished</c> frame whatever the write then does. Holding the
-    /// frame back until after persistence must not quietly turn a turn that ran to completion into
-    /// one the client can only read as truncated — so the failure is captured, the frame goes out
-    /// without an identifier it cannot honour, and the exception follows it.
+    /// A completed turn is owed its <c>Finished</c> frame even when persisting fails, or the client would
+    /// read it as truncated; the frame goes out without an id and the exception follows.
     /// </summary>
     [Fact]
     public async Task StreamConversationAsync_WhenPersistingACompletedTurnThrows_StillEmitsFinishedThenRethrows()
@@ -3597,9 +3373,7 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// A faulted turn is billed and never transcribed, so there is no message to name. The absence
-    /// is structural rather than conditional: the frame is yielded after the write, and a fault
-    /// leaves that statement unreached.
+    /// The frame is yielded after the write, which a fault never reaches, so there is no message to name.
     /// </summary>
     [Fact]
     public async Task StreamConversationAsync_WhenStreamFaults_EmitsNoFinishedFrame()
@@ -3625,9 +3399,7 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// A cancelled turn is still billed for whatever the model produced before the caller walked
-    /// away, so the counters move and the usage row is written; the transcript is not appended,
-    /// because a truncated answer would be replayed to the model on every later turn.
+    /// Billed but not transcribed: a truncated answer would be replayed to the model on every later turn.
     /// </summary>
     [Fact]
     public async Task StreamConversationAsync_WhenCancelledMidStream_RecordsCancelledUsageWithoutTranscribing()
@@ -3654,10 +3426,6 @@ public sealed class ConversationServiceTests : IDisposable
             default, default!, TestContext.Current.CancellationToken);
     }
 
-    /// <summary>
-    /// The point of recording an abandoned turn at all: the tokens it burned are billed, so the
-    /// conversation's running counters have to move even though nothing reached the transcript.
-    /// </summary>
     [Fact]
     public async Task StreamConversationAsync_WhenAbandonedAfterUsageWasReported_StillBillsTheConversation()
     {
@@ -3701,10 +3469,8 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Finalization runs in a <c>finally</c>, so a failure there would replace the exception that
-    /// ended the stream — the caller would see a database error instead of the cancellation the
-    /// endpoint turns into a 499. The conversation row is deleted mid-stream to make the usage
-    /// insert violate its foreign key.
+    /// A failure in the finalizing <c>finally</c> must not mask the cancellation the endpoint maps to 499.
+    /// Deleting the conversation mid-stream makes the usage insert violate its foreign key.
     /// </summary>
     [Fact]
     public async Task StreamConversationAsync_WhenRecordingAnAbandonedTurnFails_StillSurfacesTheOriginalException()
@@ -3733,10 +3499,7 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Empty(await ReadUsageAsync(conversation.Id));
     }
 
-    /// <summary>
-    /// Naming is a billed completion of its own. It used to be charged to nobody, so a
-    /// conversation's totals — and every report built on them — understated what was spent.
-    /// </summary>
+    /// <summary>Naming is a billed completion of its own and counts toward the totals.</summary>
     [Fact]
     public async Task StreamConversationAsync_OnTheFirstTurn_RecordsTheNamingCallSeparately()
     {
@@ -3744,8 +3507,7 @@ public sealed class ConversationServiceTests : IDisposable
         var date = DateTimeOffset.UtcNow;
         var partition = new PartitionKey(PartitionKeys.For(KnownIds.SeedUserId, conversation.Id));
 
-        // A single message in the header is what marks a conversation's first turn, so this is the
-        // arrangement that takes the naming path.
+        // A single-message header marks the first turn, which takes the naming path.
         _transcriptStore.ReadItemAsync<TranscriptHeaderDocument>(
                 conversation.Id.ToString(), partition, Arg.Any<CancellationToken>())
             .Returns(TranscriptHeaderDocument.Create(KnownIds.SeedUserId, conversation.Id, "Test Conversation", date)
@@ -3760,9 +3522,8 @@ public sealed class ConversationServiceTests : IDisposable
             ], null));
 
         _chatClient.NamingResponse = "Named Conversation";
-        // Cached and reasoning counts are set here because naming is the one path that can currently
-        // persist them non-null: the tracking middleware's aggregation drops both, and this path
-        // reads the response's own usage instead of the report.
+        // Naming is the one path that persists cached and reasoning counts: it reads the response's
+        // own usage, while the tracking middleware's aggregation drops both.
         _chatClient.NamingUsage = new UsageDetails
         {
             InputTokenCount = 4,
@@ -3771,8 +3532,7 @@ public sealed class ConversationServiceTests : IDisposable
             ReasoningTokenCount = 1
         };
         _chatClient.StreamUsage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 };
-        // The seeded model, because the naming path resolves the deployment straight from the
-        // database rather than through IModelService.
+        // The seeded model: the naming path resolves the deployment from SQL, not IModelService.
         _modelService.GetModelAsync(KnownIds.SeedModelId, Arg.Any<CancellationToken>())
             .Returns(new ModelDto
             {
@@ -3798,17 +3558,14 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal(ConversationUsageStatuses.Completed, naming.Status);
         Assert.Equal(6, naming.TotalTokens);
         Assert.Null(naming.AssistantMessageId);
-        // Subsets of the two columns above, not additions to them, and they reach the row from the
-        // response rather than from the usage report — which is why this assertion is here and not
-        // on the chat row beside it.
+        // Subsets of the columns above, read from the response rather than the report, so asserted here
+        // and not on the chat row.
         Assert.Equal(3, naming.CachedInputTokens);
         Assert.Equal(1, naming.ReasoningTokens);
         Assert.Equal(18, chat.TotalTokens);
 
-        // Naming is billed but not streamed, so the provider reports one aggregate and there is no
-        // per-turn breakdown to record. Synthesising one would manufacture an iteration nobody
-        // reported. The streamed chat row alongside it does carry turns, which is what makes this
-        // an assertion about the naming path rather than about the feature being off.
+        // Naming is not streamed, so it has no per-turn breakdown; the chat row's turns prove the
+        // feature is on.
         var turns = await ReadTurnsAsync(conversation.Id);
         Assert.DoesNotContain(turns, x => x.ConversationUsageId == naming.Id);
         Assert.Contains(turns, x => x.ConversationUsageId == chat.Id);
@@ -3850,9 +3607,8 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The restored selection is replayed straight into the next turn, where
-    /// <c>McpToolProvider.AcquireToolsAsync</c> answers a server the caller cannot use with a 403 the
-    /// client has no way to act on. The audit row keeps the historical selection regardless.
+    /// The restored selection is replayed into the next turn, where an unpermitted server is a 403 the
+    /// client cannot act on. The audit row keeps the full selection.
     /// </summary>
     [Fact]
     public async Task GetConversationAsync_WhenTheLastTurnsServerIsNoLongerPermitted_OmitsIt()
@@ -3980,9 +3736,7 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal(inProject.Id, Assert.Single(result.Items).Id);
     }
 
-    // The project filter is appended to the base predicate rather than replacing it. A refactor
-    // that rebuilt the query for the filtered case would drop the soft-delete clause with nothing
-    // else failing, so the "active" half of the criterion is pinned here.
+    // A refactor that rebuilt the query for the filtered case could drop the soft-delete clause unnoticed.
     [Fact]
     public async Task SearchConversationsAsync_FilteringOnAProject_ExcludesItsDeactivatedConversations()
     {
@@ -4049,8 +3803,7 @@ public sealed class ConversationServiceTests : IDisposable
     [Fact]
     public async Task SearchConversationsAsync_NoOrderRequested_KeepsTheListingsOriginalOrder()
     {
-        // The order this route had before it accepted one, pinned so a later change to the sorted
-        // path cannot quietly move it: clients written against it are promised it unchanged.
+        // The pre-sorting default order, pinned: existing clients are promised it unchanged.
         var older = await AddConversationAsync(name: "Older", created: DateTimeOffset.UtcNow.AddDays(-2));
         var newer = await AddConversationAsync(name: "Newer", created: DateTimeOffset.UtcNow.AddDays(-1));
 
@@ -4104,8 +3857,7 @@ public sealed class ConversationServiceTests : IDisposable
     [Fact]
     public async Task SearchConversationsAsync_RequestedOrderIsTotal_SoPagesCannotDuplicateOrSkipARow()
     {
-        // Every untitled conversation shares one name, so a name sort with no tie-break leaves the
-        // row at a page boundary up to the engine and a Load more can append a row already shown.
+        // Untitled conversations share one name, so without a tie-break page boundaries are up to the engine.
         for (var i = 0; i < 4; i++)
         {
             await AddConversationAsync();
@@ -4121,9 +3873,7 @@ public sealed class ConversationServiceTests : IDisposable
             name: null, skip: 0, take: 4, sort: "name",
             cancellationToken: TestContext.Current.CancellationToken);
 
-        // Against the unpaged list, not merely distinct: any deterministic order returns four
-        // distinct rows, including the one a table scan happens to produce, so a distinctness
-        // assertion would pass with the tie-break deleted and pin nothing.
+        // Against the unpaged list: a distinctness check would still pass with the tie-break deleted.
         Assert.Equal(
             whole.Items.Select(x => x.Id),
             first.Items.Select(x => x.Id).Concat(second.Items.Select(x => x.Id)));
@@ -4132,9 +3882,7 @@ public sealed class ConversationServiceTests : IDisposable
     [Fact]
     public async Task SearchConversationsAsync_SortByName_ReversesEvenWhenEveryNameIsTheSame()
     {
-        // Every untitled conversation carries the same name, so the tie-break decides the whole
-        // list. A tie-break fixed in one direction would return the same rows for both, and the
-        // A-Z/Z-A control on the library screen would look inert.
+        // Identical names leave the whole order to the tie-break, which must follow the direction too.
         for (var i = 0; i < 3; i++)
         {
             await AddConversationAsync();
@@ -4296,73 +4044,33 @@ public sealed class ConversationServiceTests : IDisposable
     }
     #endregion
 
-    /// <summary>
-    /// Captures the <see cref="ChatOptions"/> and messages the service builds and yields a short,
-    /// fixed stream. <see cref="GetResponseAsync"/> throws so any unexpected trip through the
-    /// conversation-naming path fails the test loudly.
-    /// </summary>
     private sealed class FakeChatClient : IChatClient
     {
         private int _streamedTurns;
 
         public ChatOptions? CapturedOptions { get; private set; }
 
-        /// <summary>
-        /// Gets the messages handed to the streaming call, in order.
-        /// </summary>
         public List<ChatMessage> CapturedMessages { get; } = [];
 
-        /// <summary>
-        /// Gets the options handed to the conversation-naming call. Held apart from
-        /// <see cref="CapturedOptions"/> because naming runs inline inside a stream, so a single
-        /// field would be overwritten by the turn that follows it.
-        /// </summary>
+        // Apart from CapturedOptions: naming runs inside a stream, so one field would be overwritten.
         public ChatOptions? CapturedNamingOptions { get; private set; }
 
-        /// <summary>
-        /// Gets or sets the name the conversation-naming path should return. Left <see langword="null"/>,
-        /// that path throws, so tests that do not expect naming to run still fail loudly.
-        /// </summary>
+        // Left null, the naming path throws, so tests that do not expect naming fail loudly.
         public string? NamingResponse { get; set; }
 
-        /// <summary>
-        /// Gets or sets the usage the conversation-naming call reports.
-        /// </summary>
         public UsageDetails? NamingUsage { get; set; }
 
-        /// <summary>
-        /// Gets or sets the usage the streaming call reports, emitted with the final update.
-        /// </summary>
         public UsageDetails? StreamUsage { get; set; }
 
-        /// <summary>
-        /// Gets or sets an exception the streaming call throws after its first update, standing in
-        /// for a provider that drops the connection part-way through an answer.
-        /// </summary>
         public Exception? StreamFailure { get; set; }
 
-        /// <summary>
-        /// Gets or sets whether <see cref="StreamFailure"/> is thrown after the usage update rather
-        /// than before it, so a turn can fail having already reported what it consumed.
-        /// </summary>
         public bool FailAfterUsage { get; set; }
 
-        /// <summary>
-        /// Gets or sets the name of a tool the first streamed turn asks for. Set, the fake drives a
-        /// real two-iteration function-invocation loop: turn one is the call, turn two the answer.
-        /// </summary>
         public string? ToolCallName { get; set; }
 
-        /// <summary>
-        /// Gets or sets the arguments the scripted call carries. Empty by default, which suits a tool
-        /// that takes none; a tool with a required parameter needs it, or the invocation fails before
-        /// the tool body runs and reports no usage.
-        /// </summary>
+        // A tool with a required parameter needs it here, or invocation fails before the body reports usage.
         public Dictionary<string, object?> ToolCallArguments { get; } = [];
 
-        /// <summary>
-        /// Gets or sets the usage reported for the first turn, the one that only asks for a tool.
-        /// </summary>
         public UsageDetails? ToolTurnUsage { get; set; }
 
         public Task<ChatResponse> GetResponseAsync(
@@ -4442,10 +4150,6 @@ public sealed class ConversationServiceTests : IDisposable
     {
     }
 
-    /// <summary>
-    /// A tool that reports a chosen name, for the case where an MCP server's prefixed tool name collides
-    /// with the document retrieval tool's.
-    /// </summary>
     private sealed class FakeNamedTool(string name) : AITool
     {
         public override string Name { get; } = name;

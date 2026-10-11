@@ -7,31 +7,10 @@ namespace Enterprise.Gpt.Entity.Usage;
 /// single iteration of the function-invocation loop.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Append-only, and derives from <see cref="BaseCreatedEntity{TKey}"/>, for the same reason as its parent and
-/// siblings: a usage record that can be edited or hidden is not an audit trail.
-/// </para>
-/// <para>
-/// These rows exist so per-tool <em>prompt</em> cost is answerable. A tool consumes no tokens of its
-/// own — an MCP tool is a round trip to another process — but its arguments and its result enter the
-/// <em>next</em> turn's prompt and are billed there, inside one aggregate the provider never
-/// itemizes. Storing each turn as reported turns that into arithmetic the reader can do:
-/// <c>input(N+1) − input(N) − output(N)</c> is what the calls issued by turn <c>N</c> cost, and
-/// <see cref="ConversationUsageToolCall.Iteration"/> is what says which calls those were.
-/// </para>
-/// <para>
-/// The subtraction is an attribution model rather than an invoice, which is why the numbers stored
-/// here are the reported ones and the derivation lives in the queries that need it. Two corrections
-/// belong to the reader: <see cref="ReasoningTokens"/> is billed inside
-/// <see cref="OutputTokens"/> but is not replayed into the next prompt, so it must come out of
-/// <c>output(N)</c>; and <see cref="CachedInputTokens"/> is billed inside <see cref="InputTokens"/>
-/// at a discount, which changes what a token costs rather than how many there were.
-/// </para>
-/// <para>
-/// Rows exist only for a streamed request. Providers report a single aggregate for a non-streaming
-/// call, so the middleware surfaces no per-turn breakdown and a call that never streamed carries no
-/// turns at all — which is not the same as a turn that reported nothing.
-/// </para>
+/// Append-only. Exists to attribute per-tool prompt cost: a tool's arguments and result bill in the next
+/// turn's prompt, so <c>input(N+1) − input(N) − output(N)</c> is what turn <c>N</c>'s calls cost (see
+/// <see cref="ConversationUsageToolCall.Iteration"/>). Values are stored as reported and the attribution
+/// lives in queries. Rows exist only for streamed requests.
 /// </remarks>
 public class ConversationUsageTurn : BaseCreatedEntity<Guid>
 {
@@ -56,10 +35,8 @@ public class ConversationUsageTurn : BaseCreatedEntity<Guid>
     /// The model identifier the provider reported for this turn, when it reported one.
     /// </summary>
     /// <remarks>
-    /// Named for what it is rather than <c>ModelId</c>, which everywhere else in this schema is a
-    /// catalog <see cref="Guid"/> foreign key. This is the provider's own string, and it is the one
-    /// place in the trail where a model actually names itself — <see cref="ConversationUsage"/>
-    /// records the catalog row this application chose, which is not the same claim.
+    /// The provider's own string, not a catalog <c>ModelId</c>; <see cref="ConversationUsage"/> records the
+    /// catalog row this application chose, which is a different claim.
     /// </remarks>
     public string? ReportedModelId { get; set; }
 
@@ -89,9 +66,8 @@ public class ConversationUsageTurn : BaseCreatedEntity<Guid>
     /// <see cref="InputTokens"/>.
     /// </summary>
     /// <remarks>
-    /// Recorded because cached tokens bill at a discount, so a cost derived from
-    /// <see cref="InputTokens"/> alone overstates what was charged. It is not currently priced — see
-    /// <see cref="ConversationUsage.EstimatedCost"/>.
+    /// Cached tokens bill at a discount, so cost from <see cref="InputTokens"/> alone overstates; not yet
+    /// priced (see <see cref="ConversationUsage.EstimatedCost"/>).
     /// </remarks>
     public long? CachedInputTokens { get; set; }
 
@@ -100,16 +76,9 @@ public class ConversationUsageTurn : BaseCreatedEntity<Guid>
     /// <see cref="OutputTokens"/>.
     /// </summary>
     /// <remarks>
-    /// Recorded because they are billed but are generally not carried into the next turn's prompt,
-    /// so any attribution that subtracts a turn's output from the next turn's input has to subtract
-    /// these back out or it understates what the turn's tools cost.
-    /// <para>
-    /// "Generally" is load-bearing, and the exception is why <see cref="ConversationUsage.ProviderId"/>
-    /// matters to a report built on this: Anthropic requires thinking blocks to be sent back with a
-    /// tool result, so on an Anthropic tool-use turn the reasoning tokens <em>are</em> billed again
-    /// in the next prompt and subtracting them over-attributes the turn's tools. The correction
-    /// holds on providers that discard reasoning between turns, which is the rest of the catalog.
-    /// </para>
+    /// Usually not replayed, so delta attribution subtracts them from <c>output(N)</c>. Except on Anthropic,
+    /// which requires thinking blocks back with tool results and so rebills them; reports must check
+    /// <see cref="ConversationUsage.ProviderId"/>.
     /// </remarks>
     public long? ReasoningTokens { get; set; }
 

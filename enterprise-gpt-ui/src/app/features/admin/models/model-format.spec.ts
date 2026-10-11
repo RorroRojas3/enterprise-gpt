@@ -31,8 +31,7 @@ describe('formatTokens', () => {
   });
 
   it('uses one fixed grouping rather than the reader’s locale', () => {
-    // The app ships no i18n, so a locale-dependent separator would put `32.768` beside a
-    // deployment name and a context size that are not localised at all.
+    // The app ships no i18n, so a locale-dependent separator would clash with its neighbours.
     expect(formatTokens(1_000_000)).toBe('1,000,000');
   });
 

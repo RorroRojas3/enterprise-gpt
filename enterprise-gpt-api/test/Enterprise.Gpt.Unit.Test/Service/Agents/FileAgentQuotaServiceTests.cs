@@ -12,10 +12,6 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Agents;
 
-/// <summary>
-/// Covers the per-user ceiling on file generation: that it counts the agent's own audit rows, that it
-/// bounds both runs and sandbox seconds, and that an unset ceiling never queries at all.
-/// </summary>
 public sealed class FileAgentQuotaServiceTests : IDisposable
 {
     private readonly SqliteDbContextFixture _fixture = new();

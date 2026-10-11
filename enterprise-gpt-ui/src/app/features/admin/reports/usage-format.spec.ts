@@ -25,8 +25,7 @@ describe('usage-format', () => {
   });
 
   it('renders an unpriced figure as an em dash, never as zero', () => {
-    // The whole reason cost is nullable: a deployment whose models carry no price has not
-    // spent nothing.
+    // A deployment whose models carry no price has not spent nothing.
     expect(formatCost(null)).toBe(NO_VALUE);
     expect(formatCost(0)).toBe('$0.00');
   });

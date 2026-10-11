@@ -12,9 +12,6 @@ using FluentValidation;
 
 namespace Enterprise.Gpt.Api.Configuration;
 
-/// <summary>
-/// Registers documents: ingestion, extraction, retrieval, the sheet query tool and summarization.
-/// </summary>
 internal static class DocumentsConfiguration
 {
     #region Private methods
@@ -34,9 +31,6 @@ internal static class DocumentsConfiguration
 
     #region Public static methods
 
-    /// <summary>
-    /// Registers the document services and their validated options.
-    /// </summary>
     internal static IServiceCollection AddDocuments(this IServiceCollection services, IConfiguration configuration)
     {
         AddValidatedOptions<DocumentOptions, DocumentOptionsValidator>(services, configuration, DocumentOptions.SectionName);
@@ -47,9 +41,8 @@ internal static class DocumentsConfiguration
         // Only that a model id was supplied; that it resolves to a usable row is checked after migration.
         AddValidatedOptions<SummarizationOptions, SummarizationOptionsValidator>(services, configuration, SummarizationOptions.SectionName);
 
-        // Read through this rather than IOptions, so switching the tool off reaches the next turn rather than the
-        // next restart. Singleton, because its consumers are scoped and could not otherwise keep the last
-        // configuration that validated.
+        // Read through this rather than IOptions so switching the tool off reaches the next turn, not the next
+        // restart. Singleton so the last configuration that validated outlives its scoped consumers.
         services.AddSingleton<ISheetQueryOptionsProvider, SheetQueryOptionsProvider>();
 
         services.AddSingleton<IDocumentIntelligenceService, DocumentIntelligenceService>();

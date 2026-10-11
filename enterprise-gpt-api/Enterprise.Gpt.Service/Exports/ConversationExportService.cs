@@ -25,14 +25,10 @@ public interface IConversationExportService
     /// <summary>
     /// Exports one of the caller's conversations.
     /// </summary>
-    /// <param name="id">The conversation to export.</param>
-    /// <param name="format">The format to render, defaulting to HTML when not supplied.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>The rendered export.</returns>
     /// <exception cref="ValidationException">The requested format is not a supported one.</exception>
     /// <exception cref="NotFoundException">The conversation is not an active conversation of the caller.</exception>
     /// <exception cref="ExportRendererNotConfiguredException">
-    /// The format is supported but this deployment has no renderer for it.
+    /// This deployment has no renderer for the format.
     /// </exception>
     Task<ConversationExport> ExportConversationAsync(
         Guid id, string? format, CancellationToken cancellationToken = default);
@@ -42,27 +38,9 @@ public interface IConversationExportService
 /// Reads a conversation's transcript and hands it to the renderer for the requested format.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The service owns three things and no more: who may export (SQL ownership plus a live transcript
-/// header), what an export may contain (the persisted prompts and answers, and nothing else),
-/// and which renderer answers. Everything about a particular format lives in its
-/// <see cref="IConversationExportRenderer"/>, so adding one is a registration rather than a branch
-/// here.
-/// </para>
-/// <para>
-/// A format with no registered renderer raises <see cref="ExportRendererNotConfiguredException"/>
-/// rather than falling through to a 500. That is not a defensive nicety: PDF rendering depends on a
-/// font this deployment may not have, and <c>Export:DisabledFormats</c> can withdraw any of them, so
-/// "supported by this API but not available here" is a state a client has to be able to tell apart
-/// from a transient failure.
-/// </para>
+/// Owns who may export, what an export may contain and which renderer answers; everything format-specific
+/// lives in an <see cref="IConversationExportRenderer"/>.
 /// </remarks>
-/// <param name="logger">The logger.</param>
-/// <param name="transcriptStore">The transcript store.</param>
-/// <param name="tokenService">Supplies the calling user's object identifier.</param>
-/// <param name="ctx">The relational context, read for ownership.</param>
-/// <param name="renderers">Every export renderer this deployment registered.</param>
-/// <param name="timeProvider">Supplies the export timestamp.</param>
 public sealed partial class ConversationExportService(
     ILogger<ConversationExportService> logger,
     ITranscriptStore transcriptStore,
@@ -114,9 +92,8 @@ public sealed partial class ConversationExportService(
 
         var messages = await ReadMessagesAsync(id, partition, cancellationToken);
 
-        // Rendering is synchronous and can be the most expensive part of the request — a PDF lays out
-        // every page on this thread. A caller who navigated away has already stopped waiting, and
-        // OperationCanceledException is a 499 with no body rather than wasted work.
+        // Rendering is synchronous and can be the costliest step (a PDF lays out every page here), so a
+        // caller who already left gets a 499 rather than wasted work.
         cancellationToken.ThrowIfCancellationRequested();
 
         return renderer.Render(
@@ -184,10 +161,8 @@ public sealed partial class ConversationExportService(
         }
         while (continuationToken is not null);
 
-        // An allowlist rather than "everything except System": the export's contract is the prompts
-        // and the completed answers, and the label a message gets downstream is a two-way choice
-        // between You and Assistant. A Tool document — the enum has the member, nothing writes one
-        // today — would otherwise be exported as an assistant answer it never was.
+        // An allowlist: downstream labels are only You or Assistant, so anything else, such as a Tool
+        // document, would export as an assistant answer it never was.
         return [.. messages
             .Where(x => x.Role is ChatRoles.User or ChatRoles.Assistant)
             .OrderBy(x => x.DateCreated)

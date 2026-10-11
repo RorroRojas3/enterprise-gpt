@@ -135,9 +135,8 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
     [Fact]
     public async Task GetModel_AcceptHeaderTheProblemWriterRejects_StillReturnsABody()
     {
-        // DefaultProblemDetailsWriter declines anything outside JSON and writes nothing, so the
-        // handlers fall back to an explicit write. Without it a browser hitting an API URL directly
-        // would get a bare status.
+        // DefaultProblemDetailsWriter writes nothing outside JSON, so the handlers fall back to an
+        // explicit write; without it a browser hitting an API URL would get a bare status.
         using var client = _fixture.Factory.CreateUserClient();
         using var request = new HttpRequestMessage(HttpMethod.Get, $"api/models/{Guid.NewGuid()}");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
@@ -226,9 +225,8 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
     }
 
     /// <summary>
-    /// The whole chain for the guard that stops an administrator bricking the deployment: the
-    /// startup check treats a deactivated summarizer row as missing, and the seed-correcting
-    /// migration is already recorded, so retiring it would stop every instance booting.
+    /// The startup check treats a deactivated summarizer row as missing, so retiring it would stop every
+    /// instance booting.
     /// </summary>
     [Fact]
     public async Task DeactivateModel_ConfiguredSummarizer_ReturnsConflictNamingTheSetting()
@@ -353,9 +351,8 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
     [Fact]
     public async Task UpdateModel_TogglingReasoning_RoundTripsThroughEveryLayer()
     {
-        // The flag crosses five layers between the request and the wire — action DTO, mapper,
-        // entity, column, read DTO — and it was threaded through all five on unit-test evidence
-        // alone. This is the only test that proves the column actually stores and returns it.
+        // The flag crosses five layers (action DTO, mapper, entity, column, read DTO); this is the
+        // only test that proves the column actually stores and returns it.
         using var client = _fixture.Factory.CreateAdminClient();
         var id = await _fixture.AddModelAsync("it-reasoning", cancellationToken: TestContext.Current.CancellationToken);
 

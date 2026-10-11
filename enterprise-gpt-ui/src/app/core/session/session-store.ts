@@ -33,23 +33,8 @@ interface SessionState {
 const initialState: SessionState = { user: null };
 
 /**
- * Who is signed in and what they are allowed to do.
- *
- * It lives in `core/` for the reason `ToastStore` records: app-wide singleton state
- * written from guards that also live in `core/`, and `shared/` holds no store.
- *
- * Permissions arrive inline on `UserDto`, so a session costs one request rather than
- * two — and three states stay distinguishable, which US-202 requires:
- *
- * | | `requestStatus` | `user()` |
- * | --- | --- | --- |
- * | not loaded | `idle` | `null` |
- * | loaded, no grants at all | `fulfilled` | set, `permissions: []` |
- * | failed | `{ error }` | `null` |
- *
- * A user with zero grants is a perfectly valid answer, so nothing here may treat an
- * empty `permissions` array as a load failure. Success is `user() !== null`, never a
- * permission count.
+ * Permissions arrive inline on `UserDto`. Zero grants is a valid session: success is
+ * `user() !== null`, never a permission count.
  */
 export const SessionStore = signalStore(
   { providedIn: 'root' },
@@ -59,42 +44,32 @@ export const SessionStore = signalStore(
     _http: inject(HttpClient),
     _url: inject(ApiUrl).build('users/me'),
     _signedOut$: injectSignedOut(),
-    /**
-     * The in-flight bootstrap. A promise handle is not a rendering input, so it lives
-     * here rather than in state, where every guard run would re-render every consumer.
-     */
+    /** Not state: a promise handle is not a rendering input. */
     _bootstrap: { promise: null as Promise<boolean> | null, generation: 0 },
   })),
   withComputed(({ user }) => ({
     isLoaded: computed(() => user() !== null),
-    /** Matched by id throughout: MCP-derived grants are created at run time and have no constant. */
+    /** By id: MCP-derived grants are created at run time and have no constant. */
     permissionIds: computed(() => new Set((user()?.permissions ?? []).map(({ id }) => id))),
     displayName: computed(() => user()?.fullName ?? ''),
   })),
   withComputed(({ permissionIds }) => ({
     isAdministrator: computed(() => permissionIds().has(PERMISSION_ID.administrator)),
-    /**
-     * Deliberately independent of {@link isAdministrator}. An administrator who does
-     * not hold `Upload File` may not upload, and US-204 forbids inferring one from
-     * the other — two separate computeds make that impossible to get wrong.
-     */
+    /** Never inferred from Administrator: that grant alone does not allow uploads. */
     canUploadFiles: computed(() => permissionIds().has(PERMISSION_ID.uploadFile)),
   })),
   withMethods((store) => {
     async function load(): Promise<boolean> {
-      // A reload started while an earlier load is still in flight must not be
-      // overwritten by it. `rxMethod` + `switchMap` is the usual answer, but a guard
-      // has to await this, so the same guarantee is spelled out with a generation
-      // counter: only the newest attempt is allowed to write.
+      // Only the newest attempt may write; a generation counter rather than `switchMap`
+      // because guards await this.
       const generation = ++store._bootstrap.generation;
       const isCurrent = (): boolean => generation === store._bootstrap.generation;
 
       patchState(store, setPending());
 
       try {
-        // Clearing state on sign-out is not the same as cancelling work: without the
-        // takeUntil, a response already on the wire would write the previous user
-        // back over the state that was just emptied.
+        // Without the takeUntil, a response already on the wire would write the previous
+        // user back after sign-out cleared state.
         const user = await firstValueFrom(
           store._http.post<UserDto>(store._url, null).pipe(takeUntil(store._signedOut$)),
           { defaultValue: null },
@@ -105,9 +80,8 @@ export const SessionStore = signalStore(
         }
 
         if (user === null) {
-          // Sign-out cancelled the request. Leaving `pending` behind would strand the
-          // store in a state no screen renders, and reporting it as an error would
-          // send `sessionGuard` to frame 6c over the user's own deliberate action.
+          // Sign-out cancelled it: not `pending`, which no screen renders, and not an error,
+          // which would send `sessionGuard` to the startup-failure screen.
           patchState(store, setIdle());
 
           return false;
@@ -128,28 +102,20 @@ export const SessionStore = signalStore(
     }
 
     return {
-      /**
-       * Resolves the session, once. `canActivate` re-runs on every navigation, so an
-       * unmemoized load would re-issue `POST api/users/me` on each one.
-       */
+      /** Memoized: `canActivate` re-runs on every navigation. */
       ensureLoaded(): Promise<boolean> {
         return (store._bootstrap.promise ??= load());
       },
 
       /**
-       * Re-issues the bootstrap. This is frame `6c`'s Retry, and it is the only retry
-       * this call gets: `retryInterceptor` is restricted to GETs, so a transient 502
-       * on this POST reaches the user rather than being replayed silently.
+       * The startup-failure screen's Retry, and this POST's only one: `retryInterceptor` is
+       * restricted to GETs.
        */
       reload(): Promise<boolean> {
         return (store._bootstrap.promise = load());
       },
 
-      /**
-       * Whether the signed-in user holds a grant. Takes an id because the permissions
-       * behind MCP servers are data, not constants; the two compile-time grants have
-       * named computeds instead.
-       */
+      /** For MCP-derived grants; the two compile-time grants have named computeds. */
       hasPermission(id: string): boolean {
         return store.permissionIds().has(id);
       },
@@ -157,10 +123,8 @@ export const SessionStore = signalStore(
   }),
   withHooks({
     onInit(store) {
-      // withResetOnSignOut clears state and nothing else, and the bootstrap memo is a
-      // prop rather than state. Left alone it would survive sign-out, and the next
-      // user on a shared machine would inherit the previous user's resolved promise
-      // and never call POST api/users/me at all.
+      // withResetOnSignOut does not clear props; left alone, the next user would inherit
+      // the previous user's resolved bootstrap.
       store._signedOut$.pipe(takeUntilDestroyed()).subscribe(() => {
         store._bootstrap.promise = null;
       });

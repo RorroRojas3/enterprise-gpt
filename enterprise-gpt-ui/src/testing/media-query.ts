@@ -1,30 +1,18 @@
 /**
- * A controllable `matchMedia` for tests.
- *
- * jsdom implements no `matchMedia` at all, so anything that reads a media query —
- * `ThemeService`, and the viewport-aware components from EP-3 onwards — throws
- * without this. `setup-dom.ts` installs it before every test file; individual specs
- * drive it with {@link setMediaQuery}.
+ * A controllable `matchMedia`, which jsdom lacks. `setup-dom.ts` installs it before every test
+ * file; specs drive it with {@link setMediaQuery}.
  */
 
-// A relative specifier, not the `@shared/*` alias: this module is reached through
-// `setup-dom.ts`, which the unit-test builder loads as a Vite `setupFile` — outside
-// the alias map the application's own imports resolve through. Every other file in
-// `src/testing/` avoids app imports entirely, so this is the first to meet it.
+// Relative, not `@shared/*`: `setup-dom.ts` loads this as a Vite setupFile, outside the alias map.
 import { MOBILE_VIEWPORT, TABLET_VIEWPORT } from '../app/shared/layout/breakpoints';
 
 /** The query `ThemeService` watches. */
 export const PREFERS_DARK = '(prefers-color-scheme: dark)';
 
-/**
- * The mobile breakpoint, re-exported rather than restated.
- *
- * The fake matches on the query *string*, so a spec that drives a value the code never
- * asked for silently drives nothing. Re-exporting is what makes that impossible.
- */
+/** Re-exported, not restated: the fake matches query strings, so a typo would drive nothing. */
 export const NARROW_VIEWPORT = MOBILE_VIEWPORT;
 
-/** Frame `3g`'s band, on the same terms. Mutually exclusive with {@link NARROW_VIEWPORT}. */
+/** The tablet band, re-exported likewise. Mutually exclusive with {@link NARROW_VIEWPORT}. */
 export const TABLET_VIEWPORT_QUERY = TABLET_VIEWPORT;
 
 interface Registry {
@@ -34,22 +22,15 @@ interface Registry {
 
 const REGISTRY_KEY = '__egptMediaQueryRegistry';
 
-/**
- * Held on `globalThis` rather than in module scope on purpose. The setup file and the
- * spec are separate build entries, so they can end up with distinct instances of this
- * module — and then the stub a spec drives would not be the stub the code under test
- * reads. One registry keyed on the global removes that failure mode entirely.
- */
+/** On `globalThis`: the setup file and a spec can load distinct copies of this module. */
 function registry(): Registry {
   const global = globalThis as Record<string, unknown>;
   global[REGISTRY_KEY] ??= { matches: new Map(), listeners: new Map() } satisfies Registry;
   return global[REGISTRY_KEY] as Registry;
 }
 
-// Deliberately not `implements Partial<MediaQueryList>`: the real interface's
-// addEventListener is the full overloaded DOM signature, and satisfying it would mean
-// widening the listener type to EventListenerOrEventListenerObject for no test value.
-// The single cast in installMatchMedia() is the honest place for the gap.
+// Not `implements Partial<MediaQueryList>`: matching the overloaded addEventListener buys
+// nothing, and the one cast in installMatchMedia() covers the gap.
 class FakeMediaQueryList {
   onchange: ((this: MediaQueryList, event: MediaQueryListEvent) => unknown) | null = null;
 

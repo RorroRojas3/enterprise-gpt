@@ -32,8 +32,6 @@ function formValue(overrides: Partial<ModelFormValue> = {}): ModelFormValue {
 
 describe('tokenCountError', () => {
   it('refuses a fractional count in the board’s own words', () => {
-    // The columns are decimal(18,2) and the validator carries only GreaterThan(0), so
-    // the server would accept this and store it. The rule is the client's.
     expect(tokenCountError('400000.5')).toBe(WHOLE_TOKENS_MESSAGE);
   });
 
@@ -84,12 +82,8 @@ describe('toModelFormValue', () => {
 
     expect(value.providerId).toBe('');
     expect(value.contextWindowSize).toBe('');
-    // `IsToolEnabled` defaults to true on the column; a model that cannot call tools is
-    // the exception, so the toggle starts where most models end up.
     expect(value.isToolEnabled).toBe(true);
     expect(value.isReasoningEnabled).toBe(false);
-    // Also the column's default, and the one that matters: a model created hidden would
-    // be saved into nobody's picker.
     expect(value.isUserSelectable).toBe(true);
     expect(value.isDefault).toBe(false);
   });
@@ -155,8 +149,7 @@ describe('toModelBody', () => {
   });
 
   it('sends a blank price as null, never as zero', () => {
-    // A report that sums a blank as zero understates spend rather than reporting a gap
-    // it could name, which is why the column is nullable in the first place.
+    // Summing a blank as zero would understate spend instead of naming the gap.
     const body = toModelBody(
       formValue({ inputPricePerMillionTokens: '', outputPricePerMillionTokens: ' ' }),
     );
@@ -185,8 +178,6 @@ describe('toModelBody', () => {
   });
 
   it('carries the four fields frame `5f` does not draw', () => {
-    // `ModelMapper` assigns all four unconditionally, so a body without them clears the
-    // stored prices, reads `isReasoningEnabled` as false, and reveals a hidden model.
     const body = toModelBody(formValue());
 
     expect(body).toHaveProperty('isReasoningEnabled', true);

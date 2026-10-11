@@ -33,15 +33,8 @@ interface ModelCatalogState {
 const initialState: ModelCatalogState = { models: [] };
 
 /**
- * The models this deployment offers, from `GET api/models`.
- *
- * A short, read-only list rather than `withEntities`: nothing updates or removes a
- * model by id here, and the administrative catalog that does is a separate store
- * behind the admin route (EP-12).
- *
- * Loaded by `SessionBootstrap` after the session resolves, never alongside it — the
- * route is authenticated, so a request racing the bootstrap would go out without a
- * usable token.
+ * The models this deployment offers; a short read-only list, so no `withEntities`. Loaded by
+ * `SessionBootstrap` after the session resolves, since a racing request would lack a token.
  */
 export const ModelCatalogStore = signalStore(
   { providedIn: 'root' },
@@ -59,8 +52,7 @@ export const ModelCatalogStore = signalStore(
   })),
   withMethods((store) => {
     async function load(): Promise<boolean> {
-      // Only the newest attempt may write: a reload started from a UI control while an
-      // earlier load is still in flight must not be overwritten by it. See SessionStore.
+      // Only the newest attempt may write, so a stale in-flight load can't overwrite a reload.
       const generation = ++store._load.generation;
       const isCurrent = (): boolean => generation === store._load.generation;
 
@@ -77,8 +69,7 @@ export const ModelCatalogStore = signalStore(
         }
 
         if (models === null) {
-          // Sign-out cancelled the request; idle rather than an error, which is not
-          // what the user's own action deserves to be reported as.
+          // Sign-out cancelled the request: idle, since the user's own action isn't an error.
           patchState(store, setIdle());
 
           return false;
@@ -110,19 +101,14 @@ export const ModelCatalogStore = signalStore(
   }),
   withHooks({
     onInit(store) {
-      // The memo is a prop, so the reset below does not reach it. See SessionStore.
+      // The memo is a prop, so the reset below does not reach it.
       store._signedOut$.pipe(takeUntilDestroyed()).subscribe(() => {
         store._load.promise = null;
       });
     },
   }),
-  // The administration area retires a model; this catalogue is what the composer's
-  // model menu reads. Without this the picker goes on offering a retired model for the
-  // rest of the session, and a turn started on one takes a 404 (US-1207).
-  //
-  // `reload()` rather than `ensureLoaded()`: the memo is already resolved by the time
-  // an administrator can change anything, so the memoized call would return the stale
-  // list. It also replaces the memo, so a later `ensureLoaded()` sees the fresh one.
+  // Keeps the model menu from offering a retired model, which 404s; `reload()` since the
+  // resolved memo would return the stale list.
   withEventHandlers((store, events = inject(Events)) => [
     events.on(adminEvents.modelCatalogChanged).pipe(tap(() => void store.reload())),
   ]),

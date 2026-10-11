@@ -34,13 +34,12 @@ import {
 const USERS_URL = `${TEST_API_BASE_URL}/api/users`;
 
 /**
- * `SearchInput`'s own 300 ms window, with room for the effect that follows it and for a
- * loaded CI runner — these are real timers, because faking the clock also stalls the
- * scheduler `whenStable()` awaits.
+ * `SearchInput`'s 300 ms debounce plus headroom for a loaded CI runner. Real timers, because a
+ * fake clock also stalls the scheduler `whenStable()` awaits.
  */
 const DEBOUNCE_MS = 450;
 
-/** The catalog the permission filter renders its options from (US-1206). */
+/** The catalog the permission filter renders its options from. */
 const UPLOAD_PERMISSION = permissionFixture({
   id: '11111111-aaaa-4bbb-8ccc-dddddddddddd',
   name: 'Upload files',
@@ -67,9 +66,8 @@ describe('admin-users-route', () => {
     expect(toPageSize(undefined)).toBe(DEFAULT_USER_PAGE_SIZE);
   });
 
-  it('normalizes a permission id and reads an empty one as no filter (US-1206)', () => {
-    // Shape only. Whether the id names a permission that exists is the catalog's answer,
-    // not a transform's — the one way this differs from `?size=`.
+  it('normalizes a permission id and reads an empty one as no filter', () => {
+    // Shape only: whether the id exists is the catalog's answer, unlike `?size=`.
     expect(toPermissionFilter('9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d')).toBe(
       '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d',
     );
@@ -80,14 +78,13 @@ describe('admin-users-route', () => {
   });
 });
 
-describe('AdminUsers (US-1201)', () => {
+describe('AdminUsers', () => {
   let backend: HttpTestingController;
   let harness: RouterTestingHarness;
   let sessionUser: ReturnType<typeof signal<UserDto | null>>;
 
   beforeEach(async () => {
-    // Stubbed rather than loaded: `SessionBootstrap` resolves the session in the
-    // application, and this screen only ever reads who is signed in.
+    // Stubbed: this screen only reads who is signed in.
     sessionUser = signal<UserDto | null>(null);
 
     TestBed.resetTestingModule();
@@ -124,11 +121,7 @@ describe('AdminUsers (US-1201)', () => {
     return backend.expectOne((request) => request.url === USERS_URL);
   }
 
-  /**
-   * The permission filter, by its own class rather than by document order: the
-   * paginator's page-size select is the other one on the page, and an index would be a
-   * trap the next control added to the toolbar would spring.
-   */
+  /** By class, not document order: the paginator's page-size select is also on the page. */
   function permissionSelect(): HTMLSelectElement {
     return element().querySelector<HTMLSelectElement>('.admin-users__permission select')!;
   }
@@ -144,11 +137,9 @@ describe('AdminUsers (US-1201)', () => {
     } = {},
   ): Promise<void> {
     await harness.navigateByUrl(url, AdminUsers);
-    // The screen asks for the permission catalog on mount, for the filter's options
-    // (US-1206). Flushed here so every test's `verify()` sees no outstanding request.
+    // The screen fetches the permission catalog on mount; flushed so `verify()` stays clean.
     flushPermissions(backend, options.permissions ?? CATALOG);
-    // Stabilized between the two: a `?permission=` link withholds the directory request
-    // until the catalog answers, so it is not yet on the wire when the flush returns.
+    // A `?permission=` link withholds the directory request until the catalog answers.
     await harness.fixture.whenStable();
     expectSearch().flush(
       userPage(items, {
@@ -275,8 +266,7 @@ describe('AdminUsers (US-1201)', () => {
       pageSize: 100,
     });
 
-    // The select is populated by `@for`, so a `[value]` binding on the element itself
-    // would run against an empty list and leave the first option showing.
+    // Options come from `@for`, so a `[value]` on the select would leave the first one showing.
     const select = element().querySelector<HTMLSelectElement>('.paginator__size select');
     expect(select!.value).toBe('100');
   });
@@ -301,20 +291,16 @@ describe('AdminUsers (US-1201)', () => {
   it('offers no sort control and no selection column, and never the interim filter copy', async () => {
     await open('/admin/users', [directoryUserFixture()], { totalCount: 312 });
 
-    // A follow-up on this tab and the absent bulk endpoint respectively. Pinned so a later
-    // story has to decide to add one rather than adding it back from the board.
+    // Pinned so adding either is deliberate: no sort control yet, and no bulk endpoint.
     const headers = [...element().querySelectorAll('th')].map((cell) => cell.textContent?.trim());
     expect(headers).toEqual(['User', 'Email', 'Permissions', 'Actions']);
-    // Scoped to the table: the edit panel's permission checklist renders checkboxes of
-    // its own, and they are not a row-selection column.
+    // Scoped to the table: the edit panel's permission checklist has checkboxes of its own.
     expect(element().querySelectorAll('app-data-table input[type="checkbox"]')).toHaveLength(0);
 
-    // Two: the paginator's page size, and US-1206's permission filter. A third would be
-    // the sort control this tab has decided not to build yet.
+    // The paginator's page size and the permission filter; a third would be a sort control.
     expect(element().querySelectorAll('select')).toHaveLength(2);
 
-    // Frame `5a` draws this beside the filter, and it describes the interim US-1205
-    // retired: the filter narrows the whole directory, so the caption would now be false.
+    // The filter narrows the whole directory, so a "loaded rows only" caption would be false.
     expect(element().textContent).not.toContain('Filters loaded rows only');
     expect(element().textContent).not.toContain('Last active');
   });
@@ -349,8 +335,7 @@ describe('AdminUsers (US-1201)', () => {
   });
 
   it('blames the page, not the search term, on a filtered link past the end', async () => {
-    // Both empty states qualify here — there is a term *and* the page is out of range —
-    // so the order the template tests them in is what decides which one the reader gets.
+    // Both empty states qualify, so the template's test order decides which one shows.
     await open('/admin/users?name=hopper&page=99', [], { totalCount: 2, skip: 2450 });
 
     expect(element().textContent).toContain('past the end of the directory');
@@ -378,24 +363,21 @@ describe('AdminUsers (US-1201)', () => {
     expect(url()).toBe('/admin/users');
   });
 
-  it('renders the filter from the catalog, with “Permission: any” first (US-1206)', async () => {
+  it('renders the filter from the catalog, with “Permission: any” first', async () => {
     await open();
 
     const select = permissionSelect();
     const options = [...select.options].map((option) => option.textContent?.trim());
 
-    // The catalog's own order — `UserActionsStore.checklist`, which sorts MCP-derived
-    // permissions last and the rest by name — so the filter and the edit panel's
-    // checklist list the same permissions the same way.
+    // `UserActionsStore.checklist` order, so the filter matches the edit panel's checklist.
     expect(options).toEqual(['Permission: any', 'Administrator', 'Upload files']);
     expect(select.value).toBe('');
 
-    // The board draws this beside the control and it described the interim US-1205
-    // retired: the filter narrows the directory, so it must never render.
+    // The filter narrows the whole directory, so this caption would be false.
     expect(element().textContent).not.toContain('Filters loaded rows only');
   });
 
-  it('puts the chosen permission in the URL, drops the page, and filters (US-1206)', async () => {
+  it('puts the chosen permission in the URL, drops the page, and filters', async () => {
     await open('/admin/users?page=3', [directoryUserFixture()], { totalCount: 312, skip: 50 });
 
     const select = permissionSelect();
@@ -420,11 +402,10 @@ describe('AdminUsers (US-1201)', () => {
     expect(url()).toBe('/admin/users?page=3');
   });
 
-  it('sends a deep link’s permission on one request and selects it (US-1206)', async () => {
+  it('sends a deep link’s permission on one request and selects it', async () => {
     await harness.navigateByUrl(`/admin/users?permission=${UPLOAD_PERMISSION.id}`, AdminUsers);
 
-    // The request is withheld until the catalog answers, so there is no unfiltered page to
-    // paint over — and then exactly one request goes out, carrying the filter.
+    // Withheld until the catalog answers, then exactly one request carrying the filter.
     backend.expectNone((request) => request.url === USERS_URL);
     expect(flushPermissions(backend, CATALOG)).toBe(1);
     await harness.fixture.whenStable();
@@ -438,7 +419,7 @@ describe('AdminUsers (US-1201)', () => {
     expect(url()).toBe(`/admin/users?permission=${UPLOAD_PERMISSION.id}`);
   });
 
-  it('reads a permission the catalog does not list as “any”, and repairs the URL (US-1206)', async () => {
+  it('reads a permission the catalog does not list as “any”, and repairs the URL', async () => {
     await harness.navigateByUrl(
       '/admin/users?permission=00000000-0000-4000-8000-000000000000',
       AdminUsers,
@@ -446,9 +427,7 @@ describe('AdminUsers (US-1201)', () => {
     expect(flushPermissions(backend, CATALOG)).toBe(1);
     await harness.fixture.whenStable();
 
-    // Deactivated since the link was shared, or hand-edited. Neither is an error the
-    // reader can act on, so the parameter is dropped rather than sent for the server to
-    // refuse — the rule `?size=` already follows.
+    // A stale or hand-edited id is dropped, as `?size=` is, rather than sent to be refused.
     const request = expectSearch();
     expect(request.request.params.has('permissionId')).toBe(false);
     request.flush(userPage([directoryUserFixture()], { totalCount: 312 }));
@@ -459,7 +438,7 @@ describe('AdminUsers (US-1201)', () => {
     expect(element().querySelector('app-error-panel')).toBeNull();
   });
 
-  it('names the permission that found nothing, and clears both filters (US-1206)', async () => {
+  it('names the permission that found nothing, and clears both filters', async () => {
     await harness.navigateByUrl(
       `/admin/users?name=zzz&permission=${ADMIN_PERMISSION.id}`,
       AdminUsers,
@@ -484,7 +463,7 @@ describe('AdminUsers (US-1201)', () => {
     expect(url()).toBe('/admin/users');
   });
 
-  it('names the permission alone when no term is in play (US-1206)', async () => {
+  it('names the permission alone when no term is in play', async () => {
     await harness.navigateByUrl(`/admin/users?permission=${ADMIN_PERMISSION.id}`, AdminUsers);
     flushPermissions(backend, CATALOG);
     await harness.fixture.whenStable();
@@ -498,11 +477,10 @@ describe('AdminUsers (US-1201)', () => {
     ).toBe('Clear filter');
   });
 
-  it('keeps a filter the catalog cannot name, and still lets it be cleared (US-1206)', async () => {
+  it('keeps a filter the catalog cannot name, and still lets it be cleared', async () => {
     await harness.navigateByUrl(`/admin/users?permission=${UPLOAD_PERMISSION.id}`, AdminUsers);
 
-    // The catalog is the only thing that can vouch for an id, so when it fails nothing
-    // can — the filter goes to the server, which is the authority left.
+    // With the catalog failed nothing can vouch for the id, so the server decides.
     backend
       .expectOne((request) => request.url.endsWith('/api/permissions'))
       .flush(FRAMEWORK_PROBLEM_FIXTURES.serverError, { status: 500, statusText: 'Server Error' });
@@ -513,9 +491,8 @@ describe('AdminUsers (US-1201)', () => {
     request.flush(userPage([directoryUserFixture()], { totalCount: 1 }));
     await harness.fixture.whenStable();
 
-    // The control must not read "Permission: any" while the request underneath it is
-    // narrowed, and it must offer somewhere to go: re-selecting an already-selected
-    // option fires no change event, which would strand the reader on the filter.
+    // The select must not claim "any" over a narrowed request, and must offer an option to
+    // move off, since re-selecting the selected option fires no change event.
     const select = permissionSelect();
     expect(select.value).toBe(UPLOAD_PERMISSION.id);
     expect(select.options).toHaveLength(2);
@@ -529,7 +506,7 @@ describe('AdminUsers (US-1201)', () => {
     expect(url()).toBe('/admin/users');
   });
 
-  it('names the filter it cannot resolve rather than quoting an empty term (US-1206)', async () => {
+  it('names the filter it cannot resolve rather than quoting an empty term', async () => {
     await harness.navigateByUrl(`/admin/users?permission=${UPLOAD_PERMISSION.id}`, AdminUsers);
     backend
       .expectOne((request) => request.url.endsWith('/api/permissions'))
@@ -538,8 +515,8 @@ describe('AdminUsers (US-1201)', () => {
     expectSearch().flush(userPage([], { totalCount: 0 }));
     await harness.fixture.whenStable();
 
-    // Filtered but unnameable. Branching this on the permission's *name* rather than on
-    // the filter being on renders `No users match “”` over an empty search box.
+    // Filtered but unnameable: branching on the name, not the filter, would render
+    // `No users match “”`.
     expect(element().textContent).toContain('No users hold this permission');
     expect(element().textContent).not.toContain('No users match “”');
     expect(
@@ -547,7 +524,7 @@ describe('AdminUsers (US-1201)', () => {
     ).toBe('Clear filter');
   });
 
-  it('keeps the filter while a failed catalog is being retried (US-1206)', async () => {
+  it('keeps the filter while a failed catalog is being retried', async () => {
     await harness.navigateByUrl(`/admin/users?permission=${UPLOAD_PERMISSION.id}`, AdminUsers);
     backend
       .expectOne((request) => request.url.endsWith('/api/permissions'))
@@ -556,10 +533,8 @@ describe('AdminUsers (US-1201)', () => {
     expectSearch().flush(userPage([directoryUserFixture()], { totalCount: 1 }));
     await harness.fixture.whenStable();
 
-    // Retrying clears the error before any rows arrive. A catalog flag that meant "a load
-    // answered once" rather than "this load answered" would read that window as settled —
-    // and the repair effect would drop a live filter, with `replaceUrl`, before the retry
-    // could vouch for it.
+    // Retrying clears the error early; reading that window as settled would let the repair
+    // effect drop a live filter before the retry could vouch for it.
     TestBed.inject(UserActionsStore).retryPermissions();
     await harness.fixture.whenStable();
 
@@ -572,9 +547,7 @@ describe('AdminUsers (US-1201)', () => {
     flushPermissions(backend, CATALOG);
     await harness.fixture.whenStable();
 
-    // The query was withheld for the length of the retry, so it re-fires when the catalog
-    // answers — carrying the same filter it had before. One redundant request on a path
-    // that only exists after a failure, in exchange for never showing unfiltered rows.
+    // Withheld during the retry, the query re-fires with the same filter once it answers.
     const resumed = expectSearch();
     expect(resumed.request.params.get('permissionId')).toBe(UPLOAD_PERMISSION.id);
     resumed.flush(userPage([directoryUserFixture()], { totalCount: 1 }));
@@ -586,12 +559,10 @@ describe('AdminUsers (US-1201)', () => {
     expect(url()).toBe(`/admin/users?permission=${UPLOAD_PERMISSION.id}`);
   });
 
-  it('treats an empty catalog as an answer rather than a load still pending (US-1206)', async () => {
+  it('treats an empty catalog as an answer rather than a load still pending', async () => {
     await harness.navigateByUrl(`/admin/users?permission=${UPLOAD_PERMISSION.id}`, AdminUsers);
 
-    // A `200 []` settles the question. Reading "loaded" as `permissions.length > 0` would
-    // make this a fixed point: the request is withheld forever, and the reader gets a
-    // permanent skeleton with no request, no error and no way out.
+    // Reading "loaded" as `permissions.length > 0` would withhold the request forever.
     flushPermissions(backend, []);
     await harness.fixture.whenStable();
 
@@ -604,7 +575,7 @@ describe('AdminUsers (US-1201)', () => {
     expect(element().querySelector('app-data-table')).not.toBeNull();
   });
 
-  it('pushes turning the filter on, and replaces swapping one for another (US-1206)', async () => {
+  it('pushes turning the filter on, and replaces swapping one for another', async () => {
     await open();
 
     async function choose(id: string): Promise<void> {
@@ -622,11 +593,8 @@ describe('AdminUsers (US-1201)', () => {
     await choose(ADMIN_PERMISSION.id);
     expect(url()).toBe(`/admin/users?permission=${ADMIN_PERMISSION.id}`);
 
-    // One Back, not two. A closed select commits on every arrow key, so swapping one
-    // permission for another is a refinement and overwrites its entry — otherwise a
-    // keyboard reader walking the list would owe one Back per permission passed, where a
-    // pointer owes one. Turning the filter *on* is still a transition, so this lands on
-    // the unfiltered directory rather than on the permission chosen first.
+    // Swapping replaced the entry (a closed select commits per arrow key) while turning the
+    // filter on pushed one, so one Back reaches the unfiltered directory.
     await goBack();
     expectSearch().flush(userPage([directoryUserFixture()], { totalCount: 312 }));
     await harness.fixture.whenStable();

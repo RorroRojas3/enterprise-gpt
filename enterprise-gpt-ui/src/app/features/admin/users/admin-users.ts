@@ -45,46 +45,9 @@ import {
 } from './admin-users-route';
 
 /**
- * The administration user directory, frame `5a` (US-1201).
- *
- * **The URL is the source of truth for the query** — `?name=`, `?page=`, `?size=` and
- * `?permission=`.
- * The field and the pager are views of it, and the store caches the rows they produced,
- * so there is exactly one writer ({@link _applyQuery}) and one reader path:
- * `withComponentInputBinding()` binds the parameters to inputs, which drive the store.
- * The back button restoring the previous page is then a property of the router rather
- * than code.
- *
- * The loop cannot feed itself. A navigation changes {@link name}, which re-seeds
- * `SearchInput`'s `linkedSignal`; its debounce compares the new text against the value
- * it already holds, finds them equal, and emits nothing. Two rules keep that true: bind
- * `[value]` one-way, never `[(value)]`, and never navigate from an effect over the
- * bound inputs — only from the user's own gesture.
- *
- * **The second rule has exactly one exception, and it is load-bearing rather than a
- * lapse.** A `?permission=` naming a permission the directory does not offer has to be
- * repaired, and there is no gesture to hang that on: the reader followed a link. The
- * effect that drops the parameter is safe because it terminates by construction — it
- * fires only while {@link permission} is non-null and the catalog has disowned it, and
- * the navigation it performs sets {@link permission} to null, which is the condition's
- * own negation. It also touches a parameter no debounced control is bound to, so the
- * feedback path the rule exists to prevent is not on it.
- *
- * Two controls frame `5a` draws are deliberately absent. There is **no sort control** —
- * the endpoint accepts one since US-706, so this is a follow-up on this tab rather than a
- * limit of the API, and the order is stated meanwhile. And there is **no row-selection
- * column**, because no endpoint acts on more than one user and a checkbox that can only
- * ever select is not a control.
- *
- * The board's third absent control, the **"Permission: any" filter**, is built (US-1206):
- * US-1205 put `permissionId=` on the endpoint, so it narrows the whole directory rather
- * than the loaded page, and frame `5a`'s "Filters loaded rows only." caption — which
- * described the interim it replaced — is deliberately not rendered.
- *
- * Frame `5a`'s **Last active** column is absent too: `UserDto` carries no timestamp of
- * any kind, and `dateModified` moves only when an administrator edits the row, never
- * when the user signs in. Tracked as an interim behaviour rather than filled with a
- * plausible-looking value.
+ * The URL is the query's source of truth and {@link _applyQuery} its only writer. Bind `[value]`
+ * one-way and never navigate from an effect over the inputs; the permission-repair effect is the
+ * one exception, safe because its navigation clears the condition it reads.
  */
 @Component({
   selector: 'app-admin-users',
@@ -109,12 +72,7 @@ import {
   styleUrl: './admin-users.scss',
 })
 export class AdminUsers {
-  /**
-   * Bound from `?name=` by `withComponentInputBinding()`.
-   *
-   * Trimmed in the transform because the router writes `undefined` when the key leaves
-   * the URL, and a hand-edited `?name=%20%20` has to mean unfiltered.
-   */
+  /** Trimmed, so a removed key (`undefined`) or a hand-edited `?name=%20%20` means unfiltered. */
   readonly name = input('', {
     transform: (value: string | undefined) => value?.trim() ?? '',
   });
@@ -122,12 +80,7 @@ export class AdminUsers {
   readonly page = input(1, { transform: toPage });
   readonly size = input(USER_PAGE_SIZES[0] as number, { transform: toPageSize });
 
-  /**
-   * Bound from `?permission=` by `withComponentInputBinding()` (US-1206).
-   *
-   * The transform only normalizes; whether the id names anything is settled against the
-   * catalog in {@link permissionFilter}, because only the server knows what exists.
-   */
+  /** Normalized only; {@link permissionFilter} checks the id against the catalog. */
   readonly permission = input<string | null, string | undefined>(null, {
     transform: toPermissionFilter,
   });
@@ -151,15 +104,8 @@ export class AdminUsers {
   protected readonly pageSizes = USER_PAGE_SIZES;
 
   /**
-   * Whether the permission catalog has answered — with rows, with none, or with a failure.
-   *
-   * Read from `permissionsLoaded` rather than from `permissions().length > 0`, which is
-   * what the root store's own cache guard uses: there a `200 []` costing a redundant
-   * refetch is harmless, here it would be a fixed point. The request is withheld until
-   * this is true, so a catalog that answered with nothing would leave the screen waiting
-   * on a load that had already happened — a permanent skeleton, no request, no error and
-   * no way out. A failure settles it as surely as rows do, because the question is
-   * whether the id can be checked at all.
+   * Not `permissions().length > 0`: a `200 []` would never settle and leave a permanent
+   * skeleton. A failure settles it too, since the question is whether the id can be checked.
    */
   private readonly _catalogSettled = computed(
     () => this.actions.permissionsLoaded() || this.actions.permissionsError() !== null,
@@ -175,14 +121,8 @@ export class AdminUsers {
   });
 
   /**
-   * The `permissionId` the request carries.
-   *
-   * An id the catalog does not list reads as no filter at all, so the select can never
-   * show "Permission: any" while the request underneath it is narrowed — the invariant
-   * `?size=` follows, enforced against a set that only exists at run time. The exception
-   * is a catalog that failed to load: nothing can vouch for anything then, and refusing
-   * to send a filter the reader explicitly asked for would be a worse answer than the
-   * server's own 400.
+   * An id the catalog does not list reads as no filter, so the select never shows "any" over a
+   * narrowed request. If the catalog failed, the id is sent as asked and the server decides.
    */
   protected readonly permissionFilter = computed(() => {
     const id = this.permission();
@@ -195,21 +135,8 @@ export class AdminUsers {
   });
 
   /**
-   * The filter the **rendered rows** were narrowed by, when no option can name it.
-   *
-   * Reachable only through a failed catalog, which is the one case
-   * {@link permissionFilter} sends an unvouched-for id in. The select renders it as an
-   * option of its own rather than silently displaying "Permission: any": a control that
-   * shows no filter while the request underneath it is narrowed is the exact contradiction
-   * this screen's URL rules exist to prevent — and without an option to move off,
-   * re-selecting "any" fires no `change` event, so the reader would have no way back to
-   * the unfiltered directory but the address bar.
-   *
-   * Asked as "is the applied filter unnameable" rather than "did the catalog error",
-   * because those come apart while a failed catalog is being **retried**: the error is
-   * cleared the moment the retry starts, and keying on it would flip the control back to
-   * "any" for the duration of a request whose rows are still filtered. It also cannot
-   * render a second option for an id `@for` already lists.
+   * The applied filter no option can name (after a failed catalog), given its own option so the
+   * select never claims "any" over filtered rows. Keyed on the name: the error clears on retry.
    */
   protected readonly unnamedFilter = computed(() =>
     this.users.permissionId() !== null && this._appliedPermissionName() === null
@@ -217,21 +144,14 @@ export class AdminUsers {
       : null,
   );
 
-  /**
-   * True while a permission-filtered link waits for the catalog to say whether its id
-   * exists. The table shows its skeleton meanwhile rather than a page of the unfiltered
-   * directory it would have to replace a moment later.
-   */
+  /** A permission link waits for the catalog behind a skeleton, not an unfiltered page. */
   protected readonly awaitingPermissions = computed(
     () => this.permission() !== null && !this._catalogSettled(),
   );
 
   /**
-   * The skeleton covers the catalog wait as well as the directory's own first load.
-   *
-   * Guarded on there being no rows for the same reason `isFirstLoad` is: retrying a failed
-   * catalog clears `permissionsError` before the rows arrive, and a directory already on
-   * screen must not be replaced by a skeleton while that settles.
+   * Also covers the catalog wait, but only with no rows: a catalog retry clears the error early,
+   * and rows already on screen must not give way to a skeleton.
    */
   protected readonly isTableLoading = computed(
     () =>
@@ -240,17 +160,8 @@ export class AdminUsers {
   );
 
   /**
-   * Frame `5b`'s empty-state heading, naming whichever filters produced it.
-   *
-   * Read from the **store**, not from {@link name} and {@link permission}: the store's
-   * copy is the one the rendered rows belong to, so the heading cannot name a term whose
-   * results have not arrived yet.
-   *
-   * Three arms rather than one, because the directory can now be narrowed two ways and a
-   * heading that blames only the term would send a reader to clear a search that was
-   * working. The permission is named from the catalog rather than by id — an id is not a
-   * thing an administrator recognizes — and falls back to the neutral wording if the row
-   * has since gone.
+   * Reads the store's filters, which the rendered rows belong to, not the inputs. Names the
+   * permission from the catalog, with neutral wording when it cannot.
    */
   protected readonly noMatchHeading = computed(() => {
     const term = this.users.name().trim();
@@ -259,11 +170,8 @@ export class AdminUsers {
       return `No users match “${term}”`;
     }
 
-    // Whether the permission is *on* and whether it can be *named* are different
-    // questions, and only the first may choose the arm. Keying the branch off the name
-    // would drop a directory filtered by a permission the catalog cannot name — reachable
-    // whenever that request failed — into the term arm, which renders `No users match “”`
-    // over an empty search box.
+    // Branch on whether the filter is on, not whether it can be named, or an unnamed filter
+    // would fall into the term arm and render `No users match “”`.
     const name = this._appliedPermissionName();
     const held = name === null ? 'this permission' : `“${name}”`;
 
@@ -294,20 +202,10 @@ export class AdminUsers {
     return this._filteredByPermission() ? 'Clear filter' : 'Clear search';
   });
 
-  /**
-   * Whether the **rendered rows** were narrowed by a permission.
-   *
-   * The store's copy, not the input: it is the one the rows on screen belong to, so the
-   * copy cannot describe a filter whose results have not arrived. This is the same fact
-   * `AdminUsersStore.hasNoMatches` branches on, which is what keeps the empty state and
-   * the condition that shows it from disagreeing.
-   */
+  /** From the store, as `AdminUsersStore.hasNoMatches` reads it, so copy and condition agree. */
   private readonly _filteredByPermission = computed(() => this.users.permissionId() !== null);
 
-  /**
-   * The name of the permission the rendered rows were filtered by, or `null` when there is
-   * none — or when the catalog cannot name the one there is.
-   */
+  /** The applied filter's name; `null` when unfiltered or the catalog cannot name it. */
   private readonly _appliedPermissionName = computed(() => {
     const id = this.users.permissionId();
 
@@ -318,17 +216,12 @@ export class AdminUsers {
     return this.actions.permissions().find((permission) => permission.id === id)?.name ?? null;
   });
 
-  /**
-   * Fields rather than template literals. `provideCheckNoChangesConfig({ exhaustive:
-   * true })` compares bindings between passes, and an array or an arrow allocated in the
-   * template is a new value on every check.
-   */
+  /** Fields, not template literals: exhaustive no-changes checks see a new value each pass. */
   protected readonly columns: readonly TableColumn<UserDto>[] = [
     { key: 'user', header: 'User', width: 'minmax(0, 1.2fr)', mobile: 'title' },
     { key: 'email', header: 'Email', width: 'minmax(0, 1.3fr)', mobile: 'subtitle' },
     { key: 'permissions', header: 'Permissions', width: 'minmax(0, 1.7fr)', mobile: 'badges' },
-    // headerHidden rather than an empty header: the column still needs a name for a
-    // screen reader listing the table's columns, and the board draws no label here.
+    // headerHidden, not an empty header: a screen reader listing the columns still needs a name.
     {
       key: 'actions',
       header: 'Actions',
@@ -343,23 +236,14 @@ export class AdminUsers {
   protected readonly rowLabel = (user: UserDto): string => this.displayName(user);
 
   /**
-   * The name to show, falling back to the email address.
-   *
-   * `fullName` is legitimately empty for an account Microsoft Graph gave neither a
-   * `givenName` nor a `surname` — the API coalesces both to empty strings — and a blank
-   * cell beside a filled avatar reads as a rendering fault rather than as missing
-   * directory data.
+   * Falls back to the email: `fullName` is empty for a Graph account with no given name or
+   * surname, and a blank cell reads as a rendering fault.
    */
   protected displayName(user: UserDto): string {
     return user.fullName.trim() === '' ? user.email : user.fullName;
   }
 
-  /**
-   * Whether a row is the signed-in administrator, for frame `5d`'s `(you)` marker.
-   *
-   * Matched on the object id, which `UserDto.id` and the session's own row share —
-   * the API keys user rows on the Entra `oid` directly.
-   */
+  /** For the `(you)` marker. `UserDto.id` is the Entra `oid`, which the session's user shares. */
   protected isSelf(user: UserDto): boolean {
     return user.id === this._session.user()?.id;
   }
@@ -370,12 +254,8 @@ export class AdminUsers {
   }
 
   /**
-   * Deactivates the confirmed row.
-   *
-   * The row leaves at once and the undo travels to the request's store as a callback:
-   * that store is root-scoped so a tab change cannot tear the request down mid-flight,
-   * and it cannot reach back into this route-scoped one, because `core/` may not import
-   * from `features/`.
+   * Removes the row at once and hands the undo to the root store as a callback, since `core/`
+   * cannot import this route-scoped store.
    */
   protected onConfirmDeactivate(): void {
     const target = this.actions.deactivateTarget();
@@ -388,16 +268,10 @@ export class AdminUsers {
   }
 
   constructor() {
-    // The constructor is an injection context, which a signal-valued reactive method
-    // requires: it binds the subscription to this screen rather than to the injector
-    // that outlives it. Handing over a computation — not the values — is what makes a
-    // deep link issue one request carrying all three parameters, rather than a default
-    // request followed by the real one.
+    // One computation, so a deep link sends a single request carrying every parameter.
     this.users.bindQuery(() =>
-      // `null` withholds the request rather than sending an unfiltered one: a link naming
-      // a permission cannot become a query until the catalog says whether that permission
-      // exists, and the whole directory on screen for one paint is a worse answer than a
-      // skeleton.
+      // `null` withholds the request until the catalog vouches for the permission, rather
+      // than flashing the whole directory.
       this.awaitingPermissions()
         ? null
         : {
@@ -408,33 +282,25 @@ export class AdminUsers {
           },
     );
 
-    // The filter needs the catalog to render its options at all, so it is asked for on
-    // mount rather than when a form opens. Cached in the root store, so the edit panel
-    // and the checklist reuse this copy instead of fetching their own.
+    // Fetched on mount, since the filter renders from it; the root store's cache serves the
+    // edit panel and checklist too.
     this.actions.ensurePermissions();
 
-    // A link naming a permission the directory does not offer — deactivated since it was
-    // shared, or hand-edited — is repaired rather than refused: the parameter is dropped
-    // so the select and the URL agree on "any", which is the same rule `?size=` follows.
-    // `replaceUrl`, because the reader did not author this URL and Back must not return
-    // to it. It cannot loop: the navigation clears the input the condition reads.
-    // Note the asymmetry: this deliberately does not fire when the catalog *failed*, since
-    // nothing can disown an id then. That case keeps the filter and surfaces it through
-    // `unnamedFilter` instead.
+    // Drops a `?permission=` the catalog disowns, replacing the URL the reader did not author;
+    // the navigation clears the condition, so it cannot loop. A failed catalog disowns nothing,
+    // so that filter stays and shows through `unnamedFilter`.
     effect(() => {
       if (
         this.permission() !== null &&
         this._catalogSettled() &&
         this.permissionFilter() === null
       ) {
-        // `untracked`: the router is imperative code that reads signals of its own, and an
-        // effect must not take a dependency on whatever it happens to touch.
+        // `untracked`, so the effect does not depend on signals the router reads.
         untracked(() => this._applyQuery({ [PERMISSION_PARAM]: null }, true));
       }
     });
 
-    // `UserActionsStore` is root-scoped and outlives this route, while a refusal is about
-    // one attempt on one screen. Without this, returning to the tab would re-announce it.
+    // The root store outlives this route; without this, returning would re-announce a refusal.
     this.actions.clearSelfDeactivateRefusal();
   }
 
@@ -445,8 +311,7 @@ export class AdminUsers {
       {
         // `null` removes the key rather than leaving `?name=` behind.
         [NAME_PARAM]: next === '' ? null : next,
-        // A narrowed search almost never has as many pages as the one before it, so
-        // staying on page 4 would answer a new term with an empty table.
+        // A new term rarely has as many pages; staying on page 4 would show an empty table.
         [PAGE_PARAM]: null,
       },
       shouldReplaceHistory(this.name(), next),
@@ -454,23 +319,18 @@ export class AdminUsers {
   }
 
   protected onPageChanged(page: number): void {
-    // Never replaces. A page change is a discrete transition rather than the refinement
-    // of one, so back returns to the page the reader came from.
+    // Never replaces: a page change is a discrete transition, so Back returns to the last page.
     this._applyQuery({ [PAGE_PARAM]: page === 1 ? null : page }, false);
   }
 
   protected onPermissionFiltered(event: Event): void {
     const value = (event.target as HTMLSelectElement).value;
 
-    // Guarded against the catalog rather than trusted: the option list is rendered from
-    // it, so anything else reaching here is a value the directory cannot filter by.
+    // Checked against the catalog the options render from, not trusted.
     const next =
       value === ''
         ? null
-        : // Falls back to the unnamed filter rather than to null: it is the one option in
-          // the list the catalog cannot vouch for, and resolving it to "no filter" would
-          // make re-selecting what is already selected clear the filter instead of
-          // no-opping.
+        : // Falls back to the unnamed filter, so re-selecting it no-ops instead of clearing.
           (this.actions.permissions().find((permission) => permission.id === value)?.id ??
           this.unnamedFilter());
 
@@ -484,19 +344,14 @@ export class AdminUsers {
         // Same reason a new term resets it: a narrowed directory has fewer pages.
         [PAGE_PARAM]: null,
       },
-      // `shouldReplaceHistory`'s rule, applied to a filter rather than a term: turning one
-      // on or off is a transition and pushes, swapping one for another is a refinement and
-      // replaces. A closed `<select>` commits on every arrow key, so pushing
-      // unconditionally would cost a keyboard reader one history entry per permission
-      // walked past and as many Backs to escape — where a pointer costs one.
+      // Toggling a filter pushes; swapping one replaces, since a closed `<select>` commits on
+      // every arrow key and would otherwise cost a keyboard reader one Back per option.
       next !== null && this.permission() !== null,
     );
   }
 
   protected onPageSizeChanged(size: number): void {
-    // The page number cannot survive a resize — row 26 is page 2 at 25 per page and page
-    // 1 at 50 — so the reader is returned to the first page rather than to an offset
-    // that means something different than it did a moment ago.
+    // A page number means a different offset at another size, so a resize returns to page 1.
     this._applyQuery(
       {
         [SIZE_PARAM]: size === USER_PAGE_SIZES[0] ? null : size,
@@ -506,22 +361,15 @@ export class AdminUsers {
     );
   }
 
-  /**
-   * Clears whichever filters are on, from the empty state's own action.
-   *
-   * One navigation rather than two: clearing them separately would push an intermediate
-   * directory the reader never asked for onto the history stack.
-   */
+  /** One navigation, so no intermediate directory lands on the history stack. */
   protected clearFilters(): void {
     this._applyQuery(
       { [NAME_PARAM]: null, [PERMISSION_PARAM]: null, [PAGE_PARAM]: null },
       shouldReplaceHistory(this.name(), ''),
     );
 
-    // The button removes itself the moment rows come back, and focus would fall to
-    // `<body>` inside a table the reader then has to find again. Both targets are outside
-    // every branch of the template, so both are always connected — and the one to land on
-    // is whichever filter the reader was actually working with.
+    // The button unmounts when rows return, so focus moves to the filter the reader was using;
+    // both sit outside every template branch and are always connected.
     if (this.users.name().trim() === '' && this._filteredByPermission()) {
       this._permissionField().nativeElement.focus();
     } else {
@@ -534,11 +382,7 @@ export class AdminUsers {
     this.onPageChanged(1);
   }
 
-  /**
-   * The single writer. Every query change is a navigation and nothing writes the store
-   * directly, which is what keeps the URL authoritative and the back button working
-   * without a line of code.
-   */
+  /** The single writer: every query change is a navigation, so the URL stays authoritative. */
   private _applyQuery(queryParams: Params, replaceUrl: boolean): void {
     void this._router.navigate([], {
       relativeTo: this._route,

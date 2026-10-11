@@ -26,11 +26,8 @@ public class McpServer : BaseModifiedByEntity<Guid>
     public string? Scope { get; set; }
 
     /// <summary>
-    /// Slug naming the brand mark the client draws for this server, such as
-    /// <c>microsoft</c>; <see langword="null"/> for the generic glyph. The artwork lives in
-    /// the client, so this is deliberately an open slug rather than an enum — shipping a new
-    /// icon must not require a server deploy, and a key this client does not recognise
-    /// degrades to the generic glyph rather than failing.
+    /// Client-side brand mark slug, such as <c>microsoft</c>; <see langword="null"/> for the generic glyph.
+    /// An open slug, not an enum, so new icons need no server deploy and unknown keys fall back.
     /// </summary>
     public string? IconKey { get; set; }
 
@@ -40,15 +37,9 @@ public class McpServer : BaseModifiedByEntity<Guid>
     /// when none are configured.
     /// </summary>
     /// <remarks>
-    /// Configuration, deliberately not credentials. The validators refuse
-    /// <c>Authorization</c> and the other headers the transport owns, and
-    /// <c>McpToolProvider</c> writes the on-behalf-of bearer last regardless, so a stored
-    /// header can never displace it. Values are persisted in plain text and are only ever
-    /// returned on the administrator-gated routes.
-    ///
-    /// Keyed <see cref="StringComparer.OrdinalIgnoreCase"/> everywhere it is constructed,
-    /// because HTTP header names are case-insensitive and two spellings of one header are
-    /// the same header.
+    /// Configuration, not credentials: validators refuse <c>Authorization</c> and transport-owned headers,
+    /// <c>McpToolProvider</c> writes the bearer last, and values are plain text returned only to admins.
+    /// Always keyed <see cref="StringComparer.OrdinalIgnoreCase"/>, as header names are case-insensitive.
     /// </remarks>
     public Dictionary<string, string>? Headers { get; set; }
 

@@ -8,9 +8,7 @@ using Xunit;
 namespace Enterprise.Gpt.Integration.Test.Conversations;
 
 /// <summary>
-/// Covers the <c>Core.ConversationUsageTurn</c> table against a real SQL Server. The unique index
-/// on it is new schema that nothing else exercises, and both test harnesses build from the model
-/// rather than from migrations, so this is the only place it is proven to exist at all.
+/// Covers <c>Core.ConversationUsageTurn</c> on real SQL Server, the only place its unique index is proven.
 /// </summary>
 [Collection(IntegrationTestCollection.Name)]
 [Trait("Category", "Integration")]
@@ -28,9 +26,7 @@ public sealed class ConversationUsageTurnIntegrationTests(IntegrationTestFixture
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     /// <summary>
-    /// A call reports each iteration once, so a second row for the same one is a defect rather than
-    /// a duplicate to tolerate. The index is unfiltered, unlike the other unique indexes in this
-    /// model, because these rows are append-only and no soft-deleted row can block a replacement.
+    /// Each iteration is reported once; the index is unfiltered because these rows are append-only.
     /// </summary>
     [Fact]
     public async Task SaveChangesAsync_ASecondRowForTheSameIteration_IsRejectedByTheUniqueIndex()

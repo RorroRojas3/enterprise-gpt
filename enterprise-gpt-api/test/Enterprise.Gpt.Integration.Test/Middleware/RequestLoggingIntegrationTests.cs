@@ -45,8 +45,8 @@ public sealed class RequestLoggingIntegrationTests(IntegrationTestFixture fixtur
         Assert.Equal(LogLevel.Information, completed.Level);
         Assert.Equal("200", Field(completed, "StatusCode"));
         Assert.Equal("Completed", Field(completed, "Outcome"));
-        // The group prefix plus MapGet("") really does produce a trailing slash; the point of logging the
-        // template rather than the path is that it is the low-cardinality dimension, not that it is tidy.
+        // The group prefix plus MapGet("") really yields a trailing slash; the template is logged for its
+        // low cardinality, not its tidiness.
         Assert.Equal("api/models/", Field(completed, "RouteTemplate"));
         Assert.Equal(TestUsers.AdminUserId.ToString(), Field(completed, "UserId"));
     }
@@ -71,8 +71,8 @@ public sealed class RequestLoggingIntegrationTests(IntegrationTestFixture fixtur
     [Fact]
     public async Task Request_DeniedByThePermissionFilter_IsLoggedAtWarningWithThe403()
     {
-        // The gap this middleware closes: PermissionEndpointFilter writes its 403 directly rather than
-        // throwing, so no exception handler ever sees it and nothing logged it before.
+        // PermissionEndpointFilter writes its 403 directly rather than throwing, so no exception
+        // handler sees it; only this middleware logs it.
         using var client = _fixture.Factory.CreateUserClient();
 
         var response = await client.PostAsJsonAsync(

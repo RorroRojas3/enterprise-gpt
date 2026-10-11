@@ -7,19 +7,13 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Enterprise.Gpt.Api.Configuration;
 
-/// <summary>
-/// Registers permissions and the per-user permission cache authorization reads.
-/// </summary>
 internal static class PermissionsConfiguration
 {
     #region Public static methods
 
-    /// <summary>
-    /// Registers the permission service and the cache keyed by Entra object id.
-    /// </summary>
     /// <remarks>
-    /// The cache is written at sign-in and on a miss and invalidated per user by the services that change grants.
-    /// Its absolute lifetime exists because that invalidation is per instance.
+    /// The permission cache is invalidated per user by the services that change grants; its absolute lifetime
+    /// exists because that invalidation is per instance.
     /// </remarks>
     internal static IServiceCollection AddPermissions(this IServiceCollection services, IConfiguration configuration)
     {

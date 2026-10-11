@@ -67,9 +67,7 @@ public class EnterpriseGptDbContext(DbContextOptions<EnterpriseGptDbContext> opt
     public DbSet<MessageFeedback> MessageFeedback => Set<MessageFeedback>();
 
     /// <summary>
-    /// The Data Protection key ring, owned by the framework rather than by this application:
-    /// no configuration maps it and nothing here reads it. It is a <c>DbSet</c> only because
-    /// <see cref="IDataProtectionKeyContext"/> requires one.
+    /// The framework-owned Data Protection key ring; <see cref="IDataProtectionKeyContext"/> requires it.
     /// </summary>
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 

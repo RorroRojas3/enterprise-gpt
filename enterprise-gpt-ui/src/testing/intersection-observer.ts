@@ -1,13 +1,6 @@
 /**
- * A controllable `IntersectionObserver` for tests.
- *
- * jsdom implements none at all, and it could not usefully implement one: there is
- * no layout, so nothing ever intersects anything. Specs drive visibility
- * explicitly with {@link setIntersecting} instead, which is the honest shape for
- * the thing under test anyway — US-606 cares only about the boolean the observer
- * reports, never about how a real one arrived at it.
- *
- * `setup-dom.ts` installs it before every test file.
+ * A controllable `IntersectionObserver`: jsdom has no layout, so specs set visibility with
+ * {@link setIntersecting}. `setup-dom.ts` installs it before every test file.
  */
 
 interface Registry {
@@ -16,11 +9,7 @@ interface Registry {
 
 const REGISTRY_KEY = '__egptIntersectionObserverRegistry';
 
-/**
- * On `globalThis` for the same reason the media-query registry is: the setup file
- * and the spec are separate build entries and can hold distinct instances of this
- * module, which would leave a spec driving an observer the code never created.
- */
+/** On `globalThis`: the setup file and a spec can load distinct copies of this module. */
 function registry(): Registry {
   const global = globalThis as Record<string, unknown>;
   global[REGISTRY_KEY] ??= { instances: new Set() } satisfies Registry;
@@ -28,12 +17,8 @@ function registry(): Registry {
 }
 
 /**
- * Records what it was asked to watch and reports only what a spec tells it to.
- *
- * It deliberately does **not** fire on `observe`. A real observer delivers a first
- * record asynchronously, so code that only becomes correct once that record
- * arrives is code with a visible wrong state on screen first; leaving the fake
- * silent keeps that mistake failing here.
+ * Reports only what a spec tells it, never on `observe`: code that is wrong until a real
+ * observer's async first record arrives should fail here.
  */
 export class FakeIntersectionObserver {
   readonly targets = new Set<Element>();

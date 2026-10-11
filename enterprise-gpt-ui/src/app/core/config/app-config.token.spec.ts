@@ -20,8 +20,6 @@ describe('APP_CONFIG', () => {
   });
 
   it('throws when no provider is registered', () => {
-    // The token carries no factory on purpose: a silent default would point the
-    // app at the wrong environment instead of failing.
     TestBed.configureTestingModule({ providers: [] });
 
     expect(() => TestBed.inject(APP_CONFIG)).toThrow();

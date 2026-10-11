@@ -26,12 +26,8 @@ using Xunit;
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 
 /// <summary>
-/// Collection fixture that owns the SQL Server 2025 Testcontainer and the shared
-/// <see cref="CustomWebApplicationFactory"/> for the whole integration run. The 2025 image is
-/// required because <c>SqlPersistenceConfiguration</c> pins <c>UseCompatibilityLevel(170)</c>, which older
-/// engines reject. Creates the schema with <c>EnsureCreatedAsync</c> (applying the HasData
-/// seeds) and adds the fixed <see cref="TestUsers"/> identities, including the admin's
-/// <c>Administrator</c> permission.
+/// Owns the SQL Server 2025 Testcontainer (older engines reject <c>UseCompatibilityLevel(170)</c>) and the
+/// shared <see cref="CustomWebApplicationFactory"/>; creates the schema and seeds <see cref="TestUsers"/>.
 /// </summary>
 public sealed class IntegrationTestFixture : IAsyncLifetime
 {
@@ -39,22 +35,14 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         new MsSqlBuilder("mcr.microsoft.com/mssql/server:2025-latest")
             .Build();
 
-    /// <summary>
-    /// The permissions seeded by <c>PermissionConfiguration</c>. Resets must leave these in place: the
-    /// schema is created once for the whole run, so deleting a seeded row would remove it permanently and
-    /// every later test would run against a database missing a built-in permission.
-    /// </summary>
+    // Seeded by PermissionConfiguration. Resets must keep them: the schema is created once per run.
     private static readonly Guid[] _builtInPermissionIds =
         [PermissionIds.Administrator, PermissionIds.UploadFile, PermissionIds.GenerateFiles];
 
-    /// <summary>
-    /// Gets the shared application factory. Populated once the container has started.
-    /// </summary>
     public CustomWebApplicationFactory Factory { get; private set; } = null!;
 
     private DbContextOptions<EnterpriseGptDbContext> _bareOptions = null!;
 
-    /// <summary>The connection string of the shared test database.</summary>
     public string ConnectionString { get; private set; } = null!;
 
     /// <inheritdoc />
@@ -79,8 +67,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// A context on the test database without the production interceptors, so arranged stamps are stored as
-    /// stated rather than overwritten by the audit interceptor.
+    /// A context without the production interceptors, so arranged audit stamps are stored as stated.
     /// </summary>
     public EnterpriseGptDbContext CreateContext() => new(_bareOptions);
 
@@ -96,33 +83,21 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Restores the model catalog to its post-seed baseline: removes every model except the
-    /// seeded one and resets the seeded row's activation/default state. Called per test for
-    /// isolation. The seeded model is otherwise treated as read-only by tests — mutating
-    /// scenarios must target rows created via <see cref="AddModelAsync"/>, because this reset
-    /// does not restore the seeded row's name or limits.
+    /// Restores the model catalog to its seed baseline. Mutating tests must use <see cref="AddModelAsync"/>
+    /// rows: this does not restore the seeded model's name or limits.
     /// </summary>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
     public async Task ResetModelsAsync(CancellationToken cancellationToken = default)
     {
         using var ctx = CreateContext();
 
         await ClearConversationUsageAsync(ctx, cancellationToken);
 
-        // Summaries name the model that produced them, and that FK is required, so the rows have to
-        // go for the same reason the usage rows above do. Any future table with a required FK to
-        // Core.Ref.Model belongs here too.
+        // Required FK to the model, like the usage rows; any future required FK to Core.Ref.Model
+        // belongs here too.
         await ClearDocumentSummariesAsync(ctx, cancellationToken);
 
-        // Conversations reference a model too, and that reference has to be released before the
-        // delete below or it trips FK_Conversation_Model_ModelId. Released rather than deleted,
-        // unlike the usage rows above: their FK is required so the row has to go, this one is
-        // nullable, and a helper named for the model catalog has no business destroying
-        // conversations that other classes may still be arranging around.
-        //
-        // The rows it releases belong to whichever class ran before this one — every class using
-        // this reset clears models but not conversations, so the leak is shared and the failure it
-        // caused depended on class ordering, which is why it surfaced in CI and not locally.
+        // Release (not delete) the nullable Conversation.ModelId before the model delete; the rows can
+        // belong to an earlier test class, which made the FK failure order-dependent.
         await ctx.Conversations.IncludingDeactivated()
             .Where(x => x.ModelId != null && x.ModelId != KnownIds.SeedModelId)
             .ExecuteUpdateAsync(x => x.SetProperty(p => p.ModelId, (Guid?)null), cancellationToken);
@@ -135,20 +110,10 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .ExecuteUpdateAsync(x => x
                 .SetProperty(p => p.DateDeactivated, (DateTimeOffset?)null)
                 .SetProperty(p => p.IsDefault, false)
-                // Its seeded state, so a class that made the summarizer selectable cannot leak
-                // that into the next class's picker assertions.
+                // Its seeded state, so a class that made it selectable cannot leak into the next.
                 .SetProperty(p => p.IsUserSelectable, false), cancellationToken);
     }
 
-    /// <summary>
-    /// Inserts a model directly into the database, bypassing the API, for arranging read
-    /// scenarios.
-    /// </summary>
-    /// <param name="name">The model name (also used for display name and description).</param>
-    /// <param name="isDefault">Whether the model is the catalog default.</param>
-    /// <param name="deactivated">Whether the model is soft-deleted.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The id of the inserted model.</returns>
     public async Task<Guid> AddModelAsync(
         string name, bool isDefault = false, bool deactivated = false, CancellationToken cancellationToken = default)
     {
@@ -179,13 +144,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         return model.Id;
     }
 
-    /// <summary>
-    /// Reads a model row straight from the database for state assertions the API does not
-    /// expose (e.g. audit columns).
-    /// </summary>
-    /// <param name="id">The model id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
     public async Task<Model?> FindModelAsync(Guid id, CancellationToken cancellationToken = default)
     {
         using var ctx = CreateContext();
@@ -195,13 +153,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
     }
 
-    /// <summary>
-    /// Restores MCP servers, permissions, and grants to their post-seed baseline: removes every
-    /// grant except the admin's <c>Administrator</c> one, every permission except the seeded
-    /// <c>Administrator</c> row, and every MCP server. Deletes run in FK order (grants →
-    /// permissions → servers). Called per test for isolation.
-    /// </summary>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
     public async Task ResetMcpServersAndPermissionsAsync(CancellationToken cancellationToken = default)
     {
         using var ctx = CreateContext();
@@ -216,8 +167,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .Where(x => _builtInPermissionIds.Contains(x.Id))
             .ExecuteUpdateAsync(x => x.SetProperty(p => p.DateDeactivated, (DateTimeOffset?)null), cancellationToken);
         await ClearConversationUsageAsync(ctx, cancellationToken);
-        // Before the servers they reference: the foreign key is NoAction, so a leftover credential
-        // turns the reset into a constraint violation rather than a clean slate.
+        // Before the servers: the FK is NoAction, so a leftover credential would violate it.
         await ctx.UserMcpCredentials.IncludingDeactivated()
             .ExecuteDeleteAsync(cancellationToken);
         await ctx.McpServers
@@ -226,18 +176,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         ClearPermissionCache();
     }
 
-    /// <summary>
-    /// Inserts an MCP server directly into the database, bypassing the API, together with its
-    /// linked same-named permission (unless <paramref name="withPermission"/> is off), for
-    /// arranging read, grant, and cascade scenarios.
-    /// </summary>
-    /// <param name="name">The server name (also used for the linked permission's name).</param>
-    /// <param name="authType">The auth type discriminator (1 = None, 2 = EntraIdOnBehalfOf, 3 = UserApiKey).</param>
-    /// <param name="scope">The on-behalf-of scope; only meaningful when <paramref name="authType"/> is 2.</param>
-    /// <param name="deactivated">Whether the server (and its permission) are soft-deleted.</param>
-    /// <param name="withPermission">Whether to insert the linked permission row.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The id of the inserted server and of its linked permission, when created.</returns>
     public async Task<(Guid ServerId, Guid? PermissionId)> AddMcpServerAsync(
         string name, int authType = 1, string? scope = null, bool deactivated = false,
         bool withPermission = true, CancellationToken cancellationToken = default)
@@ -285,15 +223,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         return (server.Id, permissionId);
     }
 
-    /// <summary>
-    /// Inserts a user-permission grant directly into the database, bypassing the API, for
-    /// arranging revoke and cascade scenarios.
-    /// </summary>
-    /// <param name="userId">The id of the user receiving the grant.</param>
-    /// <param name="permissionId">The id of the granted permission.</param>
-    /// <param name="deactivated">Whether the grant is soft-deleted.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The id of the inserted grant row.</returns>
     public async Task<Guid> AddUserPermissionAsync(
         Guid userId, Guid permissionId, bool deactivated = false, CancellationToken cancellationToken = default)
     {
@@ -319,13 +248,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         return grant.Id;
     }
 
-    /// <summary>
-    /// Reads an MCP server row straight from the database for state assertions the API does not
-    /// expose (e.g. audit columns, soft-delete timestamps).
-    /// </summary>
-    /// <param name="id">The server id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
     public async Task<McpServer?> FindMcpServerAsync(Guid id, CancellationToken cancellationToken = default)
     {
         using var ctx = CreateContext();
@@ -335,14 +257,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
     }
 
-    /// <summary>
-    /// Reads a stored MCP credential straight from the database — the only way to assert on the
-    /// ciphertext and the soft-delete stamp, neither of which any route returns.
-    /// </summary>
-    /// <param name="userId">The owning user.</param>
-    /// <param name="mcpServerId">The server the credential is for.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The row, or <see langword="null"/> when none was ever written.</returns>
     public async Task<UserMcpCredential?> FindUserMcpCredentialAsync(
         Guid userId, Guid mcpServerId, CancellationToken cancellationToken = default)
     {
@@ -353,13 +267,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .FirstOrDefaultAsync(x => x.UserId == userId && x.McpServerId == mcpServerId, cancellationToken);
     }
 
-    /// <summary>
-    /// Reads a permission row straight from the database for state assertions the API does not
-    /// expose (e.g. audit columns, soft-delete timestamps).
-    /// </summary>
-    /// <param name="id">The permission id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
     public async Task<Permission?> FindPermissionAsync(Guid id, CancellationToken cancellationToken = default)
     {
         using var ctx = CreateContext();
@@ -369,13 +276,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
     }
 
-    /// <summary>
-    /// Reads the permission linked to an MCP server straight from the database, for asserting
-    /// the auto-created permission's state.
-    /// </summary>
-    /// <param name="mcpServerId">The owning MCP server id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The untracked entity, or <see langword="null"/> when no linked permission exists.</returns>
     public async Task<Permission?> FindPermissionByMcpServerAsync(Guid mcpServerId, CancellationToken cancellationToken = default)
     {
         using var ctx = CreateContext();
@@ -385,14 +285,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .FirstOrDefaultAsync(x => x.McpServerId == mcpServerId, cancellationToken);
     }
 
-    /// <summary>
-    /// Reads every grant row for a user/permission pair straight from the database, including
-    /// deactivated rows, for asserting revoke and re-grant history.
-    /// </summary>
-    /// <param name="userId">The granted user's id.</param>
-    /// <param name="permissionId">The granted permission's id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The untracked grant rows for the pair; empty when none exist.</returns>
     public async Task<List<UserPermission>> FindUserPermissionsAsync(
         Guid userId, Guid permissionId, CancellationToken cancellationToken = default)
     {
@@ -404,13 +296,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Restores users, permissions, and grants to their post-seed baseline: removes every user
-    /// beyond the seeded system user and the two <see cref="TestUsers"/> identities, restores
-    /// those two identities' profiles, and rebuilds the admin's <c>Administrator</c> grant.
-    /// Also clears the fake directory. Deletes run in FK order (grants → permissions → users).
-    /// </summary>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
     public async Task ResetUsersAsync(CancellationToken cancellationToken = default)
     {
         using var ctx = CreateContext();
@@ -463,15 +348,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
 
     }
 
-    /// <summary>
-    /// Inserts a permission directly into the database, bypassing the API, for arranging grant
-    /// and default-provisioning scenarios.
-    /// </summary>
-    /// <param name="name">The permission name.</param>
-    /// <param name="isDefault">Whether new users receive it automatically.</param>
-    /// <param name="deactivated">Whether the permission is soft-deleted.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The id of the inserted permission.</returns>
     public async Task<Guid> AddPermissionAsync(
         string name, bool isDefault = false, bool deactivated = false, CancellationToken cancellationToken = default)
     {
@@ -497,16 +373,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         return permission.Id;
     }
 
-    /// <summary>
-    /// Inserts a user directly into the database, bypassing the API, for arranging read, update,
-    /// and deactivation scenarios.
-    /// </summary>
-    /// <param name="firstName">The user's first name.</param>
-    /// <param name="lastName">The user's last name.</param>
-    /// <param name="email">The user's email address.</param>
-    /// <param name="deactivated">Whether the user is soft-deleted.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The id of the inserted user.</returns>
     public async Task<Guid> AddUserAsync(
         string firstName, string lastName, string email, bool deactivated = false,
         CancellationToken cancellationToken = default)
@@ -531,13 +397,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         return user.Id;
     }
 
-    /// <summary>
-    /// Reads a user row straight from the database, including its grants, for state assertions
-    /// the API does not expose (e.g. soft-delete timestamps on cascaded grants).
-    /// </summary>
-    /// <param name="id">The user id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
     public async Task<User?> FindUserAsync(Guid id, CancellationToken cancellationToken = default)
     {
         using var ctx = CreateContext();
@@ -549,20 +408,11 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
     }
 
-    /// <summary>
-    /// Removes every project and conversation and, with them, every uploaded document and chunk. Called
-    /// per test for isolation. Deletes run in FK order (summaries and sheets → project chunks →
-    /// project documents → conversation chunks → conversation documents → message feedback → usage →
-    /// conversations → projects); conversations carry an optional foreign key to a project, so they
-    /// have to go before the projects do.
-    /// </summary>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
     public async Task ResetConversationsAndDocumentsAsync(CancellationToken cancellationToken = default)
     {
         using var ctx = CreateContext();
 
-        // Ahead of the documents they hang off, on the same terms as the chunks: the summary tables
-        // carry a foreign key to their document with no cascade behind it.
+        // Before their documents: like the chunks, these FKs have no cascade.
         await ClearDocumentSummariesAsync(ctx, cancellationToken);
         await ClearDocumentSheetsAsync(ctx, cancellationToken);
 
@@ -570,15 +420,13 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await ctx.ProjectDocuments.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
         await ctx.ConversationDocumentChunks.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
         await ctx.ConversationDocuments.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
-        // Ahead of the conversations it points at: the feedback projection carries a foreign key to
-        // Conversation with no cascade behind it, exactly as the usage rows below do.
+        // Before the conversations: like the usage rows, the feedback FK has no cascade.
         await ctx.MessageFeedback.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
         await ClearConversationUsageAsync(ctx, cancellationToken);
         await ctx.Conversations.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
         await ctx.Projects.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
 
-        // Other test classes' resets clear grants wholesale, and the collection runs serially, so the
-        // upload grants are restored here rather than assumed to have survived.
+        // Other classes' resets clear grants wholesale, so the upload grants are restored, not assumed.
         await EnsureUploadFileGrantsAsync(ctx, cancellationToken);
 
         Factory.BlobStorage.Reset();
@@ -589,12 +437,8 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Removes every document summary. Called from every reset that deletes a table they reference —
-    /// the documents they hang off and the models that produced them alike — because both foreign
-    /// keys are required and neither has a cascade behind it.
+    /// Called by every reset that deletes documents or models: both FKs are required, with no cascade.
     /// </summary>
-    /// <param name="ctx">The context to delete through.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
     private static async Task ClearDocumentSummariesAsync(
         EnterpriseGptDbContext ctx, CancellationToken cancellationToken)
     {
@@ -602,12 +446,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await ctx.ConversationDocumentSummaries.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Removes every ingested sheet, its columns and its rows, leaf first. Called from every reset
-    /// that deletes documents, because the chain hangs off them with no cascade behind it.
-    /// </summary>
-    /// <param name="ctx">The context to delete through.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <summary>Leaf first; every reset deleting documents calls this, as the chain has no cascade.</summary>
     private static async Task ClearDocumentSheetsAsync(
         EnterpriseGptDbContext ctx, CancellationToken cancellationToken)
     {
@@ -620,12 +459,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Removes the usage audit rows, children first. Called from every reset that deletes a table
-    /// they reference — conversations, models, and MCP servers alike — because the audit trail
-    /// intentionally has no cascade behind it.
+    /// Children first. The audit trail deliberately has no cascade, so every reset that deletes a table
+    /// it references calls this.
     /// </summary>
-    /// <param name="ctx">The context to delete through.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
     private static async Task ClearConversationUsageAsync(EnterpriseGptDbContext ctx, CancellationToken cancellationToken)
     {
         await ctx.ConversationUsageMcpServers.IncludingDeactivated().ExecuteDeleteAsync(cancellationToken);
@@ -643,33 +479,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Inserts a usage audit row directly into the database, bypassing the API, for arranging the
-    /// read scenarios that restore a conversation's last model and MCP selection, and the usage
-    /// report's aggregates.
+    /// Prices default to <see langword="null"/>, which the report counts as unpriced rather than free.
+    /// Cancelled and failed turns are never transcribed, so their <paramref name="contextTokens"/> is null.
     /// </summary>
-    /// <param name="conversationId">The conversation the turn belongs to.</param>
-    /// <param name="modelId">The model that served the turn.</param>
-    /// <param name="dateCreated">When the turn finished; controls which turn counts as newest.</param>
-    /// <param name="userId">The owner. Defaults to the regular test user.</param>
-    /// <param name="mcpServerIds">The MCP servers attached to the turn.</param>
-    /// <param name="kind">The kind of call. Defaults to a chat turn.</param>
-    /// <param name="status">How the call ended. Defaults to completed.</param>
-    /// <param name="inputTokens">Assistant input tokens billed.</param>
-    /// <param name="outputTokens">Assistant output tokens billed.</param>
-    /// <param name="toolInputTokens">Input tokens billed inside tools.</param>
-    /// <param name="toolOutputTokens">Output tokens billed inside tools.</param>
-    /// <param name="contextTokens">
-    /// The locally estimated transcript weight, or <see langword="null"/> for a turn that was never
-    /// transcribed — which is every cancelled and failed one.
-    /// </param>
-    /// <param name="inputPricePerMillionTokens">
-    /// The input price captured on the row, or <see langword="null"/> to leave the call unpriced.
-    /// Defaults to null, so a caller that does not care about cost writes rows the report counts
-    /// as unpriced rather than as free.
-    /// </param>
-    /// <param name="outputPricePerMillionTokens">The output price, on the same terms.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The id of the inserted usage row.</returns>
     public async Task<Guid> AddConversationUsageAsync(
         Guid conversationId, Guid modelId, DateTimeOffset dateCreated, Guid? userId = null,
         IReadOnlyCollection<Guid>? mcpServerIds = null, ConversationUsageKinds kind = ConversationUsageKinds.Chat,
@@ -717,15 +529,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Inserts a usage row carrying a nested tool-call tree, as one graph, exactly the way
-    /// <c>ConversationService</c> writes it — which is what makes this exercise the self-referencing
-    /// key and the sequential key generation rather than a hand-wired set of identifiers.
+    /// Inserts a nested tool-call tree as one graph, the way <c>ConversationService</c> writes it, so the
+    /// self-referencing key and sequential key generation are exercised.
     /// </summary>
-    /// <param name="conversationId">The conversation the turn belongs to.</param>
-    /// <param name="modelId">The model that served the turn.</param>
-    /// <param name="mcpServerId">The catalog server the MCP child call is attributed to.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The id of the inserted usage row.</returns>
     public async Task<Guid> AddConversationUsageWithToolCallsAsync(
         Guid conversationId, Guid modelId, Guid? mcpServerId = null, CancellationToken cancellationToken = default)
     {
@@ -818,12 +624,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         return usage.Id;
     }
 
-    /// <summary>
-    /// Reads back a usage row's tool calls, deepest last, for asserting on what was persisted.
-    /// </summary>
-    /// <param name="usageId">The usage row the calls belong to.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The tool calls, ordered by depth then report order.</returns>
     public async Task<List<ConversationUsageToolCall>> GetConversationUsageToolCallsAsync(
         Guid usageId, CancellationToken cancellationToken = default)
     {
@@ -865,17 +665,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await ctx.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Inserts a conversation directly into the database, bypassing the API, for arranging upload
-    /// scenarios.
-    /// </summary>
-    /// <param name="userId">The owner. Defaults to the regular test user.</param>
-    /// <param name="deactivated">Whether the conversation is soft-deleted.</param>
-    /// <param name="projectId">The project the conversation belongs to, if any.</param>
-    /// <param name="modelId">The model its most recent turn ran with, if any.</param>
-    /// <param name="name">The conversation name.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The id of the inserted conversation.</returns>
     public async Task<Guid> AddConversationAsync(
         Guid? userId = null, bool deactivated = false, Guid? projectId = null, Guid? modelId = null,
         string name = "Integration Conversation", CancellationToken cancellationToken = default)
@@ -902,20 +691,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Seeds one transcript message into the in-memory transcript store, so the feedback route has
-    /// something to read and patch without a Cosmos account.
+    /// <paramref name="rating"/> is seeded because <see cref="FakeTranscriptStore"/> ignores patches, so a
+    /// rating set through the API is invisible to a later withdrawal.
     /// </summary>
-    /// <param name="conversationId">The conversation the message belongs to.</param>
-    /// <param name="role">Who produced it. Only an assistant message is ratable.</param>
-    /// <param name="userId">The owner, whose id composes half the partition key.</param>
-    /// <param name="rating">
-    /// A rating to seed onto the document. Needed because <see cref="FakeTranscriptStore"/> ignores
-    /// patch operations, so a test that rates through the API and then
-    /// withdraws would find the document exactly as it was seeded — and the withdrawal would
-    /// correctly conclude there was nothing to withdraw.
-    /// </param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The id of the seeded message.</returns>
     public async Task<Guid> AddTranscriptMessageAsync(
         Guid conversationId, ChatRoles role = ChatRoles.Assistant, Guid? userId = null,
         MessageFeedbackRatings? rating = null, CancellationToken cancellationToken = default)
@@ -931,8 +709,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
                 : null
         };
 
-        // Through the batch surface rather than a back door on the fake: it is the only write path
-        // the production code has, so a seeded document is keyed exactly as a real one is.
+        // Through the batch surface, the only production write path, so it is keyed as a real one is.
         await Factory.Transcripts.ExecuteBatchAsync(
             new Microsoft.Azure.Cosmos.PartitionKey(PartitionKeys.For(owner, conversationId)),
             batch => batch.Create(message.Id, message),
@@ -941,13 +718,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         return messageId;
     }
 
-    /// <summary>
-    /// Reads the relational feedback projection for one message.
-    /// </summary>
-    /// <param name="conversationId">The conversation the message belongs to.</param>
-    /// <param name="messageId">The message.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The row, or <see langword="null"/> when the message was never rated.</returns>
     public async Task<MessageFeedback?> ReadMessageFeedbackAsync(
         Guid conversationId, Guid messageId, CancellationToken cancellationToken = default)
     {
@@ -959,17 +729,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
                 x => x.ConversationId == conversationId && x.MessageId == messageId, cancellationToken);
     }
 
-    /// <summary>
-    /// Inserts a project directly into the database, bypassing the API, for arranging upload, read and
-    /// cascade scenarios.
-    /// </summary>
-    /// <param name="name">The project name. Must be unique per user among active projects.</param>
-    /// <param name="userId">The owner. Defaults to the regular test user.</param>
-    /// <param name="instructions">The project's standing instructions, if any.</param>
-    /// <param name="deactivated">Whether the project is soft-deleted.</param>
-    /// <param name="isFavorite">Whether the owner has starred the project.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The id of the inserted project.</returns>
+    /// <summary><paramref name="name"/> must be unique per user among active projects.</summary>
     public async Task<Guid> AddProjectAsync(
         string name = "Integration Project", Guid? userId = null, string? instructions = null,
         bool deactivated = false, bool isFavorite = false, CancellationToken cancellationToken = default)
@@ -997,18 +757,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Inserts many chunk-less conversation documents in one round trip, for a listing larger than a
-    /// page.
+    /// Timestamps descend one second per name, so the newest-first listing keeps the given order; a
+    /// shared instant would order by id.
     /// </summary>
-    /// <param name="conversationId">The conversation the documents belong to.</param>
-    /// <param name="names">One file name per document, newest first.</param>
-    /// <param name="userId">The owner. Defaults to the regular test user.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The ids of the inserted documents, in the order the names were given.</returns>
-    /// <remarks>
-    /// Creation timestamps descend by one second per name, so the listing's newest-first order is the
-    /// order they were given in — a batch sharing one instant would be ordered by id instead.
-    /// </remarks>
     public async Task<IReadOnlyList<Guid>> AddConversationDocumentsAsync(
         Guid conversationId, IReadOnlyList<string> names, Guid? userId = null,
         CancellationToken cancellationToken = default)
@@ -1044,23 +795,9 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Inserts a conversation document and its chunks directly into the database, with embeddings the
-    /// caller chooses, for arranging retrieval scenarios.
+    /// Writes hand-chosen chunk vectors rather than ingesting, so retrieval distances are predictable
+    /// instead of depending on a fixture's prose.
     /// </summary>
-    /// <param name="conversationId">The conversation the document belongs to.</param>
-    /// <param name="name">The document's file name, which is what citations are built from.</param>
-    /// <param name="chunks">The chunks to insert, with the vector each one should be found by.</param>
-    /// <param name="deactivated">Whether the document is soft-deleted.</param>
-    /// <param name="chunksDeactivated">Whether the chunks are soft-deleted while the document stays active.</param>
-    /// <param name="userId">The owner. Defaults to the regular test user.</param>
-    /// <param name="type">Whether the row records an uploaded or a generated file. Defaults to an upload.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The id of the inserted document.</returns>
-    /// <remarks>
-    /// Chunks are written with hand-chosen vectors rather than through the ingestion pipeline, because
-    /// retrieval tests need the distances the database computes to be predictable. Going through the
-    /// real extractor and chunker would make the ranking depend on a fixture's prose.
-    /// </remarks>
     public async Task<Guid> AddConversationDocumentAsync(
         Guid conversationId, string name, IReadOnlyList<SeedChunk> chunks, bool deactivated = false,
         bool chunksDeactivated = false, Guid? userId = null,
@@ -1107,14 +844,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         return document.Id;
     }
 
-    /// <summary>
-    /// Inserts a sheet, with one column and one row, for an existing conversation document — so a
-    /// citation or a cascade can be arranged without running a whole workbook through ingestion.
-    /// </summary>
-    /// <param name="documentId">The document the sheet belongs to.</param>
-    /// <param name="sheetIndex">The sheet ordinal a chunk from it carries as its source number.</param>
-    /// <param name="sheetName">The sheet's name.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
     public async Task AddConversationDocumentSheetAsync(
         Guid documentId, int sheetIndex, string sheetName, CancellationToken cancellationToken = default)
     {
@@ -1160,14 +889,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await ctx.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Inserts a fully specified sheet for an existing conversation document.
-    /// </summary>
-    /// <param name="documentId">The document the sheet belongs to.</param>
-    /// <param name="sheet">The sheet, its columns and its rows.</param>
-    /// <param name="rowsDeactivated">Whether every row is soft-deleted while the sheet is not.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The id of the inserted sheet.</returns>
     public async Task<Guid> AddConversationDocumentSheetAsync(
         Guid documentId,
         SeedSheet sheet,
@@ -1220,13 +941,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         return row.Id;
     }
 
-    /// <summary>
-    /// Inserts a fully specified sheet for an existing project document.
-    /// </summary>
-    /// <param name="documentId">The document the sheet belongs to.</param>
-    /// <param name="sheet">The sheet, its columns and its rows.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The id of the inserted sheet.</returns>
     public async Task<Guid> AddProjectDocumentSheetAsync(
         Guid documentId, SeedSheet sheet, CancellationToken cancellationToken = default)
     {
@@ -1275,23 +989,10 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         return row.Id;
     }
 
-    /// <summary>
-    /// Serializes one row's cells the way ingestion does — one string property per populated cell, and
-    /// nothing at all for an empty one.
-    /// </summary>
+    /// <summary>Mirrors ingestion: one string property per populated cell, none for an empty one.</summary>
     private static string SeedSheetCells(IReadOnlyDictionary<string, string> cells) =>
         JsonSerializer.Serialize(cells.Where(c => c.Value.Length > 0).ToDictionary(c => c.Key, c => c.Value));
 
-    /// <summary>
-    /// Inserts a project document and its chunks directly into the database, with embeddings the caller
-    /// chooses, for arranging retrieval scenarios that span a project.
-    /// </summary>
-    /// <param name="projectId">The project the document belongs to.</param>
-    /// <param name="name">The document's file name.</param>
-    /// <param name="chunks">The chunks to insert, with the vector each one should be found by.</param>
-    /// <param name="userId">The owner. Defaults to the regular test user.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The id of the inserted document.</returns>
     public async Task<Guid> AddProjectDocumentAsync(
         Guid projectId, string name, IReadOnlyList<SeedChunk> chunks, Guid? userId = null,
         CancellationToken cancellationToken = default)
@@ -1333,13 +1034,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         return document.Id;
     }
 
-    /// <summary>
-    /// Reads a project row straight from the database for state assertions the API does not expose
-    /// (e.g. soft-delete timestamps).
-    /// </summary>
-    /// <param name="id">The project id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
     public async Task<Project?> FindProjectAsync(Guid id, CancellationToken cancellationToken = default)
     {
         using var ctx = CreateContext();
@@ -1349,13 +1043,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
     }
 
-    /// <summary>
-    /// Reads a conversation row straight from the database, including soft-deleted ones, for asserting
-    /// what a project cascade did to it.
-    /// </summary>
-    /// <param name="id">The conversation id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
     public async Task<Conversation?> FindConversationAsync(Guid id, CancellationToken cancellationToken = default)
     {
         using var ctx = CreateContext();
@@ -1365,12 +1052,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
     }
 
-    /// <summary>
-    /// Reads a project document by id, including soft-deleted ones.
-    /// </summary>
-    /// <param name="documentId">The document id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
     public async Task<ProjectDocument?> FindProjectDocumentAsync(
         Guid documentId, CancellationToken cancellationToken = default)
     {
@@ -1381,12 +1062,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .FirstOrDefaultAsync(x => x.Id == documentId, cancellationToken);
     }
 
-    /// <summary>
-    /// Reads the persisted chunks of a project document, ordered by their position in the document.
-    /// </summary>
-    /// <param name="documentId">The document id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The untracked chunk entities.</returns>
     public async Task<List<ProjectDocumentChunk>> FindProjectDocumentChunksAsync(
         Guid documentId, CancellationToken cancellationToken = default)
     {
@@ -1399,12 +1074,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Reads the persisted chunks of a document, ordered by their position in the document.
-    /// </summary>
-    /// <param name="documentId">The document id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The untracked chunk entities.</returns>
     public async Task<List<ConversationDocumentChunk>> FindDocumentChunksAsync(
         Guid documentId, CancellationToken cancellationToken = default)
     {
@@ -1417,12 +1086,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Reads the persisted sheets of a document with their columns and rows, in workbook order.
-    /// </summary>
-    /// <param name="documentId">The document id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The untracked sheet entities.</returns>
     public async Task<List<ConversationDocumentSheet>> FindDocumentSheetsAsync(
         Guid documentId, CancellationToken cancellationToken = default)
     {
@@ -1437,12 +1100,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Reads a document by id.
-    /// </summary>
-    /// <param name="documentId">The document id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
     public async Task<ConversationDocument?> FindDocumentAsync(
         Guid documentId, CancellationToken cancellationToken = default)
     {
@@ -1453,13 +1110,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .FirstOrDefaultAsync(x => x.Id == documentId, cancellationToken);
     }
 
-    /// <summary>
-    /// Returns every document of a conversation, deactivated ones included, so a test can assert on
-    /// what a cancel left behind rather than only on what a listing would show.
-    /// </summary>
-    /// <param name="conversationId">The owning conversation.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The untracked entities.</returns>
     public async Task<List<ConversationDocument>> FindConversationDocumentsAsync(
         Guid conversationId, CancellationToken cancellationToken = default)
     {
@@ -1471,13 +1121,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Revokes a user's grant of a permission, for arranging authorization-failure scenarios against
-    /// permissions that are granted by default.
-    /// </summary>
-    /// <param name="userId">The user whose grant is revoked.</param>
-    /// <param name="permissionId">The permission to revoke.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
     public async Task RevokePermissionAsync(Guid userId, Guid permissionId, CancellationToken cancellationToken = default)
     {
         using var ctx = CreateContext();
@@ -1490,9 +1133,8 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// Evicts the singleton permission cache. These helpers write grants straight through the
-    /// DbContext, so the eviction <see cref="IPermissionService"/> performs on
-    /// the production path never runs and a later test would authorize against a stale grant set.
+    /// These helpers write grants through the DbContext, skipping the eviction
+    /// <see cref="IPermissionService"/> performs, so a later test would see a stale grant set.
     /// </summary>
     private void ClearPermissionCache()
     {
@@ -1535,15 +1177,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         await ctx.SaveChangesAsync();
     }
 
-    /// <summary>
-    /// Inserts a document summary directly into the database, for arranging the soft-delete cascade
-    /// scenarios without running a real summarization.
-    /// </summary>
-    /// <param name="documentId">The document the summary belongs to.</param>
-    /// <param name="source">Which document family <paramref name="documentId"/> belongs to.</param>
-    /// <param name="modelId">The catalog model recorded as having produced it.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The id of the inserted summary.</returns>
     public async Task<Guid> AddDocumentSummaryAsync(
         Guid documentId, DocumentSources source, Guid modelId, CancellationToken cancellationToken = default)
     {
@@ -1575,14 +1208,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         return summary.Id;
     }
 
-    /// <summary>
-    /// Reads a document summary straight from the database for state assertions the API does not
-    /// expose — the soft-delete timestamp above all.
-    /// </summary>
-    /// <param name="id">The summary id.</param>
-    /// <param name="source">Which table to read from.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The untracked entity, or <see langword="null"/> when it does not exist.</returns>
     public async Task<BaseDocumentSummary<Guid>?> FindDocumentSummaryAsync(
         Guid id, DocumentSources source, CancellationToken cancellationToken = default)
     {

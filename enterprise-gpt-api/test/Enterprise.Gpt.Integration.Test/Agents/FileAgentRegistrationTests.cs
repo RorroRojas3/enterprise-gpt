@@ -7,13 +7,8 @@ using Xunit;
 namespace Enterprise.Gpt.Integration.Test.Agents;
 
 /// <summary>
-/// What the File Agent's own chat client is, as the container actually builds it.
+/// Asserts the File Agent's chat client as the container builds it, since both facts are instance settings.
 /// </summary>
-/// <remarks>
-/// Asserted against the composed pipeline rather than against the registration source, because
-/// both facts here are properties of a built client: they are settings on an instance, and reading
-/// them any other way would prove only that the code says what it says.
-/// </remarks>
 [Collection(IntegrationTestCollection.Name)]
 [Trait("Category", "Integration")]
 public sealed class FileAgentRegistrationTests(IntegrationTestFixture fixture)
@@ -23,9 +18,8 @@ public sealed class FileAgentRegistrationTests(IntegrationTestFixture fixture)
     [Fact]
     public void FileAgentClient_BoundsItsOwnToolLoop_RatherThanInheritingTheTurns()
     {
-        // The agent spends iterations the turn does not — load a skill, read its reference, run the
-        // code, re-open the artifact — and MaximumIterationsPerRequest is an instance setting with no
-        // per-request override, so a shared client would silently cap it at the turn's own ceiling.
+        // The agent needs more iterations than a turn, and MaximumIterationsPerRequest has no
+        // per-request override, so a shared client would silently cap it at the turn's ceiling.
         var turn = Invoker(ChatClientKeys.AzureOpenAI);
         var agent = Invoker(ChatClientKeys.FileAgent);
 

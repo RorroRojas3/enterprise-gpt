@@ -12,22 +12,14 @@ namespace Enterprise.Gpt.Service.Exports.Renderers;
 /// Writes a conversation as a self-contained HTML document.
 /// </summary>
 /// <remarks>
-/// The design base of the three rendered formats: every value in its template comes from
-/// <see cref="ExportTheme"/>, which the Word and PDF renderers read too, and its content comes from
-/// the same <see cref="IMarkdownBlockMapper"/> walk they consume.
+/// The design base of the rendered formats: values come from <see cref="ExportTheme"/> and content from
+/// <see cref="IMarkdownBlockMapper"/>, both shared with the Word and PDF renderers.
 /// </remarks>
-/// <param name="mapper">Maps each message's markdown into blocks.</param>
 public sealed partial class HtmlExportRenderer(IMarkdownBlockMapper mapper) : IConversationExportRenderer
 {
     /// <summary>
-    /// The export template, read once on first use.
+    /// Lazy, so composition can read <see cref="TemplatePath"/> without running the load and throwing.
     /// </summary>
-    /// <remarks>
-    /// Shipped as content beside the assembly rather than embedded, matching how this project's
-    /// prompt templates load. <see cref="Lazy{T}"/> rather than a static initializer, so that
-    /// reading <see cref="TemplatePath"/> — which composition does, to decide whether to register
-    /// this renderer at all — cannot run the load and throw.
-    /// </remarks>
     private static readonly Lazy<string> Template = new(LoadTemplate);
 
     private static readonly Lazy<string> Theme = new(BuildTheme);
@@ -38,14 +30,9 @@ public sealed partial class HtmlExportRenderer(IMarkdownBlockMapper mapper) : IC
     public ConversationExportFormats Format => ConversationExportFormats.Html;
 
     /// <summary>
-    /// Gets the path the template is loaded from.
+    /// Exposed so composition can skip this renderer when the file is missing, rather than fault every
+    /// format's export. Computed per read, since a static field could be read before it initialized.
     /// </summary>
-    /// <remarks>
-    /// Exposed so composition can decline to register this renderer when the file is missing: the
-    /// renderers resolve as a collection, so an absent template would otherwise fault the first
-    /// export of every format rather than of HTML. Computed per read rather than cached, because a
-    /// static field initialising after <see cref="Template"/> would be read while still empty.
-    /// </remarks>
     public static string TemplatePath =>
         Path.Combine(AppContext.BaseDirectory, "Files", "conversation-history.html");
 
@@ -68,10 +55,8 @@ public sealed partial class HtmlExportRenderer(IMarkdownBlockMapper mapper) : IC
                 """);
         }
 
-        // One pass, so nothing spliced in is scanned again. Chained Replace calls are not
-        // equivalent: HTML-encoding leaves "{{MESSAGES}}" untouched — it holds no encodable
-        // character — so a conversation named that would have the whole transcript spliced into its
-        // own <title>, and the name is text a user chooses.
+        // One pass, so spliced text is never rescanned: a conversation named "{{MESSAGES}}" survives HTML
+        // encoding and would otherwise pull the whole transcript into its <title>.
         var html = Placeholder().Replace(Template.Value, match => match.Groups[1].Value switch
         {
             "THEME" => Theme.Value,

@@ -56,17 +56,15 @@
   }
 }
 
-// US-1403's mobile sidebar drawer. The sidebar inside draws its own brand row, its own
-// padding and its own scroll container, so the panel contributes none of the three.
+// For the mobile sidebar drawer, which draws its own brand row, padding and scroll container.
 .offcanvas-panel--bare {
   .offcanvas-panel__inner {
     padding: 0;
     gap: 0;
   }
 
-  // `position: relative` so the consumer's close button — frame `3e` puts one at
-  // top: 12px; right: 12px — has this box to anchor to. `overflow: hidden` because the
-  // content owns its own scrolling; two nested scroll containers is one too many.
+  // `position: relative` anchors the consumer's close button; `overflow: hidden` because the
+  // content owns its scrolling, and two nested scroll containers is one too many.
   .offcanvas-panel__body {
     position: relative;
     overflow: hidden;

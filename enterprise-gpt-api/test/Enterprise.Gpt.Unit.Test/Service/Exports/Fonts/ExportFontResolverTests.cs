@@ -30,11 +30,7 @@ public sealed class ExportFontResolverTests : IDisposable
         }
     }
 
-    /// <summary>
-    /// A minimal file with a TrueType signature. The resolver never parses a font — it matches by
-    /// file name and hands the bytes to PDFsharp — so a real typeface is not needed to assert which
-    /// file it picked.
-    /// </summary>
+    // The resolver matches by file name and never parses a font, so a TrueType signature is enough.
     private string WriteFace(string name)
     {
         var path = Path.Combine(_directory, name);
@@ -44,14 +40,9 @@ public sealed class ExportFontResolverTests : IDisposable
     }
 
     /// <summary>
-    /// The five role-named faces are committed and copied beside the assembly, so a deployment that
-    /// provisioned nothing still renders a PDF — see <c>Service/Exports/Fonts/README.md</c>.
+    /// Asserts the committed faces (<c>Service/Exports/Fonts/README.md</c>) from a named directory: an
+    /// unqualified resolver falls back to platform fonts and would pass even if the csproj copied nothing.
     /// </summary>
-    /// <remarks>
-    /// The directory is named rather than defaulted, and the files are asserted directly: an
-    /// unqualified resolver falls back to the platform's own fonts, so it reports five roles on any
-    /// developer machine whether or not the csproj glob copied anything.
-    /// </remarks>
     [Fact]
     public void ShippedDirectory_ResolvesEveryRole()
     {
@@ -83,9 +74,8 @@ public sealed class ExportFontResolverTests : IDisposable
     }
 
     /// <summary>
-    /// The whole point of the flag: a deployment in this state registers no PDF renderer, and the
-    /// route answers <c>503</c> with the export-renderer-not-configured type instead of throwing on
-    /// the first glyph, halfway into a response body.
+    /// A deployment in this state registers no PDF renderer, so the route answers <c>503</c> rather than
+    /// throwing on the first glyph halfway into a response body.
     /// </summary>
     [Fact]
     public void IsUsable_NothingAnywhere_IsFalse()

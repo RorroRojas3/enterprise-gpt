@@ -12,21 +12,12 @@ namespace Enterprise.Gpt.Service.Documents;
 /// Validates an uploaded file before it is queued for ingestion.
 /// </summary>
 /// <remarks>
-/// <para>
-/// This validator lives in the service project rather than beside the DTO — the repository's usual home
-/// for validators — because its rules depend on services the DTO project cannot reference: the size
-/// limit comes from <see cref="DocumentOptions"/> and the accepted format list from the registered
-/// extractors.
-/// </para>
-/// <para>
-/// Running these checks up front matters: without them a bad upload is accepted with a 202 and only
-/// reveals itself as a failed job minutes later, which is a poor experience and burns OCR spend.
-/// </para>
+/// Lives in the service project, not beside the DTO, because it needs <see cref="DocumentOptions"/> and the
+/// registered extractors. Checking up front avoids a 202 that fails minutes later and burns OCR spend.
 /// </remarks>
 public sealed class FileDtoValidator : AbstractValidator<FileDto>
 {
-    // How much of a text file to scan for the NUL bytes that mark it as binary. Scanning the head is
-    // enough to catch a renamed executable or image without walking a large file twice.
+    // Head of a text file probed for NUL bytes; enough to catch a renamed binary.
     private const int TextProbeLength = 8192;
 
     private static readonly byte[] _pdfSignature = "%PDF"u8.ToArray();
@@ -38,11 +29,6 @@ public sealed class FileDtoValidator : AbstractValidator<FileDto>
     private static readonly byte[] _utf16BigEndianBom = [0xFE, 0xFF];
     private static readonly byte[] _utf32BigEndianBom = [0x00, 0x00, 0xFE, 0xFF];
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="FileDtoValidator"/> class.
-    /// </summary>
-    /// <param name="options">Supplies the maximum accepted upload size.</param>
-    /// <param name="extractorFactory">Supplies the set of formats that can actually be read.</param>
     public FileDtoValidator(IOptions<DocumentOptions> options, IDocumentTextExtractorFactory extractorFactory)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -63,8 +49,7 @@ public sealed class FileDtoValidator : AbstractValidator<FileDto>
 
         RuleFor(x => x.Content.LongLength)
             .LessThanOrEqualTo(maxSizeBytes)
-            // Without the name, the expression path becomes the wire-visible key in the problem
-            // details errors dictionary — "Content.LongLength" rather than the DTO's property.
+            // Otherwise the wire-visible errors key would be "Content.LongLength".
             .WithName(nameof(FileDto.Content))
             .WithMessage($"The file exceeds the maximum upload size of {FormatSize(maxSizeBytes)}.")
             .When(x => x.Content is { Length: > 0 });
@@ -86,14 +71,8 @@ public sealed class FileDtoValidator : AbstractValidator<FileDto>
 
     #region Private methods
 
-    /// <summary>
-    /// Confirms the leading bytes match the format the extension claims.
-    /// </summary>
-    /// <remarks>
-    /// Extensions are attacker-controlled, and every downstream reader assumes a particular container.
-    /// Handing a renamed file to the Open XML or OLE2 reader turns a user mistake into a parser fault,
-    /// and handing one to Document Intelligence spends money to learn the same thing.
-    /// </remarks>
+    // Extensions are attacker-controlled; a renamed file would fault the Open XML or OLE2 readers or
+    // waste a Document Intelligence call.
     private static bool HasContentMatchingExtension(FileDto file)
     {
         if (!TryGetExtension(file, out var extension))
@@ -108,8 +87,7 @@ public sealed class FileDtoValidator : AbstractValidator<FileDto>
             FileExtensions.Pdf => StartsWith(content, _pdfSignature),
             FileExtensions.Docx or FileExtensions.Pptx or FileExtensions.Xlsx => StartsWith(content, _zipSignature),
             FileExtensions.Doc => StartsWith(content, _ole2Signature),
-            // Text formats have no signature; rejecting embedded NUL bytes is what separates real text
-            // from a binary file wearing a .txt extension.
+            // Text has no signature; embedded NULs mark a binary file wearing a text extension.
             FileExtensions.Csv or FileExtensions.Md or FileExtensions.Txt => !LooksBinary(content),
             _ => true,
         };
@@ -121,18 +99,8 @@ public sealed class FileDtoValidator : AbstractValidator<FileDto>
             && content.AsSpan(0, signature.Length).SequenceEqual(signature);
     }
 
-    /// <summary>
-    /// Heuristically decides whether a file claiming to be text is really binary.
-    /// </summary>
-    /// <remarks>
-    /// A UTF-16 or UTF-32 file carries a NUL in most of its bytes, so the NUL probe alone would reject
-    /// every "Unicode"-encoded text file Notepad produces — exactly the files
-    /// <see cref="Extraction.PlainTextExtractor"/> is built to decode. A byte-order mark identifies
-    /// those encodings, and the extractor honours the same marks, so a marked file skips the probe.
-    /// Prepending a mark to genuinely binary content is not a hole worth closing: unlike the container
-    /// formats, the text path feeds a <see cref="StreamReader"/> rather than a parser, so the worst case
-    /// is a document of garbage text, which then fails as having no readable content.
-    /// </remarks>
+    // A BOM skips the NUL probe: UTF-16/32 text is mostly NULs, and PlainTextExtractor decodes it. A BOM
+    // on binary content only yields garbage text, which then fails as unreadable.
     private static bool LooksBinary(byte[] content)
     {
         if (HasUnicodeByteOrderMark(content))
@@ -159,8 +127,7 @@ public sealed class FileDtoValidator : AbstractValidator<FileDto>
         }
         catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException)
         {
-            // FileDto throws for an extension it does not know at all; that is a validation failure
-            // here, not an exceptional condition.
+            // FileDto throws for an unknown extension; here that is a validation failure.
             extension = default;
             return false;
         }

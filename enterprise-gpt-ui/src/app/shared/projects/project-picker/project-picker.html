@@ -1,16 +1,7 @@
 @if (open()) {
-  <!--
-    role="dialog", not role="menu": the panel holds a text field, which is not a valid
-    child of a menu and which the menu kit's arrow/Tab handling would fight. Non-modal —
-    aria-modal is deliberately absent — because the page behind it stays live, exactly
-    as it does behind a kebab.
-  -->
-  <!--
-    The width is written inline at every viewport, as `Menu` does, so `PANEL_WIDTH` in
-    the component is the only place it is stated. Leaving it to the stylesheet above the
-    breakpoint would mean the same number in two files, with the placement deciding
-    whether the panel fits from one of them and the browser rendering the other.
-  -->
+  <!-- A non-modal dialog, not a menu: a text field is not a valid menu child, and the page
+       behind stays live. -->
+  <!-- Width inline at every viewport, so `PANEL_WIDTH` is the only place it is stated. -->
   <div
     #panel
     class="picker"
@@ -26,12 +17,7 @@
   >
     <div class="picker__search">
       <app-icon class="picker__search-icon" name="bi-search" />
-      <!--
-        aria-controls only while the listbox exists: it is not rendered in the loading,
-        error or empty branches, and a dangling idref is an accessibility defect of its
-        own. Arrow keys move focus from here into the rows (see `onKeydown`), which is
-        what makes the field the panel's single tab stop.
-      -->
+      <!-- aria-controls only while the listbox exists, so the idref never dangles. -->
       <input
         #field
         type="text"
@@ -53,16 +39,8 @@
         <button type="button" class="picker__retry" (click)="projects.retry()">Try again</button>
       </p>
     } @else {
-      <!--
-        A listbox rather than a list of buttons: the rows are a single-select choice
-        over the conversation's project, and aria-selected is what carries the check
-        mark's meaning to a screen reader.
-
-        Rendered only when it has options, and the empty message sits *outside* it:
-        `listbox` owns `option` and `group` and nothing else, so a paragraph inside it
-        is an `aria-required-children` violation — and the message is precisely what
-        should be announced rather than swallowed by a malformed list.
-      -->
+      <!-- A listbox, so aria-selected carries the check mark's meaning. The empty message
+           sits outside it: a listbox may own only options and groups. -->
       @if (hasOptions()) {
         <div class="picker__list" role="listbox" [id]="listId" aria-label="Projects">
           @for (project of matches(); track project.id) {
@@ -91,10 +69,7 @@
         <p class="picker__status">No projects yet.</p>
       }
 
-      <!--
-        Absent rather than inert for a standalone conversation: the repo's rule for an
-        action that cannot do anything. The board draws it unconditionally.
-      -->
+      <!-- Absent rather than inert for a conversation in no project. -->
       @if (isAssigned()) {
         <button
           type="button"

@@ -9,9 +9,8 @@ namespace Enterprise.Gpt.Service.Users;
 public static class UserMapper
 {
     /// <summary>
-    /// LINQ projection from <see cref="User"/> to <see cref="UserDto"/> for use inside
-    /// <c>IQueryable.Select(...)</c>. Filters permissions to active grants in the same
-    /// query so callers don't need a separate filtered <c>Include</c>.
+    /// Query projection to <see cref="UserDto"/> that keeps only active grants, so no filtered
+    /// <c>Include</c> is needed.
     /// </summary>
     public static Expression<Func<User, UserDto>> MapToUserDtoExpression { get; } =
         user => new UserDto
@@ -36,15 +35,12 @@ public static class UserMapper
     #region Public static methods
 
     /// <summary>
-    /// Maps a materialized <see cref="User"/> entity to <see cref="UserDto"/>, projecting only
-    /// active grants. Caller must have loaded <see cref="User.UserPermissions"/> with the
-    /// <c>Permission</c> navigation populated (e.g. <c>Include(...).ThenInclude(p =&gt; p.Permission)</c>).
-    /// The active filter is applied here rather than left to the caller because permission
-    /// mutations soft-delete in place: after a grant diff the tracked collection holds both
-    /// freshly revoked and freshly added rows, and the revoked ones must not surface.
+    /// Maps a loaded user, with <see cref="User.UserPermissions"/> and their <c>Permission</c> included, to
+    /// <see cref="UserDto"/> with active grants only.
     /// </summary>
-    /// <param name="user">The loaded user entity.</param>
-    /// <returns>The mapped DTO.</returns>
+    /// <remarks>
+    /// Filtered here because a grant diff soft-deletes in place, leaving revoked rows in the tracked collection.
+    /// </remarks>
     public static UserDto MapToUserDto(this User user)
     {
         return new UserDto
@@ -66,13 +62,7 @@ public static class UserMapper
         };
     }
 
-    /// <summary>
-    /// Applies an <see cref="UpdateUserActionDto"/> to an existing <see cref="User"/>
-    /// entity in place. Callers are responsible for setting audit columns
-    /// (e.g. <c>DateModified</c>) and saving changes.
-    /// </summary>
-    /// <param name="dto">The action DTO carrying the new values.</param>
-    /// <param name="user">The tracked entity to mutate.</param>
+    /// <summary>Copies an update onto a tracked user; the caller sets audit columns and saves.</summary>
     public static void FromUpdateUserActionDtoToUser(this UpdateUserActionDto dto, User user)
     {
         user.FirstName = dto.FirstName;

@@ -18,9 +18,8 @@ import { AdminMcps } from './admin-mcps';
 const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps/all`;
 
 /**
- * `SearchInput`'s own 300 ms window, with room for the effect that follows it and for a
- * loaded CI runner — these are real timers, because faking the clock also stalls the
- * scheduler `whenStable()` awaits.
+ * `SearchInput`'s 300 ms debounce plus headroom for a loaded CI runner. Real timers, because
+ * faking the clock also stalls the scheduler `whenStable()` awaits.
  */
 const DEBOUNCE_MS = 450;
 
@@ -32,7 +31,7 @@ const DEBOUNCE_MS = 450;
 })
 class Elsewhere {}
 
-describe('AdminMcps (US-1208)', () => {
+describe('AdminMcps', () => {
   let backend: HttpTestingController;
   let harness: RouterTestingHarness;
 
@@ -126,9 +125,7 @@ describe('AdminMcps (US-1208)', () => {
   it('names the linked permission without a second request', async () => {
     await open([mcpServerFixture({ name: 'Jira Cloud', permissionId: 'perm-1' })]);
 
-    // `McpServerService` creates the permission with the server's name and re-syncs it on
-    // rename, so the badge is exact rather than approximate. `backend.verify()` is the
-    // other half: nothing was fetched to resolve it.
+    // `backend.verify()` is the other half: nothing was fetched to resolve the badge.
     const badge = element().querySelector('app-permission-badge');
     expect(badge?.textContent).toContain('Jira Cloud');
   });
@@ -137,8 +134,7 @@ describe('AdminMcps (US-1208)', () => {
     await open([mcpServerFixture({ authType: MCP_AUTH_TYPE.none, scope: null })]);
 
     expect(rowText()).toContain('None');
-    // The em dash is aria-hidden; the meaning is text, because a blank cell reads as a
-    // rendering fault rather than as "there is none".
+    // The em dash is aria-hidden, so the meaning has to be text.
     expect(rowText()).toContain('No scope');
   });
 
@@ -154,8 +150,7 @@ describe('AdminMcps (US-1208)', () => {
 
     expect(rowText()).toContain('Inactive');
     expect(element().querySelectorAll('.admin-mcps__server--retired')).toHaveLength(1);
-    // There is no reactivate route, so every item would be an affordance that cannot
-    // work — the shown-and-disabled pattern US-203 rejected. One live row, one menu.
+    // No reactivate route, so a deactivated row gets no menu: one live row, one menu.
     expect(element().querySelectorAll('app-menu')).toHaveLength(1);
     // The cascade takes the permission with the server, so there is no badge to render.
     expect(rowText()).toContain('No linked permission');
@@ -181,8 +176,8 @@ describe('AdminMcps (US-1208)', () => {
 
     await type('atlassian');
 
-    // Regime C: the whole registry is already here, so the filter is exact and the server
-    // is never asked again. `backend.verify()` is the second half of that claim.
+    // The whole registry is already here, so the server is never asked again;
+    // `backend.verify()` checks that.
     expect(rowText()).toContain('Jira Cloud');
     expect(rowText()).not.toContain('SAP Ledger');
   });
@@ -256,8 +251,7 @@ describe('AdminMcps (US-1208)', () => {
   it('renders an auth type this build does not know without breaking the row', async () => {
     await open([mcpServerFixture({ name: 'Mystery', authType: 99 })]);
 
-    // A value added server-side after this build. The row names it rather than showing a
-    // blank cell, the way the model table's unknown provider does.
+    // A value added server-side after this build: the row names it rather than going blank.
     expect(rowText()).toContain('99');
     expect(rowText()).toContain('Mystery');
   });

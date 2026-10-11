@@ -26,7 +26,7 @@ const PROJECT_URL = `${TEST_API_BASE_URL}/api/projects/${PROJECT.id}`;
 const DOCUMENTS_URL = `${PROJECT_URL}/documents`;
 const CONVERSATIONS_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
 
-describe('ProjectDetail (US-904, US-905, US-906)', () => {
+describe('ProjectDetail', () => {
   let backend: HttpTestingController;
   let harness: RouterTestingHarness;
   let uploadXhr: FakeUploadXhrQueue;
@@ -44,9 +44,8 @@ describe('ProjectDetail (US-904, US-905, US-906)', () => {
         provideFakeUploadXhr(uploadXhr),
         { provide: TokenService, useValue: { getToken: vi.fn().mockResolvedValue('token-1') } },
         { provide: SessionStore, useValue: { canUploadFiles: signal(true) } },
-        // The composer reads the catalogue through `TurnSettingsStore`; in the app
-        // `SessionBootstrap` fills it, and loading it here would put a second request
-        // in front of every assertion.
+        // `SessionBootstrap` fills the catalogue in the app; loading it here would put a second
+        // request in front of every assertion.
         {
           provide: ModelCatalogStore,
           useValue: {
@@ -81,13 +80,7 @@ describe('ProjectDetail (US-904, US-905, US-906)', () => {
     return harness.routeNativeElement as HTMLElement;
   }
 
-  /**
-   * The upload store from `ProjectDetail`'s own element injector.
-   *
-   * `TestBed.inject` would not find it: it is provided on the component, and the routed
-   * files panel resolves it up the element-injector chain. This is the *project's*
-   * store — the composer's is a separate instance under `COMPOSER_UPLOADS`.
-   */
+  /** From the component's element injector, which `TestBed.inject` cannot reach. */
   function uploads(): InstanceType<typeof UploadStore> {
     return harness.routeDebugElement!.injector.get(UploadStore);
   }
@@ -103,25 +96,13 @@ describe('ProjectDetail (US-904, US-905, US-906)', () => {
     await harness.fixture.whenStable();
   }
 
-  /**
-   * Advances a macrotask and renders, without waiting for stability.
-   *
-   * `whenStable()` cannot be used while a `canDeactivate` guard is holding a
-   * navigation: the guard is *deliberately* unresolved, so the application is never
-   * stable and the await parks until the test times out.
-   */
+  /** Not `whenStable()`, which never settles while a guard deliberately holds a navigation. */
   async function pump(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 0));
     TestBed.tick();
   }
 
-  /**
-   * Types into the instructions field by id.
-   *
-   * By id and not `querySelector('textarea')`: the composer sits above the tab strip
-   * and its prompt box comes first in DOM order, so the loose selector types into the
-   * wrong control and the guard never sees an edit.
-   */
+  /** By id: the composer's prompt box precedes it in DOM order, so a bare `textarea` misses. */
   async function editInstructions(text: string): Promise<void> {
     const field = host().querySelector('#project-instructions') as HTMLTextAreaElement;
     field.value = text;
@@ -133,8 +114,7 @@ describe('ProjectDetail (US-904, US-905, US-906)', () => {
     await harness.navigateByUrl(`/projects/${PROJECT.id}${path}`);
     backend.expectOne(PROJECT_URL).flush(PROJECT);
     backend.expectOne(DOCUMENTS_URL).flush([projectDocumentFixture({ name: 'plan.pdf' })]);
-    // US-908's filtered request, issued from the detail screen rather than its panel so
-    // the tab strip's count is right from whichever tab the reader lands on.
+    // Issued by the detail screen, not the panel, so the tab count is right from any tab.
     backend
       .expectOne((request) => request.url === CONVERSATIONS_URL)
       .flush(conversationPage(conversations, { pageSize: 25 }));
@@ -158,13 +138,11 @@ describe('ProjectDetail (US-904, US-905, US-906)', () => {
     const tabs = [...host().querySelectorAll('.nav-link')].map((tab) =>
       tab.textContent?.replace(/\s+/g, ' ').trim(),
     );
-    // Frame 4e's three tabs, in the board's order, each carrying its own count.
+    // Three tabs, in order, each with its own count.
     expect(tabs).toEqual(['Instructions', 'Files 1', 'Conversations 2']);
   });
 
-  it('counts a project’s conversations from whichever tab the reader is on (US-908)', async () => {
-    // The store is provided on the route rather than on the panel, so the strip is
-    // right while the reader stands on Instructions and the panel does not exist.
+  it('counts a project’s conversations from whichever tab the reader is on', async () => {
     await open('/instructions', [conversationFixture()]);
 
     expect(host().querySelector('app-project-conversations')).toBeNull();
@@ -177,9 +155,6 @@ describe('ProjectDetail (US-904, US-905, US-906)', () => {
   it('resolves the upload store through the outlet, so the files panel shares one', async () => {
     await open('/files');
 
-    // `UploadStore` is provided on this component and the routed panel resolves it up
-    // the element-injector chain, so switching tabs mid-upload does not tear the
-    // transfer down.
     uploads().attach([new File(['x'], 'notes.pdf', { type: 'application/pdf' })]);
     await settle();
 
@@ -190,8 +165,7 @@ describe('ProjectDetail (US-904, US-905, US-906)', () => {
     uploadXhr.last.respond(202, { id: 'job-1' });
     await harness.fixture.whenStable();
 
-    // The staged poll is EP-8's and already covered; it is drained here only so the
-    // backend verification at the end of the test has nothing outstanding.
+    // The staged poll has its own specs; drained only so `verify()` finds nothing outstanding.
     await new Promise((resolve) => setTimeout(resolve, 600));
     backend
       .expectOne((candidate) => candidate.url.includes('upload-status'))
@@ -208,16 +182,13 @@ describe('ProjectDetail (US-904, US-905, US-906)', () => {
     composer.attach([new File(['x'], 'notes.pdf', { type: 'application/pdf' })]);
     await settle();
 
-    // The composer starts a conversation; a file attached there belongs to that
-    // conversation, so it waits for one to exist rather than joining the project.
+    // A composer file belongs to the conversation the prompt will create, not the project.
     expect(uploadXhr.requests).toHaveLength(0);
     expect(composer.pendingFiles().map((file) => file.name)).toEqual(['notes.pdf']);
   });
 
   it('turns a finished upload into a row even while another tab is open', async () => {
-    // Instructions, not Files: the bridge lives on this component precisely so a file
-    // dropped on the composer from any tab still becomes a row and still moves the
-    // count on the tab strip.
+    // On Instructions, not Files: the bridge must turn uploads into rows from any tab.
     await open('/instructions');
 
     uploads().attach([new File(['x'], 'notes.pdf', { type: 'application/pdf' })]);
@@ -236,8 +207,7 @@ describe('ProjectDetail (US-904, US-905, US-906)', () => {
       .flush(jobStatus('Succeeded', projectDocumentFixture().id));
     await harness.fixture.whenStable();
 
-    // The list is re-read, because the upload route answers with a job id and never a
-    // document — the name, size and date can only come from asking again.
+    // Re-read, because the upload route answers with a job id, not a document.
     backend
       .expectOne(DOCUMENTS_URL)
       .flush([projectDocumentFixture({ name: 'plan.pdf' }), projectDocumentFixture()]);
@@ -291,7 +261,7 @@ describe('ProjectDetail (US-904, US-905, US-906)', () => {
     expect(TestBed.inject(Router).url).toBe(`/projects/${PROJECT.id}/files`);
   });
 
-  describe('favourite (US-909)', () => {
+  describe('favourite', () => {
     function star(): HTMLButtonElement | null {
       return host().querySelector<HTMLButtonElement>('.detail__favorite');
     }
@@ -318,9 +288,8 @@ describe('ProjectDetail (US-904, US-905, US-906)', () => {
     });
 
     it('keeps the standing instructions when the flag lands', async () => {
-      // The whole reason `favorited` is its own event carrying two fields: an `updated`
-      // with a synthesized DTO would overwrite `instructions` with a value nothing
-      // fetched, and this screen is where that would be visible.
+      // Why `favorited` carries two fields: a synthesized `updated` DTO would overwrite
+      // `instructions` with a value nothing fetched.
       await open();
 
       TestBed.inject(Dispatcher).dispatch(

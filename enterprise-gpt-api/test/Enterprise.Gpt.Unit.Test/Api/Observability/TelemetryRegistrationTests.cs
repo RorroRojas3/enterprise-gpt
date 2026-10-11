@@ -10,13 +10,9 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Api.Observability;
 
-/// <summary>
-/// Covers the exporter registration and the options that decide the deployment's sampling posture.
-/// </summary>
 /// <remarks>
-/// Assertions read the service descriptors rather than resolving them: building a
-/// <c>TracerProvider</c> would construct the Azure Monitor exporter against the fake connection
-/// string below and reach the network.
+/// Assertions read the service descriptors: building a <c>TracerProvider</c> would construct the Azure
+/// Monitor exporter against the fake connection string and reach the network.
 /// </remarks>
 public sealed class TelemetryRegistrationTests
 {
@@ -45,16 +41,13 @@ public sealed class TelemetryRegistrationTests
 
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(TracerProvider));
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(MeterProvider));
-        // AddProcessor<T>() would TryAddSingleton this itself; the explicit registration is what makes
-        // the enricher's own dependencies visible at the registration site, and is asserted here so a
-        // cleanup that drops it has to decide that deliberately.
+        // AddProcessor<T>() would add this itself; asserted so a cleanup dropping the explicit
+        // registration has to do so deliberately.
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(EndUserEnrichingProcessor));
     }
 
     /// <summary>
-    /// The values the exporter actually runs on. Nothing else asserts them, and a dropped assignment
-    /// here is invisible: the distro simply keeps its own default and the deployment samples at a rate
-    /// nobody chose.
+    /// Nothing else asserts these; a dropped assignment silently keeps the distro's own sampling default.
     /// </summary>
     [Fact]
     public void AddEnterpriseTelemetry_ConfiguredOptions_ReachTheExporter()
@@ -123,10 +116,7 @@ public sealed class TelemetryRegistrationTests
         Validator(Register([])).Validate();
     }
 
-    /// <remarks>
-    /// The API's own <c>appsettings.json</c>, linked into this project's output rather than copied into
-    /// a literal here, so a value edited in the real file cannot leave this test green.
-    /// </remarks>
+    /// <remarks>Reads the API's real <c>appsettings.json</c>, linked into the output.</remarks>
     [Fact]
     public void AddEnterpriseTelemetry_TheShippedDefaults_PassStartupValidationAndShipNoConnectionString()
     {
@@ -190,9 +180,8 @@ public sealed class TelemetryRegistrationTests
         services.BuildServiceProvider().GetRequiredService<IStartupValidator>();
 
     /// <remarks>
-    /// The distro registers its own configuration through the options system, so the delegate
-    /// <c>UseAzureMonitor</c> was handed materializes here without building a provider or reaching the
-    /// network.
+    /// The distro configures itself through the options system, so this materializes the
+    /// <c>UseAzureMonitor</c> delegate without building a provider.
     /// </remarks>
     private static AzureMonitorOptions Resolve(IServiceCollection services) =>
         services.BuildServiceProvider().GetRequiredService<IOptions<AzureMonitorOptions>>().Value;

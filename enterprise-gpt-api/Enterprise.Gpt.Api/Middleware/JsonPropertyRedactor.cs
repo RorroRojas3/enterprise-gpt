@@ -8,43 +8,30 @@ namespace Enterprise.Gpt.Api.Middleware;
 /// Scrubs sensitive content out of a captured HTTP payload before it is logged.
 /// </summary>
 /// <remarks>
-/// The seam <see cref="ILogger{TCategoryName}"/> cannot provide. Which backend receives a log record is a
-/// hosting concern; what the record is allowed to contain is not, and has to be decided before the record
-/// exists. Replace the default registration to redact by a different rule.
+/// What a log record may contain has to be decided before it exists, which <see cref="ILogger{TCategoryName}"/>
+/// cannot do. Replace the default registration to redact by a different rule.
 /// </remarks>
 public interface IRequestBodyRedactor
 {
     /// <summary>
-    /// Returns a copy of <paramref name="body"/> safe to log.
+    /// Returns a copy of <paramref name="body"/>, possibly truncated at the byte cap, that is safe to log.
     /// </summary>
-    /// <param name="body">The captured payload, already truncated to the configured cap.</param>
-    /// <param name="contentType">The declared content type, or <see langword="null"/> if absent.</param>
-    /// <returns>The redacted payload. Never <see langword="null"/>.</returns>
-    /// <example>
-    /// <code>
-    /// redactor.Redact("""{"name":"acme","apiKey":"sk-live-1"}""", "application/json");
-    /// // {"name":"acme","apiKey":"[redacted]"}
-    /// </code>
-    /// </example>
     string Redact(string body, string? contentType);
 }
 
 /// <summary>
-/// Default <see cref="IRequestBodyRedactor"/>: rewrites a JSON payload, replacing the value of every
-/// property named in <see cref="BodyLoggingOptions.RedactedPropertyNames"/> with a marker.
+/// Default <see cref="IRequestBodyRedactor"/>: replaces the value of every JSON property named in
+/// <see cref="BodyLoggingOptions.RedactedPropertyNames"/> with a marker.
 /// </summary>
-/// <param name="options">Supplies the property names to redact.</param>
 public sealed class JsonPropertyRedactor(IOptions<RequestLoggingOptions> options) : IRequestBodyRedactor
 {
     /// <summary>The value substituted for a redacted property.</summary>
     public const string RedactionMarker = "[redacted]";
 
-    /// <summary>Replaces a payload that could not be parsed but does mention a redacted name.</summary>
     internal const string UnparseableMarker = "[redacted: unparseable payload naming a sensitive property]";
 
-    // Normalized so accessToken, access_token and access-token are one name. OAuth and OIDC payloads are
-    // snake_case while the rest of this API is camelCase, and a list that had to spell out both would
-    // quietly miss whichever spelling nobody thought of.
+    // Normalized so accessToken, access_token and access-token are one name: OAuth and OIDC payloads are
+    // snake_case while this API is camelCase.
     private readonly HashSet<string> _redactedNames =
         new(options.Value.Bodies.RedactedPropertyNames.Select(Normalize), StringComparer.OrdinalIgnoreCase);
 
@@ -74,9 +61,7 @@ public sealed class JsonPropertyRedactor(IOptions<RequestLoggingOptions> options
         }
         catch (JsonException)
         {
-            // Expected rather than exceptional: a payload truncated at the byte cap is nearly always
-            // invalid JSON. Falling back to the raw text would defeat the point, so anything naming a
-            // sensitive property is dropped whole.
+            // Expected: a payload truncated at the byte cap is nearly always invalid JSON.
             return ScrubUnstructured(body);
         }
     }
@@ -120,15 +105,11 @@ public sealed class JsonPropertyRedactor(IOptions<RequestLoggingOptions> options
         }
     }
 
-    /// <summary>
-    /// All-or-nothing fallback for content with no structure to walk. Masking in place would need a
-    /// parser for a format that is, by definition, not parseable here.
-    /// </summary>
+    // All-or-nothing: masking in place would need a parser for content that has no structure to walk.
     private string ScrubUnstructured(string body)
     {
-        // Normalized on both sides, exactly as the structured path is. This arm is not a rare one — a
-        // payload cut at the byte cap is nearly always invalid JSON — so a fallback that only recognised
-        // camelCase would let a truncated {"api_key":"sk-live-… through in full.
+        // Normalized like the structured path: this arm is common, and camelCase-only matching would let a
+        // truncated {"api_key":"sk-live-… through in full.
         var haystack = Normalize(body);
 
         return _redactedNames.Any(name => haystack.Contains(name, StringComparison.OrdinalIgnoreCase))
@@ -136,10 +117,6 @@ public sealed class JsonPropertyRedactor(IOptions<RequestLoggingOptions> options
             : body;
     }
 
-    /// <summary>
-    /// Folds text to the form both spellings share, so <c>access_token</c> and <c>accessToken</c> compare
-    /// equal.
-    /// </summary>
     private static string Normalize(string value) =>
         value.Contains('_') || value.Contains('-')
             ? value.Replace("_", string.Empty).Replace("-", string.Empty)

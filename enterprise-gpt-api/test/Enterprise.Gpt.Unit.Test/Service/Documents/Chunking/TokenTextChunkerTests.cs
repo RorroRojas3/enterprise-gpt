@@ -32,10 +32,7 @@ public sealed class TokenTextChunkerTests
         return [.. texts.Select((text, i) => new DocumentSegmentDto { SourceNumber = i + 1, Text = text })];
     }
 
-    /// <summary>
-    /// Builds prose made of individually identifiable sentences, so overlap between neighbouring chunks can
-    /// be asserted by looking for shared sentences rather than by comparing opaque substrings.
-    /// </summary>
+    // Identifiable sentences let overlap be asserted as shared sentences rather than opaque substrings.
     private static string NumberedSentences(int count)
     {
         var builder = new StringBuilder();
@@ -156,10 +153,6 @@ public sealed class TokenTextChunkerTests
         }
     }
 
-    /// <summary>
-    /// Returns the longest prefix of <paramref name="next"/> that is also a suffix of
-    /// <paramref name="previous"/> — the text actually carried between the two chunks.
-    /// </summary>
     private static string LongestSharedPrefixOfTail(string previous, string next)
     {
         var maxLength = Math.Min(previous.Length, next.Length);
@@ -205,10 +198,7 @@ public sealed class TokenTextChunkerTests
         Assert.All(chunks, chunk => Assert.True(chunk.TokenCount <= 64));
     }
 
-    /// <summary>
-    /// Scripts with no ASCII whitespace or sentence punctuation, so the paragraph and sentence splitters
-    /// find no boundary and every chunk goes through the raw token-slice fallback.
-    /// </summary>
+    /// <summary>No whitespace or punctuation, so every chunk takes the token-slice fallback.</summary>
     public static TheoryData<string, int> UnsplittableScripts()
     {
         string[] scripts =

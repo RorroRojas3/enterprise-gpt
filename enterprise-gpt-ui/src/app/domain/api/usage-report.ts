@@ -1,14 +1,6 @@
 /**
- * The aggregated usage report, as `GET api/reports/usage` returns it (US-1301).
- *
- * One request serves the whole dashboard: period totals, the prior period beside them, the
- * outcome split, a dense daily series, the grouped breakdown and the fixed top-ten models.
- * Nothing here is cached — `ReportsStore` is route-scoped, so every entry to the tab issues a
- * fresh request (FR-41).
- *
- * Every figure counts **both** kinds of call, a chat turn and the out-of-band naming completion
- * alike, because both are billed. `namingTurns` and `namingTokens` carry that overhead separately
- * for anyone who needs to see it apart.
+ * One request serves the whole dashboard. Every figure counts chat turns and naming completions
+ * alike, since both are billed; `namingTurns` and `namingTokens` show that overhead apart.
  */
 export interface UsageReportDto {
   /** The inclusive start of the window the server actually measured. */
@@ -26,13 +18,7 @@ export interface UsageReportDto {
   readonly series: readonly UsageSeriesPointDto[];
   /** The breakdown the table renders, heaviest first. */
   readonly groups: readonly UsageGroupDto[];
-  /**
-   * The ten heaviest models, whatever {@link groupBy} says.
-   *
-   * The bar chart asks a fixed question — which models cost the most — that does not change when
-   * the table beside it is re-cut, so the server answers both in one response. With
-   * `groupBy=model` this is the head of {@link groups}.
-   */
+  /** The ten heaviest models, whatever {@link groupBy} says: the chart's question is fixed. */
   readonly topModels: readonly UsageGroupDto[];
   /** Whether {@link groups} was cut short at {@link groupLimit}. */
   readonly groupsTruncated: boolean;
@@ -56,17 +42,13 @@ export interface UsageReportTotalsDto {
   /** The billed total: {@link assistantTokens} plus {@link toolTokens}. */
   readonly totalTokens: number;
   /**
-   * What the transcribed messages weigh, estimated server-side.
-   *
-   * Reported beside the billed columns and never inside them: this estimates what the history
-   * costs to replay, not what was charged, and the two are supposed to disagree.
+   * Estimated cost of replaying the history, not what was charged: kept out of the billed
+   * columns, and expected to disagree with them.
    */
   readonly contextTokens: number;
   /**
-   * USD, or `null` when nothing in the period could be priced.
-   *
-   * Null is not zero. A period whose models carry no price answers null, and rendering that as
-   * `$0` would read as free. {@link unpricedTurns} is what says the figure is a floor.
+   * USD, or `null` when nothing could be priced; never render null as `$0`.
+   * {@link unpricedTurns} says when the figure is a floor.
    */
   readonly estimatedCost: number | null;
   readonly unpricedTurns: number;

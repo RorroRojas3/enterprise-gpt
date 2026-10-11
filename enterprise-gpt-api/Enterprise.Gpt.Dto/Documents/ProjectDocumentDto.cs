@@ -2,24 +2,16 @@ using System.Text.Json.Serialization;
 
 namespace Enterprise.Gpt.Dto.Documents;
 
-/// <summary>
-/// A document uploaded into a project, as returned by the project document listing. Carries no chunk
-/// or embedding data.
-/// </summary>
+/// <summary>A project document as listed; carries no chunk or embedding data.</summary>
 public class ProjectDocumentDto
 {
-    /// <summary>Gets or sets the unique identifier of the document.</summary>
     [JsonPropertyName("id")]
     public Guid Id { get; set; }
 
-    /// <summary>Gets or sets the owning project.</summary>
     [JsonPropertyName("projectId")]
     public Guid ProjectId { get; set; }
 
-    /// <summary>
-    /// Alias of <see cref="Id"/>, matching the shape the upload-status response uses for conversation
-    /// documents so a client can key both listings the same way.
-    /// </summary>
+    /// <summary>Alias of <see cref="Id"/> so clients key this and upload-status responses alike.</summary>
     [JsonPropertyName("documentId")]
     public Guid DocumentId => Id;
 

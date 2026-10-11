@@ -1,4 +1,3 @@
-// Frame 4h stacks three labelled fields with even spacing.
 .project-form {
   display: flex;
   flex-direction: column;
@@ -10,15 +9,13 @@
   flex-direction: column;
 }
 
-// The board's `(optional)` suffix: same size as the label, muted and unbolded, so it
-// reads as an aside rather than as part of the field's name.
+// Muted and unbolded, so `(optional)` reads as an aside rather than part of the name.
 .project-form__optional {
   color: var(--muted);
   font-weight: 400;
 }
 
-// Error text and counter share one row below the name field — message left, counter
-// right — and the counter survives the invalid state.
+// Errors and counter share the row below the name field; the counter stays when invalid.
 .project-form__meta {
   display: flex;
   gap: 12px;
@@ -31,8 +28,7 @@
   margin-top: 5px;
 }
 
-// The name field's own error region already sits inside a row with the counter, which
-// supplies the gap.
+// The row it shares with the counter already supplies the gap.
 .project-form__meta .project-form__errors {
   margin-top: 0;
 }

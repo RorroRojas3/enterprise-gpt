@@ -6,18 +6,15 @@ namespace Enterprise.Gpt.Repository.Cosmos.Models;
 /// The outcome of a transactional batch.
 /// </summary>
 /// <param name="IsSuccess">Whether every operation was applied.</param>
-/// <param name="StatusCode">The status the batch as a whole returned.</param>
+/// <param name="StatusCode">The batch's overall status.</param>
 /// <param name="FailedOperationIndex">
-/// The zero-based index of the operation that caused the failure, or <see langword="null"/> when
-/// the batch succeeded or no single operation can be blamed.
+/// Zero-based index of the failing operation; <see langword="null"/> on success or when none can be blamed.
 /// </param>
 /// <param name="FailedOperationStatusCode">
-/// The status the failing operation returned, or <see langword="null"/> when the batch succeeded.
+/// The failing operation's status; <see langword="null"/> on success.
 /// </param>
 /// <remarks>
-/// The failing operation is identifiable because Cosmos DB returns that operation's own status and
-/// marks every other operation <see cref="HttpStatusCode.FailedDependency"/> (424) — so the one
-/// entry whose status is neither success nor 424 is the cause.
+/// Identifiable because Cosmos DB marks every other operation <see cref="HttpStatusCode.FailedDependency"/>.
 /// </remarks>
 public sealed record TranscriptBatchResult(
     bool IsSuccess,
@@ -28,7 +25,6 @@ public sealed record TranscriptBatchResult(
     /// <summary>
     /// Describes the failure for a log message, without including any document content.
     /// </summary>
-    /// <returns>A short description of which operation failed and how.</returns>
     public string Describe()
     {
         return IsSuccess

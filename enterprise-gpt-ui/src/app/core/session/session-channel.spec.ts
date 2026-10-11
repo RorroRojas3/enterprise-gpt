@@ -62,8 +62,6 @@ describe('SessionChannel', () => {
     });
 
     it('tears its own session down and leaves', async () => {
-      // MSAL's cacheLocation is sessionStorage, which is per tab: without this, tab B
-      // keeps its own token cache and its own populated stores after tab A signs out.
       const auth = TestBed.inject(AuthService);
       const seen = vi.fn();
       TestBed.inject(Events).on(sessionEvents.signedOut).subscribe(seen);

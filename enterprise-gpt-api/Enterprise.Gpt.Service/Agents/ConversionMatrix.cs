@@ -4,12 +4,9 @@ using Enterprise.Gpt.Service.Agents.Models;
 
 namespace Enterprise.Gpt.Service.Agents;
 
-/// <summary>
-/// The confirmed source-to-target conversion matrix.
-/// </summary>
+/// <summary>The confirmed source-to-target conversion matrix.</summary>
 /// <remarks>
-/// One source for two readers that must never disagree: the <c>document-conversion</c> skill renders
-/// its table from this file, and the run's own pre-flight refuses a pair from the same cells.
+/// The <c>document-conversion</c> skill's table and the run's pre-flight both read it, so they cannot disagree.
 /// </remarks>
 public interface IConversionMatrix
 {
@@ -19,19 +16,11 @@ public interface IConversionMatrix
     /// <summary>Gets every cell, one per ordered pair of distinct formats.</summary>
     IReadOnlyList<ConversionCell> Cells { get; }
 
-    /// <summary>
-    /// Finds the cell for a pair.
-    /// </summary>
-    /// <param name="from">The source format, with or without a leading dot.</param>
-    /// <param name="to">The target format, on the same terms.</param>
-    /// <returns>The cell, or <see langword="null"/> when either format is not one the matrix covers.</returns>
+    /// <summary>Finds the cell for a pair of formats, each with or without a leading dot.</summary>
+    /// <returns>The cell, or <see langword="null"/> when either format is not covered.</returns>
     ConversionCell? Find(string? from, string? to);
 
-    /// <summary>
-    /// Lists the targets a source can actually reach, for the sentence a refusal ends on.
-    /// </summary>
-    /// <param name="from">The source format, with or without a leading dot.</param>
-    /// <returns>The faithful and structural targets, in the matrix's published order.</returns>
+    /// <summary>Lists the faithful and structural targets a source can reach, in published order.</summary>
     IReadOnlyList<string> OfferedTargets(string? from);
 }
 
@@ -80,9 +69,7 @@ public sealed class ConversionMatrix : IConversionMatrix
     private static string Normalize(string? format) =>
         format is null ? string.Empty : format.Trim().TrimStart('.').ToLowerInvariant();
 
-    // An unknown tier reads as notOffered rather than throwing: a matrix regenerated with a tier this
-    // build does not know about must not take the whole agent down, and "not offered" is the arm that
-    // neither promises nor refuses.
+    // An unknown tier reads as notOffered rather than throwing, so a newer matrix cannot take the agent down.
     private static ConversionTiers ParseTier(string? tier) => tier switch
     {
         "faithful" => ConversionTiers.Faithful,
@@ -95,16 +82,11 @@ public sealed class ConversionMatrix : IConversionMatrix
 
     #region Public static methods
 
-    /// <summary>
-    /// Reads the published matrix off disk.
-    /// </summary>
-    /// <param name="path">The file to read, defaulting to <see cref="DeployedPath"/>.</param>
-    /// <returns>The parsed matrix.</returns>
+    /// <summary>Reads the published matrix off disk, from <see cref="DeployedPath"/> by default.</summary>
     /// <exception cref="FileNotFoundException">The matrix did not ship with this build.</exception>
     /// <exception cref="InvalidDataException">
-    /// The file is not a matrix this build can read — malformed JSON, a missing property, a duplicated
-    /// pair, or no cells at all. One exception for every shape of wrong, because this runs inside the DI
-    /// factory and a startup failure has to name the file it could not read.
+    /// The file is malformed, incomplete, has a duplicated pair or no cells; one type so the startup failure
+    /// names the file.
     /// </exception>
     public static ConversionMatrix Load(string? path = null)
     {
@@ -139,9 +121,7 @@ public sealed class ConversionMatrix : IConversionMatrix
                 ? new ConversionMatrix(formats, cells)
                 : throw new InvalidDataException($"The conversion matrix at '{file}' carries no cells.");
         }
-        // InvalidOperationException among them: a document that parses but is the wrong shape — a
-        // number where a string belongs, an object where an array does — raises that rather than a
-        // JsonException, and it would otherwise reach startup without naming the file.
+        // A well-formed document of the wrong shape raises InvalidOperationException, not JsonException.
         catch (Exception exception)
             when (exception is JsonException or KeyNotFoundException or ArgumentException or InvalidOperationException)
         {

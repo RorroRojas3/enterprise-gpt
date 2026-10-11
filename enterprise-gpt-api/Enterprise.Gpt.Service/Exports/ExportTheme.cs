@@ -13,11 +13,10 @@ namespace Enterprise.Gpt.Service.Exports;
 public static class ExportTheme
 {
     /// <summary>
-    /// Gets the custom properties the HTML export's template resolves every value against.
+    /// The custom properties the HTML template resolves every value against.
     /// </summary>
     /// <remarks>
-    /// The template carries no literal of its own, so this list is the only place an export's
-    /// appearance is stated — which is what keeps the HTML, Word and PDF documents in step.
+    /// The template has no literals of its own, which keeps the HTML, Word and PDF documents in step.
     /// </remarks>
     public static IReadOnlyList<KeyValuePair<string, string>> CssVariables { get; } =
     [
@@ -99,9 +98,8 @@ public static class ExportTheme
 
         /// <summary>The body face a Word export names.</summary>
         /// <remarks>
-        /// A .docx carries no glyphs and Word's substitution for a family the reader lacks is not
-        /// deterministic, so the two Word faces are named from what ships with Office rather than from
-        /// the head of the stack above.
+        /// A .docx carries no glyphs and Word's substitution is not deterministic, so the Word faces are
+        /// ones that ship with Office.
         /// </remarks>
         public const string WordSans = "Calibri";
 
@@ -113,9 +111,8 @@ public static class ExportTheme
     /// Type sizes, in points.
     /// </summary>
     /// <remarks>
-    /// Points because it is the one unit all three renderings convert from without rounding away a
-    /// distinction: CSS takes <c>pt</c> directly, Open XML doubles it into half-points, MigraDoc reads
-    /// it as-is.
+    /// Points convert to all three renderings without rounding: CSS <c>pt</c>, Open XML half-points,
+    /// MigraDoc as-is.
     /// </remarks>
     public static class Sizes
     {
@@ -142,11 +139,6 @@ public static class ExportTheme
 
         private static readonly double[] Headings = [16.5, 15, 13.5, 12, 11, 11];
 
-        /// <summary>
-        /// Gets the size of a markdown heading.
-        /// </summary>
-        /// <param name="level">The heading level, 1 through 6. Values outside that range are clamped.</param>
-        /// <returns>The size in points.</returns>
         public static double Heading(int level) => Headings[Math.Clamp(level, 1, 6) - 1];
     }
 
@@ -157,8 +149,7 @@ public static class ExportTheme
     private static string Points(double size) =>
         $"{size.ToString("0.##", CultureInfo.InvariantCulture)}pt";
 
-    // A family name containing a space has to be quoted; a generic keyword such as sans-serif must
-    // not be, or it is read as a family nobody has.
+    // Quote families with spaces, but never a generic keyword, which would then read as a family name.
     private static string Stack(IReadOnlyList<string> families) =>
         string.Join(", ", families.Select(family =>
             family.Contains(' ', StringComparison.Ordinal) ? $"'{family}'" : family));

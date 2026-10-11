@@ -19,19 +19,8 @@ import { Icon } from '@shared/icon/icon';
 export type CopySubject = 'prompt' | 'response';
 
 /**
- * Frame `1g`'s Copy control, on a user bubble or on a settled answer (US-607).
- *
- * It copies the **source** it is handed rather than anything read back off the
- * page: for an answer that is the accumulated markdown, which is what a reader
- * wants to paste elsewhere and what the rendered HTML is only one view of.
- *
- * Unlike the code-block control (US-603) this is a real template-bound button,
- * so it needs no live region and none is added. That one is minted inside
- * rendered `innerHTML`, where Angular has nothing to bind and every block offers
- * an identically-named "Copy", and it is replaced by the streaming tail within a
- * flush; this one exists only on a settled turn, carries a distinct name per
- * subject, and changes that name on the element the user just activated — which
- * is `StoppedCard`'s existing reasoning for the same confirmation.
+ * Copies the source it is handed (an answer's markdown), not the rendered page. Unlike the
+ * code-block control it needs no live region: its name changes on the element just activated.
  */
 @Component({
   selector: 'app-message-copy',
@@ -39,9 +28,7 @@ export type CopySubject = 'prompt' | 'response';
   imports: [Icon],
   templateUrl: './message-copy.html',
   styleUrl: './message-copy.scss',
-  // The footer is revealed on hover and focus, and a confirmation the reader
-  // cannot see is no confirmation — so a copied control asks its row to stay up
-  // for the length of the window, whatever the pointer does next.
+  // Keeps the hover-revealed footer up for the confirmation window.
   host: { '[class.message-copy--copied]': 'copied()' },
 })
 export class MessageCopy {
@@ -53,12 +40,8 @@ export class MessageCopy {
   protected readonly visibleLabel = computed(() => (this.copied() ? COPIED_LABEL : COPY_LABEL));
 
   /**
-   * The accessible name follows the visible label into "Copied" and back, or
-   * SC 2.5.3 fails for the two seconds they differ. It names the subject the
-   * rest of the time because a transcript offers one of these per message and
-   * "Copy" alone tells a rotor nothing about which.
-   *
-   * Derived from the same constants the label is, so the two cannot drift apart.
+   * Follows the visible label into "Copied" (SC 2.5.3); otherwise names the subject, since a
+   * rotor listing one "Copy" per message tells the reader nothing.
    */
   protected readonly label = computed(() =>
     this.copied() ? COPIED_LABEL : `${COPY_LABEL} ${this.subject()}`,
@@ -68,9 +51,8 @@ export class MessageCopy {
   private _destroyed = false;
 
   constructor() {
-    // A route change inside the confirmation window must not fire a write into a
-    // destroyed component — including the window between the click and the
-    // clipboard settling, which has no timer to cancel yet.
+    // The flag covers the gap between the click and the clipboard settling, which has no
+    // timer to cancel yet.
     inject(DestroyRef).onDestroy(() => {
       this._destroyed = true;
       this._clearTimer();

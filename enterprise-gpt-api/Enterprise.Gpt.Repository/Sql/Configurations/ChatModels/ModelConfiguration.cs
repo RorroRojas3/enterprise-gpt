@@ -29,9 +29,8 @@ public class ModelConfiguration : BaseModifiedByEntityConfiguration<Model, Guid>
             .WithMany()
             .HasForeignKey(x => x.ProviderId);
 
-        // A store default so a column added later backfills existing rows to visible rather than
-        // hiding the whole catalog at once. ValueGeneratedNever because EF's seed differ skips
-        // store-generated columns, and would drop this one from HasData with no error at all.
+        // The store default backfills existing rows as visible. ValueGeneratedNever because EF's seed differ
+        // skips store-generated columns and would silently drop this one from HasData.
         builder.Property(x => x.IsUserSelectable)
             .HasDefaultValue(true)
             .ValueGeneratedNever();
@@ -44,15 +43,11 @@ public class ModelConfiguration : BaseModifiedByEntityConfiguration<Model, Guid>
                 Id = new("c36e22ed-262a-47a1-b2ba-06a38355ae0f"),
                 ProviderId = Providers.AzureOpenAI,
                 Name = "RR GPT 5.6 Luna",
-                // The pinned document summarizer. Its window and output cap are asserted here
-                // rather than left at zero because the summarization engine reads both from
-                // this row at the moment of use, and hidden from the picker because it is a
-                // purpose-built deployment nobody should be able to hold a conversation with.
+                // The pinned document summarizer, hidden from the picker. The summarization engine reads
+                // its window and output cap from this row at the moment of use.
                 DeploymentName = "rr-gpt5.6-luna",
                 ContextWindowSize = 1_000_000m,
-                // Wide enough for a full document summary plus whatever the deployment spends on
-                // reasoning, which shares this cap. It costs the input budget three percent of
-                // the window, since the engine reserves the cap out of it before splitting.
+                // A full summary plus reasoning, which shares this cap; reserved out of the window.
                 MaxOutputTokens = 32_768m,
                 IsUserSelectable = false,
                 IsToolEnabled = true,
@@ -67,10 +62,8 @@ public class ModelConfiguration : BaseModifiedByEntityConfiguration<Model, Guid>
                 Id = new("8f2b4d16-9c05-4a3e-8f7a-1d6a9c2b5e04"),
                 ProviderId = Providers.AzureOpenAI,
                 Name = "RR GPT 5.6 Luna (File Agent)",
-                // The pinned File Agent. Its own row rather than the summarizer's so the two can be
-                // repointed independently, and on Azure OpenAI because the hosted code interpreter
-                // rides that provider's Responses route and no other. Hidden from the picker: it is
-                // a purpose-built deployment nobody should be able to hold a conversation with.
+                // The pinned File Agent, hidden from the picker. Its own row so it can be repointed apart from
+                // the summarizer; Azure OpenAI because the hosted code interpreter needs its Responses route.
                 DeploymentName = "rr-gpt5.6-luna",
                 ContextWindowSize = 1_000_000m,
                 MaxOutputTokens = 16_384m,

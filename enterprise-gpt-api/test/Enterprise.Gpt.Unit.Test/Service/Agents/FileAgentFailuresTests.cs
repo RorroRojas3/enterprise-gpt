@@ -4,13 +4,9 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Agents;
 
-/// <summary>
-/// Covers what a run that produced no file tells the user and the model.
-/// </summary>
 /// <remarks>
-/// The distinctness assertion is the point. A reader of the timeline has to be able to tell an artifact
-/// that would not open from a run that never made one, and the copy is the only thing that says which —
-/// progress events deliberately carry no error text.
+/// Progress events carry no error text, so the copy alone must tell an artifact that would not open from a
+/// run that never made one.
 /// </remarks>
 public sealed class FileAgentFailuresTests
 {

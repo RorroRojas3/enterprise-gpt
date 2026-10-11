@@ -44,9 +44,8 @@ public class ModelMapperTests
         Assert.Equal(expected.IsToolEnabled, actual.IsToolEnabled);
         Assert.Equal(expected.IsUserSelectable, actual.IsUserSelectable);
         Assert.Equal(expected.IsDefault, actual.IsDefault);
-        // Asserted through the shared helper so it covers the materialized mapper and the LINQ
-        // projection alike: the two are hand-duplicated, and a field added to one and not the other
-        // works on a create response and is silently null on every list and get.
+        // The mapper and the LINQ projection are hand-duplicated; asserting both through this helper
+        // catches a field added to only one.
         Assert.Equal(expected.InputPricePerMillionTokens, actual.InputPricePerMillionTokens);
         Assert.Equal(expected.OutputPricePerMillionTokens, actual.OutputPricePerMillionTokens);
         Assert.Equal(expected.DateDeactivated, actual.DateDeactivated);
@@ -161,9 +160,8 @@ public class ModelMapperTests
     }
 
     /// <summary>
-    /// The update request is a full representation, so an omitted price clears the stored one. The
-    /// alternative — treating null as "leave it alone" — would make an administrator unable to
-    /// un-price a model through the API at all.
+    /// The update is a full representation, so an omitted price clears the stored one; otherwise a model
+    /// could never be un-priced through the API.
     /// </summary>
     [Fact]
     public void FromUpdateModelActionDtoToModel_OmittedPrices_ClearsTheStoredPrices()

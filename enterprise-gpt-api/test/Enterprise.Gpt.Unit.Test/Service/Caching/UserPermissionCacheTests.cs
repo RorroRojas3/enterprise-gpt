@@ -148,9 +148,8 @@ public sealed class UserPermissionCacheTests
     [Fact]
     public async Task GetOrLoadAsync_LoadingCallerCancels_AttachedCoWaiterRetriesWithItsOwnLoader()
     {
-        // The co-waiter attaches while the load is in flight, so when the creating request aborts
-        // the co-waiter observes a task it did not start failing — the branch that must retry rather
-        // than surface a failure the co-waiter did not cause.
+        // The co-waiter attaches mid-load, so when the creator aborts it sees a task it did not start
+        // fail, and must retry rather than surface that failure.
         var cache = CreateCache();
         var userId = Guid.NewGuid();
         var permissionId = Guid.NewGuid();
@@ -358,9 +357,8 @@ public sealed class UserPermissionCacheTests
     [Fact]
     public async Task Set_AnotherUserInvalidatedSinceTheStamp_IsSkipped()
     {
-        // The stamp is global, so an unrelated eviction also skips the write. That is deliberate:
-        // it costs one load and keeps the ordering check to a single comparison. Seeding an entry
-        // first pins that a skip *drops* it rather than leaving something even staler to be served.
+        // The stamp is global, so an unrelated eviction also skips the write; deliberately, at one load's
+        // cost. Seeding an entry first pins that a skip *drops* it rather than serving something staler.
         var cache = CreateCache();
         var userId = Guid.NewGuid();
         var permissionId = Guid.NewGuid();

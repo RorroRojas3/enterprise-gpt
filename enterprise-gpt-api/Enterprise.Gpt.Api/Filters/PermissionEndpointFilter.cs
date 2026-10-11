@@ -8,22 +8,11 @@ using Microsoft.AspNetCore.Mvc;
 namespace Enterprise.Gpt.Api.Filters;
 
 /// <summary>
-/// Endpoint filter factory that restricts an endpoint to callers holding <em>every</em> listed
-/// permission, returning a 403 <see cref="ProblemDetails"/> otherwise.
+/// Restricts an endpoint to callers holding <em>every</em> listed permission; others get a 403 problem.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The generic form of <c>AddEndpointFilter</c> activates a type from the container and so cannot
-/// carry permission ids, which is why this is a factory returning a delegate rather than an
-/// <see cref="IEndpointFilter"/> implementation. Services are resolved per request from
-/// <c>HttpContext.RequestServices</c>. Must run after authorization so a principal exists.
-/// </para>
-/// <para>
-/// Authorization reads <see cref="IUserPermissionCache"/>, not the database: the entry is normally
-/// written at sign-in, and on a miss this filter loads the caller's full grant set once and caches
-/// it. Administrators are not implicitly granted every permission — they hold the grants the
-/// permission service recorded, exactly.
-/// </para>
+/// A factory because a container-activated filter cannot carry permission ids; it must run after authorization.
+/// Grants come from <see cref="IUserPermissionCache"/>, and administrators hold only those recorded for them.
 /// </remarks>
 public static class PermissionEndpointFilter
 {
@@ -41,26 +30,13 @@ public static class PermissionEndpointFilter
     #region Public static methods
 
     /// <summary>
-    /// Builds an endpoint filter requiring an active grant of every id in
-    /// <paramref name="permissionIds"/>.
+    /// Builds a filter requiring an active grant of every id in <paramref name="permissionIds"/>; duplicates
+    /// are ignored.
     /// </summary>
-    /// <param name="permissionIds">
-    /// The permissions the caller must all hold, from <see cref="PermissionIds"/>. Duplicates are
-    /// ignored.
-    /// </param>
-    /// <returns>A filter delegate suitable for <c>AddEndpointFilter</c>.</returns>
     /// <exception cref="ArgumentOutOfRangeException">No permission id was supplied.</exception>
     /// <exception cref="ArgumentException">
-    /// A permission id has no display name in <see cref="PermissionIds.Names"/>. Thrown at map
-    /// time, so the app fails to start rather than emitting a nameless 403.
+    /// A permission id has no name in <see cref="PermissionIds.Names"/>; thrown at map time, failing startup.
     /// </exception>
-    /// <example>
-    /// <code language="csharp">
-    /// group.MapPost("", UploadAsync)
-    ///     .AddEndpointFilter(PermissionEndpointFilter.Require(PermissionIds.UploadFile))
-    ///     .ProducesProblem(StatusCodes.Status403Forbidden);
-    /// </code>
-    /// </example>
     public static Func<EndpointFilterInvocationContext, EndpointFilterDelegate, ValueTask<object?>> Require(
         params Guid[] permissionIds)
     {
@@ -88,10 +64,8 @@ public static class PermissionEndpointFilter
             var tokenService = services.GetRequiredService<ITokenService>();
             var grantReader = services.GetRequiredService<IUserGrantReader>();
 
-            // Shared with the services that also have to ask this question, so the two never
-            // drift into disagreeing about what a grant is. The reader resolves its own
-            // DbContext inside the loader, so a cache hit — the normal case, since signing in
-            // populates the entry — constructs no EF context here at all.
+            // Shared with the services that ask the same question, so they never disagree on what a grant is.
+            // The reader resolves its DbContext inside the loader, so a cache hit constructs none.
             var granted = await grantReader.GetGrantsAsync(
                 tokenService.GetOid(), context.HttpContext.RequestAborted);
 
@@ -113,9 +87,8 @@ public static class PermissionEndpointFilter
                     Extensions = { ["permissions"] = names }
                 };
 
-                // TypedResults.Problem falls back to a direct write when the client's Accept
-                // excludes JSON, and that fallback skips CustomizeProblemDetails — so a denial
-                // would arrive uncorrelatable for exactly the browser case. Enrich is idempotent.
+                // TypedResults.Problem's non-JSON fallback skips CustomizeProblemDetails, so Enrich
+                // (idempotent) runs here to keep a browser's denial correlatable.
                 ProblemDetailsRegistration.Enrich(context.HttpContext, problemDetails);
 
                 return TypedResults.Problem(problemDetails);

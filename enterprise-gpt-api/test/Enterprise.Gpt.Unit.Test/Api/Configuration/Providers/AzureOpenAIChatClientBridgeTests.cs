@@ -17,19 +17,8 @@ namespace Enterprise.Gpt.Unit.Test.Api.Configuration.Providers;
 /// provider.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Two of the things this asserts are invisible anywhere else. The first is that
-/// <c>previous_response_id</c> is absent: <c>ChatOptions.ConversationId</c> was inert under Chat
-/// Completions, but the Responses adapter reads any id that does not begin with <c>conv_</c> as a
-/// response id and sends it as that — so the conversation GUID this application sets would ask the
-/// service to continue a response it never issued, on every turn. The second is that the reasoning
-/// options appear only for a model whose catalog row asks for them, because a deployment that does
-/// not support them rejects the whole request.
-/// </para>
-/// <para>
-/// No network is involved: the request is intercepted by a stub transport that records the body and
-/// answers with a minimal completed response.
-/// </para>
+/// Asserts what only the wire shows: the adapter sends a non-<c>conv_</c> <c>ConversationId</c> as
+/// <c>previous_response_id</c>, and a deployment without reasoning rejects reasoning options outright.
 /// </remarks>
 public sealed class AzureOpenAIChatClientBridgeTests
 {
@@ -113,11 +102,7 @@ public sealed class AzureOpenAIChatClientBridgeTests
         var handler = new RecordingHandler();
         using var httpClient = new HttpClient(handler);
 
-        // OPENAI001 / MEAI001: GetResponsesClient and the Responses AsIChatClient overload are both
-        // still experimental, in OpenAI 2.12.0 and Microsoft.Extensions.AI.OpenAI 10.9.0
-        // respectively, and remain so at the newest release of each. Scoped to the construction
-        // rather than the file so the assertions below cannot quietly pick up a third experimental
-        // API — the same containment AzureOpenAIProviderConfiguration applies at the real registration.
+        // OPENAI001 / MEAI001: the Responses client and adapter are experimental; scoped to construction.
 #pragma warning disable OPENAI001, MEAI001
         var chatClient = new OpenAIClient(
                 new ApiKeyCredential(settings.ApiKey),
@@ -163,9 +148,8 @@ public sealed class AzureOpenAIChatClientBridgeTests
         Assert.False(root.TryGetProperty("previous_response_id", out _));
         Assert.False(root.TryGetProperty("conversation", out _));
 
-        // The gate is ours, not the API's. The adapter reads only a "strict" key off
-        // AdditionalProperties today, but that is package behaviour rather than a guarantee, and a
-        // bump that started forwarding the rest would put this on every request.
+        // The gate is ours. The adapter reads only a "strict" key off AdditionalProperties, but that is
+        // package behaviour a bump could change.
         Assert.DoesNotContain(ChatRequestProperties.IsReasoningEnabled, root.GetRawText(), StringComparison.Ordinal);
     }
 
@@ -185,10 +169,8 @@ public sealed class AzureOpenAIChatClientBridgeTests
     [Fact]
     public async Task AsIChatClient_ForANonReasoningModel_IgnoresAProviderAgnosticReasoningRequest()
     {
-        // ChatOptions.Reasoning is MEAI's own provider-agnostic reasoning request, and the adapter
-        // applies it with `??=` — i.e. only when the raw options carry none, which is exactly the
-        // non-reasoning path. Anything that sets it for every turn therefore smuggles reasoning
-        // past the catalog gate and onto a deployment that rejects the whole request for it.
+        // The adapter applies ChatOptions.Reasoning only when the raw options carry none, which is the
+        // non-reasoning path, so setting it on every turn would smuggle reasoning past the catalog gate.
         var options = CatalogOptions(isReasoningEnabled: false);
         options.Reasoning = new ReasoningOptions
         {
@@ -204,9 +186,8 @@ public sealed class AzureOpenAIChatClientBridgeTests
     [Fact]
     public async Task AsIChatClient_Always_KeepsTheTurnStateless()
     {
-        // The Responses API stores prompts and answers for 30 days unless told otherwise, where
-        // Chat Completions stored nothing. Turning it off is what keeps that true after the swap —
-        // and it is also what makes the blanket ConversationId clear safe (see the tool-call test).
+        // The Responses API stores turns for 30 days unless told otherwise; disabling that also makes
+        // the blanket ConversationId clear safe (see the tool-call test).
         var root = await SendAsync(Settings(), CatalogOptions(isReasoningEnabled: false));
 
         Assert.False(root.GetProperty("store").GetBoolean());
@@ -215,18 +196,13 @@ public sealed class AzureOpenAIChatClientBridgeTests
     [Fact]
     public async Task AsIChatClient_AcrossAToolCall_ResendsTheWholeExchangeRatherThanAnOrphanResult()
     {
-        // The regression this exists for: FunctionInvokingChatClient sits *above* the callback, and
-        // when the service stores a response it hands back its own id as the ConversationId, drops
-        // the local history, and expects the next request to continue from it. Clearing that id
-        // without also disabling storage sends a bare function_call_output with nothing to attach
-        // it to, which the service rejects — on every tool-calling turn, from the second iteration.
+        // FunctionInvokingChatClient sits above the callback and continues from a stored response's id;
+        // clearing that id without disabling storage sends an orphan function_call_output, which fails.
         var handler = new RecordingHandler(ToolCall("resp_1"), TextAnswer("resp_2"));
         using var httpClient = new HttpClient(handler);
         var settings = Settings();
 
-        // OPENAI001 / MEAI001: as in SendAsync above — the Responses client and its IChatClient
-        // adapter are both still experimental, and scoping the suppression to the construction keeps
-        // it from covering the pipeline assembled underneath it.
+        // OPENAI001 / MEAI001: as in SendAsync above.
 #pragma warning disable OPENAI001, MEAI001
         var chatClient = new OpenAIClient(
                 new ApiKeyCredential(settings.ApiKey),

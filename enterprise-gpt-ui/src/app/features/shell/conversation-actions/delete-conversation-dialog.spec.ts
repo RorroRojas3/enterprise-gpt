@@ -69,8 +69,7 @@ describe('DeleteConversationDialog', () => {
   it('offers a red Delete and lands initial focus on Cancel', async () => {
     await open();
 
-    // Frame 3d: red lives only here and on bulk delete — and Enter on a freshly
-    // opened destructive confirm must not destroy anything.
+    // Enter on a freshly opened destructive confirm must not destroy anything.
     expect(deleteButton().textContent).toContain('Delete');
     expect(cancelButton().hasAttribute('data-modal-autofocus')).toBe(true);
     expect(document.activeElement).toBe(cancelButton());
@@ -86,11 +85,10 @@ describe('DeleteConversationDialog', () => {
     deleteButton().click();
     await fixture.whenStable();
 
-    // Optimistic per the AC: the modal is gone before the server answers.
+    // Optimistic: the modal is gone before the server answers.
     expect(dialog().open).toBe(false);
     expect(actions.deleteTarget()).toBeNull();
-    // The invoking row is gone with the delete, so focus cannot return to it; the
-    // component moves a fall-through to #main-content rather than leaving <body>.
+    // The invoking row is gone, so focus falls back to #main-content rather than <body>.
     expect(document.activeElement).toBe(main);
 
     backend

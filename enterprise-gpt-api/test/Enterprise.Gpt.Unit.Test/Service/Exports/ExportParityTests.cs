@@ -13,14 +13,9 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Exports;
 
-/// <summary>
-/// One conversation, every format, the same document.
-/// </summary>
 /// <remarks>
-/// Each renderer walks the block model with its own switch, so nothing but a test stops the three
-/// from drifting apart on an arm one of them forgot. Rendered text is compared rather than layout:
-/// what has to hold is that no format silently loses a heading, a list item, a table cell or a line
-/// of code the others keep.
+/// Each renderer walks the block model with its own switch, so only a test stops them drifting apart.
+/// Rendered text is compared rather than layout.
 /// </remarks>
 [Collection(PdfFontCollection.Name)]
 public sealed partial class ExportParityTests(PdfFontFixture fonts)
@@ -163,13 +158,7 @@ public sealed partial class ExportParityTests(PdfFontFixture fonts)
     private static string WordText() =>
         WordTextOf(new WordExportRenderer(new MarkdownBlockMapper()).Render(Fixture()).Content);
 
-    /// <summary>
-    /// The page content streams, which is where a PDF says what it drew.
-    /// </summary>
-    /// <remarks>
-    /// The bytes of the file itself carry a creation timestamp, so comparing them would report every
-    /// pair of renders as different and pass whatever it was asked.
-    /// </remarks>
+    // The page content streams: the file bytes carry a creation timestamp, so every pair of renders differs.
     private static string PdfContent(byte[] content)
     {
         using var input = new MemoryStream(content);
@@ -202,9 +191,8 @@ public sealed partial class ExportParityTests(PdfFontFixture fonts)
     }
 
     /// <summary>
-    /// Each renderer walks the block model with a switch of its own, and a missing arm falls through
-    /// to <c>default</c> in silence. What proves the arm is there is that a document holding one
-    /// block renders differently from one holding none.
+    /// A missing arm falls through to <c>default</c> silently, so the proof is that a one-block document
+    /// renders differently from an empty one.
     /// </summary>
     [Theory]
     [MemberData(nameof(EveryBlockKind))]
@@ -289,9 +277,7 @@ public sealed partial class ExportParityTests(PdfFontFixture fonts)
     }
 
     /// <summary>
-    /// A prompt is set apart in every rendering rather than running on as body text, and a quote is
-    /// ruled rather than merely indented — the two places the page formats used to say less than the
-    /// HTML did.
+    /// A prompt is set apart in every rendering, and a quote is ruled rather than merely indented.
     /// </summary>
     [Fact]
     public void Render_Html_MarksThePromptAndTheQuote()

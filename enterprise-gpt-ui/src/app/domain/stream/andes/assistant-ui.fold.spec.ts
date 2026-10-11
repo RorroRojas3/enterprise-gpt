@@ -7,12 +7,7 @@ import {
   foldAssistantEvents,
 } from './assistant-ui.contract';
 
-/**
- * Fold semantics for the vendored reducer, delegated here by the vendoring
- * spec. These exercise the package's `foldAssistantEvents` — never a
- * reimplementation — against recorded fixtures: the PRD's acceptance threshold
- * is all eight kinds folded correctly plus an unknown kind ignored.
- */
+/** Runs the vendored `foldAssistantEvents` itself, never a reimplementation, on fixtures. */
 describe('foldAssistantEvents', () => {
   function fold(events: Parameters<typeof foldAssistantEvents>[1][]): AssistantStatusSnapshot {
     return events.reduce(foldAssistantEvents, createInitialSnapshot());
@@ -137,8 +132,7 @@ describe('foldAssistantEvents', () => {
   });
 
   it('merges metadata from a kind it does not recognize', () => {
-    // The merge happens ahead of the kind switch, so a frame this build cannot interpret still
-    // contributes its correlation data rather than dropping it with the rest of the event.
+    // The merge runs ahead of the kind switch, so an unrecognised frame still contributes metadata.
     const unknown = {
       ...assistantEvent('Status'),
       kind: 'ToolPreamble',

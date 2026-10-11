@@ -7,28 +7,14 @@ namespace Enterprise.Gpt.Api.Middleware;
 /// A write-only pass-through over the real response stream that keeps a bounded copy of what was written.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Pass-through, not buffering: every write and every flush reaches the inner stream immediately, and the
-/// copy is taken afterwards. That is what keeps <c>POST api/conversations/{id}/stream</c> intact — the
-/// controller writes one model fragment and flushes, over and over, and a wrapper that held bytes back
-/// until completion would turn a live stream into a single delivery at the end.
-/// </para>
-/// <para>
-/// Eligibility is settled on the first write rather than at construction, because a response's content
-/// type is not known until the handler sets it. A <c>text/event-stream</c> response therefore stops being
-/// captured the moment it identifies itself, and the wrapper degrades to a plain forwarder for the rest
-/// of its life.
-/// </para>
+/// Pass-through, not buffering, or <c>POST api/conversations/{id}/stream</c> would arrive as one delivery at
+/// the end. Eligibility is settled on the first write, once the handler has set the content type.
 /// </remarks>
-/// <param name="inner">The response stream being wrapped. Not owned, and never disposed here.</param>
-/// <param name="response">The response whose content type decides eligibility.</param>
-/// <param name="options">Supplies the byte cap and the content-type allow-list.</param>
 internal sealed class ResponseCaptureStream(
     Stream inner,
     HttpResponse response,
     BodyLoggingOptions options) : Stream
 {
-    /// <summary>Starting capture capacity, doubled towards the cap as a response grows.</summary>
     private const int InitialCapacity = 4096;
 
     private readonly Stream _inner = inner;
@@ -40,14 +26,10 @@ internal sealed class ResponseCaptureStream(
     private bool _eligibilityDecided;
     private bool _capturing;
 
-    /// <summary>
-    /// Whether the response outgrew the byte cap.
-    /// </summary>
     internal bool Truncated { get; private set; }
 
     /// <summary>
-    /// The content type observed when eligibility was decided, or <see langword="null"/> if nothing was
-    /// ever written.
+    /// The content type at the first write, or <see langword="null"/> if nothing was written.
     /// </summary>
     internal string? CapturedContentType { get; private set; }
 
@@ -70,15 +52,9 @@ internal sealed class ResponseCaptureStream(
         set => throw new NotSupportedException();
     }
 
-    /// <summary>
-    /// Returns what was captured, or <see langword="null"/> when nothing was.
-    /// </summary>
-    /// <returns>The captured text, decoded as UTF-8.</returns>
     /// <remarks>
-    /// The cap is a byte count, so a truncated capture can end mid-sequence and decode to a replacement
-    /// character. Cutting on a character boundary instead would mean decoding incrementally on the write
-    /// path, which is real work on every response to tidy up the last glyph of a payload that is already
-    /// explicitly marked as truncated.
+    /// The cap counts bytes, so a truncated capture can end in a replacement character; cutting on a character
+    /// boundary would cost incremental decoding on every write.
     /// </remarks>
     internal string? GetCapturedText() =>
         _capturedBytes > 0 ? Encoding.UTF8.GetString(_captureBuffer!, 0, _capturedBytes) : null;
@@ -127,11 +103,7 @@ internal sealed class ResponseCaptureStream(
     /// <inheritdoc />
     public override void SetLength(long value) => throw new NotSupportedException();
 
-    /// <summary>
-    /// Leaves the wrapped stream open: it belongs to the server, and disposing it here would close the
-    /// response out from under the host.
-    /// </summary>
-    /// <param name="disposing">Whether the call comes from <see cref="Stream.Dispose()"/>.</param>
+    /// <summary>Leaves the wrapped stream open: it belongs to the server.</summary>
     protected override void Dispose(bool disposing) => base.Dispose(disposing);
 
     #region Private methods
@@ -177,14 +149,8 @@ internal sealed class ResponseCaptureStream(
         }
     }
 
-    /// <summary>
-    /// Grows the capture buffer towards the cap, so a small response does not pay for a large cap.
-    /// </summary>
-    /// <remarks>
-    /// Allocating <see cref="BodyLoggingOptions.MaxBodyBytes"/> up front would put an allocation on the
-    /// large object heap, per response, for any cap above 85 KB — a configuration the validated ceiling
-    /// permits.
-    /// </remarks>
+    // Grown towards the cap: allocating MaxBodyBytes up front would hit the large object heap on every
+    // response for any cap above 85 KB.
     private void Grow(int incoming)
     {
         var required = _capturedBytes + incoming;

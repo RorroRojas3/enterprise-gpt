@@ -3,14 +3,7 @@ import devConfig from '../../public/config.json';
 import { AppConfig, assertAppConfig, normalizeAppConfig } from '../app/core/config/app-config';
 import { provideAppConfig } from '../app/core/config/app-config.token';
 
-/**
- * The committed dev `config.json`, validated and normalized the way `main.ts` does.
- *
- * Reusing the real file rather than inventing a literal means a spec fails when the
- * shape drifts, which is the same guarantee `app-config.token.spec.ts` relies on.
- *
- * @param overrides Fields this spec needs to differ.
- */
+/** The real dev `config.json`, validated and normalized as `main.ts` does, so drift fails specs. */
 export function testAppConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   const raw = structuredClone(devConfig) as unknown;
   assertAppConfig(raw);

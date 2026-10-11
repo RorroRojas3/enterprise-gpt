@@ -10,10 +10,7 @@ public sealed class UserSecretProtectorTests
     private static readonly Guid _userId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid _serverId = Guid.Parse("22222222-2222-2222-2222-222222222222");
 
-    /// <summary>
-    /// The framework's own in-memory key ring: real cryptography, and a fresh master key per
-    /// instance — which is what makes two of them stand in for a key ring that has moved on.
-    /// </summary>
+    /// <summary>A fresh key per instance, so two protectors stand in for a rotated key ring.</summary>
     private static UserSecretProtector CreateProtector()
     {
         return new UserSecretProtector(

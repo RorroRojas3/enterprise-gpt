@@ -12,10 +12,8 @@ public sealed class ConversationDocumentConfiguration : BaseDocumentConfiguratio
     {
         builder.ToTable(nameof(ConversationDocument), "Core");
 
-        // A store default rather than the property initializer alone: EF scaffolds AddColumn from
-        // the CLR default, so without it the column would backfill every existing row to a value
-        // the enum does not define. ValueGeneratedNever keeps it a backfill rather than a value EF
-        // may withhold from an insert — the same pair, for the same reason, as Model.IsUserSelectable.
+        // Without a store default, AddColumn backfills the CLR default, which the enum does not define.
+        // ValueGeneratedNever for the same reason as Model.IsUserSelectable.
         builder.Property(x => x.Type)
             .HasConversion<int>()
             .HasDefaultValue(ConversationDocumentTypes.Uploaded)
@@ -33,12 +31,10 @@ public sealed class ConversationDocumentConfiguration : BaseDocumentConfiguratio
             .WithOne(x => x.ConversationDocument)
             .HasForeignKey(x => x.ConversationDocumentId);
 
-        // Serves the per-conversation listing: one conversation's documents, filtered to the
-        // active ones.
+        // Per-conversation listing.
         builder.HasIndex(x => new { x.ConversationId, x.DateDeactivated });
 
-        // Serves the caller-scoped cross-conversation listing, which filters on the owner rather
-        // than a conversation.
+        // Caller-scoped cross-conversation listing.
         builder.HasIndex(x => new { x.UserId, x.DateDeactivated });
     }
 }

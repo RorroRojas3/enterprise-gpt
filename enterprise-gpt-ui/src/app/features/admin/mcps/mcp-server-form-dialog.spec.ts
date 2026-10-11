@@ -20,7 +20,7 @@ const NONE = String(MCP_AUTH_TYPE.none);
 const ENTRA = String(MCP_AUTH_TYPE.entraIdOnBehalfOf);
 const USER_KEY = String(MCP_AUTH_TYPE.userApiKey);
 
-describe('McpServerFormDialog (US-1208)', () => {
+describe('McpServerFormDialog', () => {
   let backend: HttpTestingController;
   let fixture: ComponentFixture<McpServerFormDialog>;
   let actions: InstanceType<typeof McpServerActionsStore>;
@@ -128,9 +128,7 @@ describe('McpServerFormDialog (US-1208)', () => {
       expect(field(id), id).not.toBeNull();
     }
 
-    // Frame `5h` draws a "Linked permission" select and neither action DTO carries one:
-    // `McpServerService` creates that permission itself and names it after the server.
-    // A disabled control here would be the shown-and-inert affordance US-203 rejected.
+    // Neither action DTO carries a permission: `McpServerService` creates and names it.
     expect(host().textContent).not.toContain('Linked permission');
     expect(host().querySelector('#mcp-form-permission')).toBeNull();
   });
@@ -187,16 +185,13 @@ describe('McpServerFormDialog (US-1208)', () => {
     await choose('mcp-form-auth', ENTRA);
 
     // Cleared rather than hidden: a value the save would discard must not sit behind a
-    // hidden field, which is the "blank versus zero" defect one screen over.
+    // hidden field.
     expect((field('mcp-form-scope') as HTMLInputElement).value).toBe('');
   });
 
   it('stays submittable when an edit seeds a None server that carries a scope', async () => {
-    // Reachable data: `McpServerDto.scope` is nullable and the API forbids the
-    // combination only on write, so a legacy or seeded row can hold both. The clearing
-    // effect tracks the auth type, which does not change when this replaces the create
-    // defaults — so `hidden()` and `toMcpServerBody`'s normalization are what carry it,
-    // and this is the case that pins them.
+    // Reachable: the API forbids this combination only on write. The auth type never changes
+    // here, so the clearing effect does not run; `hidden()` and `toMcpServerBody` carry it.
     await openEdit(
       mcpServerFixture({ authType: MCP_AUTH_TYPE.none, scope: 'api://legacy/.default' }),
     );
@@ -213,10 +208,8 @@ describe('McpServerFormDialog (US-1208)', () => {
   });
 
   it('explains an auth type the wire would not take, without waiting to be touched', async () => {
-    // The table renders an unknown auth type rather than breaking the row, so opening
-    // that row leaves the select with no matching option. Without this, Save would be
-    // disabled over a body `toMcpServerBody` refuses, with nothing on screen saying why —
-    // and the disabled button prevents the very interaction that would reveal it.
+    // The select has no matching option, and Save is disabled, so the message cannot wait
+    // for an interaction the disabled button prevents.
     await openEdit(mcpServerFixture({ authType: 99 }));
 
     expect((field('mcp-form-auth') as HTMLSelectElement).selectedIndex).toBe(-1);
@@ -261,7 +254,7 @@ describe('McpServerFormDialog (US-1208)', () => {
     await fixture.whenStable();
   });
 
-  it('previews the chosen icon, and keeps one this build does not ship (US-1210)', async () => {
+  it('previews the chosen icon, and keeps one this build does not ship', async () => {
     await openCreate();
 
     expect(host().querySelector('app-brand-icon')).toBeNull();
@@ -303,8 +296,7 @@ describe('McpServerFormDialog (US-1208)', () => {
   it('refuses a URL that is not absolute http or https, in the client’s own words', async () => {
     await openCreate();
     await fill();
-    // The board's own typo — a comma where the dot belongs — which is why frame `5h`
-    // draws this field invalid.
+    // A comma where the dot belongs.
     await type('mcp-form-url', 'mcp.andessoftware,net/sap');
     await blur('mcp-form-url');
 
@@ -386,10 +378,8 @@ describe('McpServerFormDialog (US-1208)', () => {
     await fill();
     await type('mcp-form-headers', 'X-MCP-Toolsets: repos');
 
-    // The reachable divergence: the client's size estimate is looser than .NET's encoder,
-    // so a block this form accepts can still come back refused. This is the assertion the
-    // whole textarea design rests on — the API faults the set under one flat `Headers` key,
-    // which is what `serverMessagesFor` can match and `Headers[0].Name` could not.
+    // The client's size estimate is looser than .NET's encoder, so an accepted block can
+    // still be refused; the API faults it under one flat `Headers` key the field can match.
     (await submit()).flush(
       {
         ...PROBLEM_FIXTURES.validationError,

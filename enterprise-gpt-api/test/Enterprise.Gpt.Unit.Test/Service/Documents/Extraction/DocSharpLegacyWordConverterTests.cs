@@ -7,15 +7,9 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Documents.Extraction;
 
-/// <summary>
-/// Covers the failure behavior of the legacy <c>.doc</c> converter.
-/// </summary>
 /// <remarks>
-/// The successful conversion path is not covered here: a valid Word 97–2003 file is an OLE2 compound
-/// document that cannot be synthesized in a test, and committing a binary fixture would be opaque. That
-/// path is exercised by uploading a real <c>.doc</c> during manual verification. What matters most for
-/// correctness is covered: malformed input must surface as a caller-fixable 400 rather than a 500, because
-/// the converter runs on a background job where an unhandled exception becomes an opaque job failure.
+/// Failure paths only: a valid OLE2 <c>.doc</c> cannot be synthesized in a test, so success is verified
+/// manually. Malformed input must surface as a 400, not an opaque background-job failure.
 /// </remarks>
 public sealed class DocSharpLegacyWordConverterTests
 {

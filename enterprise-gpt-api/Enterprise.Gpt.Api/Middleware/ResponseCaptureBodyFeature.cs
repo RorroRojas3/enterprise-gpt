@@ -8,20 +8,10 @@ namespace Enterprise.Gpt.Api.Middleware;
 /// response-body operation with the server's own feature.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Written out rather than using the framework's <c>StreamResponseBodyFeature</c>, whose
-/// <c>CompleteAsync</c> completes only its own pipe writer and never tells the prior feature the response
-/// is finished — so a handler calling <see cref="HttpResponse.CompleteAsync"/> while the wrapper was
-/// installed would not reach Kestrel.
-/// </para>
-/// <para>
-/// <see cref="SendFileAsync"/> deliberately bypasses the capture stream and goes straight to the server,
-/// which preserves the zero-copy <c>sendfile</c> path. The cost is that a file response is not captured,
-/// which is no loss: file payloads are binary and would fail the content-type allow-list anyway.
-/// </para>
+/// Not <c>StreamResponseBodyFeature</c>: its <c>CompleteAsync</c> never completes the prior feature, so
+/// <see cref="HttpResponse.CompleteAsync"/> would not reach Kestrel. <see cref="SendFileAsync"/> bypasses
+/// capture to keep zero-copy <c>sendfile</c>; file payloads would fail the content-type allow-list anyway.
 /// </remarks>
-/// <param name="prior">The feature this one wraps. Owns the underlying connection.</param>
-/// <param name="stream">The capturing stream handed out in place of the real one.</param>
 internal sealed class ResponseCaptureBodyFeature(
     IHttpResponseBodyFeature prior,
     ResponseCaptureStream stream) : IHttpResponseBodyFeature
@@ -68,15 +58,9 @@ internal sealed class ResponseCaptureBodyFeature(
     }
 
     /// <summary>
-    /// Pushes anything buffered in <see cref="Writer"/> down to the connection.
+    /// Pushes anything buffered in <see cref="Writer"/> to the connection before the middleware restores the
+    /// original feature, which knows nothing of this writer.
     /// </summary>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>A task that completes when the buffer has been drained.</returns>
-    /// <remarks>
-    /// Called before the middleware puts the original feature back: a handler that wrote through
-    /// <see cref="HttpResponse.BodyWriter"/> without flushing would otherwise lose those bytes, because
-    /// the host goes on to complete a feature that knows nothing about this writer.
-    /// </remarks>
     internal async ValueTask FlushWriterAsync(CancellationToken cancellationToken = default)
     {
         if (_writer is not null)

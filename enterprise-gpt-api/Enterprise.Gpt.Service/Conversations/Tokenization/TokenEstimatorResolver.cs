@@ -14,22 +14,15 @@ public interface ITokenEstimatorResolver
     /// Gets the uncalibrated estimator, for text that belongs to no provider yet.
     /// </summary>
     /// <remarks>
-    /// Exposed directly so a caller with no provider in hand does not have to look one up that is
-    /// designed to miss — which would log a "no estimator registered" warning that reads like a
-    /// misconfiguration rather than a deliberate default.
+    /// Saves a caller with no provider a lookup designed to miss, whose warning would read like a
+    /// misconfiguration.
     /// </remarks>
     ITokenEstimator Default { get; }
 
-    /// <summary>
-    /// Resolves the estimator for a provider.
-    /// </summary>
-    /// <param name="providerId">The provider serving the model.</param>
-    /// <returns>The provider's estimator, or the uncalibrated default when it has none.</returns>
+    /// <summary>Resolves a provider's estimator, or the uncalibrated default when it has none.</summary>
     /// <remarks>
-    /// Never throws for an unknown provider, unlike chat client resolution. A missing chat client
-    /// means the turn cannot run at all; a missing estimator only means the count is uncalibrated,
-    /// and failing a turn that could otherwise be answered would trade a real capability for an
-    /// approximation.
+    /// Never throws, unlike chat client resolution: a missing estimator only means an uncalibrated count,
+    /// which is no reason to fail a turn.
     /// </remarks>
     ITokenEstimator Resolve(Guid providerId);
 }
@@ -39,12 +32,8 @@ public interface ITokenEstimatorResolver
 /// how chat clients are resolved.
 /// </summary>
 /// <remarks>
-/// Registered as a singleton, so the captured provider is the root container and the estimators it
-/// hands back are the keyed singletons themselves — nothing scoped is captured.
+/// A singleton over the root container that hands back keyed singletons, so nothing scoped is captured.
 /// </remarks>
-/// <param name="serviceProvider">The container the keyed estimators are registered in.</param>
-/// <param name="fallback">The uncalibrated estimator used for a provider with no registration.</param>
-/// <param name="logger">The logger.</param>
 public sealed partial class TokenEstimatorResolver(
     IServiceProvider serviceProvider,
     ITokenEstimator fallback,

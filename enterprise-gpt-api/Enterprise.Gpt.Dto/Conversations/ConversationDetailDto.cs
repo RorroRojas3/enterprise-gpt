@@ -4,9 +4,8 @@
 /// A single conversation read on its own, carrying the selections needed to resume it.
 /// </summary>
 /// <remarks>
-/// Separate from <see cref="ConversationDto"/> because <see cref="McpServerIds"/> costs a
-/// subquery per conversation; advertising it on the listing shape would either pay that cost
-/// for every page or return an empty list clients could not distinguish from "none selected".
+/// Separate from <see cref="ConversationDto"/> because <see cref="McpServerIds"/> costs a subquery per
+/// conversation, and an unfilled list on the listing shape would read as "none selected".
 /// </remarks>
 public class ConversationDetailDto : ConversationDto
 {

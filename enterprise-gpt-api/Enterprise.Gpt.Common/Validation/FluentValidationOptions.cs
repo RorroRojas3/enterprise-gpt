@@ -4,7 +4,6 @@ using Microsoft.Extensions.Options;
 namespace Enterprise.Gpt.Common.Validation;
 
 /// <summary>Runs the registered FluentValidation validator for an options instance.</summary>
-/// <typeparam name="TOptions">The options type to validate.</typeparam>
 /// <param name="name">The options name this validates; <see langword="null"/> validates every name.</param>
 /// <param name="validator">The validator for <typeparamref name="TOptions"/>.</param>
 public sealed class FluentValidationOptions<TOptions>(string? name, IValidator<TOptions> validator) : IValidateOptions<TOptions>

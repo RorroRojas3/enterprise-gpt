@@ -5,38 +5,15 @@ namespace Enterprise.Gpt.Service.Conversations;
 /// against a given conversation at a time.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The default implementation (<see cref="ConversationLockService"/>) is <b>process-local</b>.
-/// It guarantees mutual exclusion only within a single API instance; running two or more
-/// replicas gives each its own registry and therefore no mutual exclusion at all. This
-/// interface exists as the seam for a distributed lease (for example a Cosmos DB lease
-/// document with a TTL) should the API ever be scaled out.
-/// </para>
-/// <para>
-/// Acquisition is deliberately non-blocking: a caller that cannot take the lock is expected
-/// to fail fast rather than queue behind an arbitrarily long model completion.
-/// </para>
+/// <see cref="ConversationLockService"/> is process-local, so replicas get no mutual exclusion; this is
+/// the seam for a distributed lease. Acquisition never waits, so a busy caller fails fast.
 /// </remarks>
 public interface IConversationLockService
 {
-    /// <summary>
-    /// Attempts to acquire the exclusive lock for the specified conversation without waiting.
-    /// </summary>
-    /// <param name="conversationId">The unique identifier of the conversation to lock.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>
-    /// A task that represents the asynchronous operation. The task result is an
-    /// <see cref="IDisposable"/> that releases the lock when disposed, or <see langword="null"/>
-    /// if the lock is already held.
-    /// </returns>
-    /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled via <paramref name="cancellationToken"/>.</exception>
-    /// <exception cref="ObjectDisposedException">Thrown when the service has already been disposed.</exception>
-    /// <example>
-    /// <code language="csharp">
-    /// using var releaser = await lockService.TryAcquireLockAsync(conversationId, cancellationToken)
-    ///     ?? throw new ConversationBusyException($"Conversation {conversationId} is currently being processed.");
-    /// </code>
-    /// </example>
+    /// <summary>Tries to take the conversation's lock without waiting.</summary>
+    /// <returns>A handle that releases the lock, or <see langword="null"/> if it is held.</returns>
+    /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
+    /// <exception cref="ObjectDisposedException">The service has been disposed.</exception>
     ValueTask<IDisposable?> TryAcquireLockAsync(Guid conversationId, CancellationToken cancellationToken = default);
 }
 
@@ -45,19 +22,8 @@ public interface IConversationLockService
 /// reference-counted registry of per-conversation semaphores.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Entries are created on first use and removed the instant their last holder releases,
-/// so the registry stays bounded by the number of <em>concurrently active</em> conversations
-/// rather than by the number of conversations ever seen. Reference counting is used in place
-/// of a background eviction sweep because a sweep cannot observe "no one is using this entry"
-/// atomically with respect to acquisition: an evicted-and-disposed semaphore can be handed to
-/// a caller that fetched it a moment earlier, after which the next caller creates a fresh
-/// entry and two turns run against the same conversation — precisely the outcome this
-/// service exists to prevent.
-/// </para>
-/// <para>
-/// Registered as a singleton; see <see cref="IConversationLockService"/> for the scale-out caveat.
-/// </para>
+/// Entries go when their last holder releases. Ref counting rather than an eviction sweep, which could
+/// dispose a semaphore a caller had just fetched and let two turns run on one conversation.
 /// </remarks>
 public sealed class ConversationLockService : IConversationLockService, IDisposable
 {
@@ -65,10 +31,7 @@ public sealed class ConversationLockService : IConversationLockService, IDisposa
     private readonly Lock _gate = new();
     private bool _disposed;
 
-    /// <summary>
-    /// Gets the number of conversations currently holding a registry entry. Exposed for tests
-    /// so they can assert that the registry drains rather than leaks.
-    /// </summary>
+    // Exposed for tests asserting the registry drains rather than leaks.
     internal int ActiveLockCount
     {
         get
@@ -92,8 +55,7 @@ public sealed class ConversationLockService : IConversationLockService, IDisposa
         }
         finally
         {
-            // Covers the not-acquired and cancelled paths alike; the successful path hands the
-            // reference on to the releaser, which returns it on disposal.
+            // Not-acquired and cancelled paths alike; on success the releaser returns the reference.
             if (!acquired)
             {
                 Return(conversationId, entry);
@@ -103,15 +65,10 @@ public sealed class ConversationLockService : IConversationLockService, IDisposa
         return acquired ? new LockReleaser(this, conversationId, entry) : null;
     }
 
-    /// <summary>
-    /// Marks the service as disposed and abandons the registry.
-    /// </summary>
+    /// <summary>Marks the service as disposed and abandons the registry.</summary>
     /// <remarks>
-    /// Every entry in the registry has at least one reference by construction, so there is
-    /// nothing here to dispose: entries are left for their own <see cref="LockReleaser"/> to
-    /// release and reclaim. Disposing a held semaphore here would fault the release path of a
-    /// request still unwinding during host shutdown, and a <see cref="SemaphoreSlim"/> with no
-    /// allocated wait handle holds no unmanaged resource worth reclaiming at process exit.
+    /// Held semaphores are left to their <see cref="LockReleaser"/>: disposing them here would fault the
+    /// release path of a request still unwinding during shutdown.
     /// </remarks>
     public void Dispose()
     {
@@ -123,38 +80,23 @@ public sealed class ConversationLockService : IConversationLockService, IDisposa
     }
 
     /// <summary>
-    /// A single conversation's semaphore together with the number of outstanding
-    /// holders and pending acquirers. <see cref="RefCount"/> is guarded by the owning
-    /// service's gate, never by the semaphore itself.
+    /// A conversation's semaphore; <see cref="RefCount"/> counts holders plus pending acquirers and is
+    /// guarded by the service's gate, never by the semaphore.
     /// </summary>
     private sealed class LockEntry
     {
-        /// <summary>
-        /// Gets the binary semaphore that serialises turns for the conversation.
-        /// </summary>
         public SemaphoreSlim Semaphore { get; } = new(1, 1);
 
-        /// <summary>
-        /// Gets or sets the number of callers currently holding or acquiring this entry.
-        /// </summary>
         public int RefCount { get; set; }
     }
 
-    /// <summary>
-    /// Releases a conversation lock and drops the caller's reference to its registry entry.
-    /// </summary>
     private sealed class LockReleaser(ConversationLockService service, Guid conversationId, LockEntry entry) : IDisposable
     {
         private int _disposed;
 
-        /// <summary>
-        /// Releases the semaphore and returns the entry to the registry. Safe to call more
-        /// than once and from more than one thread; only the first call has any effect.
-        /// </summary>
         /// <remarks>
-        /// The interlocked guard is load-bearing rather than defensive: a concurrent double
-        /// dispose would otherwise call <see cref="SemaphoreSlim.Release()"/> twice, raising
-        /// the count to two and admitting a second concurrent turn.
+        /// The interlocked guard is load-bearing: a concurrent double dispose would release twice and
+        /// admit a second concurrent turn.
         /// </remarks>
         public void Dispose()
         {
@@ -170,12 +112,7 @@ public sealed class ConversationLockService : IConversationLockService, IDisposa
 
     #region Private methods
 
-    /// <summary>
-    /// Takes a reference to the conversation's registry entry, creating it if necessary.
-    /// </summary>
-    /// <param name="conversationId">The unique identifier of the conversation.</param>
-    /// <returns>The entry, with its reference count already incremented on the caller's behalf.</returns>
-    /// <exception cref="ObjectDisposedException">Thrown when the service has already been disposed.</exception>
+    /// <summary>Takes a reference to the conversation's entry, creating it if needed.</summary>
     private LockEntry Rent(Guid conversationId)
     {
         lock (_gate)
@@ -194,12 +131,7 @@ public sealed class ConversationLockService : IConversationLockService, IDisposa
         }
     }
 
-    /// <summary>
-    /// Drops one reference to the conversation's registry entry, removing and disposing it
-    /// once the last reference is gone.
-    /// </summary>
-    /// <param name="conversationId">The unique identifier of the conversation.</param>
-    /// <param name="entry">The entry the caller holds a reference to.</param>
+    /// <summary>Drops one reference, removing and disposing the entry with the last one.</summary>
     private void Return(Guid conversationId, LockEntry entry)
     {
         lock (_gate)
@@ -212,9 +144,8 @@ public sealed class ConversationLockService : IConversationLockService, IDisposa
             _locks.Remove(conversationId);
         }
 
-        // Reaching zero under the gate means no other caller holds or can obtain this entry:
-        // a concurrent Rent for the same id would have had to take the gate first, and would
-        // have found the entry still present and incremented it above zero.
+        // Zero under the gate means no one holds or can obtain this entry: a concurrent Rent takes
+        // the gate first and would have incremented it.
         entry.Semaphore.Dispose();
     }
 

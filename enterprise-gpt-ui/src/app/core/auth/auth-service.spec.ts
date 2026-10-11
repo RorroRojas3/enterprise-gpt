@@ -44,9 +44,6 @@ describe('AuthService', () => {
   });
 
   it('turns off navigateToLoginRequestUrl when resolving the redirect', async () => {
-    // Left at its v5 default of true, MSAL answers the redirect with a
-    // location.replace back to the originating URL — a second full page load, a
-    // second config fetch and a second bootstrap. The return trip is the router's.
     const handleRedirectPromise = vi.fn((_options?: HandleRedirectPromiseOptions) =>
       Promise.resolve(null),
     );
@@ -60,8 +57,6 @@ describe('AuthService', () => {
   });
 
   it('resolves the redirect once however many callers ask', async () => {
-    // The handshake is what clears MSAL's interaction_in_progress lock, so it runs on
-    // every page load — but only once, or two callers race the same response.
     const handleRedirectPromise = vi.fn(() => Promise.resolve(null));
     const auth = service(signedOutMsal({ handleRedirectPromise }));
 
@@ -79,16 +74,12 @@ describe('AuthService', () => {
     );
 
     await expect(auth.ready()).resolves.toMatchObject({ account, error: null });
-    // Read back through MSAL rather than from the result, because that is what the
-    // service does — the double therefore has to make setActiveAccount mean something.
+    // The service reads the account back through MSAL, so the double must honour setActiveAccount.
     expect(auth.account).toEqual(account);
   });
 
   it('reports live MSAL state rather than the memoized redirect result', async () => {
-    // MSAL caches handleRedirectPromise per hash for the lifetime of the application
-    // instance, so a second call replays the first response — account included. Taking
-    // the account from that replay would report a user MSAL has since evicted as still
-    // signed in, which is precisely what clearing the memo on sign-out exists to stop.
+    // MSAL replays the first redirect response, account included, on every later call.
     const account = fakeAccount();
     const instance = signedOutMsal({
       handleRedirectPromise: () => Promise.resolve(fakeAuthResult({ account })),
@@ -114,9 +105,7 @@ describe('AuthService', () => {
   });
 
   it('lets one inconclusive handshake through, then stops', async () => {
-    // A handshake with neither an account nor an error is a real MSAL outcome, and
-    // passing every one of them onward is an unbounded /auth → /chat → Entra loop. The
-    // first is the benign "opened /auth directly" case; the second is the loop.
+    // The first is the benign "opened /auth directly" case; the second is the loop.
     const auth = service(signedOutMsal());
 
     expect(auth.noteInconclusiveHandshake()).toBe(false);
@@ -175,8 +164,6 @@ describe('AuthService', () => {
   });
 
   it('refuses a stored route that is not an in-app path', async () => {
-    // The value survives a round trip through the browser, so it is treated as
-    // untrusted: a protocol-relative or absolute URL here is an open redirect.
     sessionStorage.setItem('egpt.returnUrl', '//evil.test/steal');
     const auth = service(signedInMsal());
 
@@ -184,7 +171,7 @@ describe('AuthService', () => {
   });
 
   describe('signOut', () => {
-    /** A logoutRedirect that behaves like the happy path: the browser leaves, so it never settles. */
+    /** The happy path: the browser leaves, so logoutRedirect never settles. */
     const leavesThePage = (_request?: EndSessionRequest): Promise<void> =>
       new Promise<void>(() => undefined);
 
@@ -212,8 +199,7 @@ describe('AuthService', () => {
       void auth.signOut();
 
       expect(logoutRedirect).toHaveBeenCalledWith({ account });
-      // Never the request's own postLogoutRedirectUri: buildMsalConfig already resolves
-      // it absolutely, and a second source is a drift waiting to happen.
+      // buildMsalConfig is the single source of postLogoutRedirectUri.
       expect(logoutRedirect.mock.calls[0]?.[0]).not.toHaveProperty('postLogoutRedirectUri');
     });
 
@@ -230,10 +216,7 @@ describe('AuthService', () => {
     });
 
     it('wipes local state outright and lands on the signed-out page when Entra is unreachable', async () => {
-      // The failure that matters: MSAL has already cleared its cache by the time
-      // authority discovery throws, and the Entra session cookie is still live. Landing
-      // on postLogoutRedirectUri would take the user through /chat and authGuard
-      // straight back into a silent re-authentication.
+      // The Entra cookie is still live, so landing on /chat would silently re-authenticate.
       const clearCache = vi.fn(() => Promise.resolve());
       const auth = service(
         signedInMsal({
@@ -244,8 +227,7 @@ describe('AuthService', () => {
 
       await auth.signOut();
 
-      // No argument: with an account this removes only that account, where the bare
-      // call clears browser storage and the crypto keystore.
+      // The bare call clears all browser storage; an account argument would remove only that one.
       expect(clearCache).toHaveBeenCalledWith();
       expect(navigation().assign).toHaveBeenCalledWith(SIGNED_OUT_ROUTE);
     });
@@ -273,8 +255,7 @@ describe('AuthService', () => {
     });
 
     it('clears the handshake memo through its own event', async () => {
-      // The self-loop: signOut dispatches the event this service also subscribes to.
-      // Clearing the memo is what lets the next ready() release a stuck SIGNOUT lock.
+      // signOut dispatches the event this service also subscribes to.
       const handleRedirectPromise = vi.fn(() => Promise.resolve(null));
       const auth = service(signedInMsal({ handleRedirectPromise, logoutRedirect: leavesThePage }));
 

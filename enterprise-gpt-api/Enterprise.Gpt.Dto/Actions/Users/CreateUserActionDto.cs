@@ -5,9 +5,8 @@ using FluentValidation;
 namespace Enterprise.Gpt.Dto.Actions.Users;
 
 /// <summary>
-/// Administrator request to provision a user ahead of their first sign-in. Only the email and
-/// the permissions to assign are supplied; the object id and display name are resolved from
-/// Microsoft Graph so the row keys on the same object id the user will present later.
+/// Administrator request to provision a user before first sign-in. The object id and display name are
+/// resolved from Microsoft Graph so the row keys on the object id the user will present later.
 /// </summary>
 public record CreateUserActionDto
 {

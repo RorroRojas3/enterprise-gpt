@@ -71,6 +71,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   methods gained a `Log` prefix (their explicit event ids 1000-1004 are unchanged).
   `JobStatusStore`, `McpClientCache` and `BlobDocumentStore` take an injected `TimeProvider`, and
   `ReadinessProbe` is disposable. No other runtime behaviour changes.
+- Source comments across the Angular UI now follow the project comment standard. Multi-paragraph
+  TSDoc, template and SCSS comments were cut to their one- or two-line rationale, or removed when they
+  only restated the code; PRD story ids and design-frame references were dropped from comments, and
+  stale or misplaced comments were corrected. PRD story ids were also removed from UI test names and
+  from the `check-forbidden-apis`, `check-initial-chunk` and `check-icon-names` build-gate messages.
+  Only comments, test names and message text changed, so behaviour is unchanged.
 
 ### Removed
 

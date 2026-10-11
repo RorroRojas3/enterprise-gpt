@@ -37,8 +37,7 @@ describe('injectSignedOutAbort', () => {
   });
 
   it('mints one signal per request rather than sharing one', () => {
-    // Sharing a single signal makes two concurrent requests indistinguishable, and ties
-    // every component's Stop to the same object.
+    // A shared signal would make concurrent requests indistinguishable.
     const mint = mintFactory();
 
     expect(mint()).not.toBe(mint());
@@ -55,9 +54,7 @@ describe('injectSignedOutAbort', () => {
   });
 
   it('is already aborted for anything started after the session ended', () => {
-    // Correct rather than incidental: sign-in is always a redirect, so a session never
-    // resumes in the same document and work starting now is doomed either way. It
-    // surfaces as an `aborted` AppError, which raises no toast.
+    // Intended: sign-in is always a redirect, so a session never resumes in the same document.
     const mint = mintFactory();
 
     signOut();

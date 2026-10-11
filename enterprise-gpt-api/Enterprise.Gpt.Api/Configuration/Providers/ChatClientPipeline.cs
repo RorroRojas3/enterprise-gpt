@@ -10,7 +10,6 @@ internal static class ChatClientPipeline
 {
     #region Public static methods
 
-    /// <summary>Applies the shared tool-invocation bounds.</summary>
     internal static void ConfigureFunctionInvocation(FunctionInvokingChatClient client)
     {
         client.AllowConcurrentInvocation = false;
@@ -19,7 +18,6 @@ internal static class ChatClientPipeline
         client.MaximumConsecutiveErrorsPerRequest = 5;
     }
 
-    /// <summary>Installs the tool classifiers, so a tool is reported as what it is.</summary>
     /// <remarks>
     /// Both classifiers stack: agents short-circuit and everything else falls through to the MCP one.
     /// Nothing turns tool arguments on, so prompt content, arguments and results stay out of progress events.

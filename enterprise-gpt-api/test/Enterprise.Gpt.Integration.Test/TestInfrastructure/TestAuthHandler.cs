@@ -7,25 +7,16 @@ using Microsoft.Extensions.Options;
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 
 /// <summary>
-/// Authentication handler that replaces the Entra ID JWT bearer scheme under test. It issues a
-/// principal carrying the AAD object-identifier claim <c>TokenService.GetOid()</c> reads, based
-/// on the <see cref="UserHeader"/> request header: <c>admin</c> and <c>user</c> map to the
-/// fixed <see cref="TestUsers"/> identities, any raw GUID is used verbatim, and a missing
-/// header produces an unauthenticated request (401 on protected endpoints).
+/// Replaces Entra ID under test: a <see cref="UserHeader"/> of <c>admin</c> or <c>user</c> maps to
+/// <see cref="TestUsers"/>, any GUID is used verbatim, and no header leaves the request anonymous.
 /// </summary>
 public class TestAuthHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,
     UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
-    /// <summary>
-    /// The authentication scheme name registered by the test factory.
-    /// </summary>
     public const string SchemeName = "Test";
 
-    /// <summary>
-    /// The request header selecting which test identity the request runs as.
-    /// </summary>
     public const string UserHeader = "X-Test-User";
 
     private const string _oidClaimType = "http://schemas.microsoft.com/identity/claims/objectidentifier";

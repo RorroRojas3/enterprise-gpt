@@ -127,8 +127,7 @@ describe('toAppError — framework problems', () => {
   });
 
   it('keeps a routing 404 distinct from resource-not-found', () => {
-    // The routing 404 carries the RFC 9110 link, so it means "no such endpoint"
-    // rather than "you may not see that row".
+    // Its RFC 9110 link means "no such endpoint", not "you may not see that row".
     const error = toAppError(httpError(FRAMEWORK_PROBLEM_FIXTURES.routeNotFound, 404));
 
     expect(error.kind).toBe('http');
@@ -136,8 +135,7 @@ describe('toAppError — framework problems', () => {
   });
 
   it('maps a bare 413 to http with no maxBytes', () => {
-    // Produced by Kestrel when a chunked upload bypasses the size filter, so the
-    // upload UI has to cope without the extension.
+    // Kestrel's, when a chunked upload bypasses the size filter.
     const error = toAppError(httpError(FRAMEWORK_PROBLEM_FIXTURES.payloadTooLarge, 413));
 
     expect(error.kind).toBe('http');
@@ -184,16 +182,12 @@ describe('toAppError — non-HttpErrorResponse values', () => {
   });
 
   it('maps a TimeoutError to network, not client, so it stays retriable', () => {
-    // AbortSignal.timeout() raises a TimeoutError, which is neither an AbortError
-    // nor a TypeError. Classifying it as a client bug would both mislead the user
-    // and take it out of the retry path.
+    // AbortSignal.timeout() raises a TimeoutError, neither an AbortError nor a TypeError.
     expect(toAppError(new DOMException('timed out', 'TimeoutError')).kind).toBe('network');
   });
 
   it('still maps a timeout to network when its signal is supplied', () => {
-    // AbortSignal.timeout() sets `aborted` and rejects with a TimeoutError, so a
-    // classifier that tested the signal first would call every timeout a
-    // cancellation — and only for the callers that passed the signal.
+    // The timeout also sets `aborted`, so testing the signal first would call it a cancellation.
     const signal = AbortSignal.timeout(0);
 
     return new Promise<void>((resolve) => {
@@ -205,8 +199,7 @@ describe('toAppError — non-HttpErrorResponse values', () => {
   });
 
   it('maps a transport failure to network even when the signal has since aborted', () => {
-    // A component torn down in the same tick as a genuine fetch failure must not
-    // turn that failure into "the user pressed Stop".
+    // A teardown in the same tick as a real fetch failure must not read as a Stop.
     const controller = new AbortController();
     controller.abort();
 
@@ -216,9 +209,7 @@ describe('toAppError — non-HttpErrorResponse values', () => {
   });
 
   it('maps an abort carrying a reason to aborted when the signal is supplied', () => {
-    // abort(reason) rejects with the reason itself — often a plain string — so the
-    // signal is the only evidence that the user pressed Stop rather than the
-    // request failing.
+    // abort(reason) rejects with the bare reason, so only the signal identifies the Stop.
     const controller = new AbortController();
     controller.abort('user stopped');
 

@@ -12,16 +12,12 @@ public interface IDocumentIntelligenceService
     /// <summary>
     /// Analyzes the provided document bytes with the configured OCR model and returns the analysis result.
     /// </summary>
-    /// <param name="bytes">The binary content of the document to analyze. Must not be <see langword="null"/>.</param>
-    /// <param name="heartbeat">
-    /// Optional callback invoked once per poll with the time elapsed so far. Analysis is a long-running
-    /// server-side operation with no intermediate progress, so this exists purely to let callers show
-    /// that work is still happening; it is never a completion percentage.
-    /// </param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
-    /// <returns>The <see cref="AnalyzeResult"/> produced by Azure Document Intelligence.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="bytes"/> is <see langword="null"/>.</exception>
-    /// <exception cref="RequestFailedException">Thrown when the Azure Document Intelligence service returns an error.</exception>
+    /// <remarks>
+    /// <paramref name="heartbeat"/> gets the elapsed time once per poll: a liveness signal, never a
+    /// percentage, since analysis reports no intermediate progress.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="bytes"/> is <see langword="null"/>.</exception>
+    /// <exception cref="RequestFailedException">The service returned an error.</exception>
     Task<AnalyzeResult> ReadAsync(byte[] bytes, Action<TimeSpan>? heartbeat, CancellationToken cancellationToken);
 }
 
@@ -29,17 +25,15 @@ public partial class DocumentIntelligenceService(ILogger<DocumentIntelligenceSer
     IOptions<DocumentIntelligenceOptions> options,
     DocumentIntelligenceClient client) : IDocumentIntelligenceService
 {
-    // Matches the service's own recommended polling cadence closely enough to keep the status feed
-    // lively without adding meaningful request volume to a call that runs for tens of seconds.
+    // Close to the service's recommended polling cadence.
     private static readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(2);
 
     private readonly ILogger<DocumentIntelligenceService> _logger = logger;
     private readonly DocumentIntelligenceClient _client = client;
     private readonly string _ocrModelId = options.Value.OCRModelId;
 
-    // An analysis that never reaches a terminal state would otherwise hold a background-processing slot
-    // — there are only a handful — until the host shuts down, and its job would never become terminal
-    // so its status snapshot would never be evicted either.
+    // A stuck analysis would otherwise hold one of a few background slots until shutdown, and its job
+    // status would never be evicted.
     private readonly TimeSpan _analysisTimeout = options.Value.AnalysisTimeout;
 
     /// <inheritdoc />
@@ -53,8 +47,7 @@ public partial class DocumentIntelligenceService(ILogger<DocumentIntelligenceSer
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(_analysisTimeout);
 
-        // WaitUntil.Started rather than Completed so the operation can be polled here: the SDK's own
-        // wait loop is opaque, and the caller needs to keep the job status moving while OCR runs.
+        // Started, not Completed: the SDK's wait loop is opaque, and polling here keeps the job status moving.
         var operation = await _client.AnalyzeDocumentAsync(WaitUntil.Started, options, timeout.Token);
 
         var stopwatch = Stopwatch.StartNew();

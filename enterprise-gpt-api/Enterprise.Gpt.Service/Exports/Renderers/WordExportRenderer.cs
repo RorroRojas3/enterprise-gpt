@@ -13,19 +13,9 @@ namespace Enterprise.Gpt.Service.Exports.Renderers;
 /// Writes a conversation as an Office Open XML word-processing document.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Built from the block model rather than from the stored HTML: Word has no HTML importer this code
-/// could hand markup to, and the alternative — an <c>altChunk</c> carrying raw HTML — makes the
-/// document's contents depend on whichever version of Word opens it, and on that Word being willing
-/// to run an import at all.
-/// </para>
-/// <para>
-/// Colours and sizes come from <see cref="ExportTheme"/>, which the HTML and PDF renderers read too.
-/// The faces do not: a .docx carries no glyphs, so this names what ships with Office rather than the
-/// head of the theme's stack, and that is the one place the formats deliberately differ.
-/// </para>
+/// Built from the block model, not stored HTML: an <c>altChunk</c> import would depend on the opening Word's
+/// version. Colours and sizes come from <see cref="ExportTheme"/>; the faces are Office's own.
 /// </remarks>
-/// <param name="mapper">Maps each message's markdown into blocks.</param>
 public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversationExportRenderer
 {
     private const int BulletNumberingId = 1;
@@ -51,8 +41,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
     {
         using var stream = new MemoryStream();
 
-        // autoSave: false — the package is closed explicitly below, and leaving it on writes the
-        // parts a second time on Dispose.
+        // autoSave off: the package is saved explicitly below, and Dispose would write the parts again.
         using (var word = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document, autoSave: false))
         {
             var main = word.AddMainDocumentPart();
@@ -157,13 +146,11 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
         }
     }
 
-    // One Word paragraph per line, because a code block's line breaks are content and Word's own
-    // wrapping is not. Shading is on the paragraph rather than the runs so a short line still reads
-    // as part of the block.
+    // One paragraph per line, since Word's wrapping would reflow the breaks; shading is on the paragraph
+    // rather than the runs, so a short line still reads as part of the block.
     private static void AppendCode(
         OpenXmlCompositeElement parent, CodeBlock code, int indentLevel, ExportBlockStyles style)
     {
-        // The fence's language, the way the app labels a code block and the HTML export repeats.
         if (!string.IsNullOrWhiteSpace(code.Language))
         {
             var label = new Paragraph(Properties(StyleIds.CodeLanguage, indentLevel, style));
@@ -203,11 +190,8 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
 
         foreach (var item in list.Items)
         {
-            // The marker belongs to the item, so it is drawn whether or not the item opens with a
-            // paragraph to hang it on — an item starting with a nested list or a fence would
-            // otherwise lose its bullet, which an HTML <li> never does. Everything after the first
-            // paragraph is indented rather than numbered: a continuation line carrying its own
-            // number restarts the count against it.
+            // The marker is drawn even when the item opens with a list or fence, as an HTML <li> would.
+            // Content after the first paragraph is indented, not numbered, or it would restart the count.
             var opening = item.Children is [ParagraphBlock lead, ..] ? lead : null;
 
             parent.AppendChild(NumberedParagraph(
@@ -265,8 +249,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
         // table gets in place of the ancestor CSS gives the HTML export.
         var properties = new TableProperties(
             new TableStyle { Val = StyleIds.TableGrid },
-            // Auto width over the full text column: a fixed grid computed here would be wrong at
-            // any page size other than the one it was computed for.
+            // Full text-column width: a fixed grid would be wrong at any other page size.
             new TableWidth { Type = TableWidthUnitValues.Pct, Width = "5000" });
 
         if (indentLevel > 0)
@@ -279,9 +262,8 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
         }
 
         properties.AppendChild(
-                // Child order is fixed by CT_TblBorders — top, left, bottom, right, then the two
-                // inside edges. A package with them in any other order opens in this SDK and is
-                // rejected by Word, which is what the schema-validation test exists to catch.
+                // CT_TblBorders fixes this order; any other opens in this SDK but is rejected by Word,
+                // which the schema-validation test catches.
                 new TableBorders(
                     new TopBorder { Val = BorderValues.Single, Size = 4, Color = ExportTheme.Colors.Border },
                     new LeftBorder { Val = BorderValues.Single, Size = 4, Color = ExportTheme.Colors.Border },
@@ -367,13 +349,9 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
     }
 
     /// <summary>
-    /// Builds one paragraph's properties with its children in schema order.
+    /// Appends children in <c>CT_PPrBase</c> order (pStyle, numPr, pBdr, shd, ind); any other order reads
+    /// back through this SDK but is refused by Word.
     /// </summary>
-    /// <remarks>
-    /// <c>CT_PPrBase</c> fixes the sequence — <c>pStyle</c>, <c>numPr</c>, <c>pBdr</c>, <c>shd</c>,
-    /// then <c>ind</c>. A package with them in any other order reads back through this SDK without
-    /// complaint and is refused by Word.
-    /// </remarks>
     private static ParagraphProperties Properties(
         string styleId, int indentLevel, ExportBlockStyles style, NumberingProperties? numbering = null)
     {
@@ -437,9 +415,8 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
                 continue;
             }
 
-            // A relative or malformed URL cannot become a relationship, so it renders as styled text
-            // with no target rather than failing the whole export. The scheme allowlist has already
-            // run in MarkdownPipelines, so what reaches here is http, https, mailto or relative.
+            // A relative or malformed URL cannot become a relationship, so it renders unlinked; the
+            // MarkdownPipelines scheme allowlist has already run.
             if (!Uri.TryCreate(run.LinkUrl, UriKind.Absolute, out var uri))
             {
                 AppendText(paragraph, run);
@@ -479,8 +456,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
             properties.AppendChild(new Italic());
         }
 
-        // A hard break inside a run is a line break in the source, and Word needs the element rather
-        // than the character — a raw \n in w:t is normalized to a space.
+        // Word normalizes a raw \n in w:t to a space, so a hard break needs the element.
         var segments = run.Text.ReplaceLineEndings("\n").Split('\n');
         var element = new Run(properties);
 
@@ -536,8 +512,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
             bold: true,
             color: ExportTheme.Colors.Brand));
 
-        // Six levels because the mapper clamps markdown headings to six; a document that names
-        // Heading7 gets Word's default rather than nothing, but it can never be asked for.
+        // Six levels: the mapper clamps markdown headings to six.
         for (var level = 1; level <= 6; level++)
         {
             styles.AppendChild(ParagraphStyle(
@@ -591,15 +566,9 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
     }
 
     /// <summary>
-    /// Builds one paragraph style with its children in schema order.
+    /// Builds a paragraph style in schema order (<c>CT_PPrBase</c>: shd, spacing; <c>CT_RPr</c>: rFonts, b,
+    /// color, sz). Word refuses orders this SDK accepts, so callers must not mutate styles afterwards.
     /// </summary>
-    /// <remarks>
-    /// The order is not cosmetic and not the SDK's business to fix: <c>CT_PPrBase</c> puts <c>shd</c>
-    /// before <c>spacing</c>, and <c>CT_RPr</c> puts <c>rFonts</c>, <c>b</c>, <c>color</c> and
-    /// <c>sz</c> in that sequence. Appending them in a different one produces a package this SDK
-    /// reads back happily and Word refuses to open, which is why the styles are assembled here rather
-    /// than mutated by their callers afterwards.
-    /// </remarks>
     private static Style ParagraphStyle(
         string styleId,
         string name,

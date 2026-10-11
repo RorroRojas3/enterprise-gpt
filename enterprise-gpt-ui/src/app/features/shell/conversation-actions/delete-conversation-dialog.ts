@@ -10,17 +10,9 @@ import { ConversationActionsStore } from '@core/conversations/conversation-actio
 import { Modal } from '@shared/overlay/modal/modal';
 
 /**
- * The delete-conversation confirmation (US-306, frame `3d`).
- *
- * Mounted once in the shell beside the rename dialog and driven by
- * `ConversationActionsStore`, for the same reason: its invokers live in features
- * that must not import each other. Destructive actions always confirm via modal,
- * naming the thing — and red lives only here and on bulk delete.
- *
- * Confirming removes the invoking row, so the modal's own focus return has nothing
- * to restore to. When that happens — focus fell to `<body>`, or is stranded inside
- * this closed dialog — it is moved to `#main-content`, the one always-present
- * programmatic focus target (it already serves the skip link).
+ * Mounted once in the shell, driven by `ConversationActionsStore`: its invokers live in features
+ * that must not import each other. Confirming removes the invoking row, so focus that falls
+ * through moves to `#main-content`, the skip link's always-present target.
  */
 @Component({
   selector: 'app-delete-conversation-dialog',
@@ -45,8 +37,7 @@ export class DeleteConversationDialog {
   }
 
   protected onClosed(): void {
-    // A no-op after confirm (the target is already null); syncs the store on
-    // Escape and backdrop closes.
+    // A no-op after confirm; syncs the store on Escape and backdrop closes.
     this.actions.cancelDelete();
 
     if (!this.confirming) {
@@ -54,8 +45,7 @@ export class DeleteConversationDialog {
     }
     this.confirming = false;
 
-    // Checked only when focus actually fell through, so a user who clicked
-    // elsewhere mid-flight is not yanked back.
+    // Only when focus fell through, so a user who clicked elsewhere mid-flight is not yanked back.
     const active = this.document.activeElement;
     const fellThrough =
       active === null ||

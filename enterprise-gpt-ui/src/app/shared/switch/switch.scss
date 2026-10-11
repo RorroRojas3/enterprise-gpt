@@ -3,10 +3,8 @@
   line-height: 0;
 }
 
-// Geometry mirrors Bootstrap's `.form-switch` at this font size so the two
-// controls read as one idiom. The border and the filled thumb — not the track
-// fill — are what carry the off-state's contrast, which is why the off track is
-// transparent rather than a pale grey that would wash out on --surface.
+// Mirrors Bootstrap's `.form-switch` geometry. The border and filled thumb carry the off state's
+// contrast, so the off track is transparent rather than a grey that washes out on --surface.
 .switch {
   position: relative;
   display: inline-block;
@@ -34,9 +32,8 @@
   height: 10px;
   border-radius: 50%;
   background: var(--muted);
-  // A transition rather than a keyframe: the forbidden-API check allows only the
-  // four animations `_motion.scss` declares, and it suppresses this
-  // under prefers-reduced-motion without any per-component opt-out.
+  // A transition, not a keyframe: the forbidden-API check allows only `_motion.scss`'s
+  // animations, and `_motion.scss` suppresses this under prefers-reduced-motion.
   transition:
     transform var(--t-fast) ease,
     background-color var(--t-fast) ease;

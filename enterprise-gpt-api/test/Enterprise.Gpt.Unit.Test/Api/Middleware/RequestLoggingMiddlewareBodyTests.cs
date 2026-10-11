@@ -164,8 +164,7 @@ public sealed class RequestLoggingMiddlewareBodyTests
     [Fact]
     public async Task InvokeAsync_ServerSentEventResponse_IsNotCapturedAndStillStreamsFragmentByFragment()
     {
-        // The regression that matters: a wrapper that accumulated instead of forwarding would turn the
-        // conversation stream into one delivery at the end.
+        // A wrapper that accumulated instead of forwarding would deliver the stream in one piece at the end.
         var context = RequestLoggingTestHarness.CreateContext("/api/chat", "POST");
         var response = RequestLoggingTestHarness.CaptureResponseBody(context);
         string[] fragments = ["one", "two", "three"];

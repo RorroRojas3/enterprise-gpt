@@ -5,20 +5,9 @@ namespace Enterprise.Gpt.Service.Security;
 
 public interface ITokenService
 {
-    /// <summary>
-    /// Retrieves the Azure AD Object ID (OID) for the current authenticated user from the HTTP context.
-    /// </summary>
-    /// <returns>
-    /// The OID as a <see cref="Guid"/> if the claim exists and is valid; otherwise, <c>null</c>.
-    /// </returns>
-    /// <remarks>
-    /// Reads the claim of type 'http://schemas.microsoft.com/identity/claims/objectidentifier' from the first identity
-    /// on the current <see cref="System.Security.Claims.ClaimsPrincipal"/>. If no user is present in the HTTP context,
-    /// a warning is logged and <c>null</c> is returned.
-    /// </remarks>
-    /// <exception cref="FormatException">
-    /// Thrown if the OID claim is present but its value is not a valid GUID string.
-    /// </exception>
+    /// <summary>Returns the current user's Entra object id (OID) from the first identity's claims.</summary>
+    /// <exception cref="UnauthorizedAccessException">There is no authenticated user or no OID claim.</exception>
+    /// <exception cref="FormatException">The OID claim is not a valid GUID.</exception>
     Guid GetOid();
 }
 

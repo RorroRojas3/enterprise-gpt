@@ -9,15 +9,12 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
 
 /// <summary>
-/// Provides an isolated in-memory SQLite database per test, built from the
-/// <see cref="EnterpriseGptDbContext"/> model (including its HasData seeds) via
-/// <c>EnsureCreated()</c>. The connection stays open for the fixture's lifetime because an
-/// in-memory SQLite database only lives as long as its connection.
+/// An isolated in-memory SQLite database per test, created from the <see cref="EnterpriseGptDbContext"/>
+/// model and seeds. The connection stays open because the database lives only as long as it does.
 /// </summary>
 /// <remarks>
-/// <see cref="Context"/> and the scoped contexts carry the production interceptors, because they are the ones
-/// handed to services; <see cref="CreateContext"/> is bare, so arrange and assert code writes and reads
-/// exactly the values it states.
+/// Contexts handed to services carry the production interceptors; <see cref="CreateContext"/> is bare, so
+/// arrange and assert code writes and reads exactly the values it states.
 /// </remarks>
 public sealed class SqliteDbContextFixture : IDisposable
 {

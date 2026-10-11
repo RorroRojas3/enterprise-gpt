@@ -14,28 +14,23 @@ namespace Enterprise.Gpt.Service.Documents.Extraction;
 /// Converts legacy binary Word documents (<c>.doc</c>, Word 97–2003) to Open XML (<c>.docx</c>).
 /// </summary>
 /// <remarks>
-/// Azure Document Intelligence accepts PDF, images and the OOXML Office formats, but not the binary
-/// <c>.doc</c> container. Converting first means <c>.doc</c> uploads take exactly the same OCR path as
-/// every other Word document instead of needing a second, lower-fidelity extraction route.
+/// Document Intelligence does not accept binary <c>.doc</c>; converting keeps it on the same OCR path as
+/// every other Word document.
 /// </remarks>
 public interface ILegacyWordConverter
 {
     /// <summary>
     /// Converts the bytes of a <c>.doc</c> file to the bytes of an equivalent <c>.docx</c> file.
     /// </summary>
-    /// <param name="content">The binary <c>.doc</c> content. Must not be <see langword="null"/>.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
-    /// <returns>The converted <c>.docx</c> content.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="content"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="content"/> is null.</exception>
     /// <exception cref="FluentValidation.ValidationException">
-    /// Thrown when the document is malformed, password-protected, or otherwise cannot be converted.
+    /// The document is malformed, password-protected, or otherwise cannot be converted.
     /// </exception>
     Task<byte[]> ConvertToDocxAsync(byte[] content, CancellationToken cancellationToken);
 }
 
 /// <summary>
-/// <see cref="ILegacyWordConverter"/> backed by DocSharp, a maintained fork of the b2xtranslator
-/// project, which converts the binary Office 97–2003 formats to Open XML in pure managed code.
+/// <see cref="ILegacyWordConverter"/> backed by DocSharp, a pure-managed b2xtranslator fork.
 /// </summary>
 /// <remarks>
 /// Conversion happens entirely in memory, so an uploaded document is never written to the host's disk.
@@ -61,9 +56,8 @@ public sealed partial class DocSharpLegacyWordConverter(ILogger<DocSharpLegacyWo
         }
         catch (Exception ex)
         {
-            // The underlying reader surfaces malformed input as a wide and undocumented range of
-            // exception types, so this catch is deliberately broad: every one of them means the same
-            // thing to the caller, and none of them is a server fault.
+            // Deliberately broad: the reader throws a wide, undocumented range of types for malformed
+            // input, and none of them is a server fault.
             LogDocConversionFailed(_logger, ex);
             throw new ValidationException(
             [
@@ -75,8 +69,7 @@ public sealed partial class DocSharpLegacyWordConverter(ILogger<DocSharpLegacyWo
 
     #region Private methods
 
-    // Synchronous because the conversion is CPU-bound and the library exposes no async surface; it runs
-    // on a background job thread, never on a request thread.
+    // Synchronous: CPU-bound with no async API, and it runs on a background job thread.
     private static byte[] Convert(byte[] content)
     {
         using var input = new MemoryStream(content, writable: false);
@@ -85,8 +78,7 @@ public sealed partial class DocSharpLegacyWordConverter(ILogger<DocSharpLegacyWo
 
         var document = new WordDocument(reader);
 
-        // Scoped so the package is disposed — and therefore flushed into `output` — before the bytes
-        // are read back out.
+        // Scoped so the package is flushed into `output` before the bytes are read back.
         using (var docx = WordprocessingDocument.Create(output, WordprocessingDocumentType.Document))
         {
             Converter.Convert(document, docx);

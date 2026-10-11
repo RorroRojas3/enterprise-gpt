@@ -3,15 +3,9 @@ using FluentValidation;
 
 namespace Enterprise.Gpt.Api.Filters;
 
-/// <summary>
-/// Validates the <typeparamref name="TRequest"/> argument before the handler runs, answering a failure
-/// with a 400 validation problem.
-/// </summary>
 /// <remarks>
 /// Add it after any permission filter, so a caller without the grant learns nothing about the body rules.
 /// </remarks>
-/// <typeparam name="TRequest">The request body type.</typeparam>
-/// <param name="validator">The validator for <typeparamref name="TRequest"/>.</param>
 internal sealed class ValidationEndpointFilter<TRequest>(IValidator<TRequest> validator) : IEndpointFilter
     where TRequest : class
 {

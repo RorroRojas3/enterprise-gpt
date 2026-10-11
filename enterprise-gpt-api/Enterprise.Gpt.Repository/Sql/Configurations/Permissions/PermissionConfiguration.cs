@@ -40,9 +40,7 @@ public sealed class PermissionConfiguration : BaseModifiedByEntityConfiguration<
                 CreatedById = userId,
                 ModifiedById = userId
             },
-            // IsDefault is what grants this to every user at provisioning time; UserService also
-            // reconciles missing default grants on sign-in, so users created before this row existed
-            // pick it up too.
+            // IsDefault grants this at provisioning; UserService reconciles missing defaults on sign-in.
             new Permission
             {
                 Id = PermissionIds.UploadFile,
@@ -54,8 +52,7 @@ public sealed class PermissionConfiguration : BaseModifiedByEntityConfiguration<
                 CreatedById = userId,
                 ModifiedById = userId
             },
-            // Not IsDefault, unlike the upload grant beside it: every run this permits provisions a
-            // billed sandbox session, so it is granted deliberately rather than handed to everyone.
+            // Not IsDefault: every run provisions a billed sandbox session.
             new Permission
             {
                 Id = PermissionIds.GenerateFiles,

@@ -21,15 +21,9 @@ namespace Enterprise.Gpt.Service.Documents.Sheets;
 public interface ISheetQueryService
 {
     /// <summary>
-    /// Aggregates or filters one sheet's rows, refusing by name anything it cannot resolve.
+    /// Aggregates or filters one sheet's rows; a <see langword="null"/> sheet name means the only sheet
+    /// in scope.
     /// </summary>
-    /// <param name="scope">The corpus this turn may query, from <see cref="IDocumentRetrievalService.GetScopeAsync"/>.</param>
-    /// <param name="operation">The operation the model asked for, unvalidated.</param>
-    /// <param name="sheetName">The sheet the model named, or <see langword="null"/> to use the only one in scope.</param>
-    /// <param name="column">The column to aggregate, or <see langword="null"/>.</param>
-    /// <param name="groupBy">The column to group the aggregate by, or <see langword="null"/>.</param>
-    /// <param name="filters">The row filters, or <see langword="null"/>.</param>
-    /// <param name="cancellationToken">Token to cancel the operation.</param>
     /// <returns>The result, which carries a refusal rather than throwing when a name does not resolve.</returns>
     Task<SheetQueryResult> QueryAsync(
         DocumentRetrievalScope scope,
@@ -43,53 +37,36 @@ public interface ISheetQueryService
     /// <summary>
     /// Reports whether any document in the scope has a sheet stored to query.
     /// </summary>
-    /// <param name="scope">The corpus this turn may query.</param>
-    /// <param name="cancellationToken">Token to cancel the operation.</param>
-    /// <returns><see langword="true"/> when at least one sheet is reachable.</returns>
     /// <remarks>
-    /// A spreadsheet extension is not the same fact: a file uploaded before the sheet tables existed has
-    /// chunks and no rows, and attaching over it would advertise a workbook every call then denies.
+    /// A spreadsheet extension is not enough: a file uploaded before the sheet tables existed has chunks
+    /// and no rows, so advertising it would promise a workbook every call then denies.
     /// </remarks>
     Task<bool> HasQueryableSheetsAsync(DocumentRetrievalScope scope, CancellationToken cancellationToken);
 }
 
-/// <summary>
-/// Answers a computed question about a spreadsheet from the rows ingestion stored, with no vector
-/// search and no model call of its own.
-/// </summary>
+/// <inheritdoc />
 /// <remarks>
-/// Every name the model supplies is resolved against the caller's own sheet and column rows before any
-/// statement is built, and an unresolved name refuses by name rather than falling through to a query
-/// built on a guess. The turn's scope is the only source of the documents in play, so a sheet the caller
-/// cannot already read through <c>document_search</c> cannot be reached here either.
+/// Every model-supplied name resolves against the caller's own sheet rows before any SQL is built, and the
+/// turn's scope is the only document source, so no sheet outside <c>document_search</c>'s reach is queryable.
 /// </remarks>
 public sealed partial class SheetQueryService(
     ILogger<SheetQueryService> logger,
     ISheetQueryOptionsProvider options,
     EnterpriseGptDbContext ctx) : ISheetQueryService
 {
-    /// <summary>
-    /// Bound length of every text parameter, matching the widest value <c>JSON_VALUE</c> returns without
-    /// an explicit return type.
-    /// </summary>
+    /// <summary>The widest value <c>JSON_VALUE</c> returns without an explicit return type.</summary>
     private const int TextParameterLength = 4000;
 
     /// <summary>
-    /// Largest number of columns a refusal names before it says how many it left out.
+    /// Refusals are the one reply no <see cref="SheetQueryOptions"/> cap bounds, and a sheet may hold
+    /// hundreds of columns.
     /// </summary>
-    /// <remarks>
-    /// A refusal is the one reply no cap in <see cref="SheetQueryOptions"/> bounds, and a sheet may hold
-    /// two hundred columns whose names then all land in the turn's context.
-    /// </remarks>
     private const int MaxDescribedColumns = 24;
 
-    /// <summary>
-    /// Largest number of sheets a refusal describes before it says how many it left out.
-    /// </summary>
     private const int MaxDescribedSheets = 20;
 
     /// <summary>
-    /// The date SQL Server anchors a time-only value to when it converts one to <c>datetime2</c>.
+    /// The date SQL Server anchors a time-only value to when converting it to <c>datetime2</c>.
     /// </summary>
     private static readonly DateTime TimeOnlyEpoch = new(1900, 1, 1);
 
@@ -192,9 +169,6 @@ public sealed partial class SheetQueryService(
 
     #region Private methods
 
-    /// <summary>
-    /// The scope's spreadsheet documents, split by the table their sheets would live in.
-    /// </summary>
     private static (Guid[] Conversation, Guid[] Project) SpreadsheetIds(DocumentRetrievalScope scope)
     {
         var spreadsheets = scope.Documents
@@ -282,8 +256,7 @@ public sealed partial class SheetQueryService(
                 [.. s.Columns.Select(c => new ResolvedSheetColumn(c.ColumnName, c.InferredType))])));
         }
 
-        // Ordered by the scope's own document order — upload order — rather than by whichever table the
-        // rows came out of, so the list a refusal offers reads the way the conversation does.
+        // Upload order, not table order, so a refusal's sheet list reads the way the conversation does.
         return
         [
             .. spreadsheets.SelectMany(document => records
@@ -338,9 +311,8 @@ public sealed partial class SheetQueryService(
             return true;
         }
 
-        // Refused rather than widened to whichever sheet came first: search widens on an ambiguous
-        // document name because a wider search is cheap, and a total computed over the wrong sheet is a
-        // wrong answer with nothing about it to give the mistake away.
+        // Refused rather than widened like search: a total over the wrong sheet is a wrong answer with
+        // nothing to give the mistake away.
         sheet = null!;
         refusal = Refusal(
             echoed,
@@ -450,9 +422,8 @@ public sealed partial class SheetQueryService(
                 return false;
             }
 
-            // A bound parameter silently truncates past its declared size, which for a substring match
-            // would drop the trailing wildcard and quietly turn it into a prefix one. Escaping can double
-            // a pattern's length, and the two wildcards are added on top of that.
+            // A parameter silently truncates past its size, dropping the trailing wildcard; escaping can
+            // double the length, plus the two wildcards.
             if (filter.Value is { Length: > (TextParameterLength - 2) / 2 })
             {
                 refusal = Refusal(
@@ -482,9 +453,8 @@ public sealed partial class SheetQueryService(
             values.Add(bound);
         }
 
-        // Sum and average always read the column as a number, whatever a bounded sample inferred it to
-        // be: a column with one stray cell among its first rows infers as text and would otherwise be
-        // permanently untotallable. Whatever the coercion drops is counted and reported.
+        // Sum and average coerce to number whatever the sampled type, or one stray early cell would make a
+        // column untotallable; dropped values are counted and reported.
         var valueType = operation switch
         {
             SheetQueryOperations.Sum or SheetQueryOperations.Avg => SheetColumnTypes.Number,
@@ -592,8 +562,7 @@ public sealed partial class SheetQueryService(
         result.Value = FormatValue(row.Value);
         result.SkippedValues = SkippedValues(query, row.MatchedRows, row.ValueRows);
 
-        // Zero is the answer to a count, not a failure to reach one, and a note saying otherwise is what
-        // the model would relay instead of the figure.
+        // Zero is a count's answer; a note here would be relayed instead of the figure.
         if (row.MatchedRows == 0 && query.Operation is not SheetQueryOperations.Count)
         {
             result.Note = "No rows matched, so there was nothing to compute.";
@@ -611,8 +580,7 @@ public sealed partial class SheetQueryService(
             {
                 Bind(command, scope, query);
 
-                // One past the cap, so a trimmed result is reported as trimmed rather than silently
-                // looking complete.
+                // One past the cap, so truncation is detectable.
                 command.Parameters.Add(new SqlParameter("@maxGroups", SqlDbType.Int) { Value = _options.MaxGroups + 1 });
             },
             reader => new AggregateRow(
@@ -674,9 +642,8 @@ public sealed partial class SheetQueryService(
 
         foreach (var row in rows)
         {
-            // The row cap bounds how many rows come back, not how wide they are: fifty rows of a
-            // two-hundred-column export is context the answer then has to compete with. At least one row
-            // always survives, so a single very wide row is still shown rather than silently dropped.
+            // The row cap does not bound width, so characters are capped too; the first row always
+            // survives so a single very wide row is still shown.
             if (kept.Count > 0 && characters + row.Cells.Length > _options.MaxResultCharacters)
             {
                 break;
@@ -743,14 +710,9 @@ public sealed partial class SheetQueryService(
     };
 
     /// <summary>
-    /// Runs one statement on Entity Framework's own connection.
+    /// ADO.NET rather than <c>SqlQueryRaw</c>, which wraps the query in a subquery that a <c>TOP</c> over a
+    /// computed <c>GROUP BY</c> cannot survive. The connection stays EF's: only one opened here is closed.
     /// </summary>
-    /// <remarks>
-    /// Dropped to ADO.NET rather than <c>SqlQueryRaw</c> because EF composes unmapped-type queries into a
-    /// wrapping subquery, which a <c>TOP</c> over a computed <c>GROUP BY</c> cannot survive. The
-    /// connection, and any ambient transaction, still belong to EF: only a connection this method opened
-    /// is closed again.
-    /// </remarks>
     private async Task<IReadOnlyList<T>> QueryAsync<T>(
         string sql,
         Action<DbCommand> configure,
@@ -817,10 +779,7 @@ public sealed partial class SheetQueryService(
             IsRefusal = true
         };
 
-    /// <summary>
-    /// Names every sheet with its shape, so one refusal is enough for the model to ask the right
-    /// question next rather than discovering the columns with a second refusal.
-    /// </summary>
+    /// <summary>Includes each sheet's columns so one refusal suffices for the model's next attempt.</summary>
     private static List<string> DescribeSheets(IReadOnlyList<ResolvedSheet> sheets)
     {
         List<string> described =
@@ -865,10 +824,7 @@ public sealed partial class SheetQueryService(
         _ => "text"
     };
 
-    /// <summary>
-    /// How many matching rows contributed nothing to the aggregate, which is meaningful only where the
-    /// aggregate coerced a value at all.
-    /// </summary>
+    /// <summary>Matching rows the aggregate dropped; meaningful only where it coerced a value.</summary>
     private static int SkippedValues(ResolvedQuery query, int matchedRows, int valueRows) =>
         query.Operation is SheetQueryOperations.Count || query.ValueType is null or SheetColumnTypes.Text
             ? 0
@@ -878,12 +834,10 @@ public sealed partial class SheetQueryService(
     {
         null or DBNull => null,
 
-        // Binary floating point carries the arithmetic the spreadsheet itself used, and its last few
-        // digits are noise the model should not be handed as significance.
+        // The last binary floating-point digits are noise the model should not read as significance.
         double number => Math.Round(number, 10),
 
-        // A time-only column's values all land on the date SQL Server anchors them to, and reporting that
-        // date back would put a year nobody's spreadsheet mentions into the answer.
+        // Time-only values sit on SQL Server's anchor date; reporting it would invent a year.
         DateTime date when date.Date == TimeOnlyEpoch && date.TimeOfDay != TimeSpan.Zero =>
             date.ToString(@"HH\:mm\:ss", CultureInfo.InvariantCulture),
         DateTime date => date.TimeOfDay == TimeSpan.Zero
@@ -916,8 +870,7 @@ public sealed partial class SheetQueryService(
 
         if (comparator is SheetFilterComparators.Contains)
         {
-            // Matched against the cell's own text whatever the column holds, so the value needs no
-            // conversion — only its wildcards escaped.
+            // Matched against the cell text whatever the column type, so only wildcards need escaping.
             bound = $"%{DocumentRetrievalService.EscapeLikePattern(text)}%";
 
             return true;
@@ -939,9 +892,8 @@ public sealed partial class SheetQueryService(
                 return false;
 
             case SheetColumnTypes.Date:
-                // A cell holding only a time converts to datetime2 as 1900-01-01 plus that time, and the
-                // value is free text the model composes, so anything without a date of its own is
-                // re-anchored rather than left on today, where every comparison would miss.
+                // Time-only cells convert onto 1900-01-01, so a value without a date is re-anchored there
+                // rather than left on today, where every comparison would miss.
                 if (DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.NoCurrentDateDefault, out var date))
                 {
                     bound = date.Date == DateTime.MinValue.Date ? TimeOnlyEpoch.Add(date.TimeOfDay) : date;
@@ -954,8 +906,7 @@ public sealed partial class SheetQueryService(
                 return false;
 
             case SheetColumnTypes.Boolean:
-                // Cells are stored as TRUE and FALSE, and the comparison collation is case-insensitive,
-                // so normalizing the model's wording is all this needs.
+                // Stored as TRUE/FALSE under a case-insensitive collation; normalizing the wording suffices.
                 bound = text.Trim().ToLowerInvariant() switch
                 {
                     "true" or "yes" or "y" or "1" => "true",
@@ -977,16 +928,9 @@ public sealed partial class SheetQueryService(
     #region Public static methods
 
     /// <summary>
-    /// Finds the sheets in scope whose name matches <paramref name="wanted"/>, widening the comparison
-    /// only as far as it has to.
+    /// Matches sheet names or document-qualified labels, widening only as far as needed; the label is what
+    /// tells two workbooks' <c>Sheet1</c> apart.
     /// </summary>
-    /// <param name="sheets">The sheets in the turn's scope.</param>
-    /// <param name="wanted">The name the model supplied.</param>
-    /// <returns>Every match at the narrowest rung that produced one.</returns>
-    /// <remarks>
-    /// A bare sheet name and its document-qualified label both match, because two workbooks in one
-    /// conversation can each hold a sheet called <c>Sheet1</c> and only the label tells them apart.
-    /// </remarks>
     internal static IReadOnlyList<ResolvedSheet> MatchSheetByName(IReadOnlyList<ResolvedSheet> sheets, string wanted)
     {
         ArgumentNullException.ThrowIfNull(sheets);
@@ -1021,13 +965,10 @@ public sealed partial class SheetQueryService(
         return matches;
     }
 
-    /// <summary>
-    /// Renders a column name as a JSON path, or reports that it cannot be rendered as one.
-    /// </summary>
+    /// <summary>Renders a column name as a JSON path, or reports that it cannot be.</summary>
     /// <remarks>
-    /// A quoted member name follows JSON string rules, and SQL Server does not document escaping inside
-    /// one — so a name carrying a quote, a backslash or a control character is refused by name rather
-    /// than turned into a path that might parse as something else.
+    /// SQL Server does not document escaping inside a quoted member name, so quotes, backslashes and control
+    /// characters are refused rather than risk a path that parses as something else.
     /// </remarks>
     internal static bool TryBuildJsonPath(string columnName, out string path)
     {
@@ -1047,8 +988,7 @@ public sealed partial class SheetQueryService(
     }
 
     /// <summary>
-    /// Maps the model's own operation text onto the closed set, so a caller can name the operation
-    /// without trusting the unvalidated string a result echoes back.
+    /// Maps the model's operation text onto the closed set, so callers need not trust the echoed string.
     /// </summary>
     internal static bool TryParseOperation(string? value, out SheetQueryOperations operation)
     {

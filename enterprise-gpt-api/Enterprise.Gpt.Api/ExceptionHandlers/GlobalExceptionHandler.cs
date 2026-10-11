@@ -8,15 +8,10 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Enterprise.Gpt.Api.ExceptionHandlers;
 
-/// <summary>
-/// Turns every exception that escapes an endpoint into an RFC 9457 problem details response.
-/// </summary>
 /// <remarks>
 /// A <see cref="ProblemException"/> carries its own status and problem type, so a new one maps without
 /// this handler naming it. Anything unmapped is a 500 whose message never reaches the caller.
 /// </remarks>
-/// <param name="problemDetailsService">Writes the content-negotiated problem details response.</param>
-/// <param name="logger">Records server faults.</param>
 internal sealed partial class GlobalExceptionHandler(
     IProblemDetailsService problemDetailsService,
     ILogger<GlobalExceptionHandler> logger) : IExceptionHandler

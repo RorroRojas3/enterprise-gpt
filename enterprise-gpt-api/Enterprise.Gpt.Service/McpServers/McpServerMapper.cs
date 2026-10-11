@@ -8,11 +8,7 @@ namespace Enterprise.Gpt.Service.McpServers;
 
 public static class McpServerMapper
 {
-    /// <summary>
-    /// LINQ projection from <see cref="McpServer"/> to <see cref="McpServerDto"/> for use
-    /// inside <c>IQueryable.Select(...)</c>. Resolves the active linked permission id in
-    /// the same query.
-    /// </summary>
+    /// <summary>Projection to <see cref="McpServerDto"/>, resolving the permission id in-query.</summary>
     public static Expression<Func<McpServer, McpServerDto>> MapToMcpServerDtoExpression { get; } =
         server => new McpServerDto
         {
@@ -33,20 +29,8 @@ public static class McpServerMapper
 
     #region Private methods
 
-    /// <summary>
-    /// Copies configured headers into the case-insensitive dictionary the entity holds,
-    /// collapsing an empty set to <see langword="null"/>.
-    /// </summary>
-    /// <param name="headers">The headers as the action DTO carried them.</param>
-    /// <returns>The dictionary to store, or <see langword="null"/> for no headers.</returns>
-    /// <remarks>
-    /// One representation of "none", so `Headers IS NULL` and an empty set cannot disagree
-    /// about the same row — the reasoning `IconKey` records for its empty string.
-    ///
-    /// Case-insensitive because HTTP header names are, which also means this throws on a set
-    /// holding two spellings of one name. The validators refuse that set first, so reaching
-    /// it here would mean validation was bypassed.
-    /// </remarks>
+    // Empty collapses to null so `Headers IS NULL` is the only "none". Case-insensitive like HTTP, so two
+    // spellings of one name throw here; the validators refuse that set first.
     private static Dictionary<string, string>? ToStoredHeaders(IReadOnlyDictionary<string, string>? headers)
     {
         return headers is null or { Count: 0 }
@@ -58,13 +42,6 @@ public static class McpServerMapper
 
     #region Public static methods
 
-    /// <summary>
-    /// Maps a materialized <see cref="McpServer"/> entity to the administrative
-    /// <see cref="McpServerDto"/>.
-    /// </summary>
-    /// <param name="server">The loaded server entity.</param>
-    /// <param name="permissionId">The id of the server's active linked permission, when loaded.</param>
-    /// <returns>The mapped DTO.</returns>
     public static McpServerDto MapToMcpServerDto(this McpServer server, Guid? permissionId = null)
     {
         return new McpServerDto
@@ -83,16 +60,9 @@ public static class McpServerMapper
     }
 
     /// <summary>
-    /// Builds the LINQ projection from <see cref="McpServer"/> to the user-facing
-    /// <see cref="McpDto"/> for use inside <c>IQueryable.Select(...)</c>.
+    /// Projection to <see cref="McpDto"/>, closed over the caller because the credential fields differ per
+    /// user; resolving them here keeps the listing to one query.
     /// </summary>
-    /// <param name="userOid">The calling user's Entra object id.</param>
-    /// <returns>The projection, closed over that user.</returns>
-    /// <remarks>
-    /// A factory rather than a static expression because the credential fields are answers
-    /// about the caller, not about the row: two users reading the same server see different
-    /// values. Resolving them here keeps the listing to one query.
-    /// </remarks>
     public static Expression<Func<McpServer, McpDto>> BuildMcpDtoExpression(Guid userOid)
     {
         return server => new McpDto
@@ -115,12 +85,7 @@ public static class McpServerMapper
         };
     }
 
-    /// <summary>
-    /// Maps a stored credential to the status shape the caller may see.
-    /// </summary>
-    /// <param name="credential">The active credential, or <see langword="null"/> when none is held.</param>
-    /// <param name="mcpServerId">The server the status is for, needed when there is no row.</param>
-    /// <returns>The status DTO, which carries neither the credential nor its ciphertext.</returns>
+    /// <summary>Maps a credential to its status; a rejected one reads as absent.</summary>
     public static McpCredentialStatusDto MapToMcpCredentialStatusDto(
         this UserMcpCredential? credential, Guid mcpServerId)
     {
@@ -136,11 +101,8 @@ public static class McpServerMapper
     }
 
     /// <summary>
-    /// Creates a new <see cref="McpServer"/> entity from a <see cref="CreateMcpServerActionDto"/>.
-    /// Callers set <c>Id</c>, <c>CreatedById</c> and <c>ModifiedById</c>; the audit interceptor stamps the dates.
+    /// Creates an untracked server; callers set <c>Id</c>, <c>CreatedById</c> and <c>ModifiedById</c>.
     /// </summary>
-    /// <param name="dto">The action DTO carrying the new values.</param>
-    /// <returns>The new, untracked entity.</returns>
     public static McpServer FromCreateMcpServerActionDtoToMcpServer(this CreateMcpServerActionDto dto)
     {
         return new McpServer
@@ -156,11 +118,8 @@ public static class McpServerMapper
     }
 
     /// <summary>
-    /// Applies an <see cref="UpdateMcpServerActionDto"/> to an existing <see cref="McpServer"/>
-    /// entity in place. Callers set <c>ModifiedById</c> and save; the audit interceptor stamps <c>DateModified</c>.
+    /// Applies the update to a tracked server in place; callers set <c>ModifiedById</c> and save.
     /// </summary>
-    /// <param name="dto">The action DTO carrying the new values.</param>
-    /// <param name="server">The tracked entity to mutate.</param>
     public static void FromUpdateMcpServerActionDtoToMcpServer(this UpdateMcpServerActionDto dto, McpServer server)
     {
         server.Name = dto.Name;

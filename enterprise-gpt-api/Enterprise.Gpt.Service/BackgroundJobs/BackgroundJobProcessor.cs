@@ -12,16 +12,9 @@ using Microsoft.Extensions.Options;
 namespace Enterprise.Gpt.Service.BackgroundJobs;
 
 /// <summary>
-/// Hosted service that consumes <see cref="JobWorkItem"/> entries from the <see cref="IBackgroundJobQueue"/>,
-/// executes each in its own DI scope, and throttles concurrency with a <see cref="SemaphoreSlim"/>.
-/// On exception the failing job's snapshot is updated to <see cref="JobStatuses.Failed"/>; the loop continues.
+/// Runs queued jobs, each in its own DI scope, at most <see cref="BackgroundJobOptions.MaxConcurrent"/> at once
+/// (<c>&lt;= 0</c> means twice the processor count). A throwing job is marked <see cref="JobStatuses.Failed"/>.
 /// </summary>
-/// <param name="queue">The work-item source.</param>
-/// <param name="store">The snapshot store updated on failure.</param>
-/// <param name="cancellations">Supplies each job token and is released when the job ends.</param>
-/// <param name="scopeFactory">Used to create a fresh DI scope per job (required for scoped services such as <c>EnterpriseGptDbContext</c>).</param>
-/// <param name="options">Supplies <see cref="BackgroundJobOptions.MaxConcurrent"/>; values <c>&lt;= 0</c> resolve to <c>Environment.ProcessorCount * 2</c>.</param>
-/// <param name="logger">Diagnostic logger.</param>
 public sealed partial class BackgroundJobProcessor(
     IBackgroundJobQueue queue,
     IJobStatusStore store,
@@ -63,10 +56,8 @@ public sealed partial class BackgroundJobProcessor(
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
-                // Item was dequeued but the host is shutting down before we could acquire a
-                // concurrency slot. The work item would otherwise be silently dropped, leaving
-                // the snapshot stuck in Queued. Mark it Failed so the client sees a terminal
-                // state and the snapshot becomes evictable.
+                // Dequeued but never started: fail it so the snapshot reaches a terminal, evictable state
+                // instead of sticking in Queued.
                 LogJobDequeuedButNotStarted(_logger, item.JobId);
                 _cancellations.Release(item.JobId);
                 _store.Fail(item.JobId, "Host shutdown before job could start.");
@@ -99,9 +90,8 @@ public sealed partial class BackgroundJobProcessor(
 
             if (linked is null)
             {
-                // Cancelled while it sat in the queue, which the channel cannot be asked to forget.
-                // The registration is gone, and its absence is the record — so nothing runs and no
-                // scope is created.
+                // Cancelled while queued (a channel cannot drop an item); the missing registration
+                // is the record.
                 LogJobCancelledBeforeStart(_logger, item.JobId);
                 _store.Cancel(item.JobId, JobMessages.Cancelled);
                 return;
@@ -114,16 +104,14 @@ public sealed partial class BackgroundJobProcessor(
             }
             catch (JobCancelledException)
             {
-                // The job finished its work and then lost the terminal slot to a cancel. It has
-                // already undone what it persisted, and DescribeFailure must not turn that into an
-                // unexpected error.
+                // Finished, then lost the terminal slot to a cancel; it already undid its writes, so this is
+                // not an unexpected error.
                 LogJobCancelledAfterPersisting(_logger, item.JobId);
             }
             catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
             {
-                // Which source fired is the only thing separating these two, and the token the work
-                // observed is linked to both — so the test has to be on the host token, not on the
-                // one that threw.
+                // The work's token is linked to both sources, so only the host token tells a caller
+                // cancel from shutdown.
                 LogJobCancelledByCaller(_logger, item.JobId);
                 _store.Cancel(item.JobId, JobMessages.Cancelled);
             }
@@ -139,8 +127,7 @@ public sealed partial class BackgroundJobProcessor(
             }
             finally
             {
-                // The child before the parent the outer finally releases. `using var` would run in
-                // the opposite order.
+                // Before the outer finally releases the parent; `using var` would reverse the order.
                 linked.Dispose();
             }
         }
@@ -160,15 +147,8 @@ public sealed partial class BackgroundJobProcessor(
         return new SemaphoreSlim(maxConcurrent, maxConcurrent);
     }
 
-    /// <summary>
-    /// Produces a message safe to hand back to the caller.
-    /// </summary>
-    /// <remarks>
-    /// Validation messages are written for the user and say something actionable, so they are passed
-    /// through. Everything else is replaced: exception messages from data access and Azure SDK clients
-    /// routinely embed connection strings, endpoints and request URLs with credentials in them, and the
-    /// job status endpoint is not an appropriate place for any of that. The full exception is logged.
-    /// </remarks>
+    // Validation messages pass through; anything else is replaced, since data-access and SDK messages can
+    // embed connection strings and credentialed URLs. The full exception is logged.
     private static string DescribeFailure(Exception exception) => exception switch
     {
         FluentValidation.ValidationException validation => string.Join(" ", validation.Errors.Select(e => e.ErrorMessage)),

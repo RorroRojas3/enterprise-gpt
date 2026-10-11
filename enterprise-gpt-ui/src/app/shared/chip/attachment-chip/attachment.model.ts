@@ -1,11 +1,6 @@
 import { IconName } from '@shared/icon/icon-names';
 
-/**
- * The glyph and tint for a file name's extension.
- *
- * Here rather than in `domain/` with the attachment types: it maps onto `IconName`,
- * which is the sprite manifest's own union, and that is a presentation concern.
- */
+/** Here, not in `domain/`: it maps onto `IconName`, the sprite manifest's union. */
 interface FileGlyph {
   readonly icon: IconName;
   readonly tone: 'fail' | 'ok' | 'accent' | 'muted' | 'warn';
@@ -26,14 +21,8 @@ const BY_EXTENSION: Readonly<Record<string, FileGlyph>> = {
 const FALLBACK: FileGlyph = { icon: 'bi-file-earmark', tone: 'muted' };
 
 /**
- * The glyph and tint for a file name's extension.
- *
- * Wider than the eight formats the API accepts, because the same chip renders a file the
- * user picked before anything validated it — a `.xlsx` refused as unsupported should
- * still look like a spreadsheet while it says so.
- *
- * Every icon it can return is in the checked-in sprite manifest; the US-108 build
- * check is what keeps that true as this table grows.
+ * Wider than the formats the API accepts: a `.xlsx` refused as unsupported should still look like
+ * a spreadsheet. A build check keeps every icon here in the sprite manifest.
  */
 export function fileGlyph(fileName: string): FileGlyph {
   const extension = fileName.split('.').pop()?.toLowerCase() ?? '';

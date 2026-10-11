@@ -15,33 +15,17 @@ public interface IDocumentTextAssembler
     /// <summary>
     /// Reads a document's chunks in order and joins them back into one string.
     /// </summary>
-    /// <param name="documentId">The document's identifier.</param>
-    /// <param name="source">Which document family the id belongs to.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>
     /// The reassembled text, or an empty string when the document has no active chunk rows.
     /// </returns>
     /// <remarks>
-    /// <para>
-    /// Chunks are the source rather than the blob, because re-extracting a document would re-bill
-    /// Azure Document Intelligence for text the database already holds.
-    /// </para>
-    /// <para>
-    /// The result is not guaranteed byte-identical to the original upload. The chunker joins its
-    /// units with a newline and its splitting consumes the whitespace it splits on, so blank lines
-    /// can collapse and inter-sentence spacing can become newlines. Every word survives; the
-    /// original formatting does not.
-    /// </para>
+    /// Read from chunks, not the blob, so Document Intelligence is not re-billed. Every word survives, but
+    /// whitespace formatting may not: the chunker consumes the whitespace it splits on.
     /// </remarks>
     Task<string> AssembleAsync(Guid documentId, DocumentSources source, CancellationToken cancellationToken);
 }
 
-/// <summary>
-/// Reassembles document text out of <c>Core.ConversationDocumentChunk</c> and
-/// <c>Core.ProjectDocumentChunk</c>.
-/// </summary>
-/// <param name="ctx">The database context.</param>
-/// <param name="textChunker">The chunker whose overlap setting produced the seams being stripped.</param>
+/// <inheritdoc />
 public sealed class DocumentTextAssembler(
     EnterpriseGptDbContext ctx,
     ITextChunker textChunker) : IDocumentTextAssembler
@@ -63,8 +47,7 @@ public sealed class DocumentTextAssembler(
             return string.Empty;
         }
 
-        // The same conversion DocumentRetrievalService uses when it stitches adjacent chunks back
-        // together: overlap is configured in tokens, and the seam search works in characters.
+        // As in DocumentRetrievalService: overlap is configured in tokens, the seam search works in chars.
         var maxOverlapChars = Math.Max(64, _textChunker.OverlapTokens * 6);
 
         var accumulated = new StringBuilder(texts[0]);
@@ -81,9 +64,7 @@ public sealed class DocumentTextAssembler(
     #region Private methods
 
     /// <remarks>
-    /// Projects to the text column alone. A chunk row carries a <c>vector(1536)</c> embedding, so
-    /// materialising entities would pull several kilobytes per chunk across the wire for a column
-    /// summarization never reads.
+    /// Projects to the text alone: each chunk row also carries a <c>vector(1536)</c> embedding.
     /// </remarks>
     private async Task<List<string>> ReadChunkTextsAsync(
         Guid documentId,

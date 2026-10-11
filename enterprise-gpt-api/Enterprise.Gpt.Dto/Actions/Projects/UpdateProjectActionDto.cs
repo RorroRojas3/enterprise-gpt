@@ -9,27 +9,20 @@ namespace Enterprise.Gpt.Dto.Actions.Projects;
 /// </summary>
 public record UpdateProjectActionDto
 {
-    /// <summary>Gets the project name. Must be unique among the caller's active projects.</summary>
+    /// <summary>Must be unique among the caller's active projects.</summary>
     public string Name { get; init; } = null!;
 
-    /// <summary>Gets the optional free-text description.</summary>
     public string? Description { get; init; }
 
     /// <summary>
-    /// Gets the optional standing instructions applied to every conversation in the project. Read
-    /// afresh on each turn, so a change here affects conversations that already exist.
+    /// Standing instructions for the project's conversations, read afresh each turn, so a change reaches
+    /// existing conversations.
     /// </summary>
     public string? Instructions { get; init; }
 }
 
-/// <summary>
-/// Validates <see cref="UpdateProjectActionDto"/>.
-/// </summary>
 public class UpdateProjectActionDtoValidator : AbstractValidator<UpdateProjectActionDto>
 {
-    /// <summary>
-    /// Initializes a new instance of the <see cref="UpdateProjectActionDtoValidator"/> class.
-    /// </summary>
     public UpdateProjectActionDtoValidator()
     {
         RuleFor(x => x.Name)

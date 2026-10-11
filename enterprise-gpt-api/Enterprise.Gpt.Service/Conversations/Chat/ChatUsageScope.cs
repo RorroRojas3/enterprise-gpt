@@ -7,28 +7,9 @@ namespace Enterprise.Gpt.Service.Conversations.Chat;
 /// that started the request can read it back after the request ends however it ended.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The tracking middleware delivers its report two ways: in-band, as the final update of a streamed
-/// response, and out-of-band to every <see cref="IChatProgressObserver"/>. Only the second one is
-/// usable here. A turn the user cancels or that faults mid-stream never reaches the in-band update,
-/// and those tokens were still billed — so the observer, which fires once per request in every
-/// outcome, is the source of truth. <see cref="ChatUsageObserver"/> is the bridge.
-/// </para>
-/// <para>
-/// A scope is inert until <see cref="Enter"/> makes it the observer's target, and stops being the
-/// target when that activation is disposed. It is deliberately not a create-once-and-forget ambient:
-/// the consumer of this is an <c>async IAsyncEnumerable</c>, and an async iterator resumes on
-/// whatever execution context its own consumer supplies, so anything written to an
-/// <see cref="AsyncLocal{T}"/> inside one is gone after the first <c>yield return</c>. Wrapping each
-/// move of the inner enumerator in an activation is what makes the ambient hold for the window that
-/// matters — the window in which the middleware runs.
-/// </para>
-/// <para>
-/// The report is written into the scope object rather than published through the
-/// <see cref="AsyncLocal{T}"/>, because the middleware may complete a request from its own pump
-/// thread: an assignment made there would not flow back to the flow that created the scope, whereas
-/// a write into an object both flows hold does.
-/// </para>
+/// Fed by <see cref="ChatUsageObserver"/>, not the in-band final update, which cancelled or faulted turns
+/// never reach. The report is written into this object rather than the ambient because the middleware
+/// may complete a request on its own thread.
 /// </remarks>
 public sealed class ChatUsageScope
 {
@@ -40,49 +21,32 @@ public sealed class ChatUsageScope
     {
     }
 
-    /// <summary>
-    /// Gets the scope the current asynchronous flow reports to, or <see langword="null"/> when no
-    /// activation is in effect.
-    /// </summary>
     internal static ChatUsageScope? Current => _current.Value;
 
     /// <summary>
-    /// Gets the report for the request that ran under this scope, or <see langword="null"/> when
-    /// the request produced none — tracking is not installed on the client that served it, or it
-    /// failed before the middleware could account for anything.
+    /// Gets the request's report, or <see langword="null"/> when tracking is not installed or the
+    /// request failed before the middleware accounted for anything.
     /// </summary>
     /// <remarks>
-    /// Read after the request has finished, which for a streamed request means after its enumerator
-    /// has been disposed: disposal is where the middleware finalizes an abandoned request.
+    /// For a streamed request, read after its enumerator is disposed; disposal finalizes an abandoned request.
     /// </remarks>
     public ChatUsageReport? Report => Volatile.Read(ref _report);
 
     /// <summary>
-    /// Makes this scope the target for reports raised on the current flow, until the returned
-    /// handle is disposed.
+    /// Makes this scope the current flow's report target until the returned handle is disposed.
     /// </summary>
-    /// <returns>A handle that restores the previously active scope when disposed.</returns>
-    /// <example>
-    /// <code language="csharp">
-    /// using (scope.Enter())
-    /// {
-    ///     moved = await enumerator.MoveNextAsync();
-    /// }
-    /// </code>
-    /// </example>
+    /// <remarks>
+    /// An async iterator drops <see cref="AsyncLocal{T}"/> writes after a <c>yield</c>, so enter around
+    /// each <c>MoveNextAsync</c> of the inner enumerator.
+    /// </remarks>
     public Activation Enter()
     {
         return new Activation(this);
     }
 
-    /// <summary>
-    /// Records the report for the completed request.
-    /// </summary>
-    /// <param name="report">The report the middleware produced, possibly partial.</param>
     /// <remarks>
-    /// Last write wins. A single scope should see exactly one completion, but a tool running its
-    /// own tracked pipeline would deliver a second, and losing the outer report to a nested one is
-    /// a smaller error than throwing inside an observer.
+    /// Last write wins: a tool running its own tracked pipeline can deliver a second report, and losing
+    /// the outer one beats throwing inside an observer.
     /// </remarks>
     internal void Complete(ChatUsageReport report)
     {
@@ -111,10 +75,7 @@ public sealed class ChatUsageScope
 
     #region Public static methods
 
-    /// <summary>
-    /// Creates a scope. It collects nothing until <see cref="Enter"/> is called.
-    /// </summary>
-    /// <returns>The new scope.</returns>
+    /// <summary>Creates a scope; it collects nothing until <see cref="Enter"/> is called.</summary>
     public static ChatUsageScope Create()
     {
         return new ChatUsageScope();

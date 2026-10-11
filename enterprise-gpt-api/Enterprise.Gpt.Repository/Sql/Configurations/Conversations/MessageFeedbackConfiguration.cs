@@ -24,12 +24,10 @@ public sealed class MessageFeedbackConfiguration : BaseModifiedEntityConfigurati
 
         builder.Property(x => x.Rating).HasConversion<int>();
 
-        // The one-rating-per-message rule, enforced by the database rather than by the upsert that
-        // maintains it: the upsert reads before it writes, so two concurrent ratings of the same
-        // message would otherwise both insert. It is also the lookup that upsert seeks on.
+        // One rating per message, enforced here because the upsert reads before it writes and two
+        // concurrent ratings would both insert. Also the upsert's lookup.
         builder.HasIndex(x => new { x.ConversationId, x.MessageId }).IsUnique();
 
-        // No reporting index yet, deliberately: no query reads this table for reporting, and an index
-        // shaped for a query nobody has issued is a guess charged on every write. Add it with the query.
+        // No reporting index until a reporting query exists; a speculative one is charged on every write.
     }
 }

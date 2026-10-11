@@ -1,9 +1,5 @@
-<!--
-  The click handler detects a press on the ::backdrop, which reports the <dialog>
-  itself as its target. The backdrop is not an interactive element and needs no
-  keyboard equivalent of its own: Escape already dismisses, through the native
-  `cancel` event handled below.
--->
+<!-- The click handler catches ::backdrop presses, which target the <dialog> itself. Escape is
+     the keyboard equivalent, through the native `cancel` event. -->
 <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
 <dialog
   #dialog

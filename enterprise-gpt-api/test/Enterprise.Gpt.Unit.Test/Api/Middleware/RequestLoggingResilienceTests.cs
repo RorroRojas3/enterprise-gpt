@@ -12,10 +12,6 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Api.Middleware;
 
-/// <summary>
-/// The middleware's core promise: it never fails a request and never alters one — plus the registration
-/// behaviour that only shows up through the container.
-/// </summary>
 public sealed class RequestLoggingResilienceTests
 {
     private readonly RequestLoggingTestHarness _harness = new();
@@ -238,9 +234,6 @@ public sealed class RequestLoggingResilienceTests
         public string Redact(string body, string? contentType) => throw new InvalidOperationException("redactor blew up");
     }
 
-    /// <summary>
-    /// Consumes bytes and then throws, standing in for a body that faults part-way through being read.
-    /// </summary>
     private sealed class ThrowAfterFirstReadStream(byte[] content) : MemoryStream(content)
     {
         private readonly int _length = content.Length;

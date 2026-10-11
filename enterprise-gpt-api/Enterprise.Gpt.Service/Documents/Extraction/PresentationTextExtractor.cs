@@ -18,9 +18,7 @@ namespace Enterprise.Gpt.Service.Documents.Extraction;
 /// Reads PowerPoint (<c>.pptx</c>) presentations locally with the Open XML SDK, one segment per slide.
 /// </summary>
 /// <remarks>
-/// Parsing locally rather than through OCR is both free and lossless for these files: a <c>.pptx</c>
-/// already stores its text as text. It also yields a real slide number for provenance, and lets speaker
-/// notes be picked up, neither of which a rasterizing OCR pass would give.
+/// Local parsing is free and lossless here, and unlike OCR yields real slide numbers and speaker notes.
 /// </remarks>
 public sealed partial class PresentationTextExtractor(ILogger<PresentationTextExtractor> logger) : IDocumentTextExtractor
 {
@@ -37,10 +35,8 @@ public sealed partial class PresentationTextExtractor(ILogger<PresentationTextEx
     {
         ArgumentNullException.ThrowIfNull(file);
 
-        // The whole parse is guarded, not just Open(). The Open XML SDK reads part XML lazily, so a
-        // truncated slide, malformed markup, or a slide id pointing at a missing part all throw well
-        // after the package opens — and unguarded they would surface as an opaque "unexpected error"
-        // job failure instead of a 400 the caller can act on.
+        // The whole parse, not just Open(): the SDK reads parts lazily, so malformed slides throw later and
+        // would otherwise fail the job opaquely instead of as a 400.
         try
         {
             return ExtractSlides(file, progress, cancellationToken);
@@ -73,6 +69,7 @@ public sealed partial class PresentationTextExtractor(ILogger<PresentationTextEx
         using (var document = PresentationDocument.Open(stream, isEditable: false))
         {
             var presentationPart = document.PresentationPart;
+            // SlideIdList, not SlideParts: only it is in presentation order.
             var slideIds = presentationPart?.Presentation?.SlideIdList?.ChildElements
                 .OfType<SlideId>()
                 .ToList() ?? [];
@@ -108,8 +105,6 @@ public sealed partial class PresentationTextExtractor(ILogger<PresentationTextEx
         }
     }
 
-    // Slide ids are enumerated through SlideIdList rather than PresentationPart.SlideParts because only
-    // the former is in presentation order; part order is an implementation detail of the package.
     private static string BuildSlideText(SlidePart slidePart)
     {
         var builder = new StringBuilder();
@@ -124,8 +119,7 @@ public sealed partial class PresentationTextExtractor(ILogger<PresentationTextEx
         {
             var notes = new StringBuilder();
 
-            // Notes slides carry a slide-number placeholder whose text is just the slide number —
-            // noise that would otherwise be embedded as content.
+            // Skip the slide-number placeholder; its text is noise.
             foreach (var shape in notesSlide.Descendants<Shape>())
             {
                 var placeholderType = shape.NonVisualShapeProperties

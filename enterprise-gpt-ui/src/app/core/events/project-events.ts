@@ -9,60 +9,27 @@ export interface ProjectFavoriteChange {
 }
 
 /**
- * Events describing server-confirmed changes to a project.
- *
- * The Events plugin earns its place here on reachability, as it does for
- * `conversationEvents`: `ProjectActionsStore` is root-scoped, while the grid's
- * `ProjectListStore` and the detail screen's `ProjectStore` are both scoped to their
- * routes — and a delete has to reach a *third* store in another feature entirely
- * (`ConversationListStore`, see {@link projectEvents.deleted}). Four observers across
- * three scopes is exactly the case a method call cannot serve.
- *
- * Every payload is **server-confirmed**. Optimistic patches and their rollbacks stay
- * inside the store that made them, so an observer never has to undo one.
+ * Server-confirmed project changes. Events, because the root `ProjectActionsStore` must reach
+ * route-scoped stores in two features; optimistic rollbacks stay in the store that made them.
  */
 export const projectEvents = eventGroup({
   source: 'Projects',
   events: {
-    /**
-     * `POST api/projects` returned 201; the payload is the DTO it created (US-903).
-     * Creation is never optimistic — it mints a server id — so this is the first
-     * moment any list may show the row.
-     */
+    /** `POST api/projects` returned 201. Never optimistic: the server mints the id. */
     created: type<ProjectDto>(),
 
-    /**
-     * `PUT api/projects/{id}` returned 200; the payload is the DTO it returned, with
-     * the server's own `dateModified` rather than a local guess. Dispatched by the
-     * rename/describe flow and by US-904's instructions save.
-     */
+    /** `PUT api/projects/{id}` returned 200, with the server's own `dateModified`. */
     updated: type<ProjectDto>(),
 
     /**
-     * `DELETE api/projects/{id}` returned 204. The payload is the project id.
-     *
-     * This one carries an obligation beyond removing a card. The server soft-deletes
-     * the project and its documents but **releases its conversations**, setting their
-     * `ProjectId` to null — so every client-side conversation still holding that id is
-     * now holding a dead one. `toUpdateBody` echoes `projectId` on a rename, so a
-     * conversation left un-released would PUT a deleted project id and take a 404 on
-     * the next rename. `ConversationListStore` and `ConversationStore` both clear it.
+     * `DELETE api/projects/{id}` returned 204; the payload is the id. The server releases its
+     * conversations, so their stores must clear the id or the next rename PUTs a dead project.
      */
     deleted: type<string>(),
 
     /**
-     * `PUT api/projects/{id}/favorite` returned 204 (US-909). The payload is the id and
-     * the flag the server just accepted.
-     *
-     * Its own event rather than an {@link projectEvents.updated} carrying a synthesized
-     * `ProjectDto`, and the distinction is load-bearing twice over. The 204 has no body
-     * to adopt, and a fabricated DTO would have to invent `instructions` — which
-     * `ProjectStore` adopts wholesale, so the detail screen would blank the standing
-     * instructions US-904 exists to keep. Narrowing the payload to the two fields the
-     * request actually decided means no observer can mistake it for a full row.
-     *
-     * Still server-confirmed, like the other three: the request is an idempotent SET of
-     * one field, so this claims nothing the server did not accept.
+     * `PUT api/projects/{id}/favorite` returned 204. Not `updated` with a synthesized DTO: it
+     * would invent `instructions`, which `ProjectStore` adopts wholesale and would blank.
      */
     favorited: type<ProjectFavoriteChange>(),
   },

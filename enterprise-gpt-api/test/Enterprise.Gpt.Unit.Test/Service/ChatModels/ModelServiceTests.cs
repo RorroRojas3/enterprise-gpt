@@ -404,9 +404,8 @@ public sealed class ModelServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The startup check treats a deactivated summarizer row as missing, and the seed-correcting
-    /// migration is already recorded — so retiring it stops every instance booting, permanently,
-    /// from a supported admin route.
+    /// Startup treats a deactivated summarizer as missing and the seed-correcting migration has already
+    /// run, so retiring it would stop every instance booting.
     /// </summary>
     [Fact]
     public async Task DeactivateModelAsync_ConfiguredSummarizer_ThrowsSummarizerProtectedException()

@@ -302,8 +302,7 @@ public sealed class DocumentEndpointsTests
     [Fact]
     public void GetJobStatus_FailedJob_SurfacesTheErrorMessage()
     {
-        // The store captured a failure reason from the start; not returning it left clients showing a bare
-        // "Failed" with no explanation.
+        // Without the failure reason a client can only show a bare "Failed".
         _jobStatusStore.Get("job-1").Returns(Snapshot(JobStatuses.Failed, 45, "Files of type '.xlsx' are not supported.",
             errorMessage: "Files of type '.xlsx' are not supported."));
 

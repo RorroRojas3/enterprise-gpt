@@ -58,8 +58,6 @@ describe('SessionStore', () => {
   });
 
   it('issues the bootstrap once however many navigations ask for it', async () => {
-    // canActivate re-runs on every navigation; an unmemoized load would re-POST
-    // users/me on each one.
     const first = store.ensureLoaded();
     const second = store.ensureLoaded();
     backend.expectOne(ME_URL).flush(userFixture());
@@ -79,7 +77,6 @@ describe('SessionStore', () => {
   });
 
   it('does not infer Upload File from Administrator', async () => {
-    // US-204: an administrator who does not hold the grant may not upload.
     const loaded = store.ensureLoaded();
     backend.expectOne(ME_URL).flush(
       userFixture({
@@ -133,9 +130,6 @@ describe('SessionStore', () => {
   });
 
   it('abandons a bootstrap that sign-out overtook', async () => {
-    // Clearing state is not the same as cancelling work. Without the takeUntil the
-    // request would still resolve and write the previous user back over the state
-    // that had just been emptied.
     const loaded = store.ensureLoaded();
     const request = backend.expectOne(ME_URL);
 
@@ -144,17 +138,12 @@ describe('SessionStore', () => {
     expect(request.cancelled).toBe(true);
     await expect(loaded).resolves.toBe(false);
     expect(store.user()).toBeNull();
-    // Idle, not errored and not still pending. Reporting the user's own sign-out as a
-    // failure would send sessionGuard to frame 6c, which then finds no error to explain
-    // and bounces straight back — and `pending` is a state no screen renders at all.
+    // An error would send sessionGuard to the startup-failure screen over a deliberate sign-out.
     expect(store.isIdle()).toBe(true);
     expect(store.error()).toBeNull();
   });
 
   it('lets a reload win over an earlier load that is still in flight', async () => {
-    // rxMethod + switchMap is the usual guarantee; a guard has to await this instead,
-    // so a generation counter carries it. Without one the slow first response lands
-    // last and paints stale data over the fresh result.
     const first = store.ensureLoaded();
     const slow = backend.expectOne(ME_URL);
 
@@ -172,9 +161,6 @@ describe('SessionStore', () => {
   });
 
   it('clears the bootstrap memo on sign-out, so the next user is fetched afresh', async () => {
-    // The memo is a prop rather than state, so withResetOnSignOut does not reach it.
-    // Left alone, the next user on a shared machine inherits this resolved promise
-    // and users/me is never called for them.
     const loaded = store.ensureLoaded();
     backend.expectOne(ME_URL).flush(userFixture());
     await loaded;

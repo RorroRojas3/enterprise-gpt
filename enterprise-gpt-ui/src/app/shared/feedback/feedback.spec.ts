@@ -141,16 +141,14 @@ describe('Skeleton', () => {
 });
 
 describe('ToastRegion', () => {
-  // Real timers here, unlike toast-store.spec.ts: the zoneless scheduler settles
-  // through setTimeout, so faking it makes `fixture.whenStable()` never resolve. This
-  // suite asserts structure rather than timing; the timing lives in the store's spec.
+  // Real timers: the zoneless scheduler settles through setTimeout, so faking it stalls
+  // `whenStable()`. Timing is covered in toast-store.spec.ts.
   beforeEach(() => {
     TestBed.configureTestingModule({});
   });
 
   afterEach(() => {
-    // Auto-dismiss timers are real in this suite, so clear them rather than let one
-    // fire against a destroyed fixture.
+    // Real auto-dismiss timers, so clear them before one fires against a destroyed fixture.
     TestBed.inject(ToastStore).dismissAll();
   });
 

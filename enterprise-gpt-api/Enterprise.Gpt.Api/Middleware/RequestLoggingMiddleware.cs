@@ -11,36 +11,11 @@ namespace Enterprise.Gpt.Api.Middleware;
 /// Logs every request on the way in and on the way out, through <see cref="ILogger{TCategoryName}"/>.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The middleware never names a telemetry backend. <see cref="ILogger{TCategoryName}"/> is the seam:
-/// Application Insights, Serilog and the console are all just providers registered at the host, and
-/// swapping one for another changes nothing here.
-/// </para>
-/// <para>
-/// Its category is <c>Enterprise.Gpt.Api.Middleware.RequestLoggingMiddleware</c>, deliberately outside the
-/// <c>Microsoft.AspNetCore</c> prefix that <c>appsettings.json</c> pins to Warning — so the access log is
-/// tuned on its own, with <c>"Enterprise.Gpt.Api.Middleware": "Warning"</c> to keep only failures and slow
-/// requests.
-/// </para>
-/// <para>
-/// Registered ahead of <c>UseExceptionHandler</c>, which is what lets it report the status the client
-/// actually received: the handler writes the response and returns normally, so the status is already final
-/// by the time <c>next()</c> comes back. That position also puts it ahead of <c>UseAuthentication</c>, so
-/// the caller is anonymous on the way in and the user id can only be reported on the way out.
-/// </para>
-/// <para>
-/// Written rather than configured from <c>UseHttpLogging</c>, which covers the payload half of this well
-/// but emits its own records on its own terms: it has no notion of an outcome, cannot raise a level for a
-/// slow or failed request, and logs to the <c>Microsoft.AspNetCore.HttpLogging</c> category that this
-/// application's configuration already pins to Warning. A single access-log record per request, whose
-/// severity carries the meaning, is the thing worth having.
-/// </para>
+/// Registered ahead of <c>UseExceptionHandler</c>, so it reports the final status, and therefore ahead of
+/// <c>UseAuthentication</c>, so the user is known only on the way out. Not <c>UseHttpLogging</c>: it
+/// cannot raise a level for a slow or failed request, and logs under a category pinned to Warning; this
+/// category sits outside <c>Microsoft.AspNetCore</c> so the access log is tuned on its own.
 /// </remarks>
-/// <param name="next">The rest of the pipeline.</param>
-/// <param name="logger">Receives the access log records.</param>
-/// <param name="options">Tuning knobs bound from the <c>RequestLogging</c> section.</param>
-/// <param name="redactor">Scrubs captured payloads before they are logged.</param>
-/// <param name="timeProvider">Supplies the monotonic timestamps the duration is measured with.</param>
 public sealed class RequestLoggingMiddleware(
     RequestDelegate next,
     ILogger<RequestLoggingMiddleware> logger,
@@ -62,11 +37,7 @@ public sealed class RequestLoggingMiddleware(
     private readonly PathString[] _excludedPaths =
         [.. options.Value.ExcludedPaths.Select(path => new PathString(path))];
 
-    /// <summary>
-    /// Runs the pipeline, recording the request either side of it.
-    /// </summary>
-    /// <param name="context">The HTTP context for the current request.</param>
-    /// <returns>A task that completes when the rest of the pipeline has.</returns>
+    /// <summary>Runs the pipeline, recording the request either side of it.</summary>
     public async Task InvokeAsync(HttpContext context)
     {
         var request = context.Request;
@@ -105,17 +76,15 @@ public sealed class RequestLoggingMiddleware(
 
             try
             {
-                // A finally rather than code after the try: ExceptionHandlerMiddleware rethrows once the
-                // response has started, and a mid-stream failure is exactly the case that today leaves no
-                // trace at all.
+                // In the finally: ExceptionHandlerMiddleware rethrows once the response has started, and a
+                // mid-stream failure must still leave a record.
                 LogCompletion(context, path, _timeProvider.GetElapsedTime(startTimestamp), failure, excluded);
                 LogPayload(context, path, requestBody, responseCapture, excluded);
             }
             catch (Exception logFailure)
             {
-                // An exception leaving a finally replaces whatever was already propagating, so an
-                // unlucky logger or a custom redactor could turn a working request into a 500 and hide
-                // the real fault on the way. Nothing the access log does is worth that.
+                // An exception leaving a finally replaces the one propagating, so a broken logger or redactor
+                // could turn a working request into a 500 and hide the real fault.
                 RequestLogMessages.LogRequestLoggingFailed(_logger, request.Method, path, logFailure);
             }
         }
@@ -269,9 +238,8 @@ public sealed class RequestLoggingMiddleware(
             return string.Concat(path, Sanitize(request.QueryString.Value ?? string.Empty));
         }
 
-        // Keys are kept, values are not: a key names a parameter, a value here is whatever the user
-        // typed — api/conversations/search?name= is a search term. Keys are still caller-controlled, so
-        // they get the same control-character treatment as the path.
+        // Keys are kept, values are not: a value is whatever the user typed (search?name=). Keys are still
+        // caller-controlled, so they are sanitized like the path.
         var builder = new StringBuilder(path);
         var separator = '?';
 
@@ -304,9 +272,8 @@ public sealed class RequestLoggingMiddleware(
             return null;
         }
 
-        // Oversized bodies are reported rather than read. EnableBuffering spools the entire body — to
-        // disk past its own threshold — however few bytes are ultimately wanted, so truncating a large
-        // request would cost the whole upload's worth of I/O to log four kilobytes of it.
+        // Reported rather than read: EnableBuffering spools the whole body, to disk past its threshold, so
+        // truncating a large upload would cost all of its I/O to log a few kilobytes.
         if (contentLength > bodies.MaxBodyBytes)
         {
             return new CapturedBody(
@@ -333,8 +300,7 @@ public sealed class RequestLoggingMiddleware(
         }
         catch (Exception exception)
         {
-            // Logging must never be the reason a request fails. A body that could not be read is a
-            // missing log field; letting the exception out would turn it into a failed request.
+            // Logging must never be the reason a request fails; an unreadable body is a missing log field.
             RequestLogMessages.LogPayloadCaptureFailed(_logger, request.Method, path, exception);
             return null;
         }
@@ -342,9 +308,8 @@ public sealed class RequestLoggingMiddleware(
         {
             ArrayPool<byte>.Shared.Return(buffer);
 
-            // Outside the try: a read that threw part-way has already consumed bytes, and leaving the
-            // stream mid-body would hand the endpoint a truncated payload to model-bind. EnableBuffering
-            // has run by here, so the rewind always succeeds.
+            // Outside the try: a read that threw part-way has consumed bytes, and the endpoint must not
+            // model-bind a truncated payload. EnableBuffering has run, so the rewind always succeeds.
             if (request.Body.CanSeek)
             {
                 request.Body.Position = 0;
@@ -394,10 +359,8 @@ public sealed class RequestLoggingMiddleware(
 
         try
         {
-            // Anything a handler left in the wrapper's pipe writer has to reach the connection before the
-            // host goes on to complete a feature that knows nothing about that writer. Skipped once the
-            // caller has gone: there is nobody left to deliver to, and a client navigating away
-            // mid-stream is ordinary traffic here rather than something to warn about.
+            // The wrapper's pipe writer must reach the connection before the host completes a feature that
+            // knows nothing of it. Skipped once the caller has gone: there is nobody left to deliver to.
             if (captureFeature is not null && !context.RequestAborted.IsCancellationRequested)
             {
                 await captureFeature.FlushWriterAsync(context.RequestAborted);
@@ -418,9 +381,7 @@ public sealed class RequestLoggingMiddleware(
         }
     }
 
-    /// <summary>
-    /// Strips the control characters that would let caller-supplied text forge extra log lines.
-    /// </summary>
+    // Strips the control characters that would let caller-supplied text forge extra log lines.
     private static string Sanitize(string value)
     {
         var needsWork = false;

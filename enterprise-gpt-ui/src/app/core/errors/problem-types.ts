@@ -1,13 +1,6 @@
 /**
- * The twelve application-specific problem types, mirroring
- * `Enterprise.Gpt.Api/Problems/ProblemTypes.cs`.
- *
- * These are relative URI references. RFC 9457 §3.1.1 permits that, and the API
- * treats them as opaque identifiers rather than links, so the client must match
- * them verbatim and never resolve them. Changing one is a breaking API change.
- *
- * A response carrying any other `type` — typically an RFC 9110 status-section
- * link — is a framework-level problem, not a domain one.
+ * Mirrors `Enterprise.Gpt.Api/Problems/ProblemTypes.cs`. Opaque relative URIs: match verbatim,
+ * never resolve. Any other `type` is a framework-level problem.
  */
 export const PROBLEM_TYPE = {
   validationError: '/problems/validation-error',
@@ -26,5 +19,4 @@ export const PROBLEM_TYPE = {
   exportRendererNotConfigured: '/problems/export-renderer-not-configured',
 } as const;
 
-/** One of the twelve application-specific problem type URIs. */
 export type ProblemTypeUri = (typeof PROBLEM_TYPE)[keyof typeof PROBLEM_TYPE];

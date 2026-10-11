@@ -7,8 +7,6 @@
 .model-form__grid {
   display: grid;
   gap: 12px 14px;
-  // Frame `5f`'s two columns, collapsing to one below the modal's narrow width — every
-  // field here is a labelled control and none of them reads across a 320px viewport.
   grid-template-columns: 1fr 1fr;
   font-size: 12.5px;
 
@@ -44,8 +42,7 @@
   line-height: 1.4;
 }
 
-// Frame `5h`'s failure banner, reused here for anything the server said that no control
-// below can carry.
+// Anything the server said that no control below can carry.
 .model-form__summary {
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--fail) 35%, transparent);
@@ -64,9 +61,7 @@
   line-height: 1.45;
 }
 
-// Bootstrap's own `.form-check.form-switch` markup, which is what makes the control a
-// switch rather than a box — the `form-check` partial is already imported, and
-// hand-rolling the pill would duplicate CSS the bundle is already paying for.
+// Bootstrap's own switch markup, since the `form-check` partial is already in the bundle.
 .model-form__switch {
   margin: 0;
 

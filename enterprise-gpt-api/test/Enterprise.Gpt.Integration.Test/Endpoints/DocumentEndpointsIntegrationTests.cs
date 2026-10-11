@@ -52,17 +52,10 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         return Upload("notes.txt", Encoding.UTF8.GetBytes(builder.ToString()), "text/plain");
     }
 
-    /// <summary>
-    /// Polls the status endpoint until the job reaches a terminal state, mirroring what the client does.
-    /// </summary>
+    /// <summary>Polls the status endpoint until the job reaches a terminal state, as the client does.</summary>
     /// <remarks>
-    /// <strong>Every test that receives a 202 must await this before it returns</strong>, whether or
-    /// not it asserts on the outcome. Ingestion runs on the host's background pipeline and outlives
-    /// the request, and the per-test reset deletes <c>ConversationDocument</c> before
-    /// <c>Conversation</c> — so a job still running when the next test starts inserts its row between
-    /// those two deletes and fails that test on a foreign key, a long way from the test that leaked
-    /// it. A terminal state is a sound barrier because <c>DocumentService</c> reports completion only
-    /// after <c>SaveChangesAsync</c> has committed.
+    /// <strong>Every test that receives a 202 must await this</strong>: a still-running job inserts its row
+    /// mid-reset in the next test and fails it on a foreign key. Completion is reported only after commit.
     /// </remarks>
     private static async Task<JobStatusDto> WaitForTerminalStateAsync(HttpClient client, string jobId)
     {
@@ -280,7 +273,7 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
     [Fact]
     public async Task Upload_SameFileNameTwice_BothSucceedWithoutColliding()
     {
-        // A name-keyed blob path made the second upload collide with the first and fail the job.
+        // A name-keyed blob path would make the second upload collide with the first and fail the job.
         var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
         using var client = _fixture.Factory.CreateUserClient();
 
@@ -983,7 +976,6 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
     #endregion
 
     #region Cancel
-    /// <summary>Whether a recorded upload key still has bytes behind it.</summary>
     private bool StillStored(string key)
     {
         var separator = key.IndexOf('/', StringComparison.Ordinal);
@@ -1052,9 +1044,8 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         await client.DeleteAsync($"api/documents/upload-status/{job.Id}", TestContext.Current.CancellationToken);
         await WaitForTerminalStateAsync(client, job.Id);
 
-        // Polled rather than asserted outright: the terminal state is published by the cancel, before
-        // the worker has finished unwinding, so the cleanup lands shortly after the status says so.
-        // No surviving row references the blob, so retention could never find it — the worker must drop it.
+        // Polled: the cancel publishes the terminal state before the worker unwinds. No surviving row
+        // references the blob, so retention could never find it; the worker must drop it.
         await WaitUntilAsync(() => !_fixture.Factory.BlobStorage.UploadedKeys.Any(StillStored));
     }
 
@@ -1147,11 +1138,8 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         var ownerResponse = await owner.GetAsync($"api/documents/upload-status/{job.Id}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, ownerResponse.StatusCode);
 
-        // Not an assertion — a barrier, and the only test in this file that needs one stated rather
-        // than implied. Everything above is answered while the job is still ingesting, so without
-        // this the test returns with background work outstanding and the insert lands inside the
-        // *next* test's ResetConversationsAndDocumentsAsync: after it has emptied ConversationDocument
-        // and before it deletes Conversation, which fails that unrelated test on a foreign key.
+        // A barrier, not an assertion: everything above ran while the job was still ingesting, and its
+        // insert would otherwise land mid-reset in the next test and fail it on a foreign key.
         await WaitForTerminalStateAsync(owner, job.Id);
     }
 

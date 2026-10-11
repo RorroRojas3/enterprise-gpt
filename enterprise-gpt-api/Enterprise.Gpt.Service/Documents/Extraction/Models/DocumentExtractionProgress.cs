@@ -4,10 +4,8 @@ namespace Enterprise.Gpt.Service.Documents.Extraction.Models;
 /// Best-effort progress report emitted while a document is being read.
 /// </summary>
 /// <param name="Fraction">
-/// How far through the extraction the reader is, in the range 0..1, or <see langword="null"/> when the
-/// underlying operation cannot be measured (for example a remote OCR call, which is opaque until it
-/// completes). A <see langword="null"/> fraction leaves the reported percentage where it is and
-/// refreshes only <paramref name="Message"/>, so the percentage never claims progress it cannot know.
+/// 0..1, or <see langword="null"/> when the work cannot be measured (remote OCR); null leaves the
+/// percentage where it is and refreshes only <paramref name="Message"/>.
 /// </param>
-/// <param name="Message">A short, user-facing description of what is happening right now.</param>
+/// <param name="Message">Short and user-facing.</param>
 public sealed record DocumentExtractionProgress(double? Fraction, string Message);

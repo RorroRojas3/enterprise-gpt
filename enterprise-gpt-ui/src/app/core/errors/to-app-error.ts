@@ -3,36 +3,16 @@ import { AppError } from './app-error';
 import { abortedAppError, buildAppError, clientAppError, networkAppError } from './build-app-error';
 import { parseProblemDetails } from './problem-details';
 
-/** Context a caller can supply to classify a failure it has extra knowledge about. */
 export interface ToAppErrorOptions {
-  /**
-   * The signal the caller passed to `fetch`.
-   *
-   * `AbortController.abort()` raises an `AbortError`, but `abort(reason)` — the
-   * idiomatic way to record *why* a turn was stopped — rejects with the reason
-   * itself, which can be any value including a plain string. Supplying the signal
-   * is what lets a deliberate stop be recognized whatever the reason was.
-   */
+  /** `abort(reason)` rejects with the bare reason, so the signal is what identifies a Stop. */
   readonly signal?: AbortSignal;
   /** The request URL, when the thrown value does not carry one. */
   readonly url?: string;
 }
 
 /**
- * Normalizes any thrown value into one {@link AppError}.
- *
- * Total and synchronous: it never throws and never returns a promise. Reading a
- * `fetch` body is asynchronous, so responses whose problem body still has to be
- * read go through `toAppErrorFromResponse` instead; handed a bare `Response`,
- * this function still returns a correct arm built from the status alone.
- *
- * There is deliberately no overload that returns `Promise<AppError>` for a
- * `Response` argument. It type-checks, but every `catch` binds `unknown`, which
- * selects the synchronous signature and hands the caller a promise typed as an
- * `AppError` — a failure that surfaces far from its cause.
- *
- * @param value The caught value.
- * @param options Extra context the caller holds.
+ * Total and synchronous; a `Response` whose body must be read uses `toAppErrorFromResponse`.
+ * No `Promise` overload: a `catch` binds `unknown`, which would pick it and mistype the result.
  */
 export function toAppError(value: unknown, options: ToAppErrorOptions = {}): AppError {
   const url = options.url ?? null;
@@ -41,31 +21,22 @@ export function toAppError(value: unknown, options: ToAppErrorOptions = {}): App
     return fromHttpErrorResponse(value);
   }
 
-  // The thrown value's own identity decides first, and the signal only rescues
-  // values that cannot identify themselves. Order matters:
-  // `AbortSignal.timeout()` sets `aborted` *and* rejects with a TimeoutError, so
-  // testing the signal first would classify every timeout as a cancellation —
-  // silently, and only for the callers that supply the signal.
-  //
-  // The reason is read off the signal too, because `AbortSignal.any([stop,
-  // timeout])` propagates the reason from whichever source fired.
+  // The value's own name wins: `AbortSignal.timeout()` also sets `aborted`. The signal's reason
+  // covers `AbortSignal.any([stop, timeout])`, which forwards whichever fired.
   const reason = nameOf(value) ?? nameOf(options.signal?.reason);
 
-  // A timeout is a failed request, not a cancelled one: it should read as a
-  // network problem and stay retriable.
+  // A timeout is a failed request, not a cancelled one, so it stays retriable.
   if (reason === 'TimeoutError') {
     return networkAppError(url, value);
   }
 
-  // `abort(reason)` rejects with the reason itself, which is often a plain
-  // string. When the value names nothing, an aborted signal is the only evidence
-  // that the user pressed Stop rather than the request failing.
+  // When the value names nothing (often a string reason), an aborted signal is the only
+  // evidence the user pressed Stop.
   if (reason === 'AbortError' || (reason === null && options.signal?.aborted === true)) {
     return abortedAppError(url, value);
   }
 
-  // `fetch` reports every transport failure — DNS, TLS, offline, and CORS
-  // rejections alike — as a bare TypeError with no detail.
+  // `fetch` reports every transport failure (DNS, TLS, offline, CORS) as a bare TypeError.
   if (value instanceof TypeError) {
     return networkAppError(url, value);
   }
@@ -94,9 +65,7 @@ function fromHttpErrorResponse(response: HttpErrorResponse): AppError {
 
   return buildAppError({
     status: response.status,
-    // `error` is already parsed when the body was JSON. When it was not, HttpClient
-    // supplies `{ error: SyntaxError, text: string }`, which parseProblemDetails
-    // rejects — so this degrades to the plain `http` arm instead of throwing.
+    // A non-JSON body arrives as `{ error, text }`, which degrades to the plain `http` arm.
     problem: parseProblemDetails(response.error),
     url,
     cause: response,

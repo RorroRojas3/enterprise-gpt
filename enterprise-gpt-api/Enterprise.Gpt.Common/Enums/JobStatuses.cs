@@ -6,10 +6,8 @@ namespace Enterprise.Gpt.Common.Enums;
 /// Stages of the document ingestion pipeline, reported to clients polling for upload progress.
 /// </summary>
 /// <remarks>
-/// Values 1–6 are frozen: clients already deployed compare against them. New stages are appended, never
-/// renumbered, and are projected onto the coarse job state so an older client still sees a sensible
-/// Enqueued/Processing/Succeeded/Failed progression — <see cref="Cancelled"/> projects onto Failed
-/// rather than widening that vocabulary.
+/// Values 1–6 are frozen: deployed clients compare against them. New stages are appended and projected onto
+/// the coarse Enqueued/Processing/Succeeded/Failed state; <see cref="Cancelled"/> projects onto Failed.
 /// </remarks>
 public enum JobStatuses
 {

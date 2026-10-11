@@ -5,20 +5,13 @@ namespace Enterprise.Gpt.Dto.Conversations;
 
 public class ConversationMessageDto
 {
-    /// <summary>
-    /// The message's identifier.
-    /// </summary>
     public Guid Id { get; set; }
 
     /// <summary>
     /// When the message was produced: a user message when its prompt arrived, an assistant
     /// message when its answer completed.
     /// </summary>
-    /// <remarks>
-    /// Also the cursor for backward paging. A client walking a long transcript passes the
-    /// oldest value it holds as <c>?before=</c>, so this has to be on the wire for that
-    /// parameter to be usable at all.
-    /// </remarks>
+    /// <remarks>Also the <c>?before=</c> cursor for backward paging.</remarks>
     public DateTimeOffset DateCreated { get; set; }
 
     public string Text { get; set; } = null!;
@@ -30,9 +23,8 @@ public class ConversationMessageDto
     /// stored before server-side rendering existed or rendering failed.
     /// </summary>
     /// <remarks>
-    /// A null value means the client must render <see cref="Text"/> itself. This is an
-    /// export-fidelity artefact rather than a mirror of what the client shows: the two render
-    /// through different pipelines and differ in whitespace and syntax-highlighting markup.
+    /// When null the client renders <see cref="Text"/> itself. An export-fidelity artefact, not a mirror of
+    /// the client's rendering: whitespace and highlighting markup differ.
     /// </remarks>
     public string? HtmlContent { get; set; }
 
@@ -41,9 +33,8 @@ public class ConversationMessageDto
     /// stored before per-message token accounting existed.
     /// </summary>
     /// <remarks>
-    /// The context cost, not what the provider billed. On an assistant message it counts only
-    /// the transcribed answer, so it will not equal the turn's reported output tokens — tool
-    /// call arguments are generated and billed but never transcribed.
+    /// Context cost, not billing: tool-call arguments are billed but never transcribed, so this will not
+    /// equal the turn's output tokens.
     /// </remarks>
     public long Tokens { get; set; }
 
@@ -51,10 +42,8 @@ public class ConversationMessageDto
     /// How <see cref="Tokens"/> was arrived at.
     /// </summary>
     /// <remarks>
-    /// Serialized as a string, unlike <see cref="Role"/>. The converter is applied to this
-    /// property alone rather than to the API's serializer options, because a global string-enum
-    /// converter would change <see cref="Role"/> from a number to a string and break every
-    /// client reading it.
+    /// A property-level string converter: a global one would turn <see cref="Role"/> into a string and
+    /// break every client reading it.
     /// </remarks>
     [JsonConverter(typeof(JsonStringEnumConverter<TokenAccuracies>))]
     public TokenAccuracies TokenAccuracy { get; set; }
@@ -64,11 +53,8 @@ public class ConversationMessageDto
     /// message is not an assistant message or was stored before per-message usage existed.
     /// </summary>
     /// <remarks>
-    /// The counterpart to <see cref="Tokens"/> rather than a restatement of it, and the two
-    /// deliberately disagree: <see cref="Tokens"/> is what this message's own text costs the
-    /// prompt on every future turn, while this is what the provider charged for the whole turn
-    /// — every tool round trip, MCP call and agent underneath it included. A turn that ran tools
-    /// reports far more here than the answer beside it weighs.
+    /// Deliberately disagrees with <see cref="Tokens"/>: this is the whole turn's charge, every tool, MCP
+    /// call and agent underneath included.
     /// </remarks>
     public ConversationMessageUsageDto? Usage { get; set; }
 
@@ -81,9 +67,6 @@ public class ConversationMessageDto
     /// <summary>
     /// The files this message introduced, empty when it introduced none.
     /// </summary>
-    /// <remarks>
-    /// Identities only. A client asks the document download route for a link at the moment of the
-    /// click, so nothing here expires and nothing here is a credential.
-    /// </remarks>
+    /// <remarks>Identities only: links are minted on click, so nothing here expires or is secret.</remarks>
     public IReadOnlyList<MessageAttachmentDto> Attachments { get; set; } = [];
 }

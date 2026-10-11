@@ -14,9 +14,8 @@ async function start(): Promise<void> {
   let config;
 
   try {
-    // The sprite fetch overlaps the config fetch that already gates bootstrap, so
-    // it costs roughly nothing and guarantees no icon pop-in on first paint.
-    // loadIconSprite never rejects, so it cannot reroute into the fatal shell.
+    // Overlaps the config fetch that gates bootstrap, so icons never pop in. loadIconSprite
+    // never rejects, so it cannot reroute into the fatal shell.
     [config] = await Promise.all([loadAppConfig(), loadIconSprite()]);
   } catch (error) {
     console.error(error);
@@ -31,11 +30,8 @@ async function start(): Promise<void> {
   let msal;
 
   try {
-    // Created and initialized here, before bootstrap, for the same reason APP_CONFIG
-    // is: `initialize()` is asynchronous and no synchronous DI factory can await it,
-    // so a factory would hand every consumer an instance that is not ready yet.
-    // Resolving it here makes "MSAL_INSTANCE is initialized" a property of the
-    // injector rather than something each caller has to remember.
+    // Before bootstrap because no DI factory can await `initialize()`, so the injector only
+    // ever holds a ready instance.
     msal = await createStandardPublicClientApplication(buildMsalConfig(config, document.baseURI));
   } catch (error) {
     console.error(error);
@@ -46,9 +42,7 @@ async function start(): Promise<void> {
   }
 
   try {
-    // The values are resolved before the call rather than inside an app initializer,
-    // so both are genuinely available to every provider factory from the first moment
-    // of the injector's life.
+    // Resolved before bootstrap, not in an initializer, so every provider factory can read them.
     await bootstrapApplication(
       App,
       mergeApplicationConfig(appConfig, {
@@ -58,9 +52,8 @@ async function start(): Promise<void> {
         ],
       }),
     );
-    // The startup shell is not removed here. Bootstrap resolves before the first
-    // routed component renders, so `provideStartupShellHandoff` waits for that render
-    // instead — otherwise an empty app shell paints over the startup card.
+    // The startup shell stays: bootstrap resolves before the first routed render, which
+    // `provideStartupShellHandoff` waits for.
   } catch (error) {
     console.error(error);
     showFatalShell('The application failed to start.');

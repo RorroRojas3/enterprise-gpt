@@ -1,32 +1,26 @@
 <h1 class="admin-reports__title font-display">Reports</h1>
 
 <div class="admin-reports__toolbar">
-  <!-- Never disabled while a report is in flight. A control that goes inert under the reader's
-       own gesture blurs itself, which drops a keyboard user back to the top of the document — and
-       on a closed select, which commits on the first arrow key, it makes the rest of the list
-       unreachable. `switchMap` in the store already discards the superseded request. -->
+  <!-- Never disabled in flight: going inert blurs the control and drops keyboard focus to the
+       top of the document. `switchMap` already discards the superseded request. -->
   <app-range-segmented [value]="range()" (selected)="onRangeSelected($event)" />
 
-  <!-- A read-out, not a picker. The board draws no custom-range control, and this states the
-       window the response was actually taken from rather than the one the control asked for. -->
+  <!-- A read-out, not a picker: the window the response was taken from, not the one asked for. -->
   <span class="admin-reports__chip">
     <app-icon name="bi-calendar3" class="admin-reports__chip-icon" />
     {{ dateRange() }}
   </span>
 
   <label class="visually-hidden" for="usage-group-by">Group usage by</label>
-  <!-- `[selected]` on the option, never `[value]` on the select: a `[value]` binding is evaluated
-       before `@for` inserts the options, leaving `selectedIndex` at -1, and the browser then
-       resets to the first one — so a shared link would display "Model" while grouping by user. -->
+  <!-- `[selected]` per option, not `[value]` on the select: `[value]` applies before `@for`
+       inserts the options, and the browser then resets to the first one. -->
   <select
     id="usage-group-by"
     class="form-select admin-reports__group"
     (change)="onGroupingChanged($event)"
   >
     @for (grouping of groupings; track grouping) {
-      <!-- On every option, not just the first. The board prefixes only the default, which reads
-           correctly until something else is chosen and the closed control then says "User" with
-           no clue what it groups. -->
+      <!-- Prefixed on every option so the closed control always says what it groups by. -->
       <option [value]="grouping" [selected]="grouping === group()">
         Group by: {{ columnLabel(grouping) }}
       </option>
@@ -35,9 +29,8 @@
 </div>
 
 @if (reports.error(); as error) {
-  <!-- Instead of the dashboard rather than beside it: every panel below belongs to one request,
-       and a chart left on screen beside a failure notice is a chart of the last range the reader
-       looked at, labelled with this one. `ErrorPanel` carries the traceId and the retry. -->
+  <!-- Instead of the dashboard, not beside it: a stale chart beside the failure would be labelled
+       with the new range. -->
   <app-error-panel
     [error]="error"
     [canRetry]="canRetry(error)"
@@ -58,19 +51,15 @@
     </div>
   </div>
 } @else if (reports.isEmpty()) {
-  <!-- A named range rather than a dashboard of zeroes. Charts drawn from zeros are indistinguishable
-       from charts drawn from a quiet month, and the four tiles would each read as a measurement. -->
+  <!-- A named range rather than a dashboard of zeroes, which would look like a quiet month. -->
   <app-empty-state
     [heading]="emptyHeading()"
     [headingLevel]="2"
     message="No model calls were billed in this range. Try a longer period."
   />
 } @else if (reports.report(); as report) {
-  <!-- `aria-busy` while the next report is on the wire, and a dimmed panel to match. The controls
-       stay operable — the round of feedback they used to give by disabling themselves was the
-       defect — but a dashboard that swaps wholesale with no sign anything was asked for is its own
-       problem, and for a screen reader there was nothing at all between the gesture and the count
-       changing. -->
+  <!-- `aria-busy` and a dimmed panel while the next report loads: the controls stay operable, so
+       nothing else signals that anything was asked for. -->
   <div
     class="admin-reports__dashboard"
     [class.admin-reports__dashboard--busy]="reports.isPending()"
@@ -122,11 +111,8 @@
       </section>
     </div>
 
-    <!-- Above the table rather than in its `[tableNotice]` slot. That slot only collapses when it is
-       `:empty`, and a conditional has to project a *stable* wrapper — an `@if` around a projected
-       node compiles to an `ng-template` carrying no selector attribute and is never projected — so
-       the wrapper itself would keep the slot non-empty and leave 10px of dead space on every
-       report that is not truncated. -->
+    <!-- Above the table, not in `[tableNotice]`: that slot collapses only when `:empty`, and the
+       stable wrapper an `@if` needs there would leave 10px of dead space with no notice. -->
     @if (reports.truncationNotice(); as notice) {
       <p class="admin-reports__truncation">{{ notice }}</p>
     }
@@ -162,8 +148,8 @@
       </ng-template>
 
       <ng-template appTableCell="failed" [appTableCellFor]="reports.pagedGroups()" let-row>
-        <!-- Toned only when there were failures, and never as the only channel: the number itself
-           is the message, and the tone is what makes a row worth looking at twice. -->
+        <!-- Toned only when there were failures, and never the only channel: the number is the
+           message. -->
         <span
           class="admin-reports__number font-mono"
           [class.admin-reports__number--warn]="row.failedTurns > 0"
@@ -186,11 +172,8 @@
         >
       </ng-template>
 
-      <!-- The shared paginator, not the board's two bare chevrons. It already renders this exact
-         sentence, disables its ends genuinely and is keyboard-operable; a second pagination
-         mechanism in a codebase with one is the cost of the fidelity, and the numbered window is
-         the only visible difference. `liveSummary` is false because `[summary]` above is already
-         a live region carrying the same string. -->
+      <!-- `liveSummary` is false because `[summary]` above is already a live region carrying the
+         same string. -->
       <div tableFooter>
         <app-paginator
           [itemLabel]="itemLabel()"

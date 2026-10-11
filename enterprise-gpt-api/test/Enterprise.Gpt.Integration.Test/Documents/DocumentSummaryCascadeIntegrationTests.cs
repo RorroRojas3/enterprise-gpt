@@ -7,14 +7,11 @@ using Xunit;
 namespace Enterprise.Gpt.Integration.Test.Documents;
 
 /// <summary>
-/// Covers the invariant a summary table is easiest to get wrong: a summary that outlives the
-/// document it summarizes is a fully readable account of everything that document said, sitting in
-/// a table nothing else queries.
+/// A summary must never outlive its document, since it is a readable account of everything the document said.
 /// </summary>
 /// <remarks>
-/// Run against a real SQL Server through the real routes, because the five cascades are sequences
-/// of <c>ExecuteUpdateAsync</c> statements — they never materialize an entity, so nothing about
-/// them is exercised by a test that goes through the change tracker.
+/// Runs through the real routes because the cascades are <c>ExecuteUpdateAsync</c> statements the change
+/// tracker never sees.
 /// </remarks>
 [Collection(IntegrationTestCollection.Name)]
 [Trait("Category", "Integration")]

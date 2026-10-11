@@ -26,21 +26,11 @@ import { DeleteProjectDialog } from './project-actions/delete-project-dialog';
 import { ProjectFormDialog } from './project-actions/project-form-dialog';
 import { Sidebar, SidebarMode } from './sidebar/sidebar';
 
-/** Which of frames `3e`, `3f` and `3g` the viewport is in. */
 type ShellMode = 'desktop' | 'tablet' | 'mobile';
 
 /**
- * The signed-in application frame: the sidebar, and the routed screen beside it.
- *
- * A layout route rather than markup in `App`, because the four unguarded routes —
- * `/auth`, `/login-failed`, `/session-error`, `/signed-out` — and the forbidden page of
- * frame `6e` are all deliberately chrome-free, and a shell in `App` would put a sidebar
- * around every one of them.
- *
- * Since US-1403 it also owns the three viewport modes, and all sidebar policy with them.
- * `Sidebar` is now a controlled component: the same chevron means "persist a width" at
- * desktop and "open a transient overlay" at tablet, and only this component can see
- * which.
+ * A layout route, not markup in `App`, so the unguarded and forbidden pages stay chrome-free. It
+ * owns sidebar policy, since only it knows whether a chevron persists a width or opens an overlay.
  */
 @Component({
   selector: 'app-shell',
@@ -76,29 +66,19 @@ export class Shell {
   private readonly _injector = inject(Injector);
   private readonly _animated = signal(false);
   private readonly _main = viewChild.required<ElementRef<HTMLElement>>('main');
-  // Asks the sidebar to focus its own control rather than reaching in for one:
-  // `.strip__button` is shared by the chevron, New conversation, search and every nav
-  // link, so a document-order query here would silently follow a template reorder.
+  // Asks the sidebar to focus its own control: `.strip__button` is shared by many controls, so a
+  // document-order query here would silently follow a template reorder.
   private readonly _sidebar = viewChild(Sidebar);
 
   private readonly _isMobile = injectMediaQuery(MOBILE_VIEWPORT);
   private readonly _isTablet = injectMediaQuery(TABLET_VIEWPORT);
 
-  /**
-   * Both queries false means **desktop**, and that ordering is load-bearing: the test
-   * fake answers `false` for every query a spec has not set, so "nothing configured" has
-   * to resolve to the mode the existing suite was written against.
-   */
+  /** Both queries false means desktop: the test fake answers false for any unset query. */
   protected readonly mode = computed<ShellMode>(() =>
     this._isMobile() ? 'mobile' : this._isTablet() ? 'tablet' : 'desktop',
   );
 
-  /**
-   * What the sidebar renders. The **persisted preference is read at desktop only** — at
-   * tablet the strip is the viewport's default rather than the user's choice, which is
-   * frame `3g`'s own wording ("Defaults to the 60px strip"), and at mobile the sidebar
-   * exists only inside the drawer.
-   */
+  /** The persisted preference applies at desktop only; tablet defaults to the strip. */
   protected readonly sidebarMode = computed<SidebarMode>(() => {
     switch (this.mode()) {
       case 'desktop':
@@ -111,21 +91,9 @@ export class Shell {
   });
 
   /**
-   * The transient overlay — frame `3g`'s expanded panel and frame `3e`'s drawer.
-   *
-   * On the shell rather than in `UiStore`, and the distinction is the point: every write
-   * to that store goes to `localStorage`, and this is a gesture rather than a preference.
-   * Keeping it here also keeps it off the initial bundle graph, which the root-scoped
-   * store is on.
-   *
-   * **`linkedSignal` rather than a plain signal reset from an `effect`.** A rotation or a
-   * resize is not a second gesture, and carrying the overlay across a breakpoint would
-   * also change what it *is* — at mobile it is a modal dialog whose focus returns to a
-   * hamburger that does not exist at tablet. Resetting it from an effect would work, but
-   * the reset would land one pass *after* `mode()` changed, and `tabletOverlayOpen()`
-   * reads both synchronously: for that window a drawer open at mobile would read as a
-   * tablet overlay and `.shell__main` would take `inert`. Deriving it makes the reset
-   * atomic with the mode read, so no ordering has to hold.
+   * The transient overlay: a gesture, not a preference, so not in `UiStore` (which persists).
+   * Linked to the mode so a breakpoint change resets it atomically; an effect would leave a
+   * pass where a mobile drawer reads as a tablet overlay and inerts `<main>`.
    */
   private readonly _overlayOpen = linkedSignal<ShellMode, boolean>({
     source: this.mode,
@@ -141,14 +109,8 @@ export class Shell {
   );
 
   /**
-   * Moves focus into the screen without letting the fragment reach the router.
-   *
-   * **The overlay is dismissed first, and it has to be.** The skip link is a sibling of
-   * `<main>` rather than a descendant, so it is not inerted with it — and it is the first
-   * tab stop in the document. While the tablet overlay is up `<main>` carries `inert`, an
-   * inert element is not focusable, and `preventDefault()` has already suppressed the
-   * native `href`: the control would do nothing at all, silently. Dismissing is also the
-   * honest reading of the gesture — the user has asked to go to the content.
+   * Focuses `<main>` without letting the fragment reach the router. Dismisses the tablet
+   * overlay first: `<main>` is inert under it, so the skip link would otherwise do nothing.
    */
   protected skipToMain(event: Event): void {
     event.preventDefault();
@@ -158,21 +120,13 @@ export class Shell {
       return;
     }
 
-    // Dismissing is not enough on its own, and this is the subtle half: writing the
-    // signal only *schedules* change detection, so `inert` is still on `<main>` for the
-    // rest of this task — and `focus()` on an inert element does nothing at all, without
-    // error. The focus therefore waits for the render that removes the attribute.
-    //
-    // Not `dismissOverlay()`: that queues focus back onto the strip, which would take it
-    // straight off the element this method exists to focus.
+    // `inert` stays until the next render, and focusing an inert element silently fails. Not
+    // `dismissOverlay()`, which would queue focus back onto the strip.
     this._overlayOpen.set(false);
     afterNextRender(() => this._main().nativeElement.focus(), { injector: this._injector });
   }
 
-  /**
-   * Either chevron. What it means depends on the width, which is the whole reason
-   * `Sidebar` stopped deciding it.
-   */
+  /** Either chevron; what it means depends on the width. */
   protected onSidebarToggled(): void {
     if (this.mode() === 'desktop') {
       this._ui.toggleSidebar();
@@ -194,17 +148,13 @@ export class Shell {
     this._overlayOpen.set(true);
   }
 
-  /** Frame `3g`: tapping the backdrop collapses the panel back to the strip. */
+  /** Pressing the backdrop collapses the panel back to the strip. */
   protected dismissOverlay(): void {
     this._overlayOpen.set(false);
     this._restoreFocusToStrip();
   }
 
-  /**
-   * Escape closes the tablet overlay, and only the tablet one. The mobile drawer is a
-   * native dialog, whose `cancel` event `Offcanvas` already answers; handling the key
-   * here too would be one close too many.
-   */
+  /** Tablet only: `Offcanvas` already answers the mobile drawer's native `cancel`. */
   protected onEscape(): void {
     if (this.tabletOverlayOpen()) {
       this.dismissOverlay();
@@ -217,12 +167,7 @@ export class Shell {
     }
   }
 
-  /**
-   * Once the overlay collapses, the expanded panel's chevron no longer exists. Focus
-   * follows to the strip control that replaced it, so dismissing from the backdrop or
-   * with Escape does not leave the user at the document body, where the next Tab
-   * restarts at the top of the page.
-   */
+  /** The panel's chevron is gone once it collapses, so focus moves to the strip's replacement. */
   private _restoreFocusToStrip(): void {
     afterNextRender(() => this._sidebar()?.focusCollapseControl(), {
       injector: this._injector,
@@ -230,10 +175,8 @@ export class Shell {
   }
 
   constructor() {
-    // The width transition is withheld until after the first render. `UiStore` restores
-    // the collapsed preference before anything paints, so without this a returning user
-    // would watch their sidebar animate from 260px to 60px on every load — an animation
-    // of a state change that never happened.
+    // No width transition until after the first render, or a restored collapsed preference
+    // would animate from 260px to 60px on every load.
     afterNextRender(() => this._animated.set(true));
   }
 }

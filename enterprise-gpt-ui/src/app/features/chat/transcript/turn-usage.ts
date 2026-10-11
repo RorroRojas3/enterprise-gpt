@@ -1,27 +1,18 @@
 import { UsageSummary } from '@domain/stream/andes/assistant-ui.contract';
 
 /**
- * Pinned to `en-US` rather than the ambient locale: the app ships one language,
- * the design fixes the grouping separator (`1,842`), and a formatter that
- * followed the host would render `1.842` on a German machine and make every
- * spec that asserts a count depend on where it ran.
+ * `en-US` rather than the ambient locale: the design fixes `1,842`, and the host's locale would
+ * make every spec asserting a count depend on where it ran.
  */
 const TOKENS = new Intl.NumberFormat('en-US');
 
-/** Frame `1f` writes every elapsed time as `3.1s`, in JetBrains Mono. */
 export function formatDurationSeconds(seconds: number | undefined): string | null {
   return seconds === undefined ? null : `${seconds.toFixed(1)}s`;
 }
 
 /**
- * The turn's token counts as frames `1f` and `1g` write them —
- * `1,842 in · 512 out · 2,354 total` (US-504).
- *
- * Each count is optional on the wire because a provider may report only some,
- * so a missing one is **omitted rather than rendered as zero**: a turn that
- * reported no output tokens did not produce none. Null when the turn claims
- * nothing at all, which is every turn that never folded a `Finished` — stopped,
- * cut off, or replayed from the stored transcript.
+ * A count a provider did not report is omitted, not rendered as zero. Null when the turn claims
+ * nothing, as every turn that never folded a `Finished` does.
  */
 export function formatTurnUsage(usage: UsageSummary | undefined): string | null {
   if (usage === undefined) {
@@ -43,17 +34,8 @@ export function formatTurnUsage(usage: UsageSummary | undefined): string | null 
 }
 
 /**
- * One activity's split for the expanded card's strip — `input  1,204`,
- * `output  88`, `duration  3.1s` (frame `1f`, US-504).
- *
- * The label and its value are separated by two non-breaking spaces, as the
- * frame writes them, so the columns survive the mono face without a grid.
- *
- * `usage` is currently absent from every activity this server sends: the
- * streaming contract carries `usage` on `Finished` only, and the vendored fold
- * never writes `AssistantActivity.usage`. The strip therefore ships showing the
- * duration, and gains the token columns the moment a contract upgrade starts
- * attributing them — the field is already in the type.
+ * Two non-breaking spaces keep label and value apart in the mono face without a grid. The fold
+ * never writes `AssistantActivity.usage` yet, so today the strip shows only the duration.
  */
 export function formatActivityUsage(
   usage: UsageSummary | undefined,

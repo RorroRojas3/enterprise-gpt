@@ -15,15 +15,8 @@ import { focusOnRender } from '@shared/a11y/focus-on-render';
 import { AuthPage } from '../auth-page/auth-page';
 
 /**
- * The MSAL redirect target — frame `6a`, and frame `6f` in dark.
- *
- * This route is deliberately unguarded. It *is* the redirect URI, so a guard here
- * would either recurse or block the very handshake it is waiting on, and an async
- * guard would hold the navigation open and suppress the interstitial the acceptance
- * criterion requires to be on screen while the redirect resolves.
- *
- * `AuthService.ready()` is memoized, so calling it here and from `authGuard` performs
- * one handshake.
+ * Unguarded: as the redirect URI, a guard here would recurse or block the handshake it awaits, and
+ * would hold the navigation open instead of showing this interstitial.
  */
 @Component({
   selector: 'app-auth-callback',
@@ -48,9 +41,7 @@ export class AuthCallback implements OnInit {
   private async complete(): Promise<void> {
     const { account, error } = await this._auth.ready();
 
-    // replaceUrl is not cosmetic. It drops `/auth#code=…` from history, so the back
-    // button cannot replay a consumed authorization code, and the code stops
-    // travelling in any URL that later gets logged or shared.
+    // replaceUrl drops `/auth#code=…` from history, so Back cannot replay a consumed code.
     await this._router.navigateByUrl(this.destination(account !== null, error !== null), {
       replaceUrl: true,
     });
@@ -61,12 +52,8 @@ export class AuthCallback implements OnInit {
       return LOGIN_FAILED_ROUTE;
     }
 
-    // Neither an account nor an error is a real outcome: MSAL swallows some malformed
-    // responses and resolves null without throwing. Passing such a visitor onward to a
-    // guarded route starts an `/auth` → `/chat` → Entra → `/auth` loop whose only
-    // visible state is the startup shell, so the second occurrence stops rather than
-    // tries again. The benign case — someone opening `/auth` directly — takes the same
-    // branch, which is why the first occurrence is still allowed through.
+    // MSAL resolves some malformed responses as null, which would loop through Entra. The first
+    // occurrence still passes, because opening `/auth` directly looks the same.
     if (!signedIn && this._auth.noteInconclusiveHandshake()) {
       return LOGIN_FAILED_ROUTE;
     }

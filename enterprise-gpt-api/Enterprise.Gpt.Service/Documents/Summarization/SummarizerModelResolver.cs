@@ -15,25 +15,15 @@ public interface ISummarizerModelResolver
     /// <summary>
     /// Reads the model row named by <c>Summarization:ModelId</c>.
     /// </summary>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The row's current values.</returns>
     /// <remarks>
-    /// Read per call rather than cached, so an administrator editing the row's window, deployment
-    /// name or price takes effect on the next summarization instead of at the next restart. A
-    /// deactivated row is treated as absent — retiring the summarizer must stop summarization, not
-    /// silently keep billing against a deployment an operator believes they withdrew.
+    /// Read per call so catalog edits apply on the next summarization. A deactivated row counts as absent,
+    /// so retiring the summarizer stops billing against it.
     /// </remarks>
-    /// <exception cref="SummarizerNotConfiguredException">
-    /// The configured id names no row, or names one that has been deactivated.
-    /// </exception>
+    /// <exception cref="SummarizerNotConfiguredException">The configured id names no active row.</exception>
     Task<SummarizerModel> ResolveAsync(CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// Resolves the summarizer's catalog row out of <c>Core.Ref.Model</c>.
-/// </summary>
-/// <param name="ctx">The database context.</param>
-/// <param name="options">The bound summarization options.</param>
+/// <inheritdoc />
 public sealed class SummarizerModelResolver(
     EnterpriseGptDbContext ctx,
     IOptions<SummarizationOptions> options) : ISummarizerModelResolver

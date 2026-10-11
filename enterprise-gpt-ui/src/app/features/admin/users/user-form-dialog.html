@@ -5,17 +5,11 @@
   [busy]="actions.formBusy()"
   (closed)="actions.cancelForm()"
 >
-  <!--
-    novalidate: the schema rules own validation, and the browser's own required bubble
-    would fight frame `5b`'s inline message.
-  -->
+  <!-- novalidate: schema rules own validation; the browser's bubble would fight the inline one. -->
   <form id="user-form" class="user-form" novalidate (submit)="submit($event)">
     <div class="user-form__field">
       <label class="form-label" for="user-form-email">Work email</label>
-      <!--
-        No literal maxlength: NG8022 — the [formField] directive owns the constraint
-        attributes and derives this one from the schema's maxLength rule.
-      -->
+      <!-- No literal maxlength (NG8022): [formField] derives it from the schema's rule. -->
       <input
         id="user-form-email"
         class="form-control"
@@ -29,12 +23,8 @@
       />
 
       @if (showErrorRegion()) {
-        <!--
-          role="alert": the region is inserted together with its content, so the rejection
-          is announced — without it a screen-reader user presses Add user, focus does not
-          move, and the refusal is silent. track $index, not the message: two rules can
-          emit identical text.
-        -->
+        <!-- role="alert", since focus does not move on submit. track $index: two rules can
+             emit identical text. -->
         <div class="user-form__errors" id="user-form-email-errors" role="alert">
           @if (showEmailErrors()) {
             @for (message of emailErrors(); track $index) {
@@ -50,10 +40,7 @@
 
     <div class="user-form__field">
       <p class="form-label" id="user-form-permissions">Permissions</p>
-      <!--
-        A group label rather than a <label for>: a checklist has no single control to
-        point at, and `aria-labelledby` on the group is what names the set.
-      -->
+      <!-- A group label, not <label for>: a checklist has no single control to point at. -->
       <div role="group" aria-labelledby="user-form-permissions">
         <app-permission-checklist
           [permissions]="actions.checklist()"
@@ -70,10 +57,7 @@
     </div>
   </form>
 
-  <!--
-    modalFooter on each button, never on a wrapper div: the kit's footer is the flex row,
-    and a wrapper would collapse its gap once Angular strips the inter-element whitespace.
-  -->
+  <!-- modalFooter on each button, not a wrapper: the kit's footer is the flex row. -->
   <button
     modalFooter
     class="btn btn-outline-secondary"
@@ -83,10 +67,7 @@
   >
     Cancel
   </button>
-  <!--
-    Outside the <form> element (the footer projects into the modal's slot), so the native
-    `form` attribute is what ties it back — and what makes Enter in the field submit.
-  -->
+  <!-- Projected outside the <form>, so the `form` attribute ties it back and lets Enter submit. -->
   <button
     modalFooter
     class="btn btn-primary"

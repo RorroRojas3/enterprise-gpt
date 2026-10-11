@@ -25,22 +25,16 @@ using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 namespace Enterprise.Gpt.Service.McpServers;
 
 /// <summary>
-/// A set of leased MCP tools spanning every server a chat request selected. Dispose it
-/// when the stream ends (successfully or not) to release the underlying clients back to
-/// the cache.
+/// Leased MCP tools for every server a chat request selected; dispose when the stream ends to return the
+/// clients to the cache.
 /// </summary>
 public interface IMcpToolLeaseSet : IAsyncDisposable
 {
-    /// <summary>
-    /// Gets the tools from every resolved server, ready to assign to
-    /// <see cref="ChatOptions.Tools"/>.
-    /// </summary>
     IReadOnlyList<AITool> Tools { get; }
 
     /// <summary>
-    /// Gets the servers behind those tools. Surfaced here rather than looked up again by the
-    /// caller: resolution already loaded these rows, and a server renamed between the lease and
-    /// the audit write would otherwise be recorded under its new name.
+    /// The servers behind the tools, captured at lease time so a rename before the audit write is not
+    /// recorded under the new name.
     /// </summary>
     IReadOnlyList<McpServerReference> Servers { get; }
 }
@@ -48,18 +42,14 @@ public interface IMcpToolLeaseSet : IAsyncDisposable
 public interface IMcpToolProvider
 {
     /// <summary>
-    /// Resolves the selected MCP servers — each must exist, be active, and be permitted
-    /// for the calling user — and obtains their tools through the client cache, connecting
-    /// and listing in parallel on cache misses.
+    /// Checks each selected server exists, is active and is permitted, then leases its tools through the
+    /// client cache. Duplicate ids are ignored; the caller must dispose the result.
     /// </summary>
-    /// <param name="mcpServerIds">The ids of the selected servers; duplicates are ignored.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>A lease set the caller must dispose when the stream completes.</returns>
     /// <exception cref="NotFoundException">A selected server does not exist or is deactivated.</exception>
     /// <exception cref="ForbiddenException">The user lacks the permission for a selected server.</exception>
-    /// <exception cref="McpServerUnavailableException">Connecting to a server, listing its tools, or acquiring an on-behalf-of token for it failed — including a consent or Conditional Access requirement, which for a tenant-consented server means a broken registration rather than a user-actionable state.</exception>
-    /// <exception cref="McpCredentialRequiredException">A selected server takes a user-supplied API key and the caller has no usable one stored.</exception>
-    /// <exception cref="McpCredentialRejectedException">A selected server refused the API key the caller stored.</exception>
+    /// <exception cref="McpServerUnavailableException">Connecting, listing tools or acquiring the on-behalf-of token failed, including consent or Conditional Access (a broken registration).</exception>
+    /// <exception cref="McpCredentialRequiredException">A server takes a user API key and the caller has no usable one.</exception>
+    /// <exception cref="McpCredentialRejectedException">A server refused the caller's stored API key.</exception>
     Task<IMcpToolLeaseSet> AcquireToolsAsync(IReadOnlyCollection<Guid> mcpServerIds, CancellationToken cancellationToken);
 }
 
@@ -74,10 +64,7 @@ public partial class McpToolProvider(ILogger<McpToolProvider> logger,
     IUserMcpCredentialService credentialService,
     EnterpriseGptDbContext ctx) : IMcpToolProvider
 {
-    /// <summary>
-    /// Name of the <see cref="IHttpClientFactory"/> client used for MCP connections;
-    /// registered with an infinite timeout because MCP sessions stream over SSE.
-    /// </summary>
+    /// <summary>Named MCP HTTP client; registered with no timeout since sessions stream over SSE.</summary>
     public const string HttpClientName = "Mcp";
 
     private readonly ILogger<McpToolProvider> _logger = logger;
@@ -104,11 +91,8 @@ public partial class McpToolProvider(ILogger<McpToolProvider> logger,
 
         var oid = _tokenService.GetOid();
 
-        // One query resolves existence and authorization for every selected server. This check
-        // deliberately reads the database rather than IUserPermissionCache: a tool call runs
-        // code on the user's behalf against a third-party server, so a revoked grant must take
-        // effect on the next request rather than when a cache entry expires. The query is
-        // negligible next to establishing the MCP session that follows it.
+        // Deliberately not IUserPermissionCache: tool calls run code for the user on third-party servers, so
+        // a revoked grant must apply on the next request. The query is negligible next to the MCP session.
         var servers = await _ctx.McpServers
             .AsNoTracking()
             .Where(s => ids.Contains(s.Id) && !s.DateDeactivated.HasValue)
@@ -116,9 +100,7 @@ public partial class McpToolProvider(ILogger<McpToolProvider> logger,
             {
                 Server = s,
                 IsPermitted = s.Permissions.Any(p => p.UserPermissions.Any(up => up.UserId == oid)),
-                // Joined onto the query that had to run anyway rather than read per server as
-                // each lease is acquired. A rejected row is excluded, so a key the server has
-                // already refused reads as absent and the user is asked for a new one.
+                // A refused key reads as absent, so the user is asked for a new one.
                 Ciphertext = s.UserCredentials
                     .Where(c => c.UserId == oid && !c.DateRejected.HasValue)
                     .Select(c => c.Ciphertext)
@@ -190,14 +172,8 @@ public partial class McpToolProvider(ILogger<McpToolProvider> logger,
 
     #region Private methods
 
-    /// <summary>
-    /// Records every credential a server refused during this acquisition, so the next request
-    /// asks the user for a new one instead of failing the same way.
-    /// </summary>
-    /// <remarks>
-    /// Here rather than inside the cache factory: the singleton cache single-flights creation,
-    /// so a factory can run on behalf of a request whose scope is not the one writing this.
-    /// </remarks>
+    // Records refused keys so the next request asks for a new one. Not in the cache factory: the singleton
+    // cache single-flights creation, so a factory may run for another request's scope.
     private async Task MarkRejectedCredentialsAsync(
         IReadOnlyList<Task<IMcpToolLease>> leaseTasks, Guid oid, CancellationToken cancellationToken)
     {
@@ -213,8 +189,7 @@ public partial class McpToolProvider(ILogger<McpToolProvider> logger,
             {
                 await _credentialService.MarkRejectedAsync(rejected.McpServerId, oid, cancellationToken);
             }
-            // Bookkeeping, not the outcome: the caller sees the rejection either way, and
-            // losing this write costs them one more failed turn, nothing more.
+            // Bookkeeping only: the caller sees the rejection anyway; losing this costs one more failed turn.
             catch (Exception ex)
             {
                 LogApiKeyRejectionNotRecorded(_logger, ex, rejected.McpServerId, oid);
@@ -227,9 +202,7 @@ public partial class McpToolProvider(ILogger<McpToolProvider> logger,
     {
         if (server.AuthType == McpAuthTypes.UserApiKey)
         {
-            // Decrypted here for the reason the on-behalf-of token is acquired here: the cache
-            // is a singleton and must never touch scoped services, so the credential is
-            // resolved in scoped code and captured by the factory closure.
+            // Resolved in scoped code: the singleton cache must never touch scoped services.
             if (ciphertext is null
                 || !_secretProtector.TryUnprotect(oid, server.Id, ciphertext, out var apiKey)
                 || apiKey is null)
@@ -239,18 +212,15 @@ public partial class McpToolProvider(ILogger<McpToolProvider> logger,
 
             return await _mcpClientCache.GetOrCreateAsync(
                 McpCacheKey.ForUser(server.Id, oid),
-                // No expiry: a user-issued token carries none, so the entry lives to the
-                // cache's age cap and a replaced key depends on explicit invalidation.
+                // No expiry: the entry lives to the age cap; a replaced key relies on invalidation.
                 token => CreateEntrySourceAsync(server, apiKey, tokenExpiresOn: null, token),
                 cancellationToken);
         }
 
         if (server.AuthType == McpAuthTypes.EntraIdOnBehalfOf)
         {
-            // The token is acquired here — in scoped code with the user's assertion —
-            // rather than inside the cache factory, so the singleton cache never touches
-            // scoped services. MSAL's token cache makes repeat acquisitions cheap, and an
-            // expired cached entry transparently gets a fresh token on recreation.
+            // Acquired here for the same reason. MSAL's cache makes repeats cheap, and an expired
+            // entry gets a fresh token on recreation.
             var (accessToken, expiresOn) = await AcquireAccessTokenAsync(server);
 
             return await _mcpClientCache.GetOrCreateAsync(
@@ -259,8 +229,7 @@ public partial class McpToolProvider(ILogger<McpToolProvider> logger,
                 cancellationToken);
         }
 
-        // Servers without authentication share one entry across users: no token is
-        // involved and the tool list is identical for everyone.
+        // No token and the same tool list for everyone, so one entry is shared across users.
         return await _mcpClientCache.GetOrCreateAsync(
             McpCacheKey.Shared(server.Id),
             token => CreateEntrySourceAsync(server, accessToken: null, tokenExpiresOn: null, token),
@@ -274,17 +243,9 @@ public partial class McpToolProvider(ILogger<McpToolProvider> logger,
             var result = await _tokenAcquisition.GetAuthenticationResultForUserAsync([server.Scope!]);
             return (result.AccessToken, result.ExpiresOn);
         }
-        // One arm for every token-acquisition failure, deliberately. `MsalUiRequiredException`
-        // derives from `MsalException`, so a consent or Conditional Access requirement lands
-        // here too: these servers are consented tenant-wide by an administrator, which makes a
-        // UI-required result a broken registration rather than something the signed-in user can
-        // act on. `MicrosoftIdentityWebChallengeUserException` derives from `Exception`, not
-        // from `MsalException`, so it has to be named as well.
-        //
-        // The client offers Retry on this arm and did not on the consent problem this replaced.
-        // That is accepted rather than overlooked: 502 also covers genuinely transient service
-        // failures, where a retry does help, and a second attempt against a mis-registered
-        // server merely fails the same way instead of misleading the reader about who can fix it.
+        // Deliberately one arm: servers are consented tenant-wide, so a UI-required MsalException is a broken
+        // registration, not a user action; the challenge exception is not an MsalException, hence named. The
+        // 502's Retry is accepted: it helps transient faults and merely repeats a mis-registration.
         catch (Exception ex) when (ex is MicrosoftIdentityWebChallengeUserException or MsalException)
         {
             throw new McpServerUnavailableException(server.Name, ex);
@@ -330,35 +291,18 @@ public partial class McpToolProvider(ILogger<McpToolProvider> logger,
         {
             var tools = await client.ListToolsAsync(new RequestOptions(), cancellationToken).ConfigureAwait(false);
 
-            // Prefixing with the server name keeps tool names unique when several servers
-            // expose a tool with the same name; the SDK still calls the original name.
-            //
-            // WithTracking is what makes these recognizable to the tool-tracking middleware: it
-            // carries the server identity onto the wrapper, so an invocation is reported as an
-            // MCP call attributed to this server rather than as an anonymous function, and it
-            // bridges the server's progress notifications into the streamed status feed. The
-            // renaming happens first so the tracked wrapper preserves the prefixed name.
-            //
-            // The catalog name is passed explicitly rather than letting the overload read the
-            // server's self-advertised ServerInfo name, because that name and this prefix would
-            // then be two different strings. Every consumer that has to undo the prefix — the
-            // client, which strips it to label a card with the tool that ran, and
-            // UsageReportTranslator's fallback, which matches a reported source back to a
-            // catalog row — needs the name the prefix was built from. It is also the name the
-            // user picked in the server selector, which is what they expect to see beside the
-            // tool. enableProgress is stated rather than defaulted: it is the only reason the
-            // sub-status lines exist, and a silent default flip would remove them with nothing
-            // failing.
+            // Prefixed so names stay unique across servers (the SDK still calls the original), and
+            // before WithTracking so the wrapper keeps the prefix. The catalog name, not ServerInfo's,
+            // because the client and UsageReportTranslator strip the prefix with it. enableProgress
+            // is explicit because the streamed sub-status lines depend on it.
             var prefix = SanitizeToolNamePrefix(server.Name);
             List<AITool> prefixedTools =
             [
                 .. tools.Select(t => t.WithName($"{prefix}_{t.Name}").WithTracking(server.Name, enableProgress: true))
             ];
 
-            // Header names, never values: a name is what tells an operator a restriction was
-            // actually applied, and is the only in-app signal that it was, since nothing
-            // surfaces a server's tool surface. Values are configuration but still the
-            // administrator's text, and have no place in a log.
+            // Names, never values: the names are the only in-app signal a restriction was applied, and the
+            // values are administrator text with no place in a log.
             if (_logger.IsEnabled(LogLevel.Information))
             {
                 var headerNames = additionalHeaders.Keys
@@ -389,15 +333,8 @@ public partial class McpToolProvider(ILogger<McpToolProvider> logger,
         }
     }
 
-    /// <summary>
-    /// Every exception reachable from one, across both edges of the graph.
-    /// </summary>
-    /// <remarks>
-    /// <see cref="AggregateException.InnerExceptions"/> as well as
-    /// <see cref="Exception.InnerException"/>, because the SDK falls back from Streamable HTTP
-    /// to SSE and reports both failures together — and <c>InnerException</c> on an aggregate
-    /// returns only the first, so a 401 raised on the other transport would be invisible.
-    /// </remarks>
+    // Walks InnerExceptions as well as InnerException: the SDK reports its Streamable HTTP and SSE fallback
+    // failures together, and an aggregate's InnerException would hide a 401 from the second transport.
     private static IEnumerable<Exception> Flatten(Exception exception)
     {
         return exception switch
@@ -408,33 +345,21 @@ public partial class McpToolProvider(ILogger<McpToolProvider> logger,
         };
     }
 
-    /// <summary>
-    /// Classifies connect/list failures that should surface as 502 "server unavailable".
-    /// A timeout raised by the transport's own connection timeout arrives as a cancellation
-    /// that does not match the caller's token, so it counts as a connectivity failure.
-    /// </summary>
+    // Failures that surface as 502. The transport's connection timeout arrives as a cancellation the caller
+    // did not request, so it counts.
     private static bool IsConnectivityFailure(Exception exception, CancellationToken cancellationToken)
     {
         return exception switch
         {
             OperationCanceledException => !cancellationToken.IsCancellationRequested,
             HttpRequestException or McpException or TimeoutException or IOException or SocketException => true,
-            // The SDK reports a Streamable-HTTP failure and its SSE fallback together. Without
-            // this arm the aggregate matches nothing and reaches the handler's 500 default —
-            // a worse answer than the 502 either branch alone would have produced.
+            // The SDK reports a Streamable HTTP failure and its SSE fallback together; unmatched, the
+            // aggregate would reach the 500 default instead of a 502.
             AggregateException aggregate => aggregate.InnerExceptions.Count > 0
                 && aggregate.InnerExceptions.All(e => IsConnectivityFailure(e, cancellationToken)),
-            // The SDK's `CopyAdditionalHeaders` throws this when `HttpRequestHeaders` refuses a
-            // header name. `_reservedNames` now covers every name it refuses and
-            // `BuildTransportHeaders` drops them, so this is unreachable today — it is the net
-            // under a future loosening of that set. Without it the request fails as an opaque 500
-            // rather than the 502 that names the server, and the SDK's message, which quotes the
-            // offending header's **value**, lands in the error log.
-            //
-            // `ObjectDisposedException` is excluded because it derives from this one and means
-            // something else entirely here: a disposed client or double-disposed transport is
-            // a lease-lifecycle bug of ours, and reporting it as 502 would hide a deterministic
-            // fault behind a Retry button and blame the third-party server for it.
+            // Net under BuildTransportHeaders: the SDK throws this for a refused header name, and as a
+            // 500 its message, which quotes the header value, would be logged. ObjectDisposedException
+            // derives from it but is our own lease bug, so it must not be reported as the server's 502.
             InvalidOperationException and not ObjectDisposedException => true,
             _ => false
         };
@@ -454,27 +379,10 @@ public partial class McpToolProvider(ILogger<McpToolProvider> logger,
     #region Public static methods
 
     /// <summary>
-    /// Builds the request headers for one server: its configured headers, then the
-    /// on-behalf-of bearer.
+    /// Configured headers, then the bearer. <see cref="McpServerHeaderRules"/> is re-applied so a row that
+    /// predates a rule or was written in SQL cannot send a header refused today; the bearer goes last into a
+    /// case-insensitive map so a stored <c>authorization</c> is always overwritten.
     /// </summary>
-    /// <param name="configured">The headers stored on the server row, if any.</param>
-    /// <param name="accessToken">The on-behalf-of token, or <see langword="null"/> for a server with no authentication.</param>
-    /// <returns>The headers to send, empty when there are none.</returns>
-    /// <remarks>
-    /// <see cref="McpServerHeaderRules"/> is applied again here rather than trusted from write
-    /// time. A row that predates a rule change, or one written straight into SQL by a DBA,
-    /// must not be able to set a header this application would refuse today — so a name that
-    /// is reserved or malformed, or a value that is not printable ASCII, is dropped silently
-    /// rather than sent.
-    ///
-    /// Ordinal-ignore-case, and the bearer written last: a stored `authorization` header
-    /// collapses onto the same slot and is overwritten whatever casing it was persisted under.
-    /// That is the lock that holds even if this filter is one day loosened.
-    ///
-    /// <c>internal</c> rather than <c>private</c> for the reason
-    /// <see cref="SanitizeToolNamePrefix"/> is: it is the only way to pin this behaviour in a
-    /// unit test.
-    /// </remarks>
     internal static Dictionary<string, string> BuildTransportHeaders(
         IReadOnlyDictionary<string, string>? configured, string? accessToken)
     {
@@ -502,18 +410,9 @@ public partial class McpToolProvider(ILogger<McpToolProvider> logger,
     }
 
     /// <summary>
-    /// Turns a connect or list failure into the exception that names who can fix it: a refused
-    /// user-supplied key, or an unavailable server.
+    /// Maps a connect or list failure to a rejected user key or an unavailable server. Only user-key servers
+    /// can yield the former: elsewhere a 401 is a registration fault the user cannot fix.
     /// </summary>
-    /// <remarks>
-    /// Only servers holding a user's own credential can produce the first: a 401 from an
-    /// on-behalf-of or anonymous server is a registration fault, and telling that user to
-    /// replace a key they never supplied would send them nowhere.
-    ///
-    /// <c>internal</c> for the reason <see cref="BuildTransportHeaders"/> is: this is the
-    /// branch that decides who is told to fix a failure, and a unit test is the only way to
-    /// pin it.
-    /// </remarks>
     internal static Exception Classify(McpServer server, Exception exception)
     {
         if (server.AuthType != McpAuthTypes.UserApiKey)
@@ -530,16 +429,9 @@ public partial class McpToolProvider(ILogger<McpToolProvider> logger,
     }
 
     /// <summary>
-    /// Derives the prefix stamped onto every tool leased from a server, so tool names stay
-    /// unique across servers.
+    /// The tool-name prefix, with everything outside <c>[A-Za-z0-9_-]</c> replaced by an underscore. Internal
+    /// because usage reporting attributes a <c>{prefix}_{tool}</c> call back to its server with it.
     /// </summary>
-    /// <param name="serverName">The server's name at lease time.</param>
-    /// <returns>The prefix, with everything outside <c>[A-Za-z0-9_-]</c> replaced by an underscore.</returns>
-    /// <remarks>
-    /// Internal rather than private because it is also the only reliable way to attribute a
-    /// reported tool call back to its server: usage reports carry the tool name the model
-    /// called, which is <c>{prefix}_{tool}</c>.
-    /// </remarks>
     internal static string SanitizeToolNamePrefix(string serverName)
     {
         return string.Concat(serverName.Select(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-' ? c : '_'));

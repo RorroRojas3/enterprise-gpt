@@ -5,9 +5,8 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Dto.Actions.McpServers;
 
 /// <summary>
-/// The two MCP action validators are line-for-line copies of one another, so every rule is
-/// asserted against both. A rule that drifts between create and update is otherwise invisible:
-/// the endpoint tests exercise the POST path only.
+/// The create and update validators are copies, so every rule is asserted against both; the endpoint
+/// tests cover only POST.
 /// </summary>
 public class McpServerActionValidatorTests
 {
@@ -51,9 +50,8 @@ public class McpServerActionValidatorTests
     [InlineData(null)]
     [InlineData("microsoft")]
     [InlineData("context7")]
-    // A key this build ships no artwork for. Accepted on purpose: the API validates the shape of
-    // this value and never its membership, so a newer client can register an icon without a
-    // server deploy and an older one degrades to its generic glyph.
+    // A key with no artwork, accepted on purpose: the API checks shape, not membership, so a newer
+    // client can add an icon without a server deploy.
     [InlineData("future-brand")]
     public void IconKey_WellFormedOrAbsent_IsAccepted(string? iconKey)
     {
@@ -164,9 +162,8 @@ public class McpServerActionValidatorTests
     [InlineData("Upgrade")]
     [InlineData("TE")]
     [InlineData("Keep-Alive")]
-    // The MCP protocol's. `CopyAdditionalHeaders` sets these before copying ours and appends
-    // rather than replaces, so a stored one would ship alongside the real one — which no amount
-    // of ordering on our side can prevent.
+    // The MCP protocol's. `CopyAdditionalHeaders` appends rather than replaces, so a stored one would
+    // ship alongside the real one.
     [InlineData("Mcp-Session-Id")]
     [InlineData("mcp-session-id")]
     [InlineData("MCP-Protocol-Version")]

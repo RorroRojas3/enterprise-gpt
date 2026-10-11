@@ -19,138 +19,58 @@ using Microsoft.Extensions.Logging;
 
 namespace Enterprise.Gpt.Service.Projects;
 
-/// <summary>
-/// Reads and writes the caller's projects: the containers that group conversations and own a shared
-/// document set and standing instructions.
-/// </summary>
 public interface IProjectService
 {
     /// <summary>
-    /// Searches the caller's active projects by name, most recently created first unless an order is
-    /// requested.
+    /// Searches the caller's active projects by name, newest first unless <paramref name="sort"/> names one
+    /// of <see cref="ProjectSortKeyNames.Supported"/>. Paging is clamped (<paramref name="take"/> to 1..100),
+    /// but an unknown order is rejected, since a misordered page looks like a correct one.
     /// </summary>
-    /// <remarks>
-    /// Returns summaries rather than full projects: a listing never renders the instructions, and
-    /// a page of them would ship far more text than the caller asked for. Paging arguments are
-    /// clamped rather than rejected — <paramref name="skip"/> to zero or above and
-    /// <paramref name="take"/> to 1..100. The ordering arguments are the opposite: an unrecognised
-    /// value is rejected, because a page in the wrong order looks exactly like a page in the right one.
-    /// </remarks>
-    /// <param name="name">An optional case-insensitive substring to filter on.</param>
-    /// <param name="skip">The number of projects to skip.</param>
-    /// <param name="take">The maximum number of projects to return.</param>
-    /// <param name="isFavorite">
-    /// Optionally narrows the page to the caller's favourites, or to everything but them. Omitting
-    /// it applies no filter at all — it is a <see cref="bool"/>?, not a defaulted <see cref="bool"/>.
-    /// </param>
-    /// <param name="sort">
-    /// An optional field to order by — one of <see cref="ProjectSortKeyNames.Supported"/>.
-    /// </param>
-    /// <param name="dir">An optional direction, <c>asc</c> or <c>desc</c>.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>A page of the caller's projects.</returns>
-    /// <exception cref="ValidationException">
-    /// <paramref name="sort"/> or <paramref name="dir"/> names something this listing does not accept.
-    /// </exception>
+    /// <exception cref="ValidationException"><paramref name="sort"/> or <paramref name="dir"/> is unrecognised.</exception>
     Task<PaginatedResponseDto<ProjectSummaryDto>> SearchProjectsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, string? sort = null, string? dir = null, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Gets one of the caller's active projects by id.
-    /// </summary>
-    /// <param name="id">The project id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The matching project.</returns>
     /// <exception cref="NotFoundException">No active project with <paramref name="id"/> belongs to the caller.</exception>
     Task<ProjectDto> GetProjectAsync(Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Creates a project owned by the caller.
-    /// </summary>
-    /// <param name="request">The creation request.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The created project.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="request"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
     /// <exception cref="ValidationException">The caller already has an active project of that name.</exception>
     Task<ProjectDto> CreateProjectAsync(CreateProjectActionDto request, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Updates one of the caller's active projects.
-    /// </summary>
-    /// <param name="id">The id of the project to update.</param>
-    /// <param name="request">The update request.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The updated project.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="request"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
     /// <exception cref="ValidationException">The caller already has another active project of that name.</exception>
     /// <exception cref="NotFoundException">No active project with <paramref name="id"/> belongs to the caller.</exception>
     Task<ProjectDto> UpdateProjectAsync(Guid id, UpdateProjectActionDto request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Marks one of the caller's projects as a favourite, or clears the mark.
+    /// Stars or unstars a project, leaving <c>DateModified</c> alone. Separate from
+    /// <see cref="UpdateProjectAsync"/>, whose full replacement would clear a flag a rename forgot to echo.
     /// </summary>
-    /// <remarks>
-    /// Its own operation rather than a field on <see cref="UpdateProjectAsync"/>, which replaces the
-    /// whole representation: a rename that forgot to echo the flag back would silently clear it.
-    /// <c>DateModified</c> is deliberately left alone — starring a project does not modify it.
-    /// </remarks>
-    /// <param name="id">The id of the project to mark.</param>
-    /// <param name="request">The state being asked for.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="request"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
     /// <exception cref="NotFoundException">No active project with <paramref name="id"/> belongs to the caller.</exception>
     Task SetProjectFavoriteAsync(Guid id, SetProjectFavoriteActionDto request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Soft-deletes a project together with its documents and their chunks, and releases its
-    /// conversations.
+    /// Soft-deletes a project with its documents and chunks. Its conversations are kept as standalone ones,
+    /// losing only the project's documents and instructions.
     /// </summary>
-    /// <remarks>
-    /// Conversations are deliberately kept: their <c>ProjectId</c> is cleared so they survive as
-    /// standalone conversations, keeping their own documents and transcripts, and simply lose access
-    /// to the project's documents and instructions.
-    /// </remarks>
-    /// <param name="id">The id of the project to deactivate.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <exception cref="NotFoundException">No active project with <paramref name="id"/> belongs to the caller.</exception>
     Task DeactivateProjectAsync(Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Lists the active documents of one of the caller's projects, most recently uploaded first.
-    /// </summary>
-    /// <param name="projectId">The owning project id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The project's documents.</returns>
+    /// <summary>Lists a project's active documents, most recently uploaded first.</summary>
     /// <exception cref="NotFoundException">No active project with <paramref name="projectId"/> belongs to the caller.</exception>
     Task<List<ProjectDocumentDto>> GetProjectDocumentsAsync(Guid projectId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Soft-deletes one document of one of the caller's projects, together with its chunks.
-    /// </summary>
-    /// <param name="projectId">The owning project id.</param>
-    /// <param name="documentId">The document id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <summary>Soft-deletes one project document with its chunks.</summary>
     /// <exception cref="NotFoundException">The project or the document does not exist, is deactivated, or does not belong to the caller.</exception>
     Task DeactivateProjectDocumentAsync(Guid projectId, Guid documentId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// Owns the project aggregate: the project row, its document listing, and the soft-delete cascade
-/// across documents and chunks.
-/// </summary>
-/// <remarks>
-/// Every read and write is scoped to the caller's object id, and a project belonging to someone else
-/// is reported as <see cref="NotFoundException"/> rather than <see cref="ForbiddenException"/> — the
-/// same reasoning as the document upload path, so the API cannot be used to probe for project ids.
-/// </remarks>
 public partial class ProjectService(ILogger<ProjectService> logger,
     ITokenService tokenService,
     EnterpriseGptDbContext ctx,
     TimeProvider timeProvider) : IProjectService
 {
-    /// <summary>
-    /// The wire-visible key for a name failure in the problem details <c>errors</c> dictionary.
-    /// Identical on the create and update DTOs.
-    /// </summary>
+    // The wire-visible key in the problem details errors; identical on the create and update DTOs.
     private const string NameProperty = nameof(CreateProjectActionDto.Name);
 
     private readonly ILogger<ProjectService> _logger = logger;
@@ -161,14 +81,12 @@ public partial class ProjectService(ILogger<ProjectService> logger,
     /// <inheritdoc />
     public async Task<PaginatedResponseDto<ProjectSummaryDto>> SearchProjectsAsync(string? name, int skip = 0, int take = 20, bool? isFavorite = null, string? sort = null, string? dir = null, CancellationToken cancellationToken = default)
     {
-        // Resolved before any database work, so a misspelled sort field costs a round trip to
-        // nothing rather than a page the caller then has to distrust.
+        // Resolved first, so a misspelled sort field fails before any query runs.
         SortSelection<ProjectSortKeys>? order = SortParameters.IsDefaultOrder(sort, dir)
             ? null
             : ProjectSortKeyNames.Resolve(sort, dir);
 
-        // Clamped rather than validated: the paging arguments come straight off the query
-        // string, and take = 0 would divide by zero when computing CurrentPage below.
+        // Clamped, not validated: take = 0 would divide by zero in CurrentPage below.
         skip = Math.Max(skip, 0);
         take = Math.Clamp(take, 1, 100);
 
@@ -267,10 +185,8 @@ public partial class ProjectService(ILogger<ProjectService> logger,
 
         var userId = _tokenService.GetOid();
 
-        // A set-based update rather than the tracked load-and-save UpdateProjectAsync uses, because
-        // DateModified must not move: starring a project does not modify it, and bumping the
-        // timestamp would put every client's copy out of step at the next fetch over a write that
-        // changes nothing a listing renders.
+        // Set-based rather than load-and-save so DateModified stays put: starring does not modify the
+        // project, and bumping it would make every client's copy look stale.
         var rows = await _ctx.Projects
             .Where(x => x.Id == id && x.UserId == userId)
             .ExecuteUpdateAsync(s => s
@@ -299,13 +215,11 @@ public partial class ProjectService(ILogger<ProjectService> logger,
 
         var date = _timeProvider.GetUtcNow();
 
-        // Eight separate ExecuteUpdate statements, so they need a transaction to be all-or-nothing:
-        // a partial failure would otherwise leave conversations pointing at a deleted project, or
-        // chunks alive under a deleted document.
+        // Separate statements need a transaction, or a partial failure leaves conversations on a deleted
+        // project or live chunks under a deleted document.
         await using var transaction = await _ctx.Database.BeginTransactionAsync(cancellationToken);
 
-        // Ahead of the chunks and the document itself, so a summary never outlives what it
-        // summarizes.
+        // Leaf first, so a summary never outlives what it summarizes.
         await _ctx.ProjectDocumentSummaries
             .Where(s => s.ProjectDocument.ProjectId == id)
             .ExecuteUpdateAsync(s => s
@@ -313,8 +227,7 @@ public partial class ProjectService(ILogger<ProjectService> logger,
                 .SetProperty(x => x.DateModified, date),
                 cancellationToken);
 
-        // Leaf first for the same reason: a live cell row under a dead sheet is the document's own
-        // data, still readable.
+        // Leaf first for the same reason: a live row under a dead sheet is still-readable document data.
         await _ctx.ProjectDocumentSheetRows
             .Where(r => r.ProjectDocumentSheet.ProjectDocument.ProjectId == id)
             .ExecuteUpdateAsync(r => r
@@ -345,8 +258,7 @@ public partial class ProjectService(ILogger<ProjectService> logger,
                 .SetProperty(x => x.DateDeactivated, date),
                 cancellationToken);
 
-        // Released, not deleted: the conversations keep their own documents and transcripts and
-        // simply become standalone.
+        // Released, not deleted: the conversations become standalone.
         await ReleaseConversationsIncludingDeletedAsync(id, date, cancellationToken);
 
         await _ctx.Projects
@@ -435,29 +347,23 @@ public partial class ProjectService(ILogger<ProjectService> logger,
 
         await transaction.CommitAsync(cancellationToken);
 
-        // The blob is deliberately left in storage: it is the original the user uploaded, the row is
-        // only soft-deleted, and reclaiming it belongs to a retention job that can also handle the
-        // blobs orphaned by failed ingestions.
+        // The blob deliberately stays: the row is only soft-deleted, and reclaiming blobs belongs to a
+        // retention job that also handles those orphaned by failed ingestions.
         LogProjectDocumentDeactivated(_logger, documentId, userId);
     }
 
     #region Private methods
 
-    /// <remarks>
-    /// The string comparison is the database collation's, not the CLR's — case-insensitive on a SQL
-    /// Server default and ordinal on the SQLite the unit tests run against. A client must not re-sort
-    /// a page with <c>localeCompare</c> and expect to agree with it.
-    /// </remarks>
+    // Name order is the database collation's (case-insensitive on SQL Server, ordinal on the SQLite tests),
+    // so a client re-sorting a page with localeCompare will not agree with it.
     private static IOrderedQueryable<Project> OrderProjects(
         IQueryable<Project> query,
         SortSelection<ProjectSortKeys>? order)
     {
         if (order is not { } requested)
         {
-            // Left exactly as it was before this listing accepted an order, because that is what
-            // clients written against it are promised. Id breaks ties: DateCreated alone is not a
-            // total order, so two projects created in the same tick could straddle a page boundary
-            // and be duplicated or skipped.
+            // The order existing clients are promised. Id breaks DateCreated ties so same-tick rows are not
+            // duplicated or skipped across a page boundary.
             return query
                 .OrderByDescending(x => x.DateCreated)
                 .ThenByDescending(x => x.Id);
@@ -471,9 +377,7 @@ public partial class ProjectService(ILogger<ProjectService> logger,
             ProjectSortKeys.Name => requested.IsAscending
                 ? query.OrderBy(x => x.Name)
                 : query.OrderByDescending(x => x.Name),
-            // A two-value flag leaves almost every row tied, so the name carries the order inside
-            // each group rather than leaving it to whatever the engine returns. It stays ascending in
-            // both directions on purpose: a name reads A-Z whichever end of the list its group is at.
+            // Name orders each tied group, ascending in both directions so names always read A-Z.
             ProjectSortKeys.Favorite => requested.IsAscending
                 ? query.OrderBy(x => x.IsFavorite).ThenBy(x => x.Name)
                 : query.OrderByDescending(x => x.IsFavorite).ThenBy(x => x.Name),
@@ -482,18 +386,13 @@ public partial class ProjectService(ILogger<ProjectService> logger,
                 : query.OrderByDescending(x => x.DateCreated)
         };
 
-        // Every requested order gets the same tie-break, for the reason the default one has it: a
-        // client draining pages needs the row at a page boundary to be the same row every time. It
-        // follows the requested direction, or a listing whose rows are all tied on the primary key
-        // would return the same page for both directions and the control would look inert.
+        // Id tie-break for stable page boundaries. It follows the requested direction, or an all-tied
+        // listing would return the same page both ways and the control would look inert.
         return requested.IsAscending
             ? ordered.ThenBy(x => x.Id)
             : ordered.ThenByDescending(x => x.Id);
     }
 
-    /// <summary>
-    /// Throws when the project does not exist, is deactivated, or belongs to another user.
-    /// </summary>
     private async Task EnsureProjectExistsAsync(Guid projectId, Guid userId, CancellationToken cancellationToken)
     {
         var exists = await _ctx.Projects
@@ -506,15 +405,8 @@ public partial class ProjectService(ILogger<ProjectService> logger,
         }
     }
 
-    /// <summary>
-    /// Rejects a name already taken by another of the caller's active projects.
-    /// </summary>
-    /// <remarks>
-    /// The unique filtered index is the real guard; this check exists so the caller gets a 400 with a
-    /// usable <c>errors</c> dictionary instead of an opaque 500 from a unique-index violation. Two
-    /// requests racing both pass this check and the loser lands on the index, which
-    /// <see cref="SaveTranslatingDuplicateNameAsync"/> turns into the same 400.
-    /// </remarks>
+    // The filtered unique index is the real guard; this gives a usable 400. A racing loser hits the index,
+    // which SaveTranslatingDuplicateNameAsync turns into the same 400.
     private async Task EnsureNameIsAvailableAsync(Guid userId, string name, Guid? excludingProjectId, CancellationToken cancellationToken)
     {
         var taken = await _ctx.Projects
@@ -529,17 +421,8 @@ public partial class ProjectService(ILogger<ProjectService> logger,
         }
     }
 
-    /// <summary>
-    /// Saves the pending changes, reporting a lost race for a project name the way the up-front
-    /// check does rather than as an unhandled database error.
-    /// </summary>
-    /// <remarks>
-    /// Narrowed to the duplicate-key case on purpose: a timeout, a deadlock or a broken foreign key
-    /// are real faults and must not be reported to the caller as a naming problem.
-    /// </remarks>
-    /// <param name="name">The name being written, for the error message.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <exception cref="ValidationException">The unique index rejected the name.</exception>
+    // Reports a lost name race like the up-front check. Duplicate keys only: timeouts, deadlocks and FK
+    // failures are real faults, not naming problems.
     private async Task SaveTranslatingDuplicateNameAsync(string name, CancellationToken cancellationToken)
     {
         try
@@ -552,9 +435,7 @@ public partial class ProjectService(ILogger<ProjectService> logger,
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
         {
-            // Detached so the rejected row cannot be re-attempted by a later save. The DbContext is
-            // request-scoped and this exception ends the request, so nothing does that today — but
-            // leaving a failed insert tracked makes that an accident waiting to happen.
+            // Detached so no later save can retry the rejected insert.
             // Fully qualified: Enterprise.Gpt.Dto.Actions.Project is a namespace in scope here.
             foreach (var entry in _ctx.ChangeTracker.Entries<Enterprise.Gpt.Entity.Projects.Project>().ToList())
             {
@@ -567,14 +448,7 @@ public partial class ProjectService(ILogger<ProjectService> logger,
         }
     }
 
-    /// <summary>
-    /// Builds the validation failure both the pre-check and the unique index report, so the two
-    /// orderings are indistinguishable to a client.
-    /// </summary>
-    /// <remarks>
-    /// The property name is the wire-visible key in the problem details <c>errors</c> dictionary and
-    /// is identical on the create and update DTOs, so one literal serves both paths.
-    /// </remarks>
+    // Shared by the pre-check and the index path so a client cannot tell the two apart.
     private static ValidationException CreateDuplicateNameException(string name)
     {
         return new ValidationException(
@@ -583,10 +457,7 @@ public partial class ProjectService(ILogger<ProjectService> logger,
         ]);
     }
 
-    /// <summary>
-    /// Detaches every conversation from a project, deactivated ones included, so a later restore cannot
-    /// resurrect a link to a deleted project.
-    /// </summary>
+    // Deactivated conversations included, so a later restore cannot resurrect a link to a deleted project.
     private Task<int> ReleaseConversationsIncludingDeletedAsync(Guid projectId, DateTimeOffset date, CancellationToken cancellationToken) =>
         _ctx.Conversations
             .IgnoreQueryFilters([QueryFilterNames.SoftDelete])
@@ -598,8 +469,7 @@ public partial class ProjectService(ILogger<ProjectService> logger,
 
     private NotFoundException LogAndCreateNotFound(Guid projectId, Guid userId)
     {
-        // Deliberately indistinguishable from "does not exist" so the endpoints cannot be used to
-        // probe for project ids belonging to other users.
+        // Deliberately indistinguishable from "does not exist" so other users' project ids cannot be probed.
         LogProjectNotAccessible(_logger, projectId, userId);
 
         return new NotFoundException($"Project with id '{projectId}' was not found.");

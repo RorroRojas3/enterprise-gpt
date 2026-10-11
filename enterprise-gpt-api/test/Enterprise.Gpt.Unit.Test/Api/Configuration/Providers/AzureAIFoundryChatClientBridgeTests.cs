@@ -17,22 +17,8 @@ namespace Enterprise.Gpt.Unit.Test.Api.Configuration.Providers;
 /// Foundry provider.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The load-bearing assertion is the absence of <c>reasoning_effort</c> even when the catalog row
-/// asks for reasoning. <c>ConversationService</c> populates <c>ChatOptions.Reasoning</c> from that
-/// flag for every provider, and this adapter translates it — so without
-/// <see cref="AzureAIFoundryDefaults"/> clearing it, a reasoning-flagged model pointed at this
-/// provider would send an option the deployment rejects, on every turn.
-/// </para>
-/// <para>
-/// Note the contrast with <see cref="AzureOpenAIChatClientBridgeTests"/>: nothing here needs an
-/// <c>OPENAI001</c> or <c>MEAI001</c> suppression, because <c>GetChatClient</c> and its
-/// <c>AsIChatClient</c> overload are both stable. That is the split working as intended.
-/// </para>
-/// <para>
-/// No network is involved: the request is intercepted by a stub transport that records the body and
-/// answers with a minimal completed chat completion.
-/// </para>
+/// <c>ConversationService</c> sets <c>ChatOptions.Reasoning</c> from the catalog flag for every provider,
+/// so without <see cref="AzureAIFoundryDefaults"/> clearing it this deployment would reject every turn.
 /// </remarks>
 public sealed class AzureAIFoundryChatClientBridgeTests
 {
@@ -155,9 +141,8 @@ public sealed class AzureAIFoundryChatClientBridgeTests
             }
         };
 
-        // Mirrors what ConversationService does with a reasoning-flagged catalog row. Setting it here
-        // rather than asserting against a bare ChatOptions is the whole point: the defaults callback
-        // has to survive a caller that already asked for reasoning.
+        // Mirrors ConversationService for a reasoning-flagged row: the callback has to survive a caller
+        // that already asked for reasoning.
         if (isReasoningEnabled)
         {
             options.Reasoning = new ReasoningOptions
@@ -177,24 +162,20 @@ public sealed class AzureAIFoundryChatClientBridgeTests
 
         Assert.Equal("model-from-catalog", root.GetProperty("model").GetString());
 
-        // Not "sends it switched off": the field is absent. A Chat Completions deployment that does
-        // not support reasoning rejects the request rather than ignoring the field.
+        // Absent, not switched off: a deployment without reasoning rejects the field outright.
         Assert.False(root.TryGetProperty("reasoning_effort", out _));
         Assert.False(root.TryGetProperty("reasoning", out _));
 
-        // The catalog gate is ours, not the API's. The adapter forwards only a known subset of
-        // AdditionalProperties today, but that is package behaviour rather than a guarantee, and a
-        // bump that started forwarding the rest would put this key on every request.
+        // The catalog gate is ours. The adapter forwards only some AdditionalProperties, but that is
+        // package behaviour a bump could change.
         Assert.DoesNotContain(ChatRequestProperties.IsReasoningEnabled, root.GetRawText(), StringComparison.Ordinal);
     }
 
     [Fact]
     public async Task AsIChatClient_Always_LeavesTheConversationIdOffTheWire()
     {
-        // Unlike the Responses provider, this one does not clear ChatOptions.ConversationId — it does
-        // not have to, because Chat Completions is stateless and the adapter has nowhere to put it.
-        // Asserting the id is genuinely absent from the body is what makes "does not have to" a
-        // verified claim rather than an assumption about adapter internals.
+        // Unlike the Responses provider, ConversationId is not cleared: Chat Completions has nowhere to
+        // put it, and this verifies that rather than assuming it.
         var root = await SendAsync(CatalogOptions(isReasoningEnabled: false));
 
         Assert.False(root.TryGetProperty("previous_response_id", out _));

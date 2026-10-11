@@ -1,12 +1,6 @@
 /**
- * Flattens answer markdown into the plain text a mail body is.
- *
- * `mailto:` carries no formatting, so shipping the source through untouched puts
- * literal `**asterisks**` and `[label](url)` into the draft the user sends. This
- * is deliberately a formatter rather than a parser: it runs on text a mail client
- * will show verbatim, where a wrong guess is a visible defect in someone's
- * outgoing mail, so every rule below only removes syntax it can identify from a
- * single line.
+ * Flattens markdown for a mail body. A formatter, not a parser: a wrong guess shows in outgoing
+ * mail, so each rule removes only syntax it can identify within one line.
  */
 export function markdownToPlainText(markdown: string): string {
   const lines = markdown.split('\n');

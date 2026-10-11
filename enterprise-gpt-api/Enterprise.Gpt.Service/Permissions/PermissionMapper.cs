@@ -7,10 +7,6 @@ namespace Enterprise.Gpt.Service.Permissions;
 
 public static class PermissionMapper
 {
-    /// <summary>
-    /// LINQ projection from <see cref="Permission"/> to <see cref="PermissionDto"/>
-    /// for use inside <c>IQueryable.Select(...)</c>.
-    /// </summary>
     public static Expression<Func<Permission, PermissionDto>> MapToPermissionDtoExpression { get; } =
         permission => new PermissionDto
         {
@@ -24,11 +20,6 @@ public static class PermissionMapper
 
     #region Public static methods
 
-    /// <summary>
-    /// Maps a materialized <see cref="Permission"/> entity to <see cref="PermissionDto"/>.
-    /// </summary>
-    /// <param name="permission">The loaded permission entity.</param>
-    /// <returns>The mapped DTO.</returns>
     public static PermissionDto MapToPermissionDto(this Permission permission)
     {
         return new PermissionDto
@@ -43,12 +34,8 @@ public static class PermissionMapper
     }
 
     /// <summary>
-    /// Creates a new <see cref="Permission"/> entity from a
-    /// <see cref="CreatePermissionActionDto"/>. Callers set <c>Id</c>, <c>CreatedById</c> and
-    /// <c>ModifiedById</c>; the audit interceptor stamps the dates.
+    /// Creates an untracked permission; callers set <c>Id</c>, <c>CreatedById</c> and <c>ModifiedById</c>.
     /// </summary>
-    /// <param name="dto">The action DTO carrying the new values.</param>
-    /// <returns>The new, untracked entity.</returns>
     public static Permission FromCreatePermissionActionDtoToPermission(this CreatePermissionActionDto dto)
     {
         return new Permission
@@ -60,12 +47,8 @@ public static class PermissionMapper
     }
 
     /// <summary>
-    /// Applies an <see cref="UpdatePermissionActionDto"/> to an existing
-    /// <see cref="Permission"/> entity in place. Callers set <c>ModifiedById</c> and save; the audit
-    /// interceptor stamps <c>DateModified</c>.
+    /// Applies the update to a tracked permission in place; callers set <c>ModifiedById</c> and save.
     /// </summary>
-    /// <param name="dto">The action DTO carrying the new values.</param>
-    /// <param name="permission">The tracked entity to mutate.</param>
     public static void FromUpdatePermissionActionDtoToPermission(this UpdatePermissionActionDto dto, Permission permission)
     {
         permission.Name = dto.Name;

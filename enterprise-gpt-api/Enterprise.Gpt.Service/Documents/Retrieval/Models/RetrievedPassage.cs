@@ -25,10 +25,6 @@ public sealed class RetrievedPassage
     /// Gets or sets the page, slide, or sheet ordinal the passage starts on, or <see langword="null"/>
     /// for formats with no such concept (<c>.doc</c>, <c>.md</c>, <c>.txt</c>).
     /// </summary>
-    /// <remarks>
-    /// For a spreadsheet this is the sheet's position, not a page, which is why
-    /// <see cref="Citation"/> names the sheet instead of rendering this as <c>p.N</c>.
-    /// </remarks>
     [JsonPropertyOrder(2)]
     public int? Page { get; set; }
 
@@ -37,15 +33,8 @@ public sealed class RetrievedPassage
     /// is closer.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// Reported as a similarity rather than the cosine <em>distance</em> the database returns, because a
-    /// score the model is asked to reason about should get larger as relevance grows.
-    /// </para>
-    /// <para>
-    /// <see cref="DocumentSearchResult.Results"/> is <em>not</em> sorted by this. Results carry the fused
-    /// rank of both retrieval passes, so a passage found by its exact terms can sit first with the lowest
-    /// score of the set — this measures wording similarity alone and knows nothing about term matches.
-    /// </para>
+    /// <see cref="DocumentSearchResult.Results"/> is not sorted by this: it measures wording similarity only,
+    /// while results follow the fused rank of both passes.
     /// </remarks>
     [JsonPropertyOrder(3)]
     public double Score { get; set; }

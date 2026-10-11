@@ -18,18 +18,11 @@ interface DictationState {
   readonly recording: boolean;
   readonly elapsedSeconds: number;
   /**
-   * The microphone was refused. Held until the next attempt rather than for
-   * the session: a browser that has been told "block" will not prompt again,
-   * so the message has to outlive the click that earned it — but a user who
-   * has since allowed it in browser settings must not keep being told they
-   * did not.
+   * Held until the next attempt: a blocked browser will not prompt again, yet a user who allows it
+   * in settings must not keep being told they did not.
    */
   readonly permissionDenied: boolean;
-  /**
-   * A finalized phrase waiting for the composer to append it. A fresh object
-   * per phrase — the same words twice must still propagate — consumed through
-   * {@link DictationStore.consumeSpoken}, exactly as `composerSeed` is.
-   */
+  /** A fresh object per phrase, so the same words twice still propagate. */
   readonly spoken: { readonly text: string } | null;
 }
 
@@ -55,24 +48,14 @@ function finalizedText(event: SpeechRecognitionResultEventLike): string {
 }
 
 /**
- * Dictation for the composer (US-413).
- *
- * Provided by `Composer`, not in root: a recording session belongs to the
- * prompt box that started it, and tearing the screen down has to end it.
- *
- * `interimResults` stays off. Interim guesses rewrite themselves word by word,
- * and a textarea the user may also be typing in is the wrong place to watch
- * that happen — phrases land once they are settled, which is also the only
- * form that survives being edited afterwards.
+ * Provided by `Composer`, so tearing the screen down ends the session. `interimResults` stays off:
+ * guesses rewrite themselves word by word, in a textarea the user may also be typing in.
  */
 export const DictationStore = signalStore(
   withState(initialState),
   withProps(() => ({
     _create: inject(SPEECH_RECOGNITION),
-    /**
-     * The live session and its timer. Mutable props rather than state: neither
-     * renders, and both have to be reachable from the teardown hook.
-     */
+    /** Props, not state: neither renders, and the teardown hook must reach both. */
     _session: {
       current: null as SpeechRecognitionLike | null,
       timer: null as ReturnType<typeof setInterval> | null,
@@ -82,7 +65,7 @@ export const DictationStore = signalStore(
     /** Whether this browser can dictate at all. False means the control is absent. */
     supported: computed(() => store._create !== null),
 
-    /** The frame `2i` clock: `m:ss`, counting the session rather than the words. */
+    /** `m:ss`, counting the session rather than the words. */
     elapsedLabel: computed(() => {
       const seconds = store.elapsedSeconds();
 
@@ -105,9 +88,7 @@ export const DictationStore = signalStore(
     }
 
     function stop(): void {
-      // `stop` rather than `abort`: it lets the engine emit whatever it has
-      // already recognized, so the last phrase spoken is not lost. `onend`
-      // then runs the teardown, whichever way the session ended.
+      // `stop`, not `abort`, so the engine emits what it has recognized; `onend` then tears down.
       store._session.current?.stop();
     }
 
@@ -132,9 +113,8 @@ export const DictationStore = signalStore(
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
           patchState(store, { permissionDenied: true });
         }
-        // Every other error — no speech, no network, an engine failure — ends
-        // the session silently. The prompt box is still there to type in, and
-        // a message about `audio-capture` explains nothing the user can act on.
+        // Every other error ends the session silently: the user can still type, and a message
+        // about `audio-capture` explains nothing they can act on.
       };
 
       recognition.onend = () => finish();
@@ -159,7 +139,6 @@ export const DictationStore = signalStore(
 
       stop,
 
-      /** The one control's single handler, as the send/stop button has. */
       toggle(): void {
         if (store.recording()) {
           stop();

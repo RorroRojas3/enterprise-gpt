@@ -24,7 +24,7 @@ import {
 
 const REPORTS_URL = `${TEST_API_BASE_URL}/api/reports/usage`;
 
-describe('AdminReports (US-1302)', () => {
+describe('AdminReports', () => {
   let backend: HttpTestingController;
   let harness: RouterTestingHarness;
 
@@ -83,7 +83,6 @@ describe('AdminReports (US-1302)', () => {
     await harness.fixture.whenStable();
   }
 
-  /** Drives the group-by select the way a reader does, and answers the request it triggers. */
   async function chooseGrouping(grouping: string): Promise<void> {
     const select = element().querySelector<HTMLSelectElement>('#usage-group-by')!;
     select.value = grouping;
@@ -99,11 +98,10 @@ describe('AdminReports (US-1302)', () => {
     await harness.fixture.whenStable();
   }
 
-  it('keeps the level-one heading it inherited from US-1209', async () => {
+  it('keeps a level-one heading like every sibling tab', async () => {
     await open();
 
-    // Every sibling tab carries one, and `UnavailablePanel`'s heading was a `<p>`; replacing the
-    // panel must not leave this the only routed screen with no level-one heading.
+    // Every sibling tab has a level-one heading, so this screen must too.
     expect(element().querySelector('h1')?.textContent?.trim()).toBe('Reports');
   });
 
@@ -133,12 +131,10 @@ describe('AdminReports (US-1302)', () => {
   it('reads the date chip off the response rather than off the control', async () => {
     await open();
 
-    // The window the figures were actually taken from, so the chip cannot claim a range the
-    // report was not built from.
     expect(element().textContent).toContain('Jul 9 – Aug 8, 2026');
   });
 
-  it('issues a request on every entry to the tab, including a back navigation (FR-41)', async () => {
+  it('issues a request on every entry to the tab, including a back navigation', async () => {
     await open();
 
     await harness.navigateByUrl('/admin/users', AdminReports);
@@ -219,8 +215,7 @@ describe('AdminReports (US-1302)', () => {
     request.flush(usageReportFixture());
     await harness.fixture.whenStable();
 
-    // The control shows what is in force. A repaired parameter that left the URL saying `5` would
-    // put the address bar and the segmented control in disagreement.
+    // The control shows the range in force.
     const active = element().querySelector('.segmented__option--active');
     expect(active?.textContent?.trim()).toBe('30 days');
   });
@@ -260,8 +255,7 @@ describe('AdminReports (US-1302)', () => {
     const panel = element().querySelector('app-error-panel');
     expect(panel).not.toBeNull();
     expect(panel?.textContent).toContain('Trace ID');
-    // Instead of the dashboard, not beside it: a chart left on screen would be the last range the
-    // reader looked at, labelled with this one.
+    // Instead of the dashboard: a stale chart would be labelled with the new range.
     expect(element().querySelector('app-usage-area-chart')).toBeNull();
 
     element().querySelector<HTMLButtonElement>('app-error-panel button')!.click();
@@ -278,7 +272,7 @@ describe('AdminReports (US-1302)', () => {
     expect(element().textContent).toContain('User');
   });
 
-  it('gives the table proportional tracks below the desktop edge (US-1403)', async () => {
+  it('gives the table proportional tracks below the desktop edge', async () => {
     await open();
     const desktop = tracks();
 
@@ -286,10 +280,7 @@ describe('AdminReports (US-1302)', () => {
     await harness.fixture.whenStable();
     const tablet = tracks();
 
-    // At desktop the six numeric columns are fixed, as frame 5j draws them. Below it they alone
-    // are wider than the content pane, which would squeeze the name column to nothing and clip
-    // every row — so they shrink together instead. Nothing is hidden: every column is a figure
-    // the table exists to compare.
+    // Below desktop the fixed tracks would crush the name column, so all shrink together.
     expect(desktop).toContain('70px');
     expect(tablet).not.toContain('70px');
     expect(tablet).toContain('minmax(0, 1fr)');
@@ -331,8 +322,7 @@ describe('AdminReports (US-1302)', () => {
     await chooseGrouping('user');
     expect(url()).toBe('/admin/reports?group=user');
 
-    // A swap: a refinement, so the walk to it costs no extra entry. A closed select commits on
-    // every arrow key, and pushing each one would bury the reader under history.
+    // A swap replaces, since a closed select commits on every arrow key.
     await chooseGrouping('provider');
     expect(url()).toBe('/admin/reports?group=provider');
 

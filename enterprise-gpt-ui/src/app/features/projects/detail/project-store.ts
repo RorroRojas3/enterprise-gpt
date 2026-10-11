@@ -28,24 +28,15 @@ import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 interface ProjectState {
   /** The route's `:projectId`, or null before the route has bound one. */
   readonly projectId: string | null;
-  /** The project this screen is showing, once it has arrived. */
   readonly project: ProjectDto | null;
-  /** The project was deleted while its own screen was open (US-903). */
+  /** The project was deleted while its own screen was open. */
   readonly deleted: boolean;
 }
 
 /**
- * The open project, from `GET api/projects/{id}` (US-904).
- *
- * The **only** source of `instructions`: the listing projection omits the column, so a
- * card's `ProjectSummaryDto` cannot fill this screen and a detail request is not
- * optional. It is also what every write on this screen echoes back, since
- * `PUT api/projects/{id}` is a full representation.
- *
- * Route-scoped, so a second project's screen starts empty rather than showing the
- * previous one's instructions while its own request flies. `rxMethod` + `switchMap`
- * because navigating between two projects can overlap, and `takeUntil(signedOut$)`
- * because `withResetOnSignOut` clears state and does not cancel work.
+ * The only source of `instructions`, which the listing omits, and the full representation every
+ * write here echoes back. Route-scoped, so another project's screen starts empty;
+ * `takeUntil(signedOut$)` because `withResetOnSignOut` clears state but cancels nothing.
  */
 export const ProjectStore = signalStore(
   withState<ProjectState>({ projectId: null, project: null, deleted: false }),
@@ -58,12 +49,7 @@ export const ProjectStore = signalStore(
   withComputed(({ error, project, isPending }) => ({
     /** Nothing on screen yet, so a skeleton is the honest thing to show. */
     isFirstLoad: computed(() => isPending() && project() === null),
-    /**
-     * The header's name, which exists one round trip before the rest of the screen
-     * does not. Empty rather than a placeholder: the header renders only once there is
-     * a project, and inventing a name would be the fabricated status line US-406
-     * refuses.
-     */
+    /** Empty rather than a placeholder: the header renders only once there is a project. */
     name: computed(() => project()?.name ?? ''),
     hasFailed: computed(() => error() !== null),
   })),
@@ -89,10 +75,8 @@ export const ProjectStore = signalStore(
 
     return {
       /**
-       * Binds the route's `:projectId`, once, from the screen's constructor.
-       *
-       * A computation rather than a value, so a navigation between two projects
-       * re-runs it and `switchMap` cancels the request the reader has left behind.
+       * Binds a computation, not a value, so moving between projects re-runs it and `switchMap`
+       * cancels the request left behind.
        */
       bindRoute: _load,
 
@@ -103,10 +87,8 @@ export const ProjectStore = signalStore(
     };
   }),
   withEventHandlers((store, events = inject(Events)) => [
-    // A rename, a description edit or an instructions save confirmed by the server.
-    // The payload is the DTO the server returned, so this adopts its `dateModified`
-    // rather than a local guess — and it is what makes the panel's saved state settle
-    // only once the round trip is over (US-904's second criterion).
+    // The payload is the server's DTO, so `dateModified` is real and the instructions panel's
+    // saved state settles only once the round trip is over.
     events.on(projectEvents.updated).pipe(
       tap(({ payload }) => {
         if (payload.id === store.projectId()) {
@@ -115,9 +97,8 @@ export const ProjectStore = signalStore(
       }),
     ),
 
-    // The star, from this screen's own header or from the sidebar's node for the same
-    // project. One field, because that is all the 204 confirmed — patching a whole DTO
-    // here would overwrite `instructions` with a value nothing fetched.
+    // One field, because that is all the 204 confirmed: patching a whole DTO would overwrite
+    // `instructions` with a value nothing fetched.
     events.on(projectEvents.favorited).pipe(
       tap(({ payload: { id, isFavorite } }) => {
         const current = store.project();
@@ -127,9 +108,7 @@ export const ProjectStore = signalStore(
       }),
     ),
 
-    // Deleted from this screen's own header, or from another tab's grid. The screen
-    // navigates away rather than showing a project that is gone; the flag is what the
-    // component watches, because a store may not navigate.
+    // A flag the component watches, because a store may not navigate.
     events.on(projectEvents.deleted).pipe(
       tap(({ payload: id }) => {
         if (id === store.projectId()) {

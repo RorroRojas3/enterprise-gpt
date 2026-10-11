@@ -13,11 +13,6 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Conversations.Chat;
 
-/// <summary>
-/// Covers the translation of a <see cref="ChatUsageReport"/> into audit rows: the assistant/tool
-/// token split, the own-versus-subtree arithmetic that keeps aggregates from double-counting nested
-/// calls, and the attribution of MCP calls back to a catalog server.
-/// </summary>
 public sealed class UsageReportTranslatorTests
 {
     private static readonly FileAgentModel _fileAgent =
@@ -65,9 +60,8 @@ public sealed class UsageReportTranslatorTests
 
     private static AssistantTurnUsage Turn(
         int iteration,
-        // Non-null on the middleware's own type, unlike the two identifiers beside it, so a turn
-        // that reported nothing is expressed as a UsageDetails whose counts are null rather than as
-        // an absent one.
+        // Non-null on the middleware's type, unlike the identifiers beside it: a turn that reported
+        // nothing is a UsageDetails with null counts, not an absent one.
         UsageDetails? usage = null,
         string? responseId = null,
         string? modelId = null)
@@ -151,9 +145,8 @@ public sealed class UsageReportTranslatorTests
         Assert.Equal(10, result.TotalOutputTokens);
     }
 
-    // Every row is returned flat, nested ones included, because that list is assigned straight to
-    // the audit row's navigation — a call reachable only through its parent would be saved with no
-    // owning usage id, which SQL Server rejects and SQLite does not.
+    // Flat, nested rows included: the list is assigned to the audit row's navigation, and a call reachable
+    // only through its parent would lack an owning usage id, which SQL Server rejects and SQLite does not.
     [Fact]
     public void Translate_NestedToolCalls_ReturnsEveryRowFlatInPreOrder()
     {
@@ -393,9 +386,8 @@ public sealed class UsageReportTranslatorTests
         Assert.Equal(128, row.CallId!.Length);
     }
 
-    // The per-turn breakdown is what makes a tool's prompt cost attributable: the cost of the calls
-    // one turn issued is the growth of the prompt between that turn and the next, and neither term
-    // exists without these rows.
+    // Per-turn rows make a tool's prompt cost attributable: what one turn's calls cost is the prompt's
+    // growth between that turn and the next.
     [Fact]
     public void Translate_ReportWithTurns_RecordsOneRowPerTurnInReportOrder()
     {
@@ -428,9 +420,8 @@ public sealed class UsageReportTranslatorTests
         Assert.Equal(result.OutputTokens, result.Turns.Sum(turn => turn.OutputTokens ?? 0));
     }
 
-    // A non-streamed request reports one aggregate and no breakdown. Synthesising a turn from that
-    // aggregate would manufacture an iteration nobody reported and pair it with the zero the
-    // non-streaming path stamps on every tool call, producing a delta out of thin air.
+    // A non-streamed request reports one aggregate and no breakdown; a turn synthesised from it would
+    // pair an unreported iteration with the zero stamped on every tool call, a delta out of thin air.
     [Fact]
     public void Translate_ReportWithoutTurns_RecordsNoTurnRows()
     {

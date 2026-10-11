@@ -46,16 +46,12 @@ describe('AuthCallback', () => {
   });
 
   it('shows the interstitial while the redirect is still resolving', async () => {
-    // "never a blank page and never an empty app shell" is the criterion, and the
-    // handshake is what it has to survive — so the copy must be on screen before it
-    // resolves, not after.
+    // The copy must be on screen before the handshake resolves, not after.
     configure(signedOutMsal({ handleRedirectPromise: () => new Promise(() => undefined) }));
     const fixture = TestBed.createComponent(AuthCallback);
     await fixture.whenStable();
 
     const host = fixture.nativeElement as HTMLElement;
-    // Focused rather than announced: a live region inserted with its own text
-    // announces nothing, so the heading is what carries this to a screen reader.
     expect(host.querySelector('h1')?.textContent).toContain('Signing you in…');
     const text = host.textContent ?? '';
     expect(text).toContain('Finishing up with Microsoft Entra ID');
@@ -74,8 +70,6 @@ describe('AuthCallback', () => {
     await fixture.whenStable();
     await settle();
 
-    // replaceUrl keeps `/auth#code=…` out of history, so the back button cannot
-    // replay a consumed authorization code.
     expect(navigateByUrl).toHaveBeenCalledWith('/chat/abc', { replaceUrl: true });
   });
 
@@ -100,8 +94,7 @@ describe('LoginFailed', () => {
   });
 
   it('offers one action and no password field', async () => {
-    // The board states it outright: there is no password field anywhere in this
-    // application, and a sign-in failure is the one screen tempted to grow one.
+    // No screen in this app has a password field; a sign-in failure is the one tempted to.
     configure(signedOutMsal({ loginRedirect: () => Promise.resolve() }));
     const fixture = TestBed.createComponent(LoginFailed);
     await fixture.whenStable();
@@ -113,9 +106,6 @@ describe('LoginFailed', () => {
   });
 
   it('resolves the pending handshake on arrival, so Try again is not blocked by a stale lock', async () => {
-    // This route is unguarded, so it is the one screen no other code path has cleared
-    // MSAL's interaction_in_progress lock for. Without this, a user who abandoned a
-    // sign-in finds Try again throwing until the tab is closed.
     const handleRedirectPromise = vi.fn(() => Promise.resolve(null));
     configure(signedOutMsal({ handleRedirectPromise, loginRedirect: () => Promise.resolve() }));
 
@@ -183,7 +173,7 @@ describe('SessionError', () => {
     await fixture.whenStable();
 
     const host = fixture.nativeElement as HTMLElement;
-    // The panel owns the heading, so 6c gets its document outline from role/aria-level.
+    // The panel owns the heading, so the page's outline comes from role/aria-level.
     const heading = host.querySelector('[role="heading"]');
     expect(heading?.getAttribute('aria-level')).toBe('1');
     expect(document.activeElement).toBe(heading);
@@ -227,11 +217,8 @@ describe('SessionError', () => {
 });
 
 describe('auth page focus', () => {
-  // `#heading` + `tabindex="-1"` + `focusOnRender` are three coupled pieces across four
-  // components; removing any one silently reverts the fix and nothing else notices.
-  // Every one of these pages is reached by a router navigation or a guard redirect, and
-  // Angular moves focus for neither — on /forbidden the element that *had* focus is
-  // removed from the DOM outright.
+  // `#heading`, `tabindex="-1"` and `focusOnRender` are coupled across four components, and the
+  // router moves no focus, so dropping any one silently strands keyboard users.
   beforeEach(() => {
     TestBed.resetTestingModule();
     sessionStorage.clear();
@@ -284,8 +271,7 @@ describe('SignedOut', () => {
     const host = fixture.nativeElement as HTMLElement;
     expect(host.querySelector('h1')?.textContent).toContain('You’re signed out');
     expect(host.textContent).toContain('cleared from this browser');
-    // No routerLink anywhere: after a *failed* sign-out the Entra cookie is still live,
-    // so any path back through a guarded route re-authenticates the departing user.
+    // No routerLink: after a failed sign-out any guarded route re-authenticates the departing user.
     expect(host.querySelectorAll('a')).toHaveLength(0);
     expect(host.querySelectorAll('button')).toHaveLength(1);
   });

@@ -16,32 +16,20 @@ namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 /// <see cref="ITranscriptStore"/> over it.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Transactional batches and ordered cross-document queries are precisely what an in-memory fake
-/// cannot prove — a fake that interpreted JSON-patch semantics would be asserting its own
-/// arrangement — so the storage layer is proved here or not at all.
-/// </para>
-/// <para>
-/// Its own collection rather than the shared SQL Server one, so the emulator starts only when these
-/// tests actually run. Every test class still carries the integration trait, so
-/// <c>dotnet test --filter "Category!=Integration"</c> needs no Docker.
-/// </para>
+/// Transactional batches and ordered cross-document queries are what an in-memory fake cannot prove.
+/// Its own collection, so the emulator starts only when these tests run.
 /// </remarks>
 public sealed class CosmosEmulatorFixture : IAsyncLifetime
 {
-    /// <summary>
-    /// The emulator's well-known account key, published in Microsoft's documentation. Not a secret,
-    /// and it reaches nothing outside the container.
-    /// </summary>
+    // The emulator's well-known public account key; not a secret.
     private const string EmulatorKey =
         "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
 
     private const ushort GatewayPort = 8081;
     private const ushort HealthPort = 8080;
 
-    // The vNext emulator rather than the legacy image: it starts in seconds instead of minutes and
-    // runs on any processor architecture. It serves HTTP by default and the .NET SDK does not
-    // support that, hence the explicit protocol below.
+    // vNext rather than the legacy image: it starts in seconds on any architecture. It defaults to
+    // HTTP, which the .NET SDK does not support, hence the explicit protocol.
     private readonly IContainer _container =
         new ContainerBuilder("mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-latest")
         .WithPortBinding(GatewayPort, true)
@@ -53,14 +41,8 @@ public sealed class CosmosEmulatorFixture : IAsyncLifetime
 
     private CosmosClient? _client;
 
-    /// <summary>
-    /// Gets the store under test, reading and writing the provisioned transcript container.
-    /// </summary>
     public ITranscriptStore Store { get; private set; } = null!;
 
-    /// <summary>
-    /// Gets the transcript container, for assertions the store's own surface does not expose.
-    /// </summary>
     public Container Container { get; private set; } = null!;
 
     /// <inheritdoc />
@@ -86,8 +68,8 @@ public sealed class CosmosEmulatorFixture : IAsyncLifetime
 
         _client = new CosmosClient(options.ConnectionString, new CosmosClientOptions
         {
-            // The emulator answers only over the gateway, and it presents a self-signed certificate
-            // that no machine store trusts. Both settings are scoped to this test client.
+            // The emulator answers only over the gateway, with a self-signed certificate; both settings
+            // are scoped to this test client.
             ConnectionMode = ConnectionMode.Gateway,
             LimitToEndpoint = true,
             HttpClientFactory = () => new HttpClient(new HttpClientHandler
@@ -97,8 +79,7 @@ public sealed class CosmosEmulatorFixture : IAsyncLifetime
             UseSystemTextJsonSerializerWithOptions = CosmosSerialization.CreateOptions()
         });
 
-        // The production bootstrap, so the container these tests run against is provisioned exactly
-        // as a deployment's is.
+        // The production bootstrap, so the container is provisioned exactly as a deployment's is.
         await new CosmosResourceProvisioner(_client, Options.Create(options), NullLogger<CosmosResourceProvisioner>.Instance)
             .EnsureProvisionedAsync(CancellationToken.None);
 

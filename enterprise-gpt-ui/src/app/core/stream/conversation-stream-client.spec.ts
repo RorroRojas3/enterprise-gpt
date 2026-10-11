@@ -36,7 +36,6 @@ function turnRequest(overrides: Partial<StreamTurnRequest> = {}): StreamTurnRequ
   };
 }
 
-/** What one subscription observed, for asserting endings without callbacks. */
 interface Observed {
   readonly batches: (readonly AssistantUiEvent[])[];
   error: AppError | null;
@@ -335,9 +334,8 @@ describe('ConversationStreamClient', () => {
   });
 
   it('salvages the buffered tail when the body faults instead of closing', async () => {
-    // The contract's two "body just stops" endings — clean close and faulting
-    // read — must deliver the same text: the final frame often loses its
-    // terminator to the truncation.
+    // A faulting read must deliver the same text as a clean close; the final frame often
+    // loses its terminator to the truncation, hence the slice.
     const client = setup();
     const handle = streamingResponse();
     respondWithStream(handle);

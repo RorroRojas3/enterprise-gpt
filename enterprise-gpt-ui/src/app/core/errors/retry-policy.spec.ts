@@ -78,8 +78,7 @@ describe('computeBackoffDelay', () => {
   it('caps the window however many attempts have elapsed', () => {
     const upper = policy(() => 0.999_999);
 
-    // Exact, not `toBeLessThan`: a bound would also pass for an implementation
-    // that under-delays, or returns zero.
+    // Exact, not `toBeLessThan`: a bound would also pass for one that under-delays.
     expect(computeBackoffDelay(20, upper)).toBe(4_999);
   });
 
@@ -123,9 +122,7 @@ describe('authErrorDecision', () => {
   });
 
   it('decides every arm of the union, and only http may refresh', () => {
-    // Asserted against the real table, so adding an arm to AppError fails the
-    // suite as well as the compiler. A hard-coded list compared to itself would
-    // pass with the implementation deleted.
+    // Against the real table, so a new AppError arm fails the suite as well as the compiler.
     const kinds: AppErrorKind[] = [
       'validation-error',
       'upload-too-large',

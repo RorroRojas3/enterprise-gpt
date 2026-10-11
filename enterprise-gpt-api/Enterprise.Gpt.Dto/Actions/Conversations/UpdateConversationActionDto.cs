@@ -13,9 +13,8 @@ public class UpdateConversationActionDto
     /// The project the conversation should belong to after the update.
     /// </summary>
     /// <remarks>
-    /// This is a full-representation PUT, so omitting the field (or sending
-    /// <see langword="null"/>) removes the conversation from whatever project it is in. Clients
-    /// that only mean to rename must echo the current project id back.
+    /// Full-representation PUT: omitting it or sending <see langword="null"/> removes the conversation
+    /// from its project, so a rename must echo the current project id back.
     /// </remarks>
     public Guid? ProjectId { get; set; }
 }

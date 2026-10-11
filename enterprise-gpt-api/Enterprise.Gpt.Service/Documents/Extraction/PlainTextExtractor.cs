@@ -11,9 +11,7 @@ namespace Enterprise.Gpt.Service.Documents.Extraction;
 /// Reads plain text (<c>.txt</c>) and Markdown (<c>.md</c>) files straight off the byte stream.
 /// </summary>
 /// <remarks>
-/// Markdown is embedded as written rather than being rendered down to prose: the markup carries real
-/// structure (headings, lists, code fences) that helps both the embedding and the eventual answer, and
-/// stripping it would discard that for no benefit.
+/// Markdown is embedded as written: its structure helps both the embedding and the answer.
 /// </remarks>
 public sealed partial class PlainTextExtractor(ILogger<PlainTextExtractor> logger) : IDocumentTextExtractor
 {
@@ -38,8 +36,7 @@ public sealed partial class PlainTextExtractor(ILogger<PlainTextExtractor> logge
 
         using var stream = new MemoryStream(file.Content, writable: false);
 
-        // UTF-8 is the fallback rather than the assumption: a byte-order mark for UTF-16/UTF-32 wins,
-        // which is what Notepad and most Windows editors emit.
+        // UTF-8 is only the fallback; a UTF-16/32 BOM (as Windows editors emit) wins.
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
         var text = await reader.ReadToEndAsync(cancellationToken);
 

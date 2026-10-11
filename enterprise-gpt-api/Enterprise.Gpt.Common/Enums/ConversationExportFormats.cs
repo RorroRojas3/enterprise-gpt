@@ -18,9 +18,7 @@ public enum ConversationExportFormats
     /// <summary>CommonMark, carrying each message's text exactly as it was authored.</summary>
     Markdown = 3,
 
-    /// <summary>An Office Open XML word-processing document.</summary>
     Docx = 4,
 
-    /// <summary>A PDF document.</summary>
     Pdf = 5
 }

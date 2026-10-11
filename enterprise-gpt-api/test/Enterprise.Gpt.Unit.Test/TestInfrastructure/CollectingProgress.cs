@@ -4,11 +4,8 @@ namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
 /// An <see cref="IProgress{T}"/> that records reports synchronously on the calling thread.
 /// </summary>
 /// <remarks>
-/// <see cref="Progress{T}"/> posts to the thread pool, so a test using it would have to wait for reports to
-/// arrive and could still observe them out of order. Capturing inline makes the assertions deterministic.
+/// <see cref="Progress{T}"/> posts to the thread pool, so reports could arrive late or out of order.
 /// </remarks>
-/// <typeparam name="T">The progress payload type.</typeparam>
-/// <param name="reports">The list reports are appended to.</param>
 public sealed class CollectingProgress<T>(IList<T> reports) : IProgress<T>
 {
     private readonly IList<T> _reports = reports;

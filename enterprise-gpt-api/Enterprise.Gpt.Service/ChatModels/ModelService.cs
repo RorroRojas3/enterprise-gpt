@@ -19,70 +19,32 @@ namespace Enterprise.Gpt.Service.ChatModels;
 
 public interface IModelService
 {
-    /// <summary>
-    /// Gets the active, user-selectable models, ordered by name. This is the chat picker's
-    /// source.
-    /// </summary>
+    /// <summary>Gets the active, user-selectable models ordered by name; the chat picker's source.</summary>
     /// <remarks>
-    /// The only query that filters on <c>IsUserSelectable</c>. A purpose-built deployment — the
-    /// pinned document summarizer — is hidden here and returned by every other member, which is
-    /// the same split <c>DateDeactivated</c> already draws between this route and
-    /// <see cref="GetAllModelsAsync"/>. Hiding is not withdrawing: a turn naming a hidden model
-    /// by id is still served, because <see cref="GetModelAsync"/> does not filter on the flag.
+    /// The only query that filters on <c>IsUserSelectable</c>. Hiding is not withdrawing: a turn naming a
+    /// hidden model by id is still served, because <see cref="GetModelAsync"/> ignores the flag.
     /// </remarks>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The list of active, user-selectable models.</returns>
     Task<List<ModelDto>> GetModelsAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Gets every model, active and deactivated, ordered by name. Intended for
-    /// administrators toggling model availability.
-    /// </summary>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The list of all models.</returns>
+    /// <summary>Gets every model, active and deactivated, ordered by name, for administrators.</summary>
     Task<List<ModelDto>> GetAllModelsAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Gets a single active model by id.
-    /// </summary>
-    /// <param name="id">The model id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The matching model.</returns>
+    /// <summary>Gets an active model by id.</summary>
     /// <exception cref="NotFoundException">No active model with <paramref name="id"/> exists.</exception>
     Task<ModelDto> GetModelAsync(Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Creates a new model after validating the request. When the request marks the
-    /// model as default, any other default model is demoted in the same transaction.
-    /// </summary>
-    /// <param name="request">The creation request.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The created model.</returns>
+    /// <summary>Creates a model; marking it default demotes the others in the same save.</summary>
     /// <exception cref="NotFoundException">The referenced provider does not exist.</exception>
     Task<ModelDto> CreateModelAsync(CreateModelActionDto request, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Updates an existing active model after validating the request. When the request
-    /// marks the model as default, any other default model is demoted in the same transaction.
-    /// </summary>
-    /// <param name="id">The id of the model to update.</param>
-    /// <param name="request">The update request.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The updated model.</returns>
-    /// <exception cref="ValidationException">The model is the configured summarizer and the new provider has no chat client.</exception>
-    /// <exception cref="NotFoundException">No active model with <paramref name="id"/> exists, or the referenced provider does not exist.</exception>
+    /// <summary>Updates an active model; marking it default demotes the others in the same save.</summary>
+    /// <exception cref="ValidationException">The summarizer's new provider has no chat client.</exception>
+    /// <exception cref="NotFoundException">The model is inactive, or the provider does not exist.</exception>
     Task<ModelDto> UpdateModelAsync(Guid id, UpdateModelActionDto request, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Soft-deletes a model by setting its <c>DateDeactivated</c>.
-    /// </summary>
-    /// <param name="id">The id of the model to deactivate.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <summary>Soft-deletes a model.</summary>
     /// <exception cref="NotFoundException">No active model with <paramref name="id"/> exists.</exception>
-    /// <exception cref="SummarizerProtectedException">
-    /// The model is the configured document summarizer, which the application refuses to start
-    /// without.
-    /// </exception>
+    /// <exception cref="SummarizerProtectedException">The model is the configured summarizer.</exception>
     Task DeactivateModelAsync(Guid id, CancellationToken cancellationToken = default);
 }
 
@@ -213,16 +175,10 @@ public partial class ModelService(ILogger<ModelService> logger,
 
     #region Private methods
 
-    /// <summary>
-    /// Refuses to retire the row named by <c>Summarization:ModelId</c>.
-    /// </summary>
+    /// <summary>Refuses to retire the row named by <c>Summarization:ModelId</c>.</summary>
     /// <remarks>
-    /// The startup check resolves that row and treats a deactivated one as missing, so retiring
-    /// it stops the application booting — and the seed-correcting migration is already recorded
-    /// in <c>__EFMigrationsHistory</c>, so a redeploy does not undo it. Without this guard an
-    /// administrator can brick every instance from a supported route, with recovery only by
-    /// hand-editing the database. Which model is the summarizer is an operator's configuration
-    /// decision, not something the admin catalog administers.
+    /// Startup treats a deactivated summarizer as missing and the seed migration is already applied, so
+    /// retiring it would stop every instance booting, recoverable only by hand-editing the database.
     /// </remarks>
     private void EnsureNotTheSummarizer(Guid id)
     {
@@ -231,21 +187,15 @@ public partial class ModelService(ILogger<ModelService> logger,
             return;
         }
 
-        // Not a ValidationException: that handler leaves Detail null and puts every message in
-        // the errors dictionary, and a bodyless DELETE gives a client no field to render one
-        // against — so the sentence naming the setting to change would never reach the
-        // administrator who needs it.
+        // Not a ValidationException: its handler leaves Detail null, and a bodyless DELETE has no
+        // field to render errors against, so the administrator would never see which setting to change.
         throw new SummarizerProtectedException(id);
     }
 
     /// <summary>
     /// Refuses to repoint the summarizer at a provider this deployment has no chat client for.
     /// </summary>
-    /// <remarks>
-    /// The same startup failure <see cref="EnsureNotTheSummarizer"/> guards against, reached by
-    /// a different edit: the bootstrapper resolves a chat client for the summarizer's provider
-    /// and fails the app when there is none.
-    /// </remarks>
+    /// <remarks>Startup fails when the summarizer's provider has no chat client.</remarks>
     private void EnsureSummarizerProviderIsServable(Guid id, Guid providerId)
     {
         if (id != _summarizationOptions.Value.ModelId)
@@ -283,10 +233,8 @@ public partial class ModelService(ILogger<ModelService> logger,
     }
 
     /// <summary>
-    /// Demotes every other default model (active or not) so at most one default exists.
-    /// Uses tracked entities instead of <c>ExecuteUpdate</c> so the demotion commits
-    /// atomically with the caller's <c>SaveChangesAsync</c>; the rowversion column
-    /// guards against concurrent administrators.
+    /// Demotes every other default model (active or not). Tracked rather than <c>ExecuteUpdate</c> so it
+    /// commits with the caller's save, where the rowversion guards against concurrent administrators.
     /// </summary>
     private async Task DemoteOtherDefaultsAsync(Guid keepId, Guid oid, CancellationToken cancellationToken)
     {

@@ -71,9 +71,8 @@ describe('Composer', () => {
         provideFakeUploadXhr(uploadXhr),
         UploadStore,
         provideSharedComposerUploads(),
-        // The real streaming host, deliberately: what this spec checks is the Send/Stop
-        // morph, the seed handoff and the focus fixups, and every one of them is a
-        // reaction to state a stub would have to fake into existence.
+        // The real streaming host: the Send/Stop morph, seed handoff and focus fixups all react
+        // to state a stub would have to fake.
         ConversationStore,
         TurnStore,
         provideComposerHost(TurnStore),
@@ -202,11 +201,8 @@ describe('Composer', () => {
     await loadModels([modelFixture({ isDefault: true })]);
     await composer.fixture.whenStable();
 
-    // Download (US-1502). Attach shipped with US-801 and is absent here for the other
-    // reason the repo allows: this session holds no `Upload File` grant. The microphone
-    // is absent because this TestBed provides no speech recognition. US-307's project
-    // pill is absent for a third reason again, asserted separately below: there is no
-    // conversation open, so the host has nothing for it to act on.
+    // No conversation, so no download. Attach is absent for want of the grant, and the
+    // microphone because this TestBed provides no speech recognition.
     const buttons = [...composer.host.querySelectorAll('button')];
     const labels = buttons.map(
       (button) => button.getAttribute('aria-label') ?? button.textContent?.trim() ?? '',
@@ -216,9 +212,8 @@ describe('Composer', () => {
     expect(composer.send()).not.toBeNull();
   });
 
-  it('withholds the project pill until there is a conversation to move (US-307)', async () => {
-    // Absent, not disabled: on empty `/chat` there is no conversation to assign, and
-    // pre-selecting a project for one that does not exist yet is not this story.
+  it('withholds the project pill until there is a conversation to move', async () => {
+    // Absent, not disabled: on empty `/chat` there is no conversation to assign.
     const composer = await render();
     await loadModels([modelFixture({ isDefault: true })]);
     await composer.fixture.whenStable();
@@ -227,11 +222,8 @@ describe('Composer', () => {
     expect(composer.host.querySelector('.composer__project')).toBeNull();
   });
 
-  describe('download control (US-1502)', () => {
-    /**
-     * Puts a conversation on the route with a transcript behind it. The transcript is the
-     * point: an empty one leaves nothing to export, which is criterion 5.
-     */
+  describe('download control', () => {
+    /** Puts a conversation on the route; an empty transcript leaves nothing to export. */
     async function openConversation(messages: { text: string; role: number }[]): Promise<void> {
       TestBed.inject(ConversationListStore).prependNewest(
         conversationFixture({ id: CONVERSATION_ID, name: 'Helios' }),
@@ -246,7 +238,6 @@ describe('Composer', () => {
       return host.querySelector<HTMLButtonElement>('app-conversation-download-menu .menu__trigger');
     }
 
-    /** Absent, not disabled: `/chat` before a conversation exists has nothing to offer. */
     it('is absent on the empty chat route', async () => {
       const composer = await render();
       await loadModels([modelFixture({ isDefault: true })]);
@@ -254,7 +245,6 @@ describe('Composer', () => {
       expect(control(composer.host)).toBeNull();
     });
 
-    /** Criterion 5: an empty conversation renders no control at all. */
     it('is absent for a conversation with no transcript', async () => {
       const composer = await render();
       await loadModels([modelFixture({ isDefault: true })]);
@@ -278,10 +268,6 @@ describe('Composer', () => {
       expect(trigger?.textContent?.trim()).toBe('Download Helios');
     });
 
-    /**
-     * US-407 dims `.composer__aux` while a turn runs. Carrying the class is what makes the
-     * download dim with the paperclip and the project pill rather than needing a rule.
-     */
     it('carries composer__aux, so the in-flight dimming applies to it', async () => {
       const composer = await render();
       await loadModels([modelFixture({ isDefault: true })]);
@@ -295,7 +281,6 @@ describe('Composer', () => {
       ).toBe(true);
     });
 
-    /** Frame `2g`: present but unavailable, with the reason on the control. */
     it('is disabled with a reason while a turn streams', async () => {
       const composer = await render();
       await loadModels([modelFixture({ isDefault: true })]);
@@ -310,7 +295,7 @@ describe('Composer', () => {
     });
   });
 
-  describe('project pill (US-307)', () => {
+  describe('project pill', () => {
     /** Puts a conversation on the route and in the sidebar list, as the chat route does. */
     async function openConversation(projectId: string | null = null): Promise<void> {
       TestBed.inject(ConversationListStore).prependNewest(
@@ -363,9 +348,8 @@ describe('Composer', () => {
     });
 
     it('closes the picker when the pill is pressed again', async () => {
-      // The `anchorToggles` / `insideAlso` path. Without it the outside-press handler
-      // closes the panel on pointerdown and the pill's own click reopens it, so the
-      // control that opened the panel could never dismiss it.
+      // The `anchorToggles` path: otherwise pointerdown closes the panel and the pill's own
+      // click reopens it.
       const composer = await render();
       await loadModels([modelFixture({ isDefault: true })]);
       await openConversation(null);
@@ -385,8 +369,7 @@ describe('Composer', () => {
     });
 
     it('is disabled while a turn is streaming', async () => {
-      // It carries `composer__aux`, so it is dimmed to 40% — a control that looks
-      // unavailable and still opens a popover reads as broken.
+      // Dimmed by `composer__aux`, and a dimmed control that opens a popover reads as broken.
       const composer = await render();
       await loadModels([modelFixture({ isDefault: true })]);
       await openConversation(null);
@@ -400,7 +383,7 @@ describe('Composer', () => {
     });
   });
 
-  describe('attachments (US-801)', () => {
+  describe('attachments', () => {
     /** Resolves the session so `canUploadFiles` has something to answer from. */
     async function signIn(permissions: PermissionDto[] = [UPLOAD_FILE_GRANT]): Promise<void> {
       const loaded = TestBed.inject(SessionStore).ensureLoaded();
@@ -499,9 +482,7 @@ describe('Composer', () => {
       dispatchDrag(card!, 'drop', fileDrag(textFile('notes.txt')));
       await composer.fixture.whenStable();
 
-      // The upload is the only thing in flight — no turn has been sent — so the
-      // control belongs to it: a disabled Send would leave the reader with the file
-      // going nowhere and nothing to press.
+      // Only the upload is in flight, so the control belongs to it rather than sitting disabled.
       expect(composer.send()).toBeNull();
       expect(composer.stop()).not.toBeNull();
       expect(composer.stop()?.disabled).toBe(false);
@@ -581,13 +562,12 @@ describe('Composer', () => {
       dispatchDrag(card!, 'drop', fileDrag(textFile('notes.txt')));
       await composer.fixture.whenStable();
 
-      // Retrieval is a tool call, so this model would answer without ever seeing
-      // the file — the one thing worth saying before the ingest progress.
+      // Retrieval is a tool call, so this model would answer without ever seeing the file.
       expect(composer.note().textContent).toContain('can’t read attachments');
     });
   });
 
-  describe('dictation (US-413)', () => {
+  describe('dictation', () => {
     let recognition: FakeRecognition;
 
     beforeEach(() => {
@@ -596,8 +576,7 @@ describe('Composer', () => {
     });
 
     function mic(host: HTMLElement): HTMLButtonElement | null {
-      // By label rather than by class: US-801 moved the 34px square styling onto a
-      // shared `composer__icon-button`, which the attach control wears too.
+      // By label: the attach control shares the `composer__icon-button` class.
       return host.querySelector('[aria-label="Dictate"]');
     }
 
@@ -630,9 +609,7 @@ describe('Composer', () => {
       button?.click();
       await composer.fixture.whenStable();
 
-      // The same element: swapping would destroy the control the user just
-      // pressed and drop focus to <body>, which is why the send control morphs
-      // too. The changing label is what announces the state on a focused button.
+      // The changing label is what announces the state on a focused button.
       expect(pill(composer.host)).toBe(button);
       expect(document.activeElement).toBe(button);
       expect(button?.getAttribute('aria-label')).toBe('Stop dictating');
@@ -678,8 +655,7 @@ describe('Composer', () => {
 
       expect(composer.stop()).not.toBeNull();
       expect(mic(composer.host)?.disabled).toBe(true);
-      // US-407's dimming applies through the shared class rather than a rule
-      // of the microphone's own.
+      // The dimming comes from the shared class, not a rule of the microphone's own.
       expect(mic(composer.host)?.classList.contains('composer__aux')).toBe(true);
     });
 
@@ -700,15 +676,13 @@ describe('Composer', () => {
       speech = null;
       const composer = await render();
 
-      // Absent, never present-and-disabled: a control that can never work is
-      // not a control.
       expect(mic(composer.host)).toBeNull();
       expect(pill(composer.host)).toBeNull();
     });
   });
 
-  describe('keyboard operability (US-1401)', () => {
-    /** Every control the story names, present at once: grant, speech, conversation. */
+  describe('keyboard operability', () => {
+    /** Every control present at once: grant, speech, conversation. */
     async function renderFullComposer() {
       const recognition = new FakeRecognition();
       speech = () => recognition;
@@ -731,9 +705,7 @@ describe('Composer', () => {
         .expectOne(`${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages`)
         .flush({ id: CONVERSATION_ID, name: 'Conversation', messages: [] });
 
-      // Named rather than left to the fixture's counter, which numbers models
-      // across the whole file and would make the tab-order assertion depend on
-      // how many tests ran before it.
+      // Named, as the fixture's file-wide counter would make tab order depend on test order.
       await loadModels([modelFixture({ isDefault: true, name: 'Falcon 3' })]);
       await composer.fixture.whenStable();
 
@@ -742,9 +714,7 @@ describe('Composer', () => {
 
     /** The accessible name of each tab stop, in the order a browser would walk them. */
     function tabOrder(host: HTMLElement): string[] {
-      // `tabbableWithin` is the kit's own reader — the same one the overlays use
-      // to decide where focus goes — so this asserts the order a browser would
-      // actually walk rather than the order the template happens to be written in.
+      // `tabbableWithin` is the reader the overlays use, so this is the order a browser walks.
       return tabbableWithin(host).map(
         (element) => element.getAttribute('aria-label') ?? element.textContent?.trim() ?? '',
       );
@@ -775,11 +745,8 @@ describe('Composer', () => {
       const prompt = composer.prompt();
       const card = composer.host.querySelector<HTMLElement>('.composer');
 
-      // The textarea is borderless and suppresses its own outline, so the card's
-      // `:has(.composer__prompt:focus)` ring is its *only* focus indicator. That
-      // couples SC 1.4.11 to a class-name string in a selector, which a rename
-      // would break silently — `check:forbidden` stays green, because the
-      // suppression carries an escape hatch. This is what notices.
+      // The card ring is the textarea's only focus indicator, coupled by class name; a rename
+      // would pass `check:forbidden` behind its escape hatch, so this is what notices.
       expect(prompt.classList.contains('composer__prompt')).toBe(true);
       expect(card?.matches(':has(.composer__prompt:focus)')).toBe(false);
 
@@ -791,9 +758,7 @@ describe('Composer', () => {
     it('leaves the hidden file input out of the tab order, and the picker in it', async () => {
       const composer = await renderFullComposer();
 
-      // Off-screen rather than `display: none`, because a hidden input is not
-      // focusable and `.click()` is a no-op in some engines — so it is reachable
-      // by the button beside it and by nothing else.
+      // Off-screen, so `.click()` works; reachable through the button beside it and nothing else.
       const input = composer.host.querySelector<HTMLInputElement>('.composer__file-input');
       expect(input).not.toBeNull();
       expect(input?.getAttribute('tabindex')).toBe('-1');
@@ -810,10 +775,7 @@ describe('Composer', () => {
 
       const stops = tabOrder(composer.host);
 
-      // Criterion 3's second half. The control the user just pressed *morphed*
-      // rather than being replaced, so Stop is the same element Send was — which
-      // is why focus is still on it rather than back at `<body>`, and why it is
-      // still a tab stop.
+      // Stop is the same element Send was, so focus stays on it and it is still a tab stop.
       expect(stops).toContain('Stop');
       expect(composer.stop()).toBe(send);
       expect(document.activeElement).toBe(send);
@@ -825,7 +787,7 @@ describe('Composer', () => {
     });
   });
 
-  it('sends the trimmed prompt through the turn store and clears the box (US-401)', async () => {
+  it('sends the trimmed prompt through the turn store and clears the box', async () => {
     const composer = await render();
     await loadModels([modelFixture({ isDefault: true })]);
     await composer.type('  Hello there  ');
@@ -854,7 +816,7 @@ describe('Composer', () => {
     expect(JSON.parse(init.body as string)).toMatchObject({ prompt: 'Hello there' });
   });
 
-  it('swaps send for the Stop control while the turn is in flight (US-407)', async () => {
+  it('swaps send for the Stop control while the turn is in flight', async () => {
     const composer = await render();
     await loadModels([modelFixture({ isDefault: true })]);
     await composer.type('Hello there');
@@ -862,7 +824,7 @@ describe('Composer', () => {
     composer.send()?.click();
     await composer.fixture.whenStable();
 
-    // In flight: the 38px circular Stop replaces send outright.
+    // In flight: Stop replaces Send.
     expect(composer.send()).toBeNull();
     const stop = composer.stop();
     expect(stop).not.toBeNull();

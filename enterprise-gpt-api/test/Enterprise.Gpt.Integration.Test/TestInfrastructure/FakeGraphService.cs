@@ -6,25 +6,14 @@ using GraphUser = Microsoft.Graph.Models.User;
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 
 /// <summary>
-/// In-memory stand-in for <see cref="IGraphService"/>. The real implementation calls Microsoft
-/// Graph over the network, so without this substitution every user-provisioning test would issue
-/// a live directory request against the fake credentials the factory supplies. Lookups that miss
-/// throw <see cref="NotFoundException"/>, matching the production contract that drives the 404
-/// responses under test.
+/// In-memory <see cref="IGraphService"/>. Misses throw <see cref="NotFoundException"/>, matching the
+/// production contract behind the 404s under test.
 /// </summary>
 public sealed class FakeGraphService : IGraphService
 {
     private readonly ConcurrentDictionary<Guid, GraphUser> _byOid = new();
     private readonly ConcurrentDictionary<string, GraphUser> _byEmail = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Registers a directory user resolvable by both object id and email.
-    /// </summary>
-    /// <param name="oid">The object id the directory user reports.</param>
-    /// <param name="givenName">The given name, or <see langword="null"/> to omit it.</param>
-    /// <param name="surname">The surname, or <see langword="null"/> to omit it.</param>
-    /// <param name="mail">The mail address, or <see langword="null"/> to omit it.</param>
-    /// <param name="userPrincipalName">The UPN used as the email fallback.</param>
     public void AddUser(Guid oid, string? givenName, string? surname, string? mail, string? userPrincipalName = null)
     {
         var user = new GraphUser
@@ -43,9 +32,6 @@ public sealed class FakeGraphService : IGraphService
         }
     }
 
-    /// <summary>
-    /// Clears every registered directory user so tests start from a known-empty directory.
-    /// </summary>
     public void Reset()
     {
         _byOid.Clear();

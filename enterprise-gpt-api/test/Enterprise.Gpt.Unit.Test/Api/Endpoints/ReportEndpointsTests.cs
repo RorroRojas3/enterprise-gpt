@@ -13,9 +13,8 @@ public class ReportEndpointsTests
     [Fact]
     public async Task GetUsageReportAsync_NoQueryString_PassesTheAbsencesThroughRatherThanDefaultingThem()
     {
-        // The handler must not invent a window. Both bounds and the grouping are resolved in the
-        // service, which is also where they are validated — a default applied here would be a
-        // second copy of that decision, and the two would drift.
+        // The handler must not invent a window: bounds and grouping are resolved and validated in the
+        // service, and a second default here would drift from it.
         _reportService
             .GetUsageReportAsync(null, null, null, Arg.Any<CancellationToken>())
             .Returns(new UsageReportDto

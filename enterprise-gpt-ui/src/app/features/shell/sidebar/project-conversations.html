@@ -1,19 +1,11 @@
-<!--
-  Frame `Sidebar` lines 53-62: the nested list, indented under its project row, 30px
-  rows with the outline chat glyph. `aria-busy` rather than a spinner, matching the
-  conversations list below it.
--->
+<!-- `aria-busy` rather than a spinner, matching the conversations list below. -->
 <div class="nested" [attr.aria-busy]="conversations.isPending() ? 'true' : null">
   @if (conversations.isFirstLoad()) {
     @for (row of skeletonRows; track $index) {
       <app-skeleton class="nested__skeleton" variant="block" height="30px" />
     }
   } @else if (conversations.error(); as error) {
-    <!--
-      No heading: this panel sits inside a disclosure whose own row already names the
-      project, and a second heading here would put a level under the section's <h2>
-      for one failed sub-request.
-    -->
+    <!-- No heading: the disclosure's own row already names the project. -->
     <app-error-panel
       [error]="error"
       [headingLevel]="null"
@@ -22,10 +14,7 @@
       (retried)="conversations.retry()"
     />
   } @else if (conversations.entities().length === 0) {
-    <!--
-      A line rather than an `app-empty-state`: the kit's empty state carries a heading
-      and an action slot, and this is one sentence inside a disclosure two levels deep.
-    -->
+    <!-- A line, not `app-empty-state`: this is one sentence in a nested disclosure. -->
     <p class="nested__empty">No conversations yet.</p>
   } @else {
     <ul class="nested__rows">
@@ -45,11 +34,7 @@
       }
     </ul>
 
-    <!--
-      Stated rather than silent, exactly as the conversations list below states its own
-      cut-off: the node shows the newest page of a project that may have more, and an
-      undisclosed stop reads as "this is all of them".
-    -->
+    <!-- Stated, not silent: an undisclosed stop reads as "this is all of them". -->
     @if (conversations.hasMore()) {
       <button
         class="btn btn-sm btn-link nested__more"

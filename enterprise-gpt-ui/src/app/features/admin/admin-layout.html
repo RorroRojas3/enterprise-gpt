@@ -10,9 +10,6 @@
     <ul class="admin-nav__list">
       @for (tab of tabs; track tab.id) {
         <li>
-          <!-- `ariaCurrentWhenActive` rather than a class alone: the rail marks the open
-               tab visually *and* tells a screen reader which one it is, which is the
-               difference between a styled link and a navigation state. -->
           <a
             class="admin-nav__link"
             routerLinkActive="admin-nav__link--active"

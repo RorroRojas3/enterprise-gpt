@@ -1,11 +1,6 @@
 @use 'breakpoints' as bp;
 
-// Frame 4j's column: the title, then the toolbar, then the card-surfaced list.
-//
-// `.shell__main` is `overflow: hidden`, so a routed screen that does not scroll
-// itself is *clipped* below the fold rather than scrolled — the same fix every
-// shell child carries. `min-height: 0` is what lets the flex item shrink enough
-// for `overflow-y` to engage.
+// `.shell__main` clips its overflow, so a routed screen must scroll itself.
 :host {
   display: flex;
   flex-direction: column;
@@ -15,8 +10,7 @@
   overflow-y: auto;
 }
 
-// The board's gutters are drawn at 1440px; on a phone they would spend 68px on
-// nothing.
+// Desktop gutters would spend 68px of a phone on nothing.
 @include bp.mobile {
   :host {
     padding: 18px 14px;
@@ -29,8 +23,7 @@
   font-weight: 700;
 }
 
-// Wraps rather than overflowing, like every toolbar here: only the field can shrink
-// (WCAG SC 1.4.10 Reflow).
+// Wraps (WCAG 1.4.10 Reflow): only the search field can shrink.
 .documents__toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -38,7 +31,6 @@
   gap: 12px;
 }
 
-// The board's 320px field. It shrinks rather than overflowing the toolbar.
 .documents__search {
   flex: 0 1 320px;
   min-width: 0;
@@ -57,7 +49,6 @@
   }
 }
 
-// The far end of the toolbar, as the conversations library places its counter.
 .documents__count {
   margin: 0 0 0 auto;
   color: var(--muted);
@@ -71,10 +62,8 @@
   }
 }
 
-// `flex: none` is load-bearing, not tidiness. The host is a flex column that scrolls,
-// so this card would otherwise shrink to the space left over and — because `overflow`
-// is `hidden` for the corner radius — clip its own rows instead of overflowing the
-// host. Nothing then scrolls anywhere and every row past the fold is unreachable.
+// `flex: none`, or the card shrinks to the scrolling host's leftover space and its
+// `overflow: hidden` clips the rows past the fold out of reach.
 .documents__card {
   flex: none;
   background: var(--surface);
@@ -95,7 +84,6 @@
   }
 }
 
-// Frame 4j's group header: chevron, conversation glyph and link, then the count.
 .documents__group-header {
   display: flex;
   align-items: center;
@@ -165,9 +153,7 @@
   font-size: 12px;
 }
 
-// The board's 34px indent for rows under a header. A parent rule on the host wins
-// over the row's own `:host` padding because scoped parent selectors carry higher
-// specificity.
+// Beats the row's own `:host` padding: the scoped parent selector is more specific.
 .documents__group-list li app-document-row {
   padding-left: 34px;
 }
@@ -186,8 +172,7 @@
   }
 }
 
-// Centred beneath the card, and collapsed entirely once the control removes itself so the
-// host's own gap does not leave a gutter under the last row.
+// Collapsed once the control goes, so the host's gap leaves no gutter under the last row.
 .documents__more {
   display: flex;
   justify-content: center;

@@ -4,22 +4,17 @@ namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
 /// A write-only stream that remembers what was written and how it was chunked.
 /// </summary>
 /// <remarks>
-/// The chunk sizes are the point: they are how a test proves a response wrapper forwarded each fragment
-/// as it arrived rather than accumulating and delivering once at the end, which is the difference between
-/// a working SSE stream and a broken one.
+/// Chunk sizes prove a response wrapper forwarded each fragment as it arrived rather than buffering to
+/// the end, which is what SSE depends on.
 /// </remarks>
 public sealed class RecordingStream : Stream
 {
     private readonly MemoryStream _content = new();
 
-    /// <summary>The size of each individual write, in order.</summary>
     public List<int> WriteSizes { get; } = [];
 
-    /// <summary>How many times the stream was flushed.</summary>
     public int FlushCount { get; private set; }
 
-    /// <summary>Everything written so far.</summary>
-    /// <returns>The accumulated bytes.</returns>
     public byte[] ToArray() => _content.ToArray();
 
     /// <inheritdoc />

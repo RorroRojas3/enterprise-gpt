@@ -132,8 +132,7 @@ describe('McpCredentialStore', () => {
     const server = githubFixture();
     store.open(server);
     store.save('github_pat_abcdwxyz');
-    // Force-closed while the save was in flight, which Chromium allows on a second Escape
-    // even though the modal is marked busy.
+    // Chromium force-closes on a second Escape even while the modal is busy.
     store.close();
 
     backend.expectOne(credentialUrl(server)).flush(PROBLEM_FIXTURES.forbidden, {
@@ -154,8 +153,6 @@ describe('McpCredentialStore', () => {
 
     store.open(githubFixture({ name: 'Jira' }));
 
-    // Every field and button is disabled while busy, and Escape is suppressed: opening now
-    // would present a modal with no way out.
     expect(store.target()?.id).toBe(server.id);
   });
 

@@ -5,9 +5,7 @@ using Xunit;
 namespace Enterprise.Gpt.Integration.Test.Conversations;
 
 /// <summary>
-/// Covers the <c>Core.ConversationUsageToolCall</c> table against a real SQL Server, which is the
-/// only place the schema itself is exercised: there are no migrations, so the model configuration
-/// is what creates this table and nothing else proves it can.
+/// Covers <c>Core.ConversationUsageToolCall</c> on real SQL Server, the only place its schema is exercised.
 /// </summary>
 [Collection(IntegrationTestCollection.Name)]
 [Trait("Category", "Integration")]
@@ -25,9 +23,7 @@ public sealed class ConversationUsageToolCallIntegrationTests(IntegrationTestFix
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     /// <summary>
-    /// Saving the whole turn as one graph is how the service writes it, which is what lets EF
-    /// assign the sequential keys and wire each child's parent — the alternative would be random
-    /// identifiers in the clustered key of the largest table in the schema.
+    /// The service saves a turn as one graph so EF assigns sequential keys and wires each child's parent.
     /// </summary>
     [Fact]
     public async Task SaveChangesAsync_NestedToolCalls_PersistsTheTreeWithParentLinks()
@@ -63,9 +59,8 @@ public sealed class ConversationUsageToolCallIntegrationTests(IntegrationTestFix
         Assert.All(calls, call => Assert.Equal(usageId, call.ConversationUsageId));
     }
 
-    // The audit trail has no cascade behind it by design, and the table references itself, so a
-    // set-based delete of the whole table has no ordering guarantee. Pinned here because the
-    // per-test reset every other integration class depends on runs through this path.
+    // The audit trail has no cascade and the table references itself, so a set-based delete has no
+    // ordering guarantee; every integration class's per-test reset runs through this path.
     [Fact]
     public async Task ResetConversationsAndDocumentsAsync_ToolCallsExist_ClearsThemDespiteTheSelfReference()
     {

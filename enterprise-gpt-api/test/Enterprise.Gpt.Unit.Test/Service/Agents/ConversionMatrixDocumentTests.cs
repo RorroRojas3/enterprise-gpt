@@ -8,19 +8,13 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Service.Agents;
 
 /// <summary>
-/// Guards the published conversion matrix and the documentation table rendered from it.
+/// Requires the published documentation table to be character-for-character what the conversion matrix
+/// JSON renders to, and prints the correct block when it is not.
 /// </summary>
-/// <remarks>
-/// A JSON file alone does not make a single source: the moment someone renders it into prose, prose is
-/// what the next reader believes. These tests require the published table to be character-for-character
-/// what the JSON renders to, and print the correct block when it is not. No Azure, Docker or
-/// credentials — the run that produces the data is billable, and the guard on it must not be.
-/// </remarks>
 public sealed class ConversionMatrixDocumentTests
 {
-    // Resolved against the assembly rather than the current directory. Both files arrive through
-    // copy-to-output, and a runner that does not set the working directory to the output folder would
-    // otherwise fail with a file-not-found that names neither of them.
+    // Resolved against the assembly, not the working directory, which a runner may not set to the
+    // output folder.
     private static readonly string MatrixPath =
         Path.Combine(AppContext.BaseDirectory, "Agents", "Documents", "conversion-matrix.json");
 
@@ -77,9 +71,8 @@ public sealed class ConversionMatrixDocumentTests
             Assert.Contains(cell.GetProperty("tier").GetString(), Tiers);
             Assert.Contains(cell.GetProperty("proposedTier").GetString(), Tiers);
 
-            // Rendering the published table reads a glyph per tier, so a tier with none is a table
-            // that cannot be produced at all - checked here rather than surfacing as a bare
-            // KeyNotFoundException out of the renderer.
+            // Rendering reads a glyph per tier; checked here rather than surfacing as a bare
+            // KeyNotFoundException from the renderer.
             Assert.True(
                 matrix.RootElement.GetProperty("tierGlyphs").TryGetProperty(cell.GetProperty("tier").GetString()!, out _),
                 $"The cell for {pair} carries tier '{cell.GetProperty("tier").GetString()}', which tierGlyphs has no glyph for.");
@@ -154,8 +147,8 @@ public sealed class ConversionMatrixDocumentTests
             + $"between the markers with:{Environment.NewLine}{Environment.NewLine}{rendered}");
     }
 
-    // The third reader of this file, and the one that acts on it: a pair offered in the skill and refused
-    // in code — or the reverse — is what publishing one file rather than three tables prevents.
+    // The reader that acts on the file: a pair offered in the skill but refused in code, or the reverse,
+    // is what a single source prevents.
     [Fact]
     public void ConversionMatrixLoader_EveryCell_AgreesWithTheJsonItWasReadFrom()
     {

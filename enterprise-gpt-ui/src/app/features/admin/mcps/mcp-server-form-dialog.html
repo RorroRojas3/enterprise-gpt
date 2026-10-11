@@ -5,19 +5,11 @@
   [busy]="actions.formBusy()"
   (closed)="actions.cancelForm()"
 >
-  <!--
-    novalidate: the schema rules own validation, and the browser's own required bubble
-    would fight frame `5h`'s inline message.
-  -->
+  <!-- novalidate: the browser's required bubble would fight the schema's inline messages. -->
   <form id="mcp-server-form" class="mcp-form" novalidate (submit)="submit($event)">
     @if (actions.formFailure(); as failure) {
-      <!--
-        Frame `5h`'s `--fail` panel. It names the server the failed request was about —
-        not the row on screen now — because create and edit share one dialog and a reader
-        who was interrupted needs to know which save failed. It renders for a validation
-        problem as well as a transport-level one, which is why a non-validation failure on
-        this surface raises no toast: the same fact must not be reported twice.
-      -->
+      <!-- Names the server the failed save was about, since create and edit share this dialog.
+           It covers transport failures too, which is why this surface raises no toast. -->
       <div class="mcp-form__summary" role="alert">
         <p class="mcp-form__summary-line">
           Couldn’t save <strong>{{ failure.serverName }}</strong
@@ -35,10 +27,7 @@
     <div class="mcp-form__grid">
       <div class="mcp-form__field">
         <label class="form-label" for="mcp-form-name">Name</label>
-        <!--
-          No literal maxlength: NG8022 — the [formField] directive owns the constraint
-          attributes and derives this one from the schema's maxLength rule.
-        -->
+        <!-- No literal maxlength: [formField] derives it from the schema (NG8022). -->
         <input
           id="mcp-form-name"
           class="form-control"
@@ -59,12 +48,7 @@
             }
           </div>
         }
-        <!--
-          Frame `5h` draws a "Linked permission" select and this system has no field for
-          one: the server creates that permission itself and names it after the server.
-          Saying so here is also the only way the name-collision refusal makes sense — the
-          two share one uniqueness space.
-        -->
+        <!-- Explains why a name can collide with a permission the admin never created. -->
         <p class="mcp-form__note" id="mcp-form-name-note">
           A permission with this name is created alongside the server, and renamed with it.
         </p>
@@ -72,12 +56,8 @@
 
       <div class="mcp-form__field">
         <label class="form-label" for="mcp-form-auth">Auth type</label>
-        <!--
-          Two options, not frame `5h`'s three: `McpAuthTypes` has None and
-          EntraIdOnBehalfOf, and neither "Header key" nor "OAuth2" exists in this system.
-          The values are numbers on the wire — the API registers no string enum converter
-          — and are bound as strings here because a native select binds strings.
-        -->
+        <!-- The values are numbers on the wire (the API has no string enum converter), bound
+             here as strings because a native select binds strings. -->
         <select
           id="mcp-form-auth"
           class="form-select"
@@ -98,9 +78,7 @@
                 <p class="mcp-form__error">{{ message }}</p>
               }
             }
-            <!-- An edit of a row seeded with an auth type this build does not offer. The
-                 select has no option to show it, so the message names the raw value and
-                 says what to do — ungated by `touched`, because nobody typed it. -->
+            <!-- A seeded auth type the select has no option for. -->
             @if (unsupportedAuthType(); as message) {
               <p class="mcp-form__error">{{ message }}</p>
             }
@@ -122,10 +100,7 @@
               <option [value]="option.value">{{ option.label }}</option>
             }
           </select>
-          <!--
-            Decoration: the select's own value is what a screen reader announces, and a
-            second reading of the same choice beside it would be announced twice.
-          -->
+          <!-- Decorative: the select's value is already announced. -->
           @if (iconPreview(); as mark) {
             <app-brand-icon class="mcp-form__icon-preview" [name]="mark" />
           }
@@ -137,12 +112,7 @@
             }
           </div>
         }
-        <!--
-          A row a newer client wrote. `role="status"`, not the `role="alert"` its sibling
-          fields use, because this is explicitly not a blocker: the key round-trips
-          unchanged and Save stays enabled, so interrupting the dialog's own announcement
-          to say so would overstate it.
-        -->
+        <!-- `role="status"`, not "alert": the key round-trips unchanged and Save stays enabled. -->
         @if (unsupportedIcon(); as message) {
           <p class="mcp-form__note" id="mcp-form-icon-note" role="status">{{ message }}</p>
         }
@@ -191,11 +161,7 @@
         }
       </div>
 
-      <!--
-        Conditional in both directions, because the validator is: a scope is required for
-        Entra ID and refused outright for None. Hidden *and* cleared on a switch, so what
-        the dialog shows is what the save will store.
-      -->
+      <!-- Required for Entra ID and refused for None, so it is hidden and cleared on a switch. -->
       @if (showScope()) {
         <div class="mcp-form__field mcp-form__field--wide">
           <label class="form-label" for="mcp-form-scope">Scope</label>
@@ -227,15 +193,9 @@
         </div>
       }
 
-      <!--
-        A textarea of `Name: value` lines, not a repeated-row editor. Signal Forms' array
-        support is `@experimental`, and an indexed editor would make the API key its
-        rejections `Headers[0].Name` — which `serverMessagesFor` is documented not to match.
-        The API faults the whole set as `Headers`, so this field behaves like the other six.
-
-        No literal `maxlength`: the budget is the serialized JSON the API stores, not the
-        characters typed, so `headersError` owns the constraint.
-      -->
+      <!-- `Name: value` lines rather than a row editor: Signal Forms' array support is
+           `@experimental`, and indexed keys like `Headers[0].Name` would not match
+           `serverMessagesFor`. No literal maxlength: `headersError` owns the budget. -->
       <div class="mcp-form__field mcp-form__field--wide">
         <label class="form-label" for="mcp-form-headers">Headers</label>
         <textarea
@@ -259,12 +219,8 @@
             }
           </div>
         }
-        <!--
-          Only the normative sentence carries the id `aria-describedby` points at. The rationale
-          is a sibling outside that reference, because the whole block would otherwise be read
-          out in full every time focus entered the textarea — it is three times the length of the
-          scope note above, the longest one this dialog had.
-        -->
+        <!-- Only the normative sentence is referenced by `aria-describedby`; the rationale
+             below would otherwise be read out on every focus. -->
         <p class="mcp-form__note" id="mcp-form-headers-note">
           One per line, as <span class="font-mono">Name: value</span> — up to
           {{ headerLimits.count }}. Configuration only: values are stored and shown in plain text.
@@ -281,10 +237,7 @@
     </div>
   </form>
 
-  <!--
-    modalFooter on each button, never on a wrapper div: the kit's footer is the flex row,
-    and a wrapper would collapse its gap once Angular strips the inter-element whitespace.
-  -->
+  <!-- modalFooter per button: a wrapper div would collapse the footer's flex gap. -->
   <button
     modalFooter
     class="btn btn-outline-secondary"
@@ -294,11 +247,7 @@
   >
     Cancel
   </button>
-  <!--
-    Outside the <form> element (the footer projects into the modal's slot), so the native
-    `form` attribute is what ties it back — and what makes Enter in a field perform this
-    button's submit.
-  -->
+  <!-- Projected outside the <form>, so the `form` attribute ties it back, Enter included. -->
   <button
     modalFooter
     class="btn btn-primary"

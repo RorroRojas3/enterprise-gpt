@@ -17,75 +17,32 @@ namespace Enterprise.Gpt.Service.Permissions;
 
 public interface IPermissionService
 {
-    /// <summary>
-    /// Gets all active permissions, ordered by name.
-    /// </summary>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The list of active permissions.</returns>
+    /// <summary>Gets all active permissions, ordered by name.</summary>
     Task<List<PermissionDto>> GetPermissionsAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Gets every permission, active and deactivated, ordered by name.
-    /// </summary>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The list of all permissions.</returns>
+    /// <summary>Gets every permission, deactivated included, ordered by name.</summary>
     Task<List<PermissionDto>> GetAllPermissionsIncludingDeactivatedAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Gets a single active permission by id.
-    /// </summary>
-    /// <param name="id">The permission id.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The matching permission.</returns>
     /// <exception cref="NotFoundException">No active permission with <paramref name="id"/> exists.</exception>
     Task<PermissionDto> GetPermissionAsync(Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Creates a new custom permission after validating the request.
-    /// </summary>
-    /// <param name="request">The creation request.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The created permission.</returns>
     /// <exception cref="ValidationException">The name is already in use by an active permission or MCP server.</exception>
     Task<PermissionDto> CreatePermissionAsync(CreatePermissionActionDto request, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Updates an existing active custom permission after validating the request.
-    /// </summary>
-    /// <param name="id">The id of the permission to update.</param>
-    /// <param name="request">The update request.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The updated permission.</returns>
-    /// <exception cref="ValidationException">The permission is a built-in, the permission is managed by an MCP server, or the name is already in use.</exception>
+    /// <exception cref="ValidationException">The permission is built-in or MCP-managed, or the name is in use.</exception>
     /// <exception cref="NotFoundException">No active permission with <paramref name="id"/> exists.</exception>
     Task<PermissionDto> UpdatePermissionAsync(Guid id, UpdatePermissionActionDto request, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Soft-deletes a custom permission together with every active grant of it, in one
-    /// atomic save.
-    /// </summary>
-    /// <param name="id">The id of the permission to deactivate.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <exception cref="ValidationException">The permission is a built-in or is managed by an MCP server.</exception>
+    /// <summary>Soft-deletes a custom permission and its active grants in one save.</summary>
+    /// <exception cref="ValidationException">The permission is built-in or MCP-managed.</exception>
     /// <exception cref="NotFoundException">No active permission with <paramref name="id"/> exists.</exception>
     Task DeactivatePermissionAsync(Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Grants a permission to a user. Granting an already-held permission is an idempotent
-    /// no-op; a previously revoked grant is re-established with a fresh row.
-    /// </summary>
-    /// <param name="userId">The id of the user receiving the grant.</param>
-    /// <param name="permissionId">The id of the permission to grant.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <summary>Idempotent; a previously revoked grant is re-established with a fresh row.</summary>
     /// <exception cref="NotFoundException">The user or the permission does not exist or is deactivated.</exception>
     Task GrantPermissionAsync(Guid userId, Guid permissionId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Revokes a user's active grant of a permission by soft-deleting the grant row.
-    /// </summary>
-    /// <param name="userId">The id of the user losing the grant.</param>
-    /// <param name="permissionId">The id of the permission to revoke.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <summary>Soft-deletes the user's active grant.</summary>
     /// <exception cref="ValidationException">The caller is revoking their own Administrator permission.</exception>
     /// <exception cref="NotFoundException">The user holds no active grant of the permission.</exception>
     Task RevokePermissionAsync(Guid userId, Guid permissionId, CancellationToken cancellationToken = default);
@@ -193,8 +150,7 @@ public partial class PermissionService(ILogger<PermissionService> logger,
         var oid = _tokenService.GetOid();
         var date = _timeProvider.GetUtcNow();
 
-        // Tracked entities so the permission and its grants deactivate in one atomic save,
-        // preserving the invariant that an active grant implies an active permission.
+        // One atomic save keeps "active grant implies active permission".
         permission.DateDeactivated = date;
         permission.ModifiedById = oid;
 
@@ -204,7 +160,6 @@ public partial class PermissionService(ILogger<PermissionService> logger,
             grant.ModifiedById = oid;
         }
 
-        // Collected from the already-included graph, so the cascade costs no extra query.
         Guid[] affectedUserIds = [.. permission.UserPermissions.Select(g => g.UserId).Distinct()];
 
         await _ctx.SaveChangesOrConflictAsync($"Permission '{id}' was changed by another request. Reload it and try again.", cancellationToken);
@@ -240,8 +195,7 @@ public partial class PermissionService(ILogger<PermissionService> logger,
 
         var oid = _tokenService.GetOid();
 
-        // A previously revoked pair inserts a fresh row; the filtered unique index only
-        // covers active rows, so revoked history is preserved.
+        // The filtered unique index covers only active rows, so a re-grant inserts and revoked history stays.
         _ctx.Add(new UserPermission
         {
             Id = Guid.NewGuid(),
@@ -262,9 +216,7 @@ public partial class PermissionService(ILogger<PermissionService> logger,
     {
         var oid = _tokenService.GetOid();
 
-        // The same invariant UserService.UpdateUserAsync enforces on the bulk permission
-        // diff. Both routes can revoke this grant, so guarding only one would leave the
-        // lockout reachable by calling this endpoint with your own id.
+        // Mirrors UserService.UpdateUserAsync: both routes can revoke this grant, so both block self-lockout.
         if (userId == oid && permissionId == PermissionIds.Administrator)
         {
             throw new ValidationException(
@@ -288,8 +240,6 @@ public partial class PermissionService(ILogger<PermissionService> logger,
             throw new NotFoundException("The user holds no active grant of this permission.");
         }
 
-        // ExecuteUpdateAsync bypasses the change tracker, so rows > 0 is the only signal that
-        // anything actually changed.
         _permissionCache.Invalidate(userId);
 
         LogPermissionRevokedFromUser(_logger, permissionId, userId, oid);
@@ -297,16 +247,11 @@ public partial class PermissionService(ILogger<PermissionService> logger,
 
     #region Private methods
 
-    /// <summary>
-    /// Throws when the permission is one of the built-ins or is managed by an MCP server;
-    /// those rows follow their own lifecycles and must not be edited directly.
-    /// </summary>
+    // Built-in and MCP-managed permissions follow their own lifecycles and must not be edited directly.
     private static void EnsurePermissionIsCustom(Permission permission)
     {
-        // Every built-in is referenced by fixed id from code — Administrator by admin routes,
-        // Upload File by DocumentEndpoints, Generate Files by the turn's tool composition — so
-        // renaming or deleting one would break what depends on it. Driven off Names, which only
-        // endpoint-filter ids are forced into at map time; PermissionIdsTests holds the rest.
+        // Built-ins are referenced by fixed id from code, so renaming or deleting one breaks its callers.
+        // Names lists them all: endpoint-filter ids are forced in at map time, PermissionIdsTests the rest.
         if (PermissionIds.Names.TryGetValue(permission.Id, out var builtInName))
         {
             throw new ValidationException(
@@ -324,12 +269,8 @@ public partial class PermissionService(ILogger<PermissionService> logger,
         }
     }
 
-    /// <summary>
-    /// Throws when the name is already used by an active permission or an active MCP
-    /// server, so callers get a clear 400 instead of an opaque unique-index violation at
-    /// save time. Permission and server names share one uniqueness space because every
-    /// server auto-creates a same-named permission.
-    /// </summary>
+    // A clear 400 rather than a unique-index violation at save. Permission and server names share one
+    // space because every server creates a same-named permission.
     private async Task EnsureNameIsAvailableAsync(string name, Guid? excludePermissionId, CancellationToken cancellationToken)
     {
         var permissionNameTaken = await _ctx.Permissions

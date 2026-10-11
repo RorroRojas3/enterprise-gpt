@@ -1,12 +1,5 @@
-<!--
-  `stayOpen`, because the panel has to survive the click that starts the download: the
-  chosen item shows its ring and the rest dim, and a menu that closed on activation would
-  take all of them off screen. Escape, Tab, an outside press and a scroll still dismiss
-  it — it is not modal.
-
-  `hint` is the reason the trigger is unavailable, and null when it is not: the tooltip is
-  visual only, and the same sentence is folded into `label` for assistive technology.
--->
+<!-- `stayOpen` so the panel survives the click that starts the download. `hint` is visual only;
+     `triggerLabel` carries the same reason for assistive technology. -->
 <app-menu
   icon="bi-download"
   [label]="triggerLabel()"
@@ -20,20 +13,9 @@
 >
   @for (option of options; track option.format) {
     @let busy = preparing() === option.format;
-    <!--
-      `aria-disabled`, never the native attribute: a natively disabled item cannot take
-      focus, which strands the panel's roving focus and its Escape handling. `onChoose`
-      re-checks, so the click is a guarded no-op rather than a hole.
-
-      `aria-busy` on the one that is working and `aria-disabled` on the rest: the busy row
-      is deliberately undimmed, and announcing it as unavailable would contradict both the
-      pixels and the fact that it is the row the reader just chose.
-
-      `aria-describedby` is what puts the footer note on each item. The note is not a
-      `menuitem` — it is a caveat, not an action — and a screen reader in menu mode visits
-      only `menuitem`s, so without this the one warning the panel exists to give is
-      visual-only.
-    -->
+    <!-- `aria-disabled`, not native, so roving focus is not stranded; `onChoose` re-checks.
+         The busy row is neither dimmed nor disabled. `aria-describedby` reads out the note,
+         which menu mode would otherwise skip. -->
     <button
       appMenuItem
       type="button"
@@ -56,10 +38,7 @@
     </button>
   }
 
-  <!--
-    Not an `appMenuItem`: it is a note, not an action, so it must not become another stop
-    in the panel's roving focus. The stopped, unsaved answer card is what it warns about.
-  -->
+  <!-- Not an `appMenuItem`: a note must not become a stop in the panel's roving focus. -->
   <p class="download-menu__note" [id]="noteId">
     The stopped, unsaved answer on screen won’t be included.
   </p>

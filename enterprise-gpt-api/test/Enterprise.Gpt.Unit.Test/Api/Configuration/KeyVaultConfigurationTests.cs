@@ -9,10 +9,6 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Api.Configuration;
 
-/// <summary>
-/// Covers the decision to add a key vault to the configuration chain, and the section shapes that
-/// must refuse to start rather than boot without their secrets.
-/// </summary>
 /// <remarks>
 /// The enabled path reaches a vault by design, so only its refusals run end to end; the paths that
 /// must add nothing are asserted against <c>AddEnterpriseGptKeyVault</c> itself.
@@ -41,8 +37,7 @@ public sealed class KeyVaultConfigurationTests
     }
 
     /// <summary>
-    /// The shape a template most easily produces: appsettings.json commits an empty VaultUri, so an
-    /// operator who sets only KeyVault__Enabled lands here rather than on a missing key.
+    /// appsettings.json commits an empty VaultUri, so setting only KeyVault__Enabled lands here.
     /// </summary>
     [Theory]
     [InlineData("")]
@@ -131,8 +126,7 @@ public sealed class KeyVaultConfigurationTests
     }
 
     /// <summary>
-    /// The only thing standing between a template's empty app setting and a credential configured with
-    /// an empty client id on both legs, reported as a user-assigned identity it does not have.
+    /// A template's empty app setting must not become a user-assigned identity with an empty client id.
     /// </summary>
     [Theory]
     [InlineData("")]
@@ -148,9 +142,8 @@ public sealed class KeyVaultConfigurationTests
     }
 
     /// <remarks>
-    /// The API's own <c>appsettings.json</c>, linked into this project's output rather than copied into
-    /// a literal here, so a value edited in the real file cannot leave this test green. A committed
-    /// <c>true</c> would point every environment at whatever vault the file happened to name.
+    /// Reads the API's real <c>appsettings.json</c>, linked into the output; a committed <c>true</c> would
+    /// point every environment at a vault.
     /// </remarks>
     [Fact]
     public void Resolve_TheShippedDefaults_AddNoVault()
@@ -161,9 +154,8 @@ public sealed class KeyVaultConfigurationTests
     }
 
     /// <summary>
-    /// The contract the feature is named for: switched off, no configuration source is appended. Held
-    /// against the registration itself, because a refactor that built the client before consulting the
-    /// section would leave every <c>Resolve</c> test green.
+    /// Asserted on the registration, since building the client before reading the section would leave
+    /// every <c>Resolve</c> test green.
     /// </summary>
     [Theory]
     [InlineData("Production", "false")]
@@ -199,10 +191,6 @@ public sealed class KeyVaultConfigurationTests
         Assert.Empty(collector.GetSnapshot());
     }
 
-    /// <summary>
-    /// Which secrets a deployment holds is worth not publishing, and the identity it authenticates as
-    /// is nobody's business downstream of the log sink.
-    /// </summary>
     [Fact]
     public void LogStatus_Vault_ReportsTheHostAndNotTheClientId()
     {

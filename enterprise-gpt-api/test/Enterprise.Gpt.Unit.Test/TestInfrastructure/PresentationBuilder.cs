@@ -9,17 +9,10 @@ namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
 /// Builds minimal in-memory <c>.pptx</c> packages for tests.
 /// </summary>
 /// <remarks>
-/// Generating the fixture rather than checking in a binary keeps the expected text visible in the test that
-/// asserts on it, and avoids a committed file nobody can diff.
+/// Generated rather than checked in, so the expected text stays visible in the test and diffable.
 /// </remarks>
 public static class PresentationBuilder
 {
-    /// <summary>
-    /// Creates a presentation whose slides contain the given paragraphs.
-    /// </summary>
-    /// <param name="slides">One entry per slide; each entry is that slide's paragraphs.</param>
-    /// <param name="notesBySlideIndex">Optional speaker notes, keyed by zero-based slide index.</param>
-    /// <returns>The bytes of the generated package.</returns>
     public static byte[] Create(IReadOnlyList<string[]> slides, IReadOnlyDictionary<int, string>? notesBySlideIndex = null)
     {
         using var stream = new MemoryStream();
@@ -56,14 +49,9 @@ public static class PresentationBuilder
     }
 
     /// <summary>
-    /// Creates a package whose <c>SlideIdList</c> references a relationship id that has no matching part.
+    /// Opens cleanly and faults only when the dangling relationship is dereferenced, so it tests exception
+    /// handling around the whole parse rather than around <c>Open()</c>.
     /// </summary>
-    /// <remarks>
-    /// The package opens without complaint; the fault only surfaces when the relationship is dereferenced,
-    /// which is what makes it a useful test of exception handling around the whole parse rather than around
-    /// <c>Open()</c>.
-    /// </remarks>
-    /// <returns>The bytes of the generated package.</returns>
     public static byte[] CreateWithDanglingSlideRelationship()
     {
         using var stream = new MemoryStream();
@@ -83,7 +71,6 @@ public static class PresentationBuilder
     /// Creates a package whose slide part contains malformed XML, which the SDK only rejects when it
     /// lazily parses that part.
     /// </summary>
-    /// <returns>The bytes of the generated package.</returns>
     public static byte[] CreateWithCorruptSlideXml()
     {
         var content = Create([["Placeholder"]]);

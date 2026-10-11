@@ -297,9 +297,8 @@ public sealed class MarkdownBlockMapperTests
     }
 
     /// <summary>
-    /// Markdig splits an info string at the first space, so a wider server-side match would render
-    /// the same message as prose here and as a code block in the client, which requires the whole
-    /// info string.
+    /// Markdig splits an info string at the first space while the client matches the whole of it, so a
+    /// wider match here would render the same message differently.
     /// </summary>
     [Theory]
     [InlineData("emails")]

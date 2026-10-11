@@ -6,10 +6,6 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Enterprise.Gpt.Repository.Sql.Configurations.Projects;
 
-/// <summary>
-/// Maps <see cref="Project"/> to <c>Core.Project</c>, its ownership and document relationships, and
-/// the indexes that back the per-user listing and the one-active-project-per-name rule.
-/// </summary>
 public sealed class ProjectConfiguration : BaseModifiedEntityConfiguration<Project, Guid>
 {
     protected override void ConfigureEntity(EntityTypeBuilder<Project> builder)
@@ -37,12 +33,7 @@ public sealed class ProjectConfiguration : BaseModifiedEntityConfiguration<Proje
             .HasFilter("[DateDeactivated] IS NULL")
             .IsUnique();
 
-        // No index for the ?isFavorite= filter, deliberately. ConversationConfiguration carries one
-        // only because its unfiltered listing already seeks an ordered
-        // (UserId, DateDeactivated, DateCreated DESC) index that the favourites variant has to stay
-        // in parity with. The index above carries no DateCreated, so the unfiltered listing already
-        // sorts after its seek — and a favourites index would buy the filtered listing an ordered
-        // path the unfiltered one does not have, paid for on every project write. IsFavorite stays
-        // a residual predicate over one user's projects, which is a bounded set.
+        // No ?isFavorite= index, unlike conversations: the unfiltered project listing already sorts after
+        // its seek, so IsFavorite stays a residual predicate over one user's projects.
     }
 }

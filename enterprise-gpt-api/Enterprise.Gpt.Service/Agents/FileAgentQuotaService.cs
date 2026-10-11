@@ -16,12 +16,7 @@ namespace Enterprise.Gpt.Service.Agents;
 /// </remarks>
 public interface IFileAgentQuotaService
 {
-    /// <summary>
-    /// Decides whether the File Agent may be offered to a user's next turn.
-    /// </summary>
-    /// <param name="userId">The caller.</param>
-    /// <param name="modelId">The agent's pinned catalog model, which is what marks its rows.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
+    /// <summary>Decides whether the File Agent may be offered to a user's next turn.</summary>
     /// <returns>The decision, allowed when no ceiling is configured.</returns>
     Task<FileAgentQuotaDecision> CheckAsync(Guid userId, Guid modelId, CancellationToken cancellationToken);
 }

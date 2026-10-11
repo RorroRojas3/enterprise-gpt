@@ -27,39 +27,23 @@ export interface ToastInput {
   readonly detail?: string | null;
   readonly traceLine?: string | null;
   readonly retryLabel?: string | null;
-  /**
-   * What the retry affordance does. Required for {@link retryLabel} to render — a
-   * Retry with nowhere to go is a button that does nothing when pressed.
-   */
+  /** Required for {@link retryLabel} to render. */
   readonly onRetry?: () => void;
   /** Overrides {@link AUTO_DISMISS_MS} for this toast alone. */
   readonly dismissAfterMs?: number;
 }
 
-/**
- * The application's transient notifications.
- *
- * It lives in `core/` rather than `shared/` because it is app-wide singleton state
- * written from interceptors, guards and feature stores — `shared/` holds no store, and
- * the HTTP layer that raises an error toast lives in `core/http`. The presentation
- * (`shared/feedback/toast/`) injects it, which is the sanctioned direction.
- */
+/** In `core/`: interceptors, guards and feature stores write it, and `shared/` holds no store. */
 export const ToastStore = signalStore(
   { providedIn: 'root' },
   withState(initialState),
   withProps(() => ({
     /**
-     * Timers live here, not in state. A `Map` in `withState` is either mutated in
-     * place — no signal write, so nothing re-renders — or replaced, which re-renders
-     * every toast in the region on each schedule and each cancel. Neither is what a
-     * timer handle deserves.
+     * Not in state: a `Map` there is either mutated without notifying or replaced, re-rendering
+     * every toast on each schedule and cancel.
      */
     _timers: new Map<string, ReturnType<typeof setTimeout>>(),
-    /**
-     * Retry handlers, beside the timers and for the same reason: a function is not
-     * serializable state, `withResetOnSignOut` would clone-compare it pointlessly,
-     * and nothing renders from it.
-     */
+    /** Beside the timers: a function is not state, and nothing renders from it. */
     _retries: new Map<string, () => void>(),
     _sequence: { value: 0 },
   })),
@@ -75,8 +59,7 @@ export const ToastStore = signalStore(
   })),
   withMethods((store) => {
     function dismiss(id: string): void {
-      // Always clear first: a user dismissing a success toast at three seconds would
-      // otherwise leave a timer to fire against an id that no longer exists.
+      // A manual dismissal would otherwise leave the timer to fire against a removed id.
       const timer = store._timers.get(id);
       if (timer !== undefined) {
         clearTimeout(timer);
@@ -96,8 +79,7 @@ export const ToastStore = signalStore(
         title: input.title,
         detail: input.detail ?? null,
         traceLine: input.traceLine ?? null,
-        // A label with no handler renders nothing: the affordance and the action are
-        // one decision, and letting them come apart is how a dead Retry ships.
+        // A label with no handler renders nothing, so a dead Retry cannot ship.
         retryLabel: input.onRetry ? (input.retryLabel ?? 'Retry') : null,
         dismissAfterMs,
       };
@@ -122,14 +104,7 @@ export const ToastStore = signalStore(
       show,
       dismiss,
 
-      /**
-       * Runs a toast's retry, then dismisses it.
-       *
-       * Dismissed first so the handler is free to raise a fresh toast for the second
-       * attempt without the failed one lingering beneath it.
-       *
-       * @param id The toast id, as `ToastRegion` reports it.
-       */
+      /** Dismisses first, so a toast the handler raises does not stack under the failed one. */
       retry(id: string): void {
         const handler = store._retries.get(id);
         dismiss(id);
@@ -149,11 +124,7 @@ export const ToastStore = signalStore(
       },
 
       /**
-       * The only place an `AppError` becomes a toast.
-       *
-       * Routing every failure through `shouldNotify`/`userMessage`/`traceLine` is what
-       * keeps a toast and the error panel saying the same thing about the same
-       * failure, and what keeps a cancelled turn from being announced as an error.
+       * The only place an `AppError` becomes a toast, so a toast and the error panel always agree.
        *
        * @returns The toast id, or null when the error is deliberately silent.
        */
@@ -181,10 +152,8 @@ export const ToastStore = signalStore(
   }),
   withHooks({
     onInit(store) {
-      // withResetOnSignOut clears state and nothing else, so the pending auto-dismiss
-      // timers have to be cancelled here or one would fire against the next user's
-      // session. Toasts carry userMessage(error), detail and traceLine — a previous
-      // user's error text is not something to leave on a shared browser.
+      // withResetOnSignOut clears state only, so a pending timer would fire in the next
+      // user's session.
       injectSignedOut()
         .pipe(takeUntilDestroyed())
         .subscribe(() => {
@@ -192,8 +161,7 @@ export const ToastStore = signalStore(
             clearTimeout(timer);
           }
           store._timers.clear();
-          // A retry closure captures the previous user's request; it must not survive
-          // into the next session any more than the toast it belonged to does.
+          // A retry closure captures the previous user's request.
           store._retries.clear();
         });
     },

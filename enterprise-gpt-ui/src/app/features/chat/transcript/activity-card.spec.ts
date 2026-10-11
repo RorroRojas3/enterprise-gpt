@@ -123,12 +123,7 @@ describe('ActivityCard', () => {
     ).toBe('Completed after 3.1s');
   });
 
-  /**
-   * The card renders whatever reason it is handed, which is all it can do: progress events carry no
-   * error text, so the failure's wording is the API's. That the four wordings differ is asserted where
-   * they live — `Enterprise.Gpt.Unit.Test.Agents.FileAgentFailuresTests` — because a component spec
-   * would only be comparing strings it supplied itself.
-   */
+  /** The wording is the API's; that the four differ is asserted in `FileAgentFailuresTests`. */
   it('renders a failure with the reason it was given', async () => {
     fixture.componentRef.setInput(
       'activity',

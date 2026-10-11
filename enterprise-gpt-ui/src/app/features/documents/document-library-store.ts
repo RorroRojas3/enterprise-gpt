@@ -42,10 +42,7 @@ import {
 } from '@core/state/with-request-status';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 
-/**
- * How many rows the library asks for at a time, matching the conversations library's own
- * page size so paging feels the same on both screens.
- */
+/** Matches the conversations library's page size, so paging feels the same on both screens. */
 export const DOCUMENT_PAGE_SIZE = 25;
 
 /** Everything the URL says about which documents to fetch. */
@@ -56,27 +53,16 @@ export interface DocumentLibraryQuery {
 
 interface DocumentLibraryState {
   /**
-   * The `name=` filter the rows on screen belong to.
-   *
-   * Written when the request starts, not when it commits, so the empty state can name the
-   * term that produced it rather than the one still being typed.
+   * The `name=` the rows on screen belong to. Written when the request starts, so the empty state
+   * names the term that produced it rather than the one still being typed.
    */
   readonly name: string;
   /**
-   * Narrow the listing to what the assistant produced.
-   *
-   * Served rather than filtered here, for the same reason the name term now is: a filter
-   * over the loaded window would report "no generated files" to any reader whose generated
-   * files sit past it, and `totalCount` would keep counting rows the filter removed.
+   * Served rather than filtered here: a filter over the loaded window would miss generated files
+   * past it, and `totalCount` would keep counting rows it removed.
    */
   readonly generatedOnly: boolean;
-  /**
-   * A *next page* is in flight, which is not the same as `isPending()`.
-   *
-   * A query replaces the rows and shows skeletons; a page appends to them and only marks
-   * the Load more control busy. Keeping them apart is what stops a second page from
-   * blanking a list the reader is already looking at.
-   */
+  /** A next page is in flight; unlike `isPending()`, it never blanks the rows already shown. */
   readonly loadingMore: boolean;
 }
 
@@ -100,12 +86,8 @@ function documentNoun(count: number, generatedOnly: boolean): string {
 }
 
 /**
- * Moves the offset and the total together, for rows that left the set.
- *
- * Both, for the reason the conversations library documents: the total because "Showing N
- * of M" would otherwise count rows that are gone, and the **offset** because the server no
- * longer counts them either — leaving `skip` where it was would make the next page start
- * short, and the rows that slid into the gap would never be fetched.
+ * Moves the offset and the total together, for rows that left the set. The offset too, or the
+ * next page would start short and skip the rows that slid into the gap.
  */
 function shiftCounters(delta: number): PartialStateUpdater<OffsetPaginationState> {
   return ({ skip, totalCount }) => ({
@@ -115,27 +97,8 @@ function shiftCounters(delta: number): PartialStateUpdater<OffsetPaginationState
 }
 
 /**
- * Every document the signed-in user holds in a conversation, from `GET api/documents` —
- * uploaded or assistant-produced, flat or grouped by conversation.
- *
- * It copies `ConversationLibraryStore`, including the reasons: `rxMethod` + `switchMap`
- * because typing drives it and a slow `"quart"` must not paint over a fast `"quarterly"`;
- * no `debounceTime`, because `SearchInput` already debounces and emits only committed
- * values; `exhaustMap` on the next page so a double press is one request; and
- * `takeUntil(signedOut$)` on both, because `withResetOnSignOut` clears state and does not
- * cancel work.
- *
- * **The name filter is the server's.** It used to be `withClientQuery` over a set drained
- * to a 500-row ceiling, which meant a document ranked past that ceiling was unreachable by
- * any control this screen offered. Under paging a client-side filter would have been
- * strictly worse — it would search only the loaded page — so the endpoint took the
- * parameter and the feature came out.
- *
- * The store holds **zero seeded records by construction**: nothing is fetched until the
- * screen binds its query, and no placeholder row ever ships in state, so a user with
- * nothing in the library lands on the empty state. The unavailable panel this screen was
- * once specified to show first was never built — the endpoint landed ahead of it, so no
- * client ever shipped without one (product-owner decision 2026-08-19).
+ * Mirrors `ConversationLibraryStore`, for the same reasons. The name filter is served, since a
+ * client-side one would search only the loaded page.
  */
 export const DocumentLibraryStore = signalStore(
   withState<DocumentLibraryState>({ name: '', generatedOnly: false, loadingMore: false }),
@@ -147,14 +110,7 @@ export const DocumentLibraryStore = signalStore(
     _toasts: inject(ToastStore),
     _url: inject(ApiUrl).build('documents'),
     _signedOut$: injectSignedOut(),
-    /**
-     * Cancels a page whose result set no longer exists.
-     *
-     * `switchMap` already cancels one *query* for the next, but a page is a separate
-     * request on a separate `rxMethod`: without this, a page fetched against the old term
-     * lands after the new query's `setAllEntities` and appends a window from a list that
-     * is gone.
-     */
+    /** Cancels an in-flight page once the result set or offset it was built against changes. */
     _querySuperseded$: new Subject<void>(),
   })),
   withComputed(({ entities, generatedOnly, isFulfilled, isPending, name, totalCount }) => {
@@ -163,20 +119,11 @@ export const DocumentLibraryStore = signalStore(
 
     return {
       hasQuery,
-      /** Loaded, and there is genuinely nothing — distinct from "not loaded yet". */
       isEmpty,
-      /** Loaded, nothing matched, and a term is why. */
       hasNoMatches: computed(() => isEmpty() && hasQuery()),
-      /**
-       * Nothing on screen yet, so skeleton rows are the honest thing to show. A search
-       * that narrows an existing list keeps its rows and marks the field busy instead.
-       */
+      /** Only an empty list gets skeletons; a narrowing search keeps its rows on screen. */
       isFirstLoad: computed(() => isPending() && entities().length === 0),
-      /**
-       * The loaded half counts the rows actually on screen rather than reading `skip`: the
-       * two agree after a page, but a row removed by a conversation delete decrements both
-       * counters, and counting rows keeps this honest whichever path moved them.
-       */
+      /** Counts rows on screen, not `skip`, so it stays right whichever path removed a row. */
       countSummary: computed(() => {
         const total = totalCount();
         const noun = documentNoun(total, generatedOnly());
@@ -188,9 +135,8 @@ export const DocumentLibraryStore = signalStore(
         return `Showing ${entities().length} of ${total} ${noun}`;
       }),
       /**
-       * The grouped view's shape, over the rows actually loaded, in first-seen order: the
-       * server lists documents newest first, so groups order by their newest loaded
-       * document, exactly where a refetch would put them.
+       * Groups the loaded rows in first-seen order, which, over the server's newest-first list,
+       * orders groups by their newest document.
        */
       groups: computed<readonly DocumentGroup[]>(() => {
         const byConversation = new Map<string, { name: string; documents: UserDocumentDto[] }>();
@@ -209,12 +155,8 @@ export const DocumentLibraryStore = signalStore(
 
         return [...byConversation.entries()].map(([conversationId, group]) => {
           const loaded = group.documents.length;
-          // The server's count of the conversation's documents matching the same filters.
-          // A comparison, not a presence check: equal means the group is whole and "8 of 8"
-          // would be noise, and a response without the field compares false and falls
-          // through to the plain form rather than claiming an "of N" nobody sent. The
-          // qualified branch is always plural, because it renders only where the total
-          // exceeds a loaded count of at least one.
+          // The server's count of the conversation's matching documents. Compared, not checked
+          // for presence: equal means the group is whole, and a missing field falls through.
           const matching = group.documents[0]?.conversationDocumentCount;
 
           return {
@@ -239,8 +181,7 @@ export const DocumentLibraryStore = signalStore(
         params = params.set('type', GENERATED_DOCUMENT_TYPE);
       }
 
-      // Omitted rather than sent empty: a blank `name=` would still take the server down
-      // its LIKE branch.
+      // Omitted rather than sent blank, which would still take the server down its LIKE branch.
       if (trimmed !== '') {
         params = params.set('name', trimmed);
       }
@@ -285,23 +226,19 @@ export const DocumentLibraryStore = signalStore(
     );
 
     const _loadNextPage = rxMethod<void>(
-      // exhaustMap: a second press while a page is on the wire is a double-click, not a
-      // request for the page after it. `skip` has not moved yet, so letting it through
-      // would fetch the same window twice.
+      // exhaustMap: a second press while a page is in flight is a double-click, and `skip` has
+      // not moved yet, so it would fetch the same window twice.
       exhaustMap(() => {
         patchState(store, { loadingMore: true });
 
         return fetchPage(currentQuery(), store.skip()).pipe(
           takeUntil(merge(store._signedOut$, store._querySuperseded$)),
           tapResponse({
-            // addEntities, not setAllEntities: this page joins the rows already on screen.
-            // `setPage` advances `skip` by what came back rather than by `take`, so a short
-            // page cannot leave a gap.
+            // `setPage` advances `skip` by what came back rather than by `take`, so a short page
+            // cannot leave a gap.
             next: (page) => patchState(store, addEntities(page.items), setPage(page)),
             error: (cause: unknown) =>
-              // A toast rather than `setError`: the rows already loaded are still valid, and
-              // swapping the list for an error panel would throw away a result set the
-              // reader can still use.
+              // A toast, not `setError`: the loaded rows are still valid and stay on screen.
               void store._toasts.fromError(toAppError(cause, { url: store._url })),
             finalize: () => patchState(store, { loadingMore: false }),
           }),
@@ -311,12 +248,8 @@ export const DocumentLibraryStore = signalStore(
 
     return {
       /**
-       * Binds the screen's `?name=` and `?source=` to the query, once, from its constructor.
-       *
-       * Taking a computation rather than a value is what makes a deep link one request:
-       * `rxMethod` subscribes through an effect, so it reads the parameters the router has
-       * already bound instead of firing unfiltered first and filtered second. It re-runs
-       * when either input changes, and both go out together.
+       * Binds the screen's `?name=` and `?source=` once, from its constructor. A computation, not
+       * a value, so a deep link fires one filtered request rather than an unfiltered one first.
        */
       bindQuery: _runQuery,
 
@@ -326,13 +259,8 @@ export const DocumentLibraryStore = signalStore(
       },
 
       /**
-       * Appends the next page in server order.
-       *
-       * `isPending()` is the load-bearing half of the guard. `_querySuperseded$` cancels a
-       * page a *later* query overtook, but it cannot help a page started *after* a query
-       * was already on the wire: that request carries the old `skip` against the new result
-       * set, and when it lands after `setFirstPage` it appends a window from the middle of
-       * a list that no longer exists.
+       * Refused while a query is pending: a page started then would carry the old `skip` into the
+       * new result set, which `_querySuperseded$` cannot cancel.
        */
       loadMore(): void {
         if (!store.isPending() && !store.loadingMore() && store.hasMore()) {
@@ -342,11 +270,10 @@ export const DocumentLibraryStore = signalStore(
     };
   }),
   withEventHandlers((store, events = inject(Events)) => [
-    // Server-confirmed facts only, which is the whole contract of this event group.
+    // Server-confirmed changes only.
     events.on(conversationEvents.updated).pipe(
       tap(({ payload }) => {
-        // The filter is on document names only, so a rename never evicts a row here — it
-        // only has to keep the link column and the group header honest.
+        // The filter is on document names, so a conversation rename never evicts a row here.
         patchState(
           store,
           updateEntities({
@@ -367,10 +294,8 @@ export const DocumentLibraryStore = signalStore(
           return;
         }
 
-        // Deleting a conversation takes its documents with it server-side, so their rows go
-        // here too rather than 404-ing on the next download. The page in flight goes with
-        // them: its URL was built against the pre-removal offset, so letting it land would
-        // skip the rows that slid into the gap.
+        // The server deletes a conversation's documents with it, so their rows go too, along
+        // with any page in flight, whose offset predates the removal.
         store._querySuperseded$.next();
         patchState(
           store,

@@ -13,21 +13,15 @@ using Table = DocumentFormat.OpenXml.Wordprocessing.Table;
 
 namespace Enterprise.Gpt.Service.Agents;
 
-/// <summary>
-/// Re-opens a produced artifact and measures it, before it is stored.
-/// </summary>
+/// <summary>Re-opens a produced artifact and measures it, before it is stored.</summary>
 /// <remarks>
-/// Deterministic and free: no model call, no sandbox session, no network. It runs against the exact
-/// bytes that will be stored and downloaded, which is a stronger claim than checking a copy still
-/// inside the sandbox container.
+/// Deterministic and free (no model, sandbox or network), and run against the exact bytes that will be stored.
 /// </remarks>
 public interface IGeneratedArtifactVerifier
 {
     /// <summary>
-    /// Opens an artifact with the library that owns its format and reports what it holds.
+    /// Opens an artifact with the library that owns its format (by file extension) and reports what it holds.
     /// </summary>
-    /// <param name="fileName">The name the sandbox gave it; only its extension is read.</param>
-    /// <param name="content">The artifact's bytes.</param>
     /// <returns>The verdict. A file that cannot be opened is a failed check, never an exception.</returns>
     ArtifactVerification Verify(string fileName, byte[] content);
 }
@@ -154,9 +148,8 @@ public sealed partial class GeneratedArtifactVerifier(ILogger<GeneratedArtifactV
     {
         using var stream = new MemoryStream(content, writable: false);
 
-        // Import rather than Modify, so nothing resolves a font: this process registers a font resolver
-        // only for the export renderer, and a full open would fail on that rather than on the file.
-        // (InformationOnly reads as the right mode and is not implemented in PDFsharp 6.)
+        // Import, not Modify, so no font resolves: only the export renderer registers a font resolver.
+        // InformationOnly is not implemented in PDFsharp 6.
         using var document = PdfReader.Open(stream, PdfDocumentOpenMode.Import);
 
         return document.PageCount == 0

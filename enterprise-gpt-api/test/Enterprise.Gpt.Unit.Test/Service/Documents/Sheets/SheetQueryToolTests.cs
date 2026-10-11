@@ -13,11 +13,6 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Documents.Sheets;
 
-/// <summary>
-/// Covers the function the model actually sees: its name and schema, that the turn's own scope is what
-/// reaches the service rather than anything from the arguments, and that neither a database message nor
-/// a stalled query reaches the model as anything but a sentence it can act on.
-/// </summary>
 public sealed class SheetQueryToolTests
 {
     private const int TimeoutSeconds = 30;

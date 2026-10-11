@@ -1,6 +1,5 @@
 @use 'breakpoints' as bp;
 
-// Frame 4e's column: header, composer, tab strip, panel.
 :host {
   display: flex;
   flex-direction: column;
@@ -42,9 +41,8 @@
   color: var(--brand);
 }
 
-// A button that reads as the board's heading: no chrome until it is hovered or
-// focused, at which point it has to be visibly a control (WCAG SC 1.4.11 is met by the
-// focus ring the kit sets globally).
+// A button that reads as a heading, with no chrome until hovered or focused; the kit's global
+// focus ring covers WCAG SC 1.4.11.
 .detail__name {
   min-width: 0;
   padding: 0;
@@ -64,8 +62,7 @@
   }
 }
 
-// Frame `4e`'s star. Same anatomy as the card's, one size down, because this header
-// sets the type a step larger and a 28px target beside a 20px heading reads as chrome.
+// The card's star one size down: a 28px target beside this 20px heading reads as chrome.
 .detail__favorite {
   display: inline-flex;
   width: 26px;
@@ -80,8 +77,7 @@
   color: var(--muted);
   font-size: 14px;
 
-  // A class, not [aria-pressed]: the label already says "Favourite" or "Unfavourite",
-  // and carrying the state twice announces as "Unfavourite Helios, pressed".
+  // A class, not [aria-pressed], which would announce "Unfavourite Helios, pressed".
   &--on {
     color: var(--accent);
   }
@@ -102,8 +98,7 @@
   color: var(--muted);
 }
 
-// The board's `--bs-nav-tabs-link-active-color` override, applied here rather than
-// inline so the strip themes with the rest of the app.
+// Overridden here rather than inline so the strip themes with the rest of the app.
 .detail__tabs {
   .nav-tabs {
     --bs-nav-tabs-link-active-color: var(--brand);
@@ -123,23 +118,19 @@
   min-width: 0;
 }
 
-// The board's count: a smaller run beside the tab label, not a badge.
+// A smaller run beside the tab label, not a badge.
 .detail__tab-count {
   margin-inline-start: 4px;
   font-size: 11px;
 }
 
-// Frame 4e caps the composer at the same 900px as the panels below it.
+// The same cap as the panels below.
 .detail__composer {
   max-width: 900px;
 }
 
-// `.shell__main` is `overflow: hidden`, so a routed screen that does not scroll itself
-// is *clipped* below the fold rather than scrolled — silently, and at every width. Only
-// the chat route escaped it, because `.chat__body` is its own scroll container.
-//
-// `min-height: 0` is required for the same reason `shell.scss` needs `min-width: 0`: a
-// flex item will not shrink below its content, so `overflow-y` alone would never engage.
+// `.shell__main` is `overflow: hidden`, so a screen that does not scroll itself is clipped.
+// `min-height: 0` lets this flex item shrink below its content so `overflow-y` engages.
 :host {
   min-height: 0;
   overflow-y: auto;

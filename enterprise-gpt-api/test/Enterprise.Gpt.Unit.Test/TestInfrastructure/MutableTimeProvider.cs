@@ -6,9 +6,6 @@ namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
 /// </summary>
 public sealed class MutableTimeProvider : TimeProvider
 {
-    /// <summary>
-    /// The instant <see cref="GetUtcNow"/> returns. Assign or <see cref="Advance"/> to move it.
-    /// </summary>
     public DateTimeOffset UtcNow { get; set; } = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     /// <inheritdoc />
@@ -21,12 +18,6 @@ public sealed class MutableTimeProvider : TimeProvider
     /// Ticks of <see cref="UtcNow"/>, so <see cref="TimeProvider.GetElapsedTime(long)"/> measures the
     /// test's clock rather than the wall clock.
     /// </summary>
-    /// <returns>The current timestamp.</returns>
-    /// <remarks>
-    /// Without this the base implementation falls through to <see cref="System.Diagnostics.Stopwatch"/>,
-    /// leaving duration the one thing a mutable clock could not control — which is exactly what a
-    /// slow-request threshold has to be asserted against.
-    /// </remarks>
     public override long GetTimestamp()
     {
         return UtcNow.Ticks;
@@ -35,10 +26,6 @@ public sealed class MutableTimeProvider : TimeProvider
     /// <inheritdoc />
     public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
-    /// <summary>
-    /// Moves the clock forward by <paramref name="delta"/>.
-    /// </summary>
-    /// <param name="delta">How far to advance.</param>
     public void Advance(TimeSpan delta)
     {
         UtcNow += delta;

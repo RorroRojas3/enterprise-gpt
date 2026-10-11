@@ -5,19 +5,16 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Repository.Cosmos.Serialization;
 
 /// <summary>
-/// These are correctness tests for transcript ordering, not formatting tests. Cosmos DB has no date
-/// type, so <c>ORDER BY c.dateCreated</c> compares the stored strings lexicographically; if that
-/// order can disagree with chronological order for any pair of values, a conversation can render
-/// its answer before its question and replay the wrong history to the model on every later turn.
+/// Ordering correctness, not formatting: <c>ORDER BY c.dateCreated</c> compares strings lexicographically,
+/// so any disagreement with chronological order replays a conversation's history out of order.
 /// </summary>
 public sealed class CosmosUtcDateTimeOffsetConverterTests
 {
     private static readonly JsonSerializerOptions Options = CosmosSerialization.CreateOptions();
 
     /// <summary>
-    /// Values chosen so that a naive round-trip format would sort them wrongly: the second and
-    /// fourth carry non-zero offsets whose local time reads later than an instant that is actually
-    /// earlier, and the fractional parts differ in significant-digit count.
+    /// Chosen to defeat a naive round-trip format: offsets whose local time reads later than an earlier
+    /// instant, and fractions of differing digit counts.
     /// </summary>
     private static readonly DateTimeOffset[] MixedValues =
     [

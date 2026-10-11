@@ -4,13 +4,9 @@ using Xunit;
 namespace Enterprise.Gpt.Unit.Test.Service.Agents;
 
 /// <summary>
-/// Covers the loader the run's pre-flight reads the published matrix through, against the real file
-/// that shipped with the build.
+/// The pre-flight loader against the shipped file; the file's own consistency is
+/// <see cref="ConversionMatrixDocumentTests"/>' subject.
 /// </summary>
-/// <remarks>
-/// The file's own internal consistency is <see cref="ConversionMatrixDocumentTests"/>' subject. This
-/// one is about what the code does with it, which is a separate way to be wrong.
-/// </remarks>
 public sealed class ConversionMatrixTests
 {
     private static readonly ConversionMatrix _matrix = ConversionMatrix.Load();

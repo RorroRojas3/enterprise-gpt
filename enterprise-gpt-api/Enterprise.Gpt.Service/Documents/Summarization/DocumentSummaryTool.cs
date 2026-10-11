@@ -13,29 +13,16 @@ namespace Enterprise.Gpt.Service.Documents.Summarization;
 /// Exposes document summarization to the assistant as a callable function.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Built per turn and closed over the corpus resolved for that turn, so a summary can only ever be
-/// produced for a document the caller was already entitled to read. Nothing about the conversation
-/// or the user comes from the tool's arguments, which means a model that hallucinates one cannot
-/// widen what it sees.
-/// </para>
-/// <para>
-/// Unlike <see cref="DocumentTool"/>, this one spends real money on a cache miss, which is why an
-/// ambiguous document name refuses rather than widening: search widens on ambiguity because a wider
-/// search is cheap, and summarizing the wrong document is not.
-/// </para>
+/// Built per turn over that turn's resolved corpus, so it only summarizes documents the caller can already
+/// read. Unlike <see cref="DocumentTool"/> a miss spends real money, so an ambiguous name refuses rather
+/// than widening.
 /// </remarks>
 public static partial class DocumentSummaryTool
 {
-    /// <summary>
-    /// The name the model calls this tool by, and the name it appears under in the activity feed
-    /// and the usage audit.
-    /// </summary>
+    /// <summary>The name the model, the activity feed and the usage audit know this tool by.</summary>
     /// <remarks>
-    /// Shares <see cref="DocumentTool.ToolName"/>'s leading segment for the same reason it was
-    /// chosen: tool-call usage is attributed to an MCP server by matching the longest
-    /// <c>{server}_</c> prefix, so a name such as <c>summarize_document</c> would be credited to a
-    /// server called "summarize" if one ever existed.
+    /// Shares <see cref="DocumentTool.ToolName"/>'s leading segment: usage is attributed to an MCP server by
+    /// the longest <c>{server}_</c> prefix, so <c>summarize_document</c> would credit a server "summarize".
     /// </remarks>
     public const string ToolName = "document_summarize";
 
@@ -46,10 +33,6 @@ public static partial class DocumentSummaryTool
         "specific question about their contents, which " + DocumentTool.ToolName + " answers better and more " +
         "cheaply. The first summary of a document takes a while; later ones are instant.";
 
-    /// <summary>
-    /// Holds the per-turn state the function body needs, so the state is captured once rather than
-    /// resolved on every call.
-    /// </summary>
     private sealed partial class DocumentSummaryInvoker(
         DocumentRetrievalScope scope,
         Guid conversationId,
@@ -63,13 +46,8 @@ public static partial class DocumentSummaryTool
         private readonly int _toolTimeoutSeconds = toolTimeoutSeconds;
         private readonly ILogger _logger = logger;
 
-        /// <summary>
-        /// Summarizes one document, or every document in the conversation.
-        /// </summary>
         /// <remarks>
-        /// Progress is reported through the ambient <see cref="ChatProgress"/> reporter, which is
-        /// the only channel that reaches the activity feed. It matters more here than it does for
-        /// search: this runs inline on a turn and a first summary can take a while, so a silent
+        /// Reports <see cref="ChatProgress"/> because a first summary runs inline on the turn, and a silent
         /// tool would look like a stalled answer.
         /// </remarks>
         public async Task<DocumentSummaryToolResult> SummarizeAsync(
@@ -77,8 +55,7 @@ public static partial class DocumentSummaryTool
             string? documentName = null,
             CancellationToken cancellationToken = default)
         {
-            // Bounds the whole invocation, where SummarizationOptions.CallTimeoutSeconds bounds one
-            // call inside it. Linked, so the turn being torn down still cancels promptly.
+            // Bounds the whole invocation; SummarizationOptions.CallTimeoutSeconds bounds each call in it.
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(TimeSpan.FromSeconds(_toolTimeoutSeconds));
 
@@ -90,14 +67,12 @@ public static partial class DocumentSummaryTool
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                // The turn is being torn down; let cancellation stay cancellation rather than
-                // turning it into a tool error the model would try to work around.
+                // The turn is being torn down; a tool error would only invite the model to work around it.
                 throw;
             }
             catch (OperationCanceledException ex)
             {
-                // The deadline above, not the caller. Reported to the model rather than thrown at
-                // the turn, because a summary that took too long is something the user can be told.
+                // Our deadline, not the caller's: reported to the model, since the user can be told.
                 LogSummarizationTimedOut(_logger, ex, _conversationId, _toolTimeoutSeconds);
 
                 throw new InvalidOperationException(
@@ -106,9 +81,7 @@ public static partial class DocumentSummaryTool
             }
             catch (ValidationException ex)
             {
-                // The engine's and the summary service's own terminal failures already carry a
-                // sanitized, user-facing sentence — that is what ValidationException means on this
-                // path — so it is relayed rather than replaced.
+                // On this path a ValidationException already carries a sanitized, user-facing sentence.
                 var message = ex.Errors.FirstOrDefault()?.ErrorMessage ?? "This document could not be summarized.";
 
                 LogSummarizationRefused(_logger, _conversationId, message);
@@ -118,9 +91,8 @@ public static partial class DocumentSummaryTool
             }
             catch (Exception ex)
             {
-                // Function invocation is configured with detailed errors, so whatever is thrown here
-                // is handed to the model verbatim. The real exception goes to the log; the model
-                // gets a sentence it can act on and nothing about the machinery behind it.
+                // Detailed errors are on, so whatever is thrown reaches the model verbatim: log the real
+                // exception and give the model a sentence with nothing about the machinery.
                 LogSummarizationFailed(_logger, ex, _conversationId);
 
                 throw new InvalidOperationException(
@@ -138,9 +110,8 @@ public static partial class DocumentSummaryTool
 
             if (matches.Count != 1)
             {
-                // Refused rather than widened to a digest, and refused before any model call: a
-                // near-miss on a file name must not spend a run on the wrong document, or on every
-                // document, when asking again costs the model one cheap turn.
+                // Refused before any model call: a near-miss must not spend a run on the wrong document,
+                // or on all of them, when asking again costs one cheap turn.
                 return new DocumentSummaryToolResult
                 {
                     Scope = "document",
@@ -174,8 +145,7 @@ public static partial class DocumentSummaryTool
 
         private async Task<DocumentSummaryToolResult> SummarizeAllAsync(CancellationToken cancellationToken)
         {
-            // A single document in scope is its own digest. Routing it through the digest path would
-            // buy a second model call to reduce one summary to itself.
+            // One document is its own digest; the digest path would pay a second call to reduce it to itself.
             if (_scope.Documents.Count == 1)
             {
                 return await SummarizeOneAsync(_scope.Documents[0].Name, cancellationToken).ConfigureAwait(false);
@@ -218,14 +188,9 @@ public static partial class DocumentSummaryTool
     #region Public static methods
 
     /// <summary>
-    /// Builds the summarization function for one turn.
+    /// Builds the summarization function for one turn, billing its model calls to
+    /// <paramref name="conversationId"/>.
     /// </summary>
-    /// <param name="scope">The corpus this turn may summarize, from <see cref="IDocumentRetrievalService.GetScopeAsync"/>.</param>
-    /// <param name="conversationId">The conversation every model call this tool makes is billed to.</param>
-    /// <param name="summaryService">The service backing the tool.</param>
-    /// <param name="toolTimeoutSeconds">How long one whole invocation may run before it is abandoned.</param>
-    /// <param name="logger">Logger for failures that must not reach the model verbatim.</param>
-    /// <returns>The function to attach to <see cref="ChatOptions.Tools"/>.</returns>
     /// <exception cref="ArgumentNullException">Any reference argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="toolTimeoutSeconds"/> is not positive.</exception>
     public static AIFunction Create(

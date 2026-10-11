@@ -1,15 +1,7 @@
 /**
- * The two permissions that exist at compile time, mirroring
- * `Enterprise.Gpt.Dto.Enums.PermissionIds`.
- *
- * Every other permission in the system is created per MCP server at run time, so the
- * set as a whole is not enumerable client-side. Membership is therefore always tested
- * by **id** against the caller's own grants — never by `name`, which is display text
- * an administrator can edit.
- *
- * `Administrator` grants nothing else implicitly. An administrator who does not hold
- * `UploadFile` may not upload, and the client must check the two independently
- * (US-204).
+ * Mirrors `Enterprise.Gpt.Dto.Enums.PermissionIds`; every other permission is created per MCP
+ * server at run time. Always test by id, never by the editable `name`. `Administrator` does not
+ * imply `UploadFile`.
  */
 export const PERMISSION_ID = {
   administrator: 'a0b1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d',

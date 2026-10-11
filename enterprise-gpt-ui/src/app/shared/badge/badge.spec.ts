@@ -59,7 +59,7 @@ describe('KindBadge', () => {
     ['McpTool', 'MCP tool'],
     ['Agent', 'Agent'],
     ['Function', 'Function'],
-    // US-501: exactly four badge values; Unknown is the reasoning arm.
+    // Unknown is the reasoning arm.
     ['Unknown', 'Reasoning'],
   ])('renders %s as %s', async (kind, label) => {
     expect(await render(kind)).toBe(label);
@@ -143,7 +143,6 @@ describe('ProjectCard', () => {
     fixture.componentInstance.favoriteToggled.subscribe(toggled);
 
     const button = host.querySelector<HTMLButtonElement>('.project-card__favorite');
-    // The label alone carries the state — no aria-pressed, so it is not announced twice.
     expect(button?.getAttribute('aria-pressed')).toBeNull();
     expect(button?.getAttribute('aria-label')).toBe('Unfavourite Helios 2.4');
     expect(button?.classList.contains('project-card__favorite--on')).toBe(true);
@@ -156,11 +155,8 @@ describe('ProjectCard', () => {
     const { host } = await render({ pending: true });
 
     expect(host.querySelector('article')?.getAttribute('aria-busy')).toBe('true');
-    // `aria-disabled`, never the native attribute: the store sets the pending id
-    // synchronously with the click, so a native `disabled` would blur the very button
-    // the reader just pressed and drop focus to <body> for the whole round trip.
-    // `ProjectActionsStore.toggleFavorite` guards on the pending id, so the press that
-    // still reaches the handler is a real no-op.
+    // aria-disabled, not `disabled`, which would blur the button just pressed; the store guards
+    // on the pending id, so the press is a no-op.
     const star = host.querySelector<HTMLButtonElement>('.project-card__favorite');
     expect(star?.getAttribute('aria-disabled')).toBe('true');
     expect(star?.disabled).toBe(false);

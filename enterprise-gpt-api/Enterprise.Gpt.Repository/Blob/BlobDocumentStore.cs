@@ -13,52 +13,26 @@ public interface IDocumentStore
     /// <summary>
     /// Downloads the specified blob from the given container.
     /// </summary>
-    /// <param name="container">The name of the blob container.</param>
-    /// <param name="blob">The name of the blob to download.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the task to complete.</param>
-    /// <returns>A byte array containing the blob's content.</returns>
     Task<byte[]> DownloadAsync(string container, string blob, CancellationToken cancellationToken);
 
     /// <summary>
     /// Uploads a blob to the specified container with optional metadata.
     /// </summary>
-    /// <param name="container">The name of the blob container.</param>
-    /// <param name="blob">The name of the blob to upload.</param>
-    /// <param name="data">The binary content to upload.</param>
-    /// <param name="metadata">A collection of user-defined metadata to associate with the blob.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the task to complete.</param>
     Task UploadAsync(string container, string blob, byte[] data, Dictionary<string, string> metadata, CancellationToken cancellationToken);
 
     /// <summary>
     /// Deletes the specified blob from the given container if it exists.
     /// </summary>
-    /// <param name="container">The name of the blob container.</param>
-    /// <param name="blob">The name of the blob to delete.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the task to complete.</param>
-    /// <returns>
-    /// True if the blob was found and deleted; false if the blob did not exist.
-    /// </returns>
+    /// <returns><see langword="false"/> when the blob did not exist.</returns>
     Task<bool> DeleteAsync(string container, string blob, CancellationToken cancellationToken);
 
     /// <summary>
     /// Generates a read-only signed URI for the specified blob.
     /// </summary>
-    /// <param name="container">The name of the blob container.</param>
-    /// <param name="blob">The name of the blob to sign.</param>
-    /// <param name="expiresIn">The duration after which the signature expires.</param>
-    /// <param name="contentDisposition">
-    /// Optional <c>Content-Disposition</c> the service returns instead of the blob's own, signed
-    /// into the token as <c>rscd</c>.
-    /// </param>
-    /// <param name="contentType">
-    /// Optional <c>Content-Type</c> the service returns instead of the blob's own, signed into the
-    /// token as <c>rsct</c>.
-    /// </param>
     /// <returns>The signed URI, or <see langword="null"/> when the client holds no credential that can sign.</returns>
     /// <remarks>
-    /// The response-header overrides exist because <see cref="UploadAsync"/> stores metadata but no
-    /// <c>BlobHttpHeaders</c>: without them a browser saves the file under its storage key and as
-    /// <c>application/octet-stream</c>.
+    /// The header overrides (signed as <c>rscd</c>/<c>rsct</c>) exist because <see cref="UploadAsync"/>
+    /// stores no <c>BlobHttpHeaders</c>, so a browser would otherwise save the storage key as octet-stream.
     /// </remarks>
     Uri? GenerateReadUri(string container, string blob, TimeSpan expiresIn, string? contentDisposition = null, string? contentType = null);
 }

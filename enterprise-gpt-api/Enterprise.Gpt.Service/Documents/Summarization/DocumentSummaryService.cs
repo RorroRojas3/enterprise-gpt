@@ -28,20 +28,15 @@ namespace Enterprise.Gpt.Service.Documents.Summarization;
 /// Serves a document's canonical summary, generating and billing it on a miss.
 /// </summary>
 /// <remarks>
-/// The only caller of <see cref="IDocumentSummarizer"/>. The engine below this seam knows how to
-/// summarize text and nothing about caching, ownership or money; everything on this side of it is
-/// caching, ownership and money.
+/// The only caller of <see cref="IDocumentSummarizer"/>: caching, ownership and billing live here, not in
+/// the engine.
 /// </remarks>
 public interface IDocumentSummaryService
 {
     /// <summary>
-    /// Returns a document's summary, generating it if none is stored.
+    /// Returns a document's summary, generating it and billing <paramref name="conversationId"/> if none
+    /// is stored.
     /// </summary>
-    /// <param name="conversationId">The conversation to bill any model calls to.</param>
-    /// <param name="documentId">The document to summarize.</param>
-    /// <param name="source">Which document family <paramref name="documentId"/> belongs to.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The summary, and whether it came from the cache.</returns>
     /// <exception cref="ValidationException">The document has no text, or the run failed.</exception>
     /// <exception cref="SummarizerNotConfiguredException">
     /// The summarizer's catalog row is missing or unusable.
@@ -50,17 +45,11 @@ public interface IDocumentSummaryService
         Guid conversationId, Guid documentId, DocumentSources source, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Reduces every document in a conversation's retrieval scope to one digest.
+    /// Reduces every document in a scope from <see cref="IDocumentRetrievalService.GetScopeAsync"/> to one
+    /// digest, billed to <paramref name="conversationId"/>.
     /// </summary>
-    /// <param name="conversationId">The conversation to bill to, and whose scope is digested.</param>
-    /// <param name="scope">
-    /// The documents in scope, from <see cref="IDocumentRetrievalService.GetScopeAsync"/>.
-    /// </param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>The digest text. Never persisted — a later request recomputes it.</returns>
     /// <remarks>
-    /// Documents that already have a summary contribute at no cost, so a five-document conversation
-    /// with four already summarized costs one run plus the digest, not five.
+    /// Never persisted. Documents that already have a summary contribute at no cost.
     /// </remarks>
     /// <exception cref="ValidationException">The scope is empty or exceeds the configured maximum.</exception>
     Task<string> CreateDigestAsync(
@@ -89,8 +78,7 @@ public sealed partial class DocumentSummaryService(
 
         if (cached is not null)
         {
-            // Recorded so the cache's hit rate sits in the same series as its misses. A hit has no
-            // deployment of its own because nothing served it.
+            // Recorded so hits share a series with misses; no deployment served a hit.
             ChatMetrics.RecordSummaryRun(
                 deploymentName: null, path: "cache-hit", outcome: "success", TimeSpan.Zero, mapUnits: null);
 
@@ -101,11 +89,8 @@ public sealed partial class DocumentSummaryService(
             () => _summarizer.SummarizeDocumentAsync(documentId, source, cancellationToken),
             cancellationToken).ConfigureAwait(false);
 
-        // Uncancellable on purpose, for the reason the turn's own finalization is
-        // (ConversationService.PersistTurnAsync): by this line the run has already been paid for at
-        // the provider, and the token that would abort the write is the same one a client
-        // disconnect or the tool deadline signals. Losing the race would spend the money and record
-        // neither the summary nor the usage row.
+        // Uncancellable, like ConversationService.PersistTurnAsync: the run is already paid for, and this
+        // token is the one a client disconnect or the tool deadline signals.
         await PersistAsync(conversationId, documentId, source, run, CancellationToken.None).ConfigureAwait(false);
 
         return new DocumentSummaryResult(run.Summary, FromCache: false, run.ModelCallCount);
@@ -131,9 +116,8 @@ public sealed partial class DocumentSummaryService(
                     + "documents instead.");
         }
 
-        // Sequential rather than fanned out. Each miss runs its own bounded-concurrency map phase
-        // inside the engine, and overlapping several of those would multiply the in-flight call
-        // count by the document count against a gate sized for one document.
+        // Sequential: each miss runs its own bounded map phase, and overlapping them would multiply the
+        // in-flight calls past a gate sized for one document.
         var parts = new StringBuilder();
 
         for (var index = 0; index < scope.Documents.Count; index++)
@@ -154,9 +138,8 @@ public sealed partial class DocumentSummaryService(
             cancellationToken,
             path: "digest").ConfigureAwait(false);
 
-        // Billed like any other run and deliberately not persisted: a digest describes a scope, and
-        // the scope changes the moment a document is added to or removed from the conversation.
-        // Uncancellable for the same reason the document path's write is.
+        // Not persisted, since the scope changes with every document added or removed. Uncancellable for
+        // the same reason as the document path's write.
         await BillAsync(conversationId, run, CancellationToken.None).ConfigureAwait(false);
 
         return run.Summary;
@@ -165,10 +148,8 @@ public sealed partial class DocumentSummaryService(
     #region Private methods
 
     /// <remarks>
-    /// Filtered on the running prompt version, which is the whole cache-invalidation mechanism: a
-    /// document's text never changes after ingestion, so a stored summary can only go stale when
-    /// the prompts that produced it change. Without this the feature would need a regenerate flag,
-    /// and a regenerate flag the model can set is a way for the model to spend money.
+    /// The prompt version is the entire cache invalidation: document text never changes after ingestion,
+    /// and a regenerate flag the model could set would let it spend money.
     /// </remarks>
     private async Task<string?> ReadCachedTextAsync(
         Guid documentId, DocumentSources source, CancellationToken cancellationToken)
@@ -201,33 +182,9 @@ public sealed partial class DocumentSummaryService(
     /// Runs the engine detached from any ambient tool scope, then times it and records its outcome.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// The detach is load-bearing, not defensive. <see cref="IDocumentSummarizer"/> resolves its
-    /// client through the same <see cref="IChatClientResolver"/> the turn does, so its calls
-    /// run on the fully decorated pipeline — tool tracking included — and when this is reached from
-    /// inside a tool invocation the tracker attributes them to the enclosing scope. Those tokens
-    /// then land in the turn's own <c>ConversationUsage.ToolInputTokens</c>, where
-    /// <c>EstimatedCost</c> prices them at the <em>driving</em> model's rate and
-    /// <c>ConversationUsageToolCall.ModelId</c> is null — so a run would be billed as if the
-    /// conversation's own chat model had made it, and billed a second time by the row written
-    /// below. Detaching is what makes the summarizer's cost the summarizer's alone.
-    /// </para>
-    /// <para>
-    /// The tracker's ambient scope is an <see cref="System.Threading.AsyncLocal{T}"/> it keeps
-    /// internal, so the only way to leave it is to run on an execution context that never inherited
-    /// it — hence the suppressed flow. <see cref="Activity.Current"/> is carried across by hand so
-    /// the summarizer's own spans still hang off the turn's trace: the aim is to detach from the
-    /// usage tracker, not from telemetry.
-    /// </para>
-    /// <para>
-    /// Only the engine's own calls are detached. Whatever the caller reports through
-    /// <see cref="Andes.Extensions.AI.ChatProgress"/> stays attributed, because that is what draws
-    /// the activity card the user is watching.
-    /// </para>
-    /// <para>
-    /// The path tag is read off the finished run rather than predicted, so a document that turned
-    /// out to need map-reduce is not filed under the single pass it was hoped to be.
-    /// </para>
+    /// The detach is load-bearing: the <see cref="IChatClientResolver"/> pipeline tracks tool usage, so
+    /// inside a tool invocation the run would be billed to the turn at the driving model's rate, then
+    /// again by our own usage row. <see cref="Activity.Current"/> is carried across to keep the trace.
     /// </remarks>
     private static async Task<SummarizationRun> MeasureAsync(
         Func<Task<SummarizationRun>> run, CancellationToken cancellationToken, string? path = null)
@@ -263,8 +220,8 @@ public sealed partial class DocumentSummaryService(
     }
 
     /// <summary>
-    /// Runs <paramref name="run"/> on an execution context that never inherited the caller's, so no
-    /// <see cref="System.Threading.AsyncLocal{T}"/> the tool tracker set is visible inside it.
+    /// Suppressing flow is the only way out of the tool tracker's internal
+    /// <see cref="System.Threading.AsyncLocal{T}"/> scope.
     /// </summary>
     private static async Task<SummarizationRun> RunDetachedAsync(Func<Task<SummarizationRun>> run)
     {
@@ -289,26 +246,9 @@ public sealed partial class DocumentSummaryService(
     /// Writes the summary row and its usage row together, on a unit of work of its own.
     /// </summary>
     /// <remarks>
-    /// A fresh scope rather than the request's shared <see cref="EnterpriseGptDbContext"/>, which is
-    /// the same instance <c>ConversationService.PersistTurnAsync</c> saves the turn's own audit and
-    /// transcript through. EF accepts changes only on a <em>successful</em> save, so a failure here —
-    /// the filtered unique index rejecting a concurrent identical insert, a rowversion conflict
-    /// between two turns regenerating the same row, a transient fault — would leave the summary and
-    /// usage rows tracked as <c>Added</c> on the turn's context. The tool turns that failure into a
-    /// sentence for the model and the turn carries on, so the turn's own save would then re-attempt
-    /// those inserts: either failing the turn's finalization after a fully streamed answer, or
-    /// committing a second usage row and double-billing the run. Its own scope makes the two writes
-    /// independent, and keeps a mid-stream transaction off the connection the turn transacts on later.
-    /// </remarks>
-    /// <remarks>
-    /// A second connection makes one ordering fact load-bearing that nothing asserts: because
-    /// <see cref="BillCoreAsync"/> takes an exclusive lock on the conversation row, an uncommitted
-    /// transaction held on the request's own context while the tool runs would block this write until
-    /// command timeout — and since the request is awaiting the tool, it could never resolve itself.
-    /// It is safe today only because no transaction is open on that context for the life of the
-    /// stream: conversation naming commits inside its own method before the turn's options are built,
-    /// and the turn's own transaction opens after the stream drains. A change that holds one across
-    /// the stream would deadlock here rather than fail.
+    /// Not the request's context: a failed save would leave these rows <c>Added</c> for the turn's save to
+    /// retry, double-billing. <see cref="BillCoreAsync"/> locks the conversation row, so a transaction
+    /// open on the request's context during the stream would deadlock here.
     /// </remarks>
     private async Task PersistAsync(
         Guid conversationId,
@@ -323,10 +263,8 @@ public sealed partial class DocumentSummaryService(
         await using var transaction = await ctx.Database
             .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
-        // Rewritten in place rather than appended to. The unique index is filtered on
-        // DateDeactivated, so inserting beside a live row of a superseded prompt version would be a
-        // constraint violation rather than a second version — and version history is not what a
-        // summary is.
+        // Rewritten in place: the unique index is filtered on DateDeactivated, so inserting beside a live
+        // row of an older prompt version would violate it.
         var existing = await ReadLiveRowAsync(ctx, documentId, source, cancellationToken).ConfigureAwait(false);
 
         if (existing is null)
@@ -370,8 +308,7 @@ public sealed partial class DocumentSummaryService(
     }
 
     /// <summary>
-    /// Writes only the usage row, for a run whose output is not stored. On its own unit of work for
-    /// the reason <see cref="PersistAsync"/> is.
+    /// Writes only the usage row, on its own unit of work for the reason <see cref="PersistAsync"/> is.
     /// </summary>
     private async Task BillAsync(Guid conversationId, SummarizationRun run, CancellationToken cancellationToken)
     {
@@ -388,14 +325,10 @@ public sealed partial class DocumentSummaryService(
     }
 
     /// <summary>
-    /// Bumps the conversation's counters and stages the usage row. The caller owns the transaction.
+    /// Bumps the conversation's counters and stages one usage row per run. The caller owns the transaction.
     /// </summary>
     /// <remarks>
-    /// One row per run, matching how a chat turn is recorded: a turn's several provider round trips
-    /// are one row, not one each, with the breakdown kept elsewhere. The row carries the
-    /// summarizer's own model, provider, deployment and prices, which is the entire point of
-    /// pinning a summarizer — a run requested from a conversation whose selected chat model is an
-    /// expensive reasoning deployment must not be priced at that deployment's rate.
+    /// The row carries the summarizer's own model and prices, never those of the conversation's chat model.
     /// </remarks>
     private static async Task BillCoreAsync(
         EnterpriseGptDbContext ctx,
@@ -403,8 +336,7 @@ public sealed partial class DocumentSummaryService(
         SummarizationRun run,
         CancellationToken cancellationToken)
     {
-        // Read against run.ModelId rather than resolved from configuration a second time, so the
-        // provider and prices on the row cannot disagree with the model the run snapshotted.
+        // Read by run.ModelId so the row's provider and prices match the model the run snapshotted.
         var model = await ctx.Models
             .AsNoTracking()
             .Where(x => x.Id == run.ModelId)
@@ -440,9 +372,7 @@ public sealed partial class DocumentSummaryService(
             Status = ConversationUsageStatuses.Completed,
             InputTokens = run.InputTokens,
             OutputTokens = run.OutputTokens,
-            // Null deliberately: a summarization run is billed and never transcribed, so there is
-            // no transcript message to estimate a context cost from. Null says "not transcribed"
-            // where zero would say "transcribed nothing".
+            // Null, not zero: a summarization run is billed but never transcribed.
             ContextTokens = null,
             InputPricePerMillionTokens = model.InputPricePerMillionTokens,
             OutputPricePerMillionTokens = model.OutputPricePerMillionTokens
@@ -494,10 +424,7 @@ public sealed partial class DocumentSummaryService(
         summary.CollapsePasses = run.CollapsePasses;
     }
 
-    /// <summary>
-    /// The one exception type the tool relays to the model verbatim, matching the engine's own
-    /// failure contract.
-    /// </summary>
+    /// <summary>The one exception type the tool relays to the model verbatim, as the engine does.</summary>
     private static ValidationException Invalid(string property, string message) =>
         new([new ValidationFailure(property, message)]);
 

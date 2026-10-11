@@ -38,12 +38,7 @@ public static class ConversationSortKeyNames
 
     #region Public static methods
 
-    /// <summary>
-    /// Resolves the <c>?sort=</c> and <c>?dir=</c> pair a caller sent.
-    /// </summary>
-    /// <param name="sort">The requested field, or <see langword="null"/>.</param>
-    /// <param name="dir">The requested direction, or <see langword="null"/>.</param>
-    /// <returns>The ordering to apply.</returns>
+    /// <summary>Resolves the <c>?sort=</c> and <c>?dir=</c> pair a caller sent.</summary>
     /// <exception cref="FluentValidation.ValidationException">Either value is unrecognised.</exception>
     public static SortSelection<ConversationSortKeys> Resolve(string? sort, string? dir)
     {

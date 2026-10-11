@@ -10,16 +10,8 @@ const INTRINSIC = {
 } as const satisfies Record<BrandVariant, { width: number; height: number }>;
 
 /**
- * The Andes wordmark or mark, in whichever variant matches the current theme.
- *
- * Both images are always rendered and one is hidden by `--show-light` /
- * `--show-dark`, so no script reads the theme to choose an asset. They carry the
- * *same* `alt`: a `display: none` element is out of the accessibility tree, so
- * exactly one is ever exposed and a screen reader never reads the wordmark twice.
- *
- * Accepted cost of the script-free swap: a hidden `<img>` is still fetched, so both
- * variants download. At ~40 kB for the pair that is the cheaper side of the trade
- * against a `background-image` version that would have to give up `alt`.
+ * Both theme variants render, toggled by `--show-light`/`--show-dark`, with the same `alt`, since
+ * only the visible one is exposed. Both download (~40 kB): the price of keeping `alt`.
  */
 @Component({
   selector: 'app-brand-logo',
@@ -30,10 +22,7 @@ const INTRINSIC = {
 export class BrandLogo {
   readonly variant = input<BrandVariant>('full');
 
-  /**
-   * Empty renders the lockup decoratively — correct wherever it sits beside text
-   * that already names the product, such as the assistant avatar.
-   */
+  /** Empty renders it decoratively, for spots beside text that already names the product. */
   readonly alt = input<string>('');
 
   protected readonly lightSrc = computed(() => `brand/logo-${this.variant()}.webp`);

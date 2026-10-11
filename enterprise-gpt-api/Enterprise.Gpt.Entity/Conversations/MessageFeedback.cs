@@ -9,41 +9,19 @@ namespace Enterprise.Gpt.Entity.Conversations;
 /// A reader's rating of one assistant message, as the relational side records it.
 /// </summary>
 /// <remarks>
-/// <para>
-/// A projection, not the source of truth. The rating a reader sees comes back from the Cosmos
-/// transcript document's own <c>feedback</c> block, which the transcript response projects
-/// directly; this table exists so the same facts are queryable — "how many answers were marked
-/// unhelpful last week" is a question the transcript container cannot answer, because every read
-/// against it is confined to a single conversation's partition by design.
-/// </para>
-/// <para>
-/// The write order follows from that split: the transcript is patched first and this row second,
-/// and a failure to write this row is logged rather than thrown. A request that answered 204 must
-/// mean the rating survives a reload, and it is the transcript that decides whether it does.
-/// </para>
-/// <para>
-/// One row per message, enforced by a unique index rather than by the upsert that maintains it.
-/// Withdrawing a rating leaves the row in place with a null <see cref="Rating"/>: the row is the
-/// record that this message was considered, and deleting it would erase that. Withdrawing a rating
-/// that was never recorded files no row at all, for the same reason.
-/// </para>
-/// <para>
-/// <see cref="BaseEntity{TKey}.DateDeactivated"/> comes with the base type and stays null on every row: nothing here
-/// is ever soft-deleted. Were a row ever deactivated, the soft-delete filter would hide it from the upsert and the
-/// unfiltered unique index would refuse its replacement — so soft deletion here needs a filtered index first.
-/// </para>
+/// A queryable projection: the transcript's <c>feedback</c> block is the source of truth, so it is patched
+/// first and a failure writing this row is logged, not thrown. One row per message (unique index); a
+/// withdrawn rating keeps its row with a null <see cref="Rating"/>. Never soft-deleted: the filter would
+/// hide a row from the upsert while the unfiltered unique index refused its replacement.
 /// </remarks>
 public class MessageFeedback : BaseModifiedEntity<Guid>
 {
-    /// <summary>
-    /// The conversation the rated message belongs to. Half of the natural key, and the reason a
-    /// message id alone never has to be globally unique.
-    /// </summary>
+    /// <summary>Half of the natural key, so message ids need only be unique per conversation.</summary>
     public Guid ConversationId { get; set; }
 
     /// <summary>
-    /// The reader who rated. Denormalized from <see cref="Conversation"/>, exactly as
-    /// <see cref="ConversationUsage.UserId"/> is, so per-user reporting need not join through it.
+    /// Denormalized from <see cref="Conversation"/>, like <see cref="ConversationUsage.UserId"/>, for
+    /// per-user reporting.
     /// </summary>
     public Guid UserId { get; set; }
 
@@ -51,10 +29,8 @@ public class MessageFeedback : BaseModifiedEntity<Guid>
     /// The assistant message the rating is against.
     /// </summary>
     /// <remarks>
-    /// Deliberately not a foreign key: messages live in the Cosmos transcript and there is no
-    /// message table to point at. It is the same identifier
-    /// <see cref="ConversationUsage.AssistantMessageId"/> correlates on, and the one the
-    /// <c>Finished</c> frame carries.
+    /// Not a foreign key: messages live in the Cosmos transcript. The id that
+    /// <see cref="ConversationUsage.AssistantMessageId"/> and the <c>Finished</c> frame carry.
     /// </remarks>
     public Guid MessageId { get; set; }
 

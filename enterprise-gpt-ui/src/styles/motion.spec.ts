@@ -3,20 +3,8 @@ import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * The reduced-motion contract, US-1404.
- *
- * **jsdom applies no stylesheet, so no test in this repository can observe that an
- * animation stopped.** Rendering a component and reading `getComputedStyle` returns the
- * inline value and nothing else; there is no cascade, no media query evaluation and no
- * animation clock. Asserting suppression at the DOM is therefore not merely hard here,
- * it is impossible — which is why the visual half of this story is a `/ui-kit` check
- * with the OS preference switched on, and why what is pinned here is the *source*.
- *
- * Two of the three assertions below cover invariants nothing else does. `npm run lint`
- * refuses a fifth keyframe (`check-forbidden-apis.mjs`) and holds the four to the design
- * bundle (`check-tokens.mjs`); neither can see that the suppression block still exists,
- * that it still carries `!important`, or that it is still emitted last — and the last of
- * those is the one the entire contract rests on.
+ * jsdom applies no stylesheet, so suppression cannot be observed at the DOM. These pin the
+ * source instead: the block, its `!important` and its position, which no lint gate checks.
  */
 
 const UI_ROOT = resolve(import.meta.dirname, '../..');
@@ -40,14 +28,13 @@ function withoutComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
-describe('the reduced-motion contract (US-1404)', () => {
+describe('the reduced-motion contract', () => {
   it('suppresses every animation and transition under the preference', () => {
     const motion = withoutComments(readFileSync(join(STYLES, '_motion.scss'), 'utf8'));
     const at = motion.indexOf('@media (prefers-reduced-motion: reduce)');
 
-    // Guarded rather than sliced blind: `slice(-1)` on a missing block yields a
-    // one-character string, so the absence would surface as a puzzling `toContain`
-    // failure instead of the thing that is actually wrong.
+    // Guarded: `slice(-1)` on a missing block yields one character, and the absence would
+    // surface as a puzzling `toContain` failure.
     expect(at, 'the reduced-motion block is missing entirely').toBeGreaterThanOrEqual(0);
     const block = motion.slice(at);
     // Universal, including generated content: a caret and the code-block chrome are
@@ -68,10 +55,8 @@ describe('the reduced-motion contract (US-1404)', () => {
   });
 
   it('emits the suppression last, after everything it has to defeat', () => {
-    // The whole contract rests on this line's position. `_motion.scss` says so, and
-    // until now nothing checked it: moved above `kit` or `bootstrap-overrides`, the
-    // block still exists, still says `!important`, and is still beaten by any later
-    // rule of equal specificity — a silent regression with every other gate green.
+    // Moved earlier, the block still says `!important` yet is beaten by any later rule of equal
+    // specificity, with every other gate green.
     const chain = withoutComments(readFileSync(join(UI_ROOT, 'src/styles.scss'), 'utf8'));
     const imports = [...chain.matchAll(/@import\s+'([^']+)'/g)].map(([, name]) => name);
 
@@ -80,9 +65,8 @@ describe('the reduced-motion contract (US-1404)', () => {
   });
 
   it('runs no animation whose keyframe is not among the four', () => {
-    // `check-forbidden-apis.mjs` refuses a fifth *definition*; this refuses a *use* that
-    // names nothing — a typo in an `animation` shorthand is silent in CSS, and the
-    // element simply never moves.
+    // `check-forbidden-apis.mjs` refuses a fifth definition; this refuses a use that names none
+    // of the four, since a typo in an `animation` shorthand fails silently.
     const offenders: string[] = [];
 
     for (const file of scssFiles(join(UI_ROOT, 'src'))) {
@@ -91,8 +75,7 @@ describe('the reduced-motion contract (US-1404)', () => {
       // `[;{}]` and the `m` flag, so a declaration after a nested rule's closing brace is
       // seen; `animation-name` too, which is the other spelling that names a keyframe.
       for (const match of source.matchAll(/(?:^|[;{}])\s*animation(?:-name)?:\s*([^;}]+)/gm)) {
-        // `noUncheckedIndexedAccess` types a capture group as possibly undefined, and
-        // the group is not optional — so this is a type guard, not a real branch.
+        // Satisfies `noUncheckedIndexedAccess`; the group is not optional.
         const value = match[1]?.trim() ?? '';
         if (value === 'none' || value.startsWith('none')) {
           continue;

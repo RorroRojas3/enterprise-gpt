@@ -31,10 +31,7 @@ public class McpClientCacheTests
         };
     }
 
-    /// <summary>
-    /// Retries the assertion for up to ~1 second because the cache disposes evicted clients
-    /// on a fire-and-forget task.
-    /// </summary>
+    /// <summary>Retries for ~1 second: evicted clients are disposed on a fire-and-forget task.</summary>
     private static async Task AssertEventuallyAsync(Action assertion)
     {
         for (var attempt = 0; ; attempt++)

@@ -75,9 +75,7 @@
   white-space: nowrap;
 }
 
-// A deactivated server is still listed, so it needs a second channel besides the Status
-// column: the name itself recedes. Opacity rather than a colour swap, and never below the
-// 4.5:1 the muted token already clears against the row.
+// A second channel besides the Status column; at this opacity the muted text still clears 4.5:1.
 .admin-mcps__server--retired {
   opacity: 0.65;
 }

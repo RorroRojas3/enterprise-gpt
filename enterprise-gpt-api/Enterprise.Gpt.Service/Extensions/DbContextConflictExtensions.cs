@@ -11,11 +11,9 @@ internal static class DbContextConflictExtensions
     #region Public static methods
 
     /// <summary>
-    /// Saves the context, translating a <see cref="DbUpdateConcurrencyException"/> into a 409.
+    /// Saves the context, translating a <see cref="DbUpdateConcurrencyException"/> into a 409 whose
+    /// <paramref name="conflictMessage"/> reaches the client, so it must name nothing sensitive.
     /// </summary>
-    /// <param name="ctx">The context to save.</param>
-    /// <param name="conflictMessage">The caller-facing detail; it reaches the client, so name nothing sensitive.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <exception cref="ConflictException">Another request changed a row this save updates.</exception>
     internal static async Task SaveChangesOrConflictAsync(
         this DbContext ctx, string conflictMessage, CancellationToken cancellationToken)
