@@ -58,18 +58,6 @@ public static class McpServerHeaderRules
     /// </remarks>
     public static readonly JsonSerializerOptions SerializerOptions = CreateSerializerOptions();
 
-    private static JsonSerializerOptions CreateSerializerOptions()
-    {
-        var options = new JsonSerializerOptions(JsonSerializerDefaults.General);
-        // `populateMissingResolver`, because the parameterless overload throws when
-        // `TypeInfoResolver` is unset — which it is here, these options being hand-built rather
-        // than taken from a configured pipeline. It installs the default reflection resolver,
-        // which is what serializing this dictionary would have used anyway.
-        options.MakeReadOnly(populateMissingResolver: true);
-
-        return options;
-    }
-
     /// <summary>
     /// Headers a registration may not set, because something else already owns them.
     /// </summary>
@@ -134,6 +122,24 @@ public static class McpServerHeaderRules
         "Expires",
         "Last-Modified"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    #region Private methods
+
+    private static JsonSerializerOptions CreateSerializerOptions()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.General);
+        // `populateMissingResolver`, because the parameterless overload throws when
+        // `TypeInfoResolver` is unset — which it is here, these options being hand-built rather
+        // than taken from a configured pipeline. It installs the default reflection resolver,
+        // which is what serializing this dictionary would have used anyway.
+        options.MakeReadOnly(populateMissingResolver: true);
+
+        return options;
+    }
+
+    #endregion
+
+    #region Public static methods
 
     /// <summary>
     /// The length the given headers occupy once stored.
@@ -265,4 +271,6 @@ public static class McpServerHeaderRules
             && name.Length <= MaxNameLength
             && name.All(c => char.IsAsciiLetterOrDigit(c) || c == '-');
     }
+
+    #endregion
 }

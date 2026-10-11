@@ -3,6 +3,7 @@ using Enterprise.Gpt.Service.BackgroundJobs;
 using Enterprise.Gpt.Service.BackgroundJobs.Models;
 using Enterprise.Gpt.Service.Options;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.BackgroundJobs;
@@ -12,9 +13,18 @@ public sealed class JobStatusStoreTests : IDisposable
     private static readonly Guid _ownerId = Guid.NewGuid();
     private static readonly JobTarget Target = new(JobTargetKinds.Conversation, Guid.NewGuid());
 
-    private readonly JobStatusStore _store = new(
-        Microsoft.Extensions.Options.Options.Create(new BackgroundJobOptions()),
-        NullLogger<JobStatusStore>.Instance);
+    private static readonly TimeSpan Retention = TimeSpan.FromMinutes(new BackgroundJobOptions().RetentionMinutes);
+
+    private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 1, 9, 0, 0, TimeSpan.Zero));
+    private readonly JobStatusStore _store;
+
+    public JobStatusStoreTests()
+    {
+        _store = new JobStatusStore(
+            Microsoft.Extensions.Options.Options.Create(new BackgroundJobOptions()),
+            _time,
+            NullLogger<JobStatusStore>.Instance);
+    }
 
     public void Dispose() => _store.Dispose();
 
@@ -317,5 +327,39 @@ public sealed class JobStatusStoreTests : IDisposable
         _store.Register("job-1", _ownerId, Target);
 
         Assert.Equal(Target, _store.Get("job-1")!.Target);
+    }
+
+    [Fact]
+    public void Register_NewJob_StampsTheInjectedClock()
+    {
+        _store.Register("job-1", _ownerId, Target);
+
+        Assert.Equal(_time.GetUtcNow(), _store.Get("job-1")!.LastUpdated);
+    }
+
+    /// <summary>
+    /// The first tick's cutoff equals the failure time, so only the second tick finds it strictly older.
+    /// </summary>
+    [Fact]
+    public void EvictionTimer_TerminalSnapshotPastRetention_IsRemoved()
+    {
+        _store.Register("job-1", _ownerId, Target);
+        _store.Fail("job-1", "Processing failed.");
+
+        _time.Advance(Retention);
+        _time.Advance(Retention);
+
+        Assert.Null(_store.Get("job-1"));
+    }
+
+    [Fact]
+    public void EvictionTimer_InFlightSnapshot_IsKept()
+    {
+        _store.Register("job-1", _ownerId, Target);
+
+        _time.Advance(Retention);
+        _time.Advance(Retention);
+
+        Assert.NotNull(_store.Get("job-1"));
     }
 }

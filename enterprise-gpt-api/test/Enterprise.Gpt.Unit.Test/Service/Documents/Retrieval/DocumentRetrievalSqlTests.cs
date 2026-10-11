@@ -184,7 +184,7 @@ public sealed class DocumentRetrievalSqlTests
             // this module is allowed to write should appear there.
             for (var i = 1; i < quoted.Length; i += 2)
             {
-                Assert.Contains(quoted[i], new[] { "cosine", "\\" }, StringComparer.Ordinal);
+                Assert.Contains(quoted[i], ["cosine", "\\"], StringComparer.Ordinal);
             }
         }
     }

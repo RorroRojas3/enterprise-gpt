@@ -24,7 +24,7 @@ namespace Enterprise.Gpt.Service.Conversations.Tokenization;
 /// </remarks>
 /// <param name="options">The estimator settings, read for the fallback encoding.</param>
 /// <param name="logger">The logger.</param>
-public sealed class TokenizerProvider(IOptions<TokenEstimationOptions> options, ILogger<TokenizerProvider> logger)
+public sealed partial class TokenizerProvider(IOptions<TokenEstimationOptions> options, ILogger<TokenizerProvider> logger)
 {
     private readonly ConcurrentDictionary<string, Tokenizer> _byDeployment = new(StringComparer.OrdinalIgnoreCase);
     private readonly TokenEstimationOptions _options = options.Value;
@@ -46,6 +46,8 @@ public sealed class TokenizerProvider(IOptions<TokenEstimationOptions> options, 
         return _byDeployment.GetOrAdd(deploymentName ?? string.Empty, Build);
     }
 
+    #region Private methods
+
     private Tokenizer Build(string deploymentName)
     {
         if (!string.IsNullOrWhiteSpace(deploymentName))
@@ -54,16 +56,13 @@ public sealed class TokenizerProvider(IOptions<TokenEstimationOptions> options, 
             {
                 var tokenizer = TiktokenTokenizer.CreateForModel(deploymentName);
 
-                _logger.LogInformation(
-                    "Estimating tokens for '{DeploymentName}' with the tokenizer the library reports for it", deploymentName);
+                LogUsingLibraryTokenizer(_logger, deploymentName);
 
                 return tokenizer;
             }
             catch (Exception ex) when (ex is NotSupportedException or ArgumentException)
             {
-                _logger.LogInformation(
-                    "'{DeploymentName}' is not a recognized tokenizer model name (it is likely a deployment alias); falling back to the {Encoding} encoding",
-                    deploymentName, _options.FallbackEncoding);
+                LogTokenizerFallback(_logger, deploymentName, _options.FallbackEncoding);
             }
         }
 
@@ -77,4 +76,16 @@ public sealed class TokenizerProvider(IOptions<TokenEstimationOptions> options, 
                 $"Tokenization:FallbackEncoding is '{_options.FallbackEncoding}', which this application cannot build. Reference the matching Microsoft.ML.Tokenizers.Data package or set a supported encoding.", ex);
         }
     }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Estimating tokens for '{DeploymentName}' with the tokenizer the library reports for it")]
+    private static partial void LogUsingLibraryTokenizer(ILogger logger, string deploymentName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "'{DeploymentName}' is not a recognized tokenizer model name (it is likely a deployment alias); falling back to the {Encoding} encoding")]
+    private static partial void LogTokenizerFallback(ILogger logger, string deploymentName, string encoding);
+
+    #endregion
 }

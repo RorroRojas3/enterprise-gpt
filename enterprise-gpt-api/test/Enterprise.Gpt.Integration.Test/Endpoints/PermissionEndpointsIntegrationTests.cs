@@ -46,7 +46,7 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
     }
 
 
-    private async Task<PermissionDto> CreatePermissionAsync(HttpClient adminClient, string name)
+    private static async Task<PermissionDto> CreatePermissionAsync(HttpClient adminClient, string name)
     {
         var response = await adminClient.PostAsJsonAsync(
             "api/permissions", CreateRequest(name), TestContext.Current.CancellationToken);

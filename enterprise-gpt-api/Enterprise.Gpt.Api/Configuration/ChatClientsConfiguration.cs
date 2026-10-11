@@ -9,6 +9,8 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </summary>
 internal static class ChatClientsConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Registers the usage observer, the four providers under their <c>ChatClientKeys</c>, and the resolver.
     /// </summary>
@@ -29,4 +31,6 @@ internal static class ChatClientsConfiguration
 
         return services;
     }
+
+    #endregion
 }

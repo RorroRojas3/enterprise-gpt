@@ -5,84 +5,83 @@ using Enterprise.Gpt.Repository.Sql.Configurations.Base;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
-namespace Enterprise.Gpt.Repository.Sql.Configurations.ChatModels
+namespace Enterprise.Gpt.Repository.Sql.Configurations.ChatModels;
+
+public class ModelConfiguration : BaseModifiedByEntityConfiguration<Model, Guid>
 {
-    public class ModelConfiguration : BaseModifiedByEntityConfiguration<Model, Guid>
+    /// <inheritdoc />
+    /// <remarks>Usage, history and audit columns reach this through required navigations, so a retired row must stay visible.</remarks>
+    protected override bool IsSoftDeleteFiltered => false;
+
+    protected override void ConfigureEntity(EntityTypeBuilder<Model> builder)
     {
-        /// <inheritdoc />
-        /// <remarks>Usage, history and audit columns reach this through required navigations, so a retired row must stay visible.</remarks>
-        protected override bool IsSoftDeleteFiltered => false;
+        builder.ToTable(nameof(Model), "Core.Ref");
 
-        protected override void ConfigureEntity(EntityTypeBuilder<Model> builder)
-        {
-            builder.ToTable(nameof(Model), "Core.Ref");
+        builder.Property(x => x.Name).HasMaxLength(ModelLimits.NameMaxLength);
+        builder.Property(x => x.DeploymentName).HasMaxLength(ModelLimits.DeploymentNameMaxLength);
+        builder.Property(x => x.Description).HasMaxLength(ModelLimits.DescriptionMaxLength);
+        builder.Property(x => x.ContextWindowSize).HasColumnType("decimal(18, 2)");
+        builder.Property(x => x.MaxOutputTokens).HasColumnType("decimal(18, 2)");
+        builder.Property(x => x.InputPricePerMillionTokens).HasColumnType("decimal(18, 6)");
+        builder.Property(x => x.OutputPricePerMillionTokens).HasColumnType("decimal(18, 6)");
 
-            builder.Property(x => x.Name).HasMaxLength(ModelLimits.NameMaxLength);
-            builder.Property(x => x.DeploymentName).HasMaxLength(ModelLimits.DeploymentNameMaxLength);
-            builder.Property(x => x.Description).HasMaxLength(ModelLimits.DescriptionMaxLength);
-            builder.Property(x => x.ContextWindowSize).HasColumnType("decimal(18, 2)");
-            builder.Property(x => x.MaxOutputTokens).HasColumnType("decimal(18, 2)");
-            builder.Property(x => x.InputPricePerMillionTokens).HasColumnType("decimal(18, 6)");
-            builder.Property(x => x.OutputPricePerMillionTokens).HasColumnType("decimal(18, 6)");
+        builder.HasOne(x => x.Provider)
+            .WithMany()
+            .HasForeignKey(x => x.ProviderId);
 
-            builder.HasOne(x => x.Provider)
-                .WithMany()
-                .HasForeignKey(x => x.ProviderId);
+        // A store default so a column added later backfills existing rows to visible rather than
+        // hiding the whole catalog at once. ValueGeneratedNever because EF's seed differ skips
+        // store-generated columns, and would drop this one from HasData with no error at all.
+        builder.Property(x => x.IsUserSelectable)
+            .HasDefaultValue(true)
+            .ValueGeneratedNever();
 
-            // A store default so a column added later backfills existing rows to visible rather than
-            // hiding the whole catalog at once. ValueGeneratedNever because EF's seed differ skips
-            // store-generated columns, and would drop this one from HasData with no error at all.
-            builder.Property(x => x.IsUserSelectable)
-                .HasDefaultValue(true)
-                .ValueGeneratedNever();
-
-            var dateCreated = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-            var userId = Guid.Parse("5f7ab694-1b6c-4b19-badd-c82b65e794cf");
-            builder.HasData(
-                new Model
-                {
-                    Id = new("c36e22ed-262a-47a1-b2ba-06a38355ae0f"),
-                    ProviderId = Providers.AzureOpenAI,
-                    Name = "RR GPT 5.6 Luna",
-                    // The pinned document summarizer. Its window and output cap are asserted here
-                    // rather than left at zero because the summarization engine reads both from
-                    // this row at the moment of use, and hidden from the picker because it is a
-                    // purpose-built deployment nobody should be able to hold a conversation with.
-                    DeploymentName = "rr-gpt5.6-luna",
-                    ContextWindowSize = 1_000_000m,
-                    // Wide enough for a full document summary plus whatever the deployment spends on
-                    // reasoning, which shares this cap. It costs the input budget three percent of
-                    // the window, since the engine reserves the cap out of it before splitting.
-                    MaxOutputTokens = 32_768m,
-                    IsUserSelectable = false,
-                    IsToolEnabled = true,
-                    Description = "OpenAI's GPT-5.6 Luna model.",
-                    DateCreated = dateCreated,
-                    DateModified = dateCreated,
-                    CreatedById = userId,
-                    ModifiedById = userId
-                },
-                new Model
-                {
-                    Id = new("8f2b4d16-9c05-4a3e-8f7a-1d6a9c2b5e04"),
-                    ProviderId = Providers.AzureOpenAI,
-                    Name = "RR GPT 5.6 Luna (File Agent)",
-                    // The pinned File Agent. Its own row rather than the summarizer's so the two can be
-                    // repointed independently, and on Azure OpenAI because the hosted code interpreter
-                    // rides that provider's Responses route and no other. Hidden from the picker: it is
-                    // a purpose-built deployment nobody should be able to hold a conversation with.
-                    DeploymentName = "rr-gpt5.6-luna",
-                    ContextWindowSize = 1_000_000m,
-                    MaxOutputTokens = 16_384m,
-                    IsUserSelectable = false,
-                    IsToolEnabled = true,
-                    Description = "Runs the File Agent's sandbox turns.",
-                    DateCreated = dateCreated,
-                    DateModified = dateCreated,
-                    CreatedById = userId,
-                    ModifiedById = userId
-                }
-            );
-        }
+        var dateCreated = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var userId = Guid.Parse("5f7ab694-1b6c-4b19-badd-c82b65e794cf");
+        builder.HasData(
+            new Model
+            {
+                Id = new("c36e22ed-262a-47a1-b2ba-06a38355ae0f"),
+                ProviderId = Providers.AzureOpenAI,
+                Name = "RR GPT 5.6 Luna",
+                // The pinned document summarizer. Its window and output cap are asserted here
+                // rather than left at zero because the summarization engine reads both from
+                // this row at the moment of use, and hidden from the picker because it is a
+                // purpose-built deployment nobody should be able to hold a conversation with.
+                DeploymentName = "rr-gpt5.6-luna",
+                ContextWindowSize = 1_000_000m,
+                // Wide enough for a full document summary plus whatever the deployment spends on
+                // reasoning, which shares this cap. It costs the input budget three percent of
+                // the window, since the engine reserves the cap out of it before splitting.
+                MaxOutputTokens = 32_768m,
+                IsUserSelectable = false,
+                IsToolEnabled = true,
+                Description = "OpenAI's GPT-5.6 Luna model.",
+                DateCreated = dateCreated,
+                DateModified = dateCreated,
+                CreatedById = userId,
+                ModifiedById = userId
+            },
+            new Model
+            {
+                Id = new("8f2b4d16-9c05-4a3e-8f7a-1d6a9c2b5e04"),
+                ProviderId = Providers.AzureOpenAI,
+                Name = "RR GPT 5.6 Luna (File Agent)",
+                // The pinned File Agent. Its own row rather than the summarizer's so the two can be
+                // repointed independently, and on Azure OpenAI because the hosted code interpreter
+                // rides that provider's Responses route and no other. Hidden from the picker: it is
+                // a purpose-built deployment nobody should be able to hold a conversation with.
+                DeploymentName = "rr-gpt5.6-luna",
+                ContextWindowSize = 1_000_000m,
+                MaxOutputTokens = 16_384m,
+                IsUserSelectable = false,
+                IsToolEnabled = true,
+                Description = "Runs the File Agent's sandbox turns.",
+                DateCreated = dateCreated,
+                DateModified = dateCreated,
+                CreatedById = userId,
+                ModifiedById = userId
+            }
+        );
     }
 }

@@ -44,6 +44,8 @@ public static class FileAgentSkills
         ["document-conversion"] = ["convert", "conversion", "converted", "export"]
     }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
+    #region Public static methods
+
     /// <summary>
     /// Lists the skills present under a root, for a startup probe.
     /// </summary>
@@ -196,4 +198,6 @@ public static class FileAgentSkills
             ? null
             : new[] { VerificationSkill }.Concat(matched).ToFrozenSet(StringComparer.OrdinalIgnoreCase);
     }
+
+    #endregion
 }

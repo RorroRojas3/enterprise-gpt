@@ -39,7 +39,7 @@ public interface IMarkdownRenderer
 /// </para>
 /// </remarks>
 /// <param name="logger">The logger.</param>
-public sealed class MarkdownRenderer(ILogger<MarkdownRenderer> logger) : IMarkdownRenderer
+public sealed partial class MarkdownRenderer(ILogger<MarkdownRenderer> logger) : IMarkdownRenderer
 {
     private readonly ILogger<MarkdownRenderer> _logger = logger;
 
@@ -59,9 +59,16 @@ public sealed class MarkdownRenderer(ILogger<MarkdownRenderer> logger) : IMarkdo
         {
             // Length only: the content is a user prompt or a model answer, and neither belongs in a
             // log. The length is what distinguishes a pathological input from an ordinary one.
-            _logger.LogError(ex, "Rendering a {Length}-character message to HTML failed; storing escaped plain text instead.", markdown.Length);
+            LogHtmlRenderFailed(_logger, ex, markdown.Length);
 
             return WebUtility.HtmlEncode(markdown);
         }
     }
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Rendering a {Length}-character message to HTML failed; storing escaped plain text instead.")]
+    private static partial void LogHtmlRenderFailed(ILogger logger, Exception exception, int length);
+
+    #endregion
 }

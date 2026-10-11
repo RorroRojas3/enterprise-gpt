@@ -94,6 +94,22 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
             $"{ExportFileNames.Stem(document.Name)}.docx");
     }
 
+    private static class StyleIds
+    {
+        public const string Normal = "Normal";
+        public const string Title = "ExportTitle";
+        public const string Subtitle = "ExportSubtitle";
+        public const string MessageLabel = "ExportMessageLabel";
+        public const string Code = "ExportCode";
+        public const string CodeLanguage = "ExportCodeLanguage";
+        public const string ListParagraph = "ListParagraph";
+        public const string TableCellText = "ExportTableCell";
+        public const string TableGrid = "ExportTableGrid";
+        public const string HyperlinkChar = "Hyperlink";
+    }
+
+    #region Private methods
+
     private void AppendBlock(
         OpenXmlCompositeElement parent,
         ExportBlock block,
@@ -192,7 +208,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
             // otherwise lose its bullet, which an HTML <li> never does. Everything after the first
             // paragraph is indented rather than numbered: a continuation line carrying its own
             // number restarts the count against it.
-            var opening = item.Children.FirstOrDefault() as ParagraphBlock;
+            var opening = item.Children is [ParagraphBlock lead, ..] ? lead : null;
 
             parent.AppendChild(NumberedParagraph(
                 opening?.Runs ?? [], main, list.Ordered, level, style));
@@ -204,7 +220,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
         }
     }
 
-    private Paragraph NumberedParagraph(
+    private static Paragraph NumberedParagraph(
         IReadOnlyList<ExportRun> runs, MainDocumentPart main, bool ordered, int level, ExportBlockStyles style)
     {
         // No paragraph indent: the numbering level carries its own, and one set here would override
@@ -222,7 +238,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
         return paragraph;
     }
 
-    private void AppendTable(
+    private static void AppendTable(
         OpenXmlCompositeElement parent,
         TableBlock table,
         MainDocumentPart main,
@@ -336,7 +352,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
             new ParagraphBorders(
                 new BottomBorder { Val = BorderValues.Single, Size = 6, Color = ExportTheme.Colors.Border })));
 
-    private Paragraph StyledParagraph(
+    private static Paragraph StyledParagraph(
         string styleId,
         IReadOnlyList<ExportRun> runs,
         MainDocumentPart main,
@@ -410,7 +426,7 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
         string.Equals(styleId, StyleIds.Code, StringComparison.Ordinal)
         || string.Equals(styleId, StyleIds.CodeLanguage, StringComparison.Ordinal);
 
-    private void AppendRuns(Paragraph paragraph, IReadOnlyList<ExportRun> runs, MainDocumentPart main)
+    private static void AppendRuns(Paragraph paragraph, IReadOnlyList<ExportRun> runs, MainDocumentPart main)
     {
         foreach (var run in runs)
         {
@@ -664,8 +680,8 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
         var abstractNum = new AbstractNum { AbstractNumberId = id };
 
         // The bullet glyphs Word itself cycles through, and the same three-cycle for numbers.
-        var bullets = new[] { "•", "◦", "▪" };
-        var numberFormats = new[] { NumberFormatValues.Decimal, NumberFormatValues.LowerLetter, NumberFormatValues.LowerRoman };
+        string[] bullets = ["•", "◦", "▪"];
+        NumberFormatValues[] numberFormats = [NumberFormatValues.Decimal, NumberFormatValues.LowerLetter, NumberFormatValues.LowerRoman];
 
         for (var level = 0; level <= MaxListDepth; level++)
         {
@@ -691,17 +707,5 @@ public sealed class WordExportRenderer(IMarkdownBlockMapper mapper) : IConversat
         return abstractNum;
     }
 
-    private static class StyleIds
-    {
-        public const string Normal = "Normal";
-        public const string Title = "ExportTitle";
-        public const string Subtitle = "ExportSubtitle";
-        public const string MessageLabel = "ExportMessageLabel";
-        public const string Code = "ExportCode";
-        public const string CodeLanguage = "ExportCodeLanguage";
-        public const string ListParagraph = "ListParagraph";
-        public const string TableCellText = "ExportTableCell";
-        public const string TableGrid = "ExportTableGrid";
-        public const string HyperlinkChar = "Hyperlink";
-    }
+    #endregion
 }

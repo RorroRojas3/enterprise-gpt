@@ -14,6 +14,8 @@ namespace Enterprise.Gpt.Api.Configuration.Providers;
 /// </remarks>
 internal static class AzureAIFoundryDefaults
 {
+    #region Public static methods
+
     /// <summary>
     /// Creates the <see cref="ChatOptions"/> callback for the Azure AI Foundry provider.
     /// </summary>
@@ -45,4 +47,6 @@ internal static class AzureAIFoundryDefaults
             // it, so there is nothing here to defend against and nothing to clear.
         };
     }
+
+    #endregion
 }

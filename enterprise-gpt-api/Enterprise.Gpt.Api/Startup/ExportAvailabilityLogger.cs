@@ -28,7 +28,7 @@ namespace Enterprise.Gpt.Api.Startup;
 /// <param name="renderers">The renderers that were registered.</param>
 /// <param name="options">The bound export options.</param>
 /// <param name="logger">The logger.</param>
-internal sealed class ExportAvailabilityLogger(
+internal sealed partial class ExportAvailabilityLogger(
     IEnumerable<IConversationExportRenderer> renderers,
     IOptions<ExportOptions> options,
     ILogger<ExportAvailabilityLogger> logger) : IHostedService
@@ -57,17 +57,19 @@ internal sealed class ExportAvailabilityLogger(
                 : $"{format.ToWireFormat()} (disabled by configuration)");
         }
 
-        _logger.LogInformation(
-            "Conversation export is available as {AvailableFormats}.",
-            string.Join(", ", available.Select(format => format.ToWireFormat()).Order(StringComparer.Ordinal)));
-
-        if (unavailable.Count > 0)
+        if (_logger.IsEnabled(LogLevel.Information))
         {
-            // Warning rather than Information: every entry here is a route that answers 503, and an
-            // operator who did not intend one wants to see it without going looking. The font case
-            // is the one that is usually unintentional — see Export/Fonts/README.md.
-            _logger.LogWarning(
-                "Conversation export is unavailable as {UnavailableFormats}.", string.Join(", ", unavailable));
+            var names = string.Join(", ", available.Select(format => format.ToWireFormat()).Order(StringComparer.Ordinal));
+            LogExportFormatsAvailable(_logger, names);
+        }
+
+        // Warning rather than Information: every entry here is a route that answers 503, and an
+        // operator who did not intend one wants to see it without going looking. The font case
+        // is the one that is usually unintentional — see Service/Exports/Fonts/README.md.
+        if (unavailable.Count > 0 && _logger.IsEnabled(LogLevel.Warning))
+        {
+            var names = string.Join(", ", unavailable);
+            LogExportFormatsUnavailable(_logger, names);
         }
 
         return Task.CompletedTask;
@@ -75,4 +77,14 @@ internal sealed class ExportAvailabilityLogger(
 
     /// <inheritdoc />
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Conversation export is available as {AvailableFormats}.")]
+    private static partial void LogExportFormatsAvailable(ILogger logger, string availableFormats);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Conversation export is unavailable as {UnavailableFormats}.")]
+    private static partial void LogExportFormatsUnavailable(ILogger logger, string unavailableFormats);
+
+    #endregion
 }

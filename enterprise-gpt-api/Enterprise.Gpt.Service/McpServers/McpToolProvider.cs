@@ -20,6 +20,7 @@ using Microsoft.Identity.Client;
 using Microsoft.Identity.Web;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Enterprise.Gpt.Service.McpServers;
 
@@ -62,7 +63,7 @@ public interface IMcpToolProvider
     Task<IMcpToolLeaseSet> AcquireToolsAsync(IReadOnlyCollection<Guid> mcpServerIds, CancellationToken cancellationToken);
 }
 
-public class McpToolProvider(ILogger<McpToolProvider> logger,
+public partial class McpToolProvider(ILogger<McpToolProvider> logger,
     ITokenService tokenService,
     ITokenAcquisition tokenAcquisition,
     IHttpClientFactory httpClientFactory,
@@ -162,6 +163,33 @@ public class McpToolProvider(ILogger<McpToolProvider> logger,
         }
     }
 
+    private sealed class McpToolLeaseSet(IReadOnlyList<IMcpToolLease> leases, IReadOnlyList<McpServerReference> servers) : IMcpToolLeaseSet
+    {
+        private readonly IReadOnlyList<IMcpToolLease> _leases = leases;
+        private int _disposed;
+
+        public static McpToolLeaseSet Empty { get; } = new([], []);
+
+        public IReadOnlyList<AITool> Tools { get; } = [.. leases.SelectMany(l => l.Tools)];
+
+        public IReadOnlyList<McpServerReference> Servers { get; } = servers;
+
+        public async ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 1)
+            {
+                return;
+            }
+
+            foreach (var lease in _leases)
+            {
+                await lease.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    #region Private methods
+
     /// <summary>
     /// Records every credential a server refused during this acquisition, so the next request
     /// asks the user for a new one instead of failing the same way.
@@ -189,9 +217,7 @@ public class McpToolProvider(ILogger<McpToolProvider> logger,
             // losing this write costs them one more failed turn, nothing more.
             catch (Exception ex)
             {
-                _logger.LogWarning(ex,
-                    "Could not record that MCP server {McpServerId} rejected the API key of user {UserId}",
-                    rejected.McpServerId, oid);
+                LogApiKeyRejectionNotRecorded(_logger, ex, rejected.McpServerId, oid);
             }
         }
     }
@@ -265,54 +291,6 @@ public class McpToolProvider(ILogger<McpToolProvider> logger,
         }
     }
 
-    /// <summary>
-    /// Builds the request headers for one server: its configured headers, then the
-    /// on-behalf-of bearer.
-    /// </summary>
-    /// <param name="configured">The headers stored on the server row, if any.</param>
-    /// <param name="accessToken">The on-behalf-of token, or <see langword="null"/> for a server with no authentication.</param>
-    /// <returns>The headers to send, empty when there are none.</returns>
-    /// <remarks>
-    /// <see cref="McpServerHeaderRules"/> is applied again here rather than trusted from write
-    /// time. A row that predates a rule change, or one written straight into SQL by a DBA,
-    /// must not be able to set a header this application would refuse today — so a name that
-    /// is reserved or malformed, or a value that is not printable ASCII, is dropped silently
-    /// rather than sent.
-    ///
-    /// Ordinal-ignore-case, and the bearer written last: a stored `authorization` header
-    /// collapses onto the same slot and is overwritten whatever casing it was persisted under.
-    /// That is the lock that holds even if this filter is one day loosened.
-    ///
-    /// <c>internal</c> rather than <c>private</c> for the reason
-    /// <see cref="SanitizeToolNamePrefix"/> is: it is the only way to pin this behaviour in a
-    /// unit test.
-    /// </remarks>
-    internal static Dictionary<string, string> BuildTransportHeaders(
-        IReadOnlyDictionary<string, string>? configured, string? accessToken)
-    {
-        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-        if (configured is not null)
-        {
-            foreach (var (name, value) in configured)
-            {
-                if (McpServerHeaderRules.IsWellFormedName(name)
-                    && !McpServerHeaderRules.IsReserved(name)
-                    && McpServerHeaderRules.IsWellFormedValue(value))
-                {
-                    headers[name] = value;
-                }
-            }
-        }
-
-        if (accessToken is not null)
-        {
-            headers["Authorization"] = $"Bearer {accessToken}";
-        }
-
-        return headers;
-    }
-
     private async Task<McpCacheEntrySource> CreateEntrySourceAsync(
         McpServer server, string? accessToken, DateTimeOffset? tokenExpiresOn, CancellationToken cancellationToken)
     {
@@ -381,18 +359,15 @@ public class McpToolProvider(ILogger<McpToolProvider> logger,
             // actually applied, and is the only in-app signal that it was, since nothing
             // surfaces a server's tool surface. Values are configuration but still the
             // administrator's text, and have no place in a log.
-            // Joined here rather than passed as a sequence: this is a plain `ILogger`, whose
-            // default formatter would render an enumerable as its type name.
-            var headerNames = additionalHeaders.Keys
-                .Where(k => !McpServerHeaderRules.IsReserved(k))
-                .Order()
-                .ToArray();
-
-            _logger.LogInformation(
-                "Connected to MCP server {McpServerId} and listed {ToolCount} tools with headers {HeaderNames}",
-                server.Id,
-                prefixedTools.Count,
-                headerNames.Length == 0 ? "none" : string.Join(", ", headerNames));
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                var headerNames = additionalHeaders.Keys
+                    .Where(k => !McpServerHeaderRules.IsReserved(k))
+                    .Order()
+                    .ToArray();
+                var names = headerNames.Length == 0 ? "none" : string.Join(", ", headerNames);
+                LogConnected(_logger, server.Id, prefixedTools.Count, names);
+            }
 
             return new McpCacheEntrySource
             {
@@ -412,34 +387,6 @@ public class McpToolProvider(ILogger<McpToolProvider> logger,
             await client.DisposeAsync().ConfigureAwait(false);
             throw;
         }
-    }
-
-    /// <summary>
-    /// Turns a connect or list failure into the exception that names who can fix it: a refused
-    /// user-supplied key, or an unavailable server.
-    /// </summary>
-    /// <remarks>
-    /// Only servers holding a user's own credential can produce the first: a 401 from an
-    /// on-behalf-of or anonymous server is a registration fault, and telling that user to
-    /// replace a key they never supplied would send them nowhere.
-    ///
-    /// <c>internal</c> for the reason <see cref="BuildTransportHeaders"/> is: this is the
-    /// branch that decides who is told to fix a failure, and a unit test is the only way to
-    /// pin it.
-    /// </remarks>
-    internal static Exception Classify(McpServer server, Exception exception)
-    {
-        if (server.AuthType != McpAuthTypes.UserApiKey)
-        {
-            return new McpServerUnavailableException(server.Name, exception);
-        }
-
-        return Flatten(exception).Any(e => e is HttpRequestException
-        {
-            StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
-        })
-            ? new McpCredentialRejectedException(server.Id, server.Name, exception)
-            : new McpServerUnavailableException(server.Name, exception);
     }
 
     /// <summary>
@@ -502,6 +449,86 @@ public class McpToolProvider(ILogger<McpToolProvider> logger,
         }
     }
 
+    #endregion
+
+    #region Public static methods
+
+    /// <summary>
+    /// Builds the request headers for one server: its configured headers, then the
+    /// on-behalf-of bearer.
+    /// </summary>
+    /// <param name="configured">The headers stored on the server row, if any.</param>
+    /// <param name="accessToken">The on-behalf-of token, or <see langword="null"/> for a server with no authentication.</param>
+    /// <returns>The headers to send, empty when there are none.</returns>
+    /// <remarks>
+    /// <see cref="McpServerHeaderRules"/> is applied again here rather than trusted from write
+    /// time. A row that predates a rule change, or one written straight into SQL by a DBA,
+    /// must not be able to set a header this application would refuse today — so a name that
+    /// is reserved or malformed, or a value that is not printable ASCII, is dropped silently
+    /// rather than sent.
+    ///
+    /// Ordinal-ignore-case, and the bearer written last: a stored `authorization` header
+    /// collapses onto the same slot and is overwritten whatever casing it was persisted under.
+    /// That is the lock that holds even if this filter is one day loosened.
+    ///
+    /// <c>internal</c> rather than <c>private</c> for the reason
+    /// <see cref="SanitizeToolNamePrefix"/> is: it is the only way to pin this behaviour in a
+    /// unit test.
+    /// </remarks>
+    internal static Dictionary<string, string> BuildTransportHeaders(
+        IReadOnlyDictionary<string, string>? configured, string? accessToken)
+    {
+        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        if (configured is not null)
+        {
+            foreach (var (name, value) in configured)
+            {
+                if (McpServerHeaderRules.IsWellFormedName(name)
+                    && !McpServerHeaderRules.IsReserved(name)
+                    && McpServerHeaderRules.IsWellFormedValue(value))
+                {
+                    headers[name] = value;
+                }
+            }
+        }
+
+        if (accessToken is not null)
+        {
+            headers["Authorization"] = $"Bearer {accessToken}";
+        }
+
+        return headers;
+    }
+
+    /// <summary>
+    /// Turns a connect or list failure into the exception that names who can fix it: a refused
+    /// user-supplied key, or an unavailable server.
+    /// </summary>
+    /// <remarks>
+    /// Only servers holding a user's own credential can produce the first: a 401 from an
+    /// on-behalf-of or anonymous server is a registration fault, and telling that user to
+    /// replace a key they never supplied would send them nowhere.
+    ///
+    /// <c>internal</c> for the reason <see cref="BuildTransportHeaders"/> is: this is the
+    /// branch that decides who is told to fix a failure, and a unit test is the only way to
+    /// pin it.
+    /// </remarks>
+    internal static Exception Classify(McpServer server, Exception exception)
+    {
+        if (server.AuthType != McpAuthTypes.UserApiKey)
+        {
+            return new McpServerUnavailableException(server.Name, exception);
+        }
+
+        return Flatten(exception).Any(e => e is HttpRequestException
+        {
+            StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+        })
+            ? new McpCredentialRejectedException(server.Id, server.Name, exception)
+            : new McpServerUnavailableException(server.Name, exception);
+    }
+
     /// <summary>
     /// Derives the prefix stamped onto every tool leased from a server, so tool names stay
     /// unique across servers.
@@ -518,28 +545,16 @@ public class McpToolProvider(ILogger<McpToolProvider> logger,
         return string.Concat(serverName.Select(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-' ? c : '_'));
     }
 
-    private sealed class McpToolLeaseSet(IReadOnlyList<IMcpToolLease> leases, IReadOnlyList<McpServerReference> servers) : IMcpToolLeaseSet
-    {
-        private readonly IReadOnlyList<IMcpToolLease> _leases = leases;
-        private int _disposed;
+    #endregion
 
-        public static McpToolLeaseSet Empty { get; } = new([], []);
+    #region Logging
 
-        public IReadOnlyList<AITool> Tools { get; } = [.. leases.SelectMany(l => l.Tools)];
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not record that MCP server {McpServerId} rejected the API key of user {UserId}")]
+    private static partial void LogApiKeyRejectionNotRecorded(
+        ILogger logger, Exception exception, Guid mcpServerId, Guid userId);
 
-        public IReadOnlyList<McpServerReference> Servers { get; } = servers;
+    [LoggerMessage(Level = LogLevel.Information, Message = "Connected to MCP server {McpServerId} and listed {ToolCount} tools with headers {HeaderNames}")]
+    private static partial void LogConnected(ILogger logger, Guid mcpServerId, int toolCount, string headerNames);
 
-        public async ValueTask DisposeAsync()
-        {
-            if (Interlocked.Exchange(ref _disposed, 1) == 1)
-            {
-                return;
-            }
-
-            foreach (var lease in _leases)
-            {
-                await lease.DisposeAsync().ConfigureAwait(false);
-            }
-        }
-    }
+    #endregion
 }

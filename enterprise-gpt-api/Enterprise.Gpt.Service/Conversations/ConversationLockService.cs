@@ -61,6 +61,67 @@ public interface IConversationLockService
 /// </remarks>
 public sealed class ConversationLockService : IConversationLockService, IDisposable
 {
+    private readonly Dictionary<Guid, LockEntry> _locks = [];
+    private readonly Lock _gate = new();
+    private bool _disposed;
+
+    /// <summary>
+    /// Gets the number of conversations currently holding a registry entry. Exposed for tests
+    /// so they can assert that the registry drains rather than leaks.
+    /// </summary>
+    internal int ActiveLockCount
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _locks.Count;
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public async ValueTask<IDisposable?> TryAcquireLockAsync(Guid conversationId, CancellationToken cancellationToken = default)
+    {
+        var entry = Rent(conversationId);
+
+        var acquired = false;
+        try
+        {
+            acquired = await entry.Semaphore.WaitAsync(0, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            // Covers the not-acquired and cancelled paths alike; the successful path hands the
+            // reference on to the releaser, which returns it on disposal.
+            if (!acquired)
+            {
+                Return(conversationId, entry);
+            }
+        }
+
+        return acquired ? new LockReleaser(this, conversationId, entry) : null;
+    }
+
+    /// <summary>
+    /// Marks the service as disposed and abandons the registry.
+    /// </summary>
+    /// <remarks>
+    /// Every entry in the registry has at least one reference by construction, so there is
+    /// nothing here to dispose: entries are left for their own <see cref="LockReleaser"/> to
+    /// release and reclaim. Disposing a held semaphore here would fault the release path of a
+    /// request still unwinding during host shutdown, and a <see cref="SemaphoreSlim"/> with no
+    /// allocated wait handle holds no unmanaged resource worth reclaiming at process exit.
+    /// </remarks>
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            _disposed = true;
+            _locks.Clear();
+        }
+    }
+
     /// <summary>
     /// A single conversation's semaphore together with the number of outstanding
     /// holders and pending acquirers. <see cref="RefCount"/> is guarded by the owning
@@ -107,47 +168,7 @@ public sealed class ConversationLockService : IConversationLockService, IDisposa
         }
     }
 
-    private readonly Dictionary<Guid, LockEntry> _locks = [];
-    private readonly Lock _gate = new();
-    private bool _disposed;
-
-    /// <summary>
-    /// Gets the number of conversations currently holding a registry entry. Exposed for tests
-    /// so they can assert that the registry drains rather than leaks.
-    /// </summary>
-    internal int ActiveLockCount
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _locks.Count;
-            }
-        }
-    }
-
-    /// <inheritdoc />
-    public async ValueTask<IDisposable?> TryAcquireLockAsync(Guid conversationId, CancellationToken cancellationToken = default)
-    {
-        var entry = Rent(conversationId);
-
-        var acquired = false;
-        try
-        {
-            acquired = await entry.Semaphore.WaitAsync(0, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            // Covers the not-acquired and cancelled paths alike; the successful path hands the
-            // reference on to the releaser, which returns it on disposal.
-            if (!acquired)
-            {
-                Return(conversationId, entry);
-            }
-        }
-
-        return acquired ? new LockReleaser(this, conversationId, entry) : null;
-    }
+    #region Private methods
 
     /// <summary>
     /// Takes a reference to the conversation's registry entry, creating it if necessary.
@@ -197,22 +218,5 @@ public sealed class ConversationLockService : IConversationLockService, IDisposa
         entry.Semaphore.Dispose();
     }
 
-    /// <summary>
-    /// Marks the service as disposed and abandons the registry.
-    /// </summary>
-    /// <remarks>
-    /// Every entry in the registry has at least one reference by construction, so there is
-    /// nothing here to dispose: entries are left for their own <see cref="LockReleaser"/> to
-    /// release and reclaim. Disposing a held semaphore here would fault the release path of a
-    /// request still unwinding during host shutdown, and a <see cref="SemaphoreSlim"/> with no
-    /// allocated wait handle holds no unmanaged resource worth reclaiming at process exit.
-    /// </remarks>
-    public void Dispose()
-    {
-        lock (_gate)
-        {
-            _disposed = true;
-            _locks.Clear();
-        }
-    }
+    #endregion
 }

@@ -167,7 +167,7 @@ public sealed class FileDtoValidatorTests
     [InlineData("payload.csv")]
     public void Validate_BinaryContentRenamedAsText_IsRejected(string fileName)
     {
-        var content = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x00, 0x1A, 0x0A };
+        byte[] content = [0x89, 0x50, 0x4E, 0x47, 0x00, 0x1A, 0x0A];
 
         var result = CreateValidator().Validate(File(fileName, content));
 

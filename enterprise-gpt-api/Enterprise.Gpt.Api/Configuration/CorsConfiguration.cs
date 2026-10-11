@@ -7,6 +7,8 @@ internal static class CorsConfiguration
 {
     private const string PolicyName = "AllowSpecificOrigins";
 
+    #region Public static methods
+
     /// <summary>
     /// Allows the origins listed under <c>CorsOrigins</c>, with credentials.
     /// </summary>
@@ -30,4 +32,6 @@ internal static class CorsConfiguration
     /// Applies the policy registered by <see cref="AddEnterpriseGptCors"/>.
     /// </summary>
     internal static IApplicationBuilder UseEnterpriseGptCors(this IApplicationBuilder app) => app.UseCors(PolicyName);
+
+    #endregion
 }

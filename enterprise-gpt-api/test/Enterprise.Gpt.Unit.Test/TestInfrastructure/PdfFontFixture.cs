@@ -15,7 +15,7 @@ public sealed class PdfFontFixture
     /// </summary>
     public const string SkipReason =
         "No usable export font was found on this machine, so PDF rendering is unavailable here — "
-        + "the same condition that makes the route answer 503. See Export/Fonts/README.md.";
+        + "the same condition that makes the route answer 503. See Service/Exports/Fonts/README.md.";
 
     public PdfFontFixture()
     {

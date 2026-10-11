@@ -255,7 +255,7 @@ public sealed class UsageReportTranslatorTests
         var inner = Assert.Single(outer.Children);
         var leaf = Assert.Single(inner.Children);
 
-        Assert.Equal([0, 1, 2], new[] { outer.Depth, inner.Depth, leaf.Depth });
+        Assert.Equal([0, 1, 2], [outer.Depth, inner.Depth, leaf.Depth]);
         Assert.Equal(10, leaf.TotalTokens);
         Assert.Equal(40, inner.TotalTokens);
         Assert.Equal(50, inner.SubtreeTotalTokens);

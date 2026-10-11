@@ -1,38 +1,41 @@
 ﻿using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Common.Extensions;
 
-namespace Enterprise.Gpt.Dto.Documents
+namespace Enterprise.Gpt.Dto.Documents;
+
+public class FileDto
 {
-    public class FileDto
+    public string FileName { get; set; } = null!;
+
+    public byte[] Content { get; set; } = [];
+
+    public string ContentType { get; set; } = null!;
+
+    public long Length { get; set; }
+
+    public FileExtensions FileExtension => GetFileExtensionFromFileName();
+
+    #region Private methods
+
+    private FileExtensions GetFileExtensionFromFileName()
     {
-        public string FileName { get; set; } = null!;
+        var extension = Path.GetExtension(FileName)?.ToLowerInvariant();
 
-        public byte[] Content { get; set; } = [];
-
-        public string ContentType { get; set; } = null!;
-
-        public long Length { get; set; }
-
-        public FileExtensions FileExtension => GetFileExtensionFromFileName();
-
-        private FileExtensions GetFileExtensionFromFileName()
+        if (string.IsNullOrEmpty(extension))
         {
-            var extension = Path.GetExtension(FileName)?.ToLowerInvariant();
-
-            if (string.IsNullOrEmpty(extension))
-            {
-                throw new InvalidOperationException($"Unable to determine file extension from filename: {FileName}");
-            }
-
-            foreach (FileExtensions enumValue in Enum.GetValues<FileExtensions>())
-            {
-                if (enumValue.GetDescription() == extension)
-                {
-                    return enumValue;
-                }
-            }
-
-            throw new NotSupportedException($"File extension '{extension}' is not supported.");
+            throw new InvalidOperationException($"Unable to determine file extension from filename: {FileName}");
         }
+
+        foreach (var enumValue in Enum.GetValues<FileExtensions>())
+        {
+            if (enumValue.GetDescription() == extension)
+            {
+                return enumValue;
+            }
+        }
+
+        throw new NotSupportedException($"File extension '{extension}' is not supported.");
     }
+
+    #endregion
 }

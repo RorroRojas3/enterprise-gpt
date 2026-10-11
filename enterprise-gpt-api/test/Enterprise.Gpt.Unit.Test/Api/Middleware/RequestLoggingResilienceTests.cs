@@ -121,7 +121,7 @@ public sealed class RequestLoggingResilienceTests
 
         Assert.Equal(
             expected,
-            RequestLoggingTestHarness.Field(_harness.Single(RequestLoggingTestHarness.CompletedEventId), "RequestPath"));
+            RequestLoggingTestHarness.Field(_harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId), "RequestPath"));
     }
 
     [Fact]
@@ -132,7 +132,7 @@ public sealed class RequestLoggingResilienceTests
         await _harness.Run(context);
 
         var loggedPath = RequestLoggingTestHarness.Field(
-            _harness.Single(RequestLoggingTestHarness.CompletedEventId), "RequestPath");
+            _harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId), "RequestPath");
 
         Assert.DoesNotContain('\n', loggedPath!);
         Assert.Contains("bad key=[redacted]", loggedPath);
@@ -185,7 +185,7 @@ public sealed class RequestLoggingResilienceTests
 
         var options = provider.GetRequiredService<IOptions<RequestLoggingOptions>>().Value;
 
-        Assert.Equal(new[] { "text/plain" }, options.Bodies.AllowedContentTypes);
+        Assert.Equal(["text/plain"], options.Bodies.AllowedContentTypes);
     }
 
     [Fact]
@@ -193,7 +193,7 @@ public sealed class RequestLoggingResilienceTests
     {
         var options = BuildProvider([]).GetRequiredService<IOptions<RequestLoggingOptions>>().Value;
 
-        Assert.Equal(new[] { "/health", "/openapi", "/scalar" }, options.ExcludedPaths);
+        Assert.Equal(["/health", "/openapi", "/scalar"], options.ExcludedPaths);
         Assert.Contains("application/json", options.Bodies.AllowedContentTypes);
         Assert.Contains("/api/conversations", options.Bodies.ExcludedPaths);
         Assert.Contains("password", options.Bodies.RedactedPropertyNames);

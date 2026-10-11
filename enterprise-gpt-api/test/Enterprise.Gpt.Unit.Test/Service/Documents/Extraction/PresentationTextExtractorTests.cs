@@ -92,7 +92,7 @@ public sealed class PresentationTextExtractorTests
     public async Task ExtractAsync_Presentation_ReportsProgressForEverySlide()
     {
         var content = PresentationBuilder.Create([["One"], ["Two"], ["Three"]]);
-        var reports = new List<DocumentExtractionProgress>();
+        List<DocumentExtractionProgress> reports = [];
         var progress = new CollectingProgress<DocumentExtractionProgress>(reports);
 
         await _extractor.ExtractAsync(File(content), progress, TestContext.Current.CancellationToken);

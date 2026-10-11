@@ -16,6 +16,8 @@ public static class FileAgentTracing
 {
     private static readonly ActivitySource Source = new(TelemetryNames.ChatSource);
 
+    #region Public static methods
+
     /// <summary>
     /// Starts the span covering one <c>file_agent</c> invocation.
     /// </summary>
@@ -46,4 +48,6 @@ public static class FileAgentTracing
                 ? ActivityStatusCode.Ok
                 : ActivityStatusCode.Error);
     }
+
+    #endregion
 }

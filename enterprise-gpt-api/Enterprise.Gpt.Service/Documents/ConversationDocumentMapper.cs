@@ -13,27 +13,6 @@ namespace Enterprise.Gpt.Service.Documents;
 public static class ConversationDocumentMapper
 {
     /// <summary>
-    /// Maps a materialized <see cref="ConversationDocument"/> entity to
-    /// <see cref="ConversationDocumentDto"/>.
-    /// </summary>
-    /// <param name="document">The loaded document entity.</param>
-    /// <returns>The mapped DTO.</returns>
-    public static ConversationDocumentDto MapToConversationDocumentDto(this ConversationDocument document)
-    {
-        return new ConversationDocumentDto
-        {
-            Id = document.Id,
-            ConversationId = document.ConversationId,
-            Name = document.Name,
-            Extension = document.Extension,
-            MimeType = document.MimeType,
-            Size = document.Size,
-            Type = document.Type,
-            DateCreated = document.DateCreated
-        };
-    }
-
-    /// <summary>
     /// LINQ projection from <see cref="ConversationDocument"/> to
     /// <see cref="ConversationDocumentDto"/> for use inside <c>IQueryable.Select(...)</c>.
     /// </summary>
@@ -53,6 +32,29 @@ public static class ConversationDocumentMapper
             Type = document.Type,
             DateCreated = document.DateCreated
         };
+
+    #region Public static methods
+
+    /// <summary>
+    /// Maps a materialized <see cref="ConversationDocument"/> entity to
+    /// <see cref="ConversationDocumentDto"/>.
+    /// </summary>
+    /// <param name="document">The loaded document entity.</param>
+    /// <returns>The mapped DTO.</returns>
+    public static ConversationDocumentDto MapToConversationDocumentDto(this ConversationDocument document)
+    {
+        return new ConversationDocumentDto
+        {
+            Id = document.Id,
+            ConversationId = document.ConversationId,
+            Name = document.Name,
+            Extension = document.Extension,
+            MimeType = document.MimeType,
+            Size = document.Size,
+            Type = document.Type,
+            DateCreated = document.DateCreated
+        };
+    }
 
     /// <summary>
     /// Builds the LINQ projection from <see cref="ConversationDocument"/> to
@@ -94,4 +96,6 @@ public static class ConversationDocumentMapper
             DateCreated = document.DateCreated
         };
     }
+
+    #endregion
 }

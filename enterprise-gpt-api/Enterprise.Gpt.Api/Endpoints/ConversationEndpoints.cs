@@ -24,6 +24,24 @@ namespace Enterprise.Gpt.Api.Endpoints;
 /// </remarks>
 public static class ConversationEndpoints
 {
+    #region Private methods
+
+    /// <summary>
+    /// Applies the response headers for a server-sent event stream.
+    /// </summary>
+    private static void SetStreamingHeaders(HttpResponse response)
+    {
+        response.ContentType = "text/event-stream";
+        response.Headers.CacheControl = "no-cache";
+        // Reverse proxies buffer a response by default, which holds every frame back until the turn
+        // ends and defeats the point of streaming activity as it happens.
+        response.Headers["X-Accel-Buffering"] = "no";
+    }
+
+    #endregion
+
+    #region Public static methods
+
     /// <summary>
     /// Maps the <c>api/conversations</c> endpoint group.
     /// </summary>
@@ -284,15 +302,5 @@ public static class ConversationEndpoints
         }
     }
 
-    /// <summary>
-    /// Applies the response headers for a server-sent event stream.
-    /// </summary>
-    private static void SetStreamingHeaders(HttpResponse response)
-    {
-        response.ContentType = "text/event-stream";
-        response.Headers.CacheControl = "no-cache";
-        // Reverse proxies buffer a response by default, which holds every frame back until the turn
-        // ends and defeats the point of streaming activity as it happens.
-        response.Headers["X-Accel-Buffering"] = "no";
-    }
+    #endregion
 }

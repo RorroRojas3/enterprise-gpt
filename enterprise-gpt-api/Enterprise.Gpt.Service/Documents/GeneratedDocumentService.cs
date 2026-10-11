@@ -1,4 +1,5 @@
 using System.Collections.Frozen;
+using System.Globalization;
 using Enterprise.Gpt.Common.Constants.Documents;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto.Conversations;
@@ -52,7 +53,7 @@ public interface IGeneratedDocumentService
 }
 
 /// <inheritdoc />
-public sealed class GeneratedDocumentService(
+public sealed partial class GeneratedDocumentService(
     ILogger<GeneratedDocumentService> logger,
     IDocumentStore documentStore,
     IOptionsMonitor<BlobStorageOptions> storageOptions,
@@ -103,7 +104,7 @@ public sealed class GeneratedDocumentService(
                 ["conversationId"] = request.ConversationId.ToString(),
                 ["documentId"] = documentId.ToString(),
                 ["contentType"] = mimeType,
-                ["length"] = request.Content.Length.ToString()
+                ["length"] = request.Content.Length.ToString(CultureInfo.InvariantCulture)
             },
             cancellationToken);
 
@@ -119,9 +120,7 @@ public sealed class GeneratedDocumentService(
             throw;
         }
 
-        _logger.LogInformation(
-            "Stored generated document {DocumentId} ({Extension}, {Size} bytes) on conversation {ConversationId}",
-            documentId, extension, request.Content.Length, request.ConversationId);
+        LogGeneratedDocumentStored(_logger, documentId, extension, request.Content.Length, request.ConversationId);
 
         return new MessageAttachmentDto
         {
@@ -158,17 +157,17 @@ public sealed class GeneratedDocumentService(
 
             await TryDeleteBlobAsync(path, documentId).ConfigureAwait(false);
 
-            _logger.LogInformation(
-                "Withdrew generated document {DocumentId}; its turn did not deliver it", documentId);
+            LogGeneratedDocumentWithdrawn(_logger, documentId);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             // Never thrown on: this runs inside a turn that is already unwinding, and replacing the
             // exception in flight with a cleanup failure would lose why the turn ended.
-            _logger.LogError(
-                exception, "Could not withdraw generated document {DocumentId}; it needs reclaiming", documentId);
+            LogGeneratedDocumentWithdrawFailed(_logger, exception, documentId);
         }
     }
+
+    #region Private methods
 
     /// <summary>
     /// Writes the row on a unit of work of its own.
@@ -285,10 +284,27 @@ public sealed class GeneratedDocumentService(
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            _logger.LogError(
-                exception,
-                "Could not remove the orphaned blob for generated document {DocumentId}; it needs reclaiming",
-                documentId);
+            LogOrphanedBlobRemoveFailed(_logger, exception, documentId);
         }
     }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Stored generated document {DocumentId} ({Extension}, {Size} bytes) on conversation {ConversationId}")]
+    private static partial void LogGeneratedDocumentStored(
+        ILogger logger, Guid documentId, string extension, int size, Guid conversationId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Withdrew generated document {DocumentId}; its turn did not deliver it")]
+    private static partial void LogGeneratedDocumentWithdrawn(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Could not withdraw generated document {DocumentId}; it needs reclaiming")]
+    private static partial void LogGeneratedDocumentWithdrawFailed(
+        ILogger logger, Exception exception, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Could not remove the orphaned blob for generated document {DocumentId}; it needs reclaiming")]
+    private static partial void LogOrphanedBlobRemoveFailed(ILogger logger, Exception exception, Guid documentId);
+
+    #endregion
 }

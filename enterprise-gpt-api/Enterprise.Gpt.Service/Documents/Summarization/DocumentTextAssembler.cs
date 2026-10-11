@@ -78,6 +78,8 @@ public sealed class DocumentTextAssembler(
         return accumulated.ToString();
     }
 
+    #region Private methods
+
     /// <remarks>
     /// Projects to the text column alone. A chunk row carries a <c>vector(1536)</c> embedding, so
     /// materialising entities would pull several kilobytes per chunk across the wire for a column
@@ -110,4 +112,6 @@ public sealed class DocumentTextAssembler(
 
             _ => throw new ArgumentOutOfRangeException(nameof(source), source, "Unknown document source.")
         };
+
+    #endregion
 }

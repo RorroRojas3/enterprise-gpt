@@ -12,6 +12,8 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </summary>
 internal static class PermissionsConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Registers the permission service and the cache keyed by Entra object id.
     /// </summary>
@@ -34,4 +36,6 @@ internal static class PermissionsConfiguration
 
         return services;
     }
+
+    #endregion
 }

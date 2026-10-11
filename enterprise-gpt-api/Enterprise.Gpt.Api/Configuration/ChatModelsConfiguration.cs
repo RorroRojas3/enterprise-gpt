@@ -7,6 +7,8 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </summary>
 internal static class ChatModelsConfiguration
 {
+    #region Public static methods
+
     /// <summary>Registers the model service.</summary>
     internal static IServiceCollection AddChatModels(this IServiceCollection services)
     {
@@ -14,4 +16,6 @@ internal static class ChatModelsConfiguration
 
         return services;
     }
+
+    #endregion
 }

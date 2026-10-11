@@ -25,7 +25,7 @@ public sealed class ConversionMatrixTests(SandboxSpikeFixture fixture)
     [Fact]
     public async Task ConversionMatrix_AttemptedAgainstTheSandbox_IsConfirmedCellByCell()
     {
-        Assert.SkipUnless(_fixture.IsEnabled, SpikeConfiguration.SkipReason);
+        Assert.SkipUnless(SandboxSpikeFixture.IsEnabled, SpikeConfiguration.SkipReason);
 
         var cancellationToken = TestContext.Current.CancellationToken;
         var session = _fixture.Session;
@@ -192,6 +192,8 @@ public sealed class ConversionMatrixTests(SandboxSpikeFixture fixture)
     /// </summary>
     /// <param name="SourceFound">False means the container recycled and took the corpus with it —
     /// recoverable, and not a statement about any conversion.</param>
+    /// <param name="Attempts">The sandbox's own report of each attempt, keyed by target format; empty when the source was not found.</param>
+    /// <param name="HostSideVerification">The API host's verdict on each target's downloaded artifact, keyed by target format, or why there was none to check.</param>
     private sealed record AttemptResults(
         bool SourceFound,
         IReadOnlyDictionary<string, JsonElement> Attempts,

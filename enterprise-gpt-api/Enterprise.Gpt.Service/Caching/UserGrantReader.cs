@@ -37,6 +37,8 @@ public sealed class UserGrantReader(
     public Task<IReadOnlySet<Guid>> GetGrantsAsync(Guid userId, CancellationToken cancellationToken) =>
         _cache.GetOrLoadAsync(userId, token => LoadAsync(userId, token), cancellationToken);
 
+    #region Private methods
+
     /// <summary>
     /// Reads the caller's full active grant set on a cache miss.
     /// </summary>
@@ -60,4 +62,6 @@ public sealed class UserGrantReader(
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
+
+    #endregion
 }

@@ -40,7 +40,7 @@ public interface ILegacyWordConverter
 /// <remarks>
 /// Conversion happens entirely in memory, so an uploaded document is never written to the host's disk.
 /// </remarks>
-public sealed class DocSharpLegacyWordConverter(ILogger<DocSharpLegacyWordConverter> logger) : ILegacyWordConverter
+public sealed partial class DocSharpLegacyWordConverter(ILogger<DocSharpLegacyWordConverter> logger) : ILegacyWordConverter
 {
     private readonly ILogger<DocSharpLegacyWordConverter> _logger = logger;
 
@@ -55,8 +55,7 @@ public sealed class DocSharpLegacyWordConverter(ILogger<DocSharpLegacyWordConver
         {
             var converted = Convert(content);
 
-            _logger.LogInformation("Converted a {InputSize} byte .doc document to a {OutputSize} byte .docx document",
-                content.Length, converted.Length);
+            LogDocConverted(_logger, content.Length, converted.Length);
 
             return Task.FromResult(converted);
         }
@@ -65,7 +64,7 @@ public sealed class DocSharpLegacyWordConverter(ILogger<DocSharpLegacyWordConver
             // The underlying reader surfaces malformed input as a wide and undocumented range of
             // exception types, so this catch is deliberately broad: every one of them means the same
             // thing to the caller, and none of them is a server fault.
-            _logger.LogWarning(ex, "Failed to convert a legacy .doc document to .docx");
+            LogDocConversionFailed(_logger, ex);
             throw new ValidationException(
             [
                 new ValidationFailure(nameof(FileDto.FileName),
@@ -73,6 +72,8 @@ public sealed class DocSharpLegacyWordConverter(ILogger<DocSharpLegacyWordConver
             ]);
         }
     }
+
+    #region Private methods
 
     // Synchronous because the conversion is CPU-bound and the library exposes no async surface; it runs
     // on a background job thread, never on a request thread.
@@ -93,4 +94,16 @@ public sealed class DocSharpLegacyWordConverter(ILogger<DocSharpLegacyWordConver
 
         return output.ToArray();
     }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Converted a {InputSize} byte .doc document to a {OutputSize} byte .docx document")]
+    private static partial void LogDocConverted(ILogger logger, int inputSize, int outputSize);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to convert a legacy .doc document to .docx")]
+    private static partial void LogDocConversionFailed(ILogger logger, Exception exception);
+
+    #endregion
 }

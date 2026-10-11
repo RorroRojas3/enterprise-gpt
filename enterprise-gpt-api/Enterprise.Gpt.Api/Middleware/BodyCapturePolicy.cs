@@ -6,6 +6,37 @@ namespace Enterprise.Gpt.Api.Middleware;
 /// </summary>
 internal static class BodyCapturePolicy
 {
+    #region Private methods
+
+    private static bool Matches(string[] pathSegments, string pattern)
+    {
+        var patternSegments = pattern.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        if (patternSegments.Length > pathSegments.Length)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < patternSegments.Length; i++)
+        {
+            if (patternSegments[i] is "*")
+            {
+                continue;
+            }
+
+            if (!string.Equals(patternSegments[i], pathSegments[i], StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    #endregion
+
+    #region Public static methods
+
     /// <summary>
     /// Whether a content type is eligible for capture.
     /// </summary>
@@ -81,28 +112,5 @@ internal static class BodyCapturePolicy
         return false;
     }
 
-    private static bool Matches(string[] pathSegments, string pattern)
-    {
-        var patternSegments = pattern.Split('/', StringSplitOptions.RemoveEmptyEntries);
-
-        if (patternSegments.Length > pathSegments.Length)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < patternSegments.Length; i++)
-        {
-            if (patternSegments[i] is "*")
-            {
-                continue;
-            }
-
-            if (!string.Equals(patternSegments[i], pathSegments[i], StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
+    #endregion
 }

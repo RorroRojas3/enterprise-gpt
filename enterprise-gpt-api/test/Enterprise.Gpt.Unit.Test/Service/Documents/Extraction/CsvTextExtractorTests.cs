@@ -266,7 +266,7 @@ public sealed class CsvTextExtractorTests
     [Fact]
     public async Task ExtractAsync_File_ReportsProgressEndingAtCompletion()
     {
-        var reports = new List<DocumentExtractionProgress>();
+        List<DocumentExtractionProgress> reports = [];
 
         await ExtractAsync(_extractor, "A,B\n1,2\n", progress: new CollectingProgress<DocumentExtractionProgress>(reports));
 

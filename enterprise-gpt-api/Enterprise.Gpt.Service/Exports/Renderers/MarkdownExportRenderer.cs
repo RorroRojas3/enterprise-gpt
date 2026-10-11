@@ -48,7 +48,11 @@ public sealed class MarkdownExportRenderer : IConversationExportRenderer
             $"{ExportFileNames.Stem(document.Name)}.md");
     }
 
+    #region Private methods
+
     // A newline inside the name would end the heading and turn the rest into body text.
     private static string SingleLine(string value) =>
         value.ReplaceLineEndings(" ").Trim();
+
+    #endregion
 }

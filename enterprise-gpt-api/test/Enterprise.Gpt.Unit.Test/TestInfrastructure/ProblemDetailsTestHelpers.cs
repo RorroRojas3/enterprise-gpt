@@ -67,7 +67,7 @@ internal static class ProblemDetailsTestHelpers
         httpContext.Response.Body.Position = 0;
         var problem = await JsonSerializer.DeserializeAsync<HttpValidationProblemDetails>(
             httpContext.Response.Body,
-            new JsonSerializerOptions(JsonSerializerDefaults.Web),
+            JsonSerializerOptions.Web,
             TestContext.Current.CancellationToken);
         Assert.NotNull(problem);
         return problem;

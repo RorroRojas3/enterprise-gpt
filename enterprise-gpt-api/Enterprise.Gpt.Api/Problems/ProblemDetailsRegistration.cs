@@ -40,6 +40,8 @@ internal static class ProblemDetailsRegistration
         [StatusCodes.Status502BadGateway] = new("https://tools.ietf.org/html/rfc9110#section-15.6.3", "Bad Gateway")
     };
 
+    #region Public static methods
+
     /// <summary>
     /// Registers the exception handler and <see cref="IProblemDetailsService"/> with the enrichment every problem carries.
     /// </summary>
@@ -80,4 +82,6 @@ internal static class ProblemDetailsRegistration
             problemDetails.Title ??= fallback.Title;
         }
     }
+
+    #endregion
 }

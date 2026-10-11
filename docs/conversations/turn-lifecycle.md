@@ -168,8 +168,8 @@ is still billed and recorded.
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs` | The turn engine |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/ConversationLockService.cs` | One turn per conversation |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Conversations/ConversationService.cs` | The turn engine |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Conversations/ConversationLockService.cs` | One turn per conversation |
 | `enterprise-gpt-ui/src/app/features/chat/turn-store.ts` | Phase, send pipeline, settle discrimination |
 | `enterprise-gpt-ui/src/app/features/chat/conversation-store.ts` | The conversation open on `/chat` |
 | `enterprise-gpt-ui/src/app/core/chat/turn-settings-store.ts` | Model and MCP servers for the next turn |

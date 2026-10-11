@@ -57,6 +57,44 @@ public sealed class ConversionMatrix : IConversionMatrix
     /// <inheritdoc />
     public IReadOnlyList<ConversionCell> Cells { get; }
 
+    /// <inheritdoc />
+    public ConversionCell? Find(string? from, string? to) =>
+        _byPair.GetValueOrDefault((Normalize(from), Normalize(to)));
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> OfferedTargets(string? from)
+    {
+        var source = Normalize(from);
+
+        return
+        [
+            .. Formats.Where(target =>
+                _byPair.TryGetValue((source, target), out var cell)
+                && cell.Tier is ConversionTiers.Faithful or ConversionTiers.Structural)
+        ];
+    }
+
+    #region Private methods
+
+    /// <summary>Lower-cases a format and drops a leading dot, so ".DOCX" and "docx" are one key.</summary>
+    private static string Normalize(string? format) =>
+        format is null ? string.Empty : format.Trim().TrimStart('.').ToLowerInvariant();
+
+    // An unknown tier reads as notOffered rather than throwing: a matrix regenerated with a tier this
+    // build does not know about must not take the whole agent down, and "not offered" is the arm that
+    // neither promises nor refuses.
+    private static ConversionTiers ParseTier(string? tier) => tier switch
+    {
+        "faithful" => ConversionTiers.Faithful,
+        "structural" => ConversionTiers.Structural,
+        "refused" => ConversionTiers.Refused,
+        _ => ConversionTiers.NotOffered
+    };
+
+    #endregion
+
+    #region Public static methods
+
     /// <summary>
     /// Reads the published matrix off disk.
     /// </summary>
@@ -111,35 +149,5 @@ public sealed class ConversionMatrix : IConversionMatrix
         }
     }
 
-    /// <inheritdoc />
-    public ConversionCell? Find(string? from, string? to) =>
-        _byPair.GetValueOrDefault((Normalize(from), Normalize(to)));
-
-    /// <inheritdoc />
-    public IReadOnlyList<string> OfferedTargets(string? from)
-    {
-        var source = Normalize(from);
-
-        return
-        [
-            .. Formats.Where(target =>
-                _byPair.TryGetValue((source, target), out var cell)
-                && cell.Tier is ConversionTiers.Faithful or ConversionTiers.Structural)
-        ];
-    }
-
-    /// <summary>Lower-cases a format and drops a leading dot, so ".DOCX" and "docx" are one key.</summary>
-    private static string Normalize(string? format) =>
-        format is null ? string.Empty : format.Trim().TrimStart('.').ToLowerInvariant();
-
-    // An unknown tier reads as notOffered rather than throwing: a matrix regenerated with a tier this
-    // build does not know about must not take the whole agent down, and "not offered" is the arm that
-    // neither promises nor refuses.
-    private static ConversionTiers ParseTier(string? tier) => tier switch
-    {
-        "faithful" => ConversionTiers.Faithful,
-        "structural" => ConversionTiers.Structural,
-        "refused" => ConversionTiers.Refused,
-        _ => ConversionTiers.NotOffered
-    };
+    #endregion
 }

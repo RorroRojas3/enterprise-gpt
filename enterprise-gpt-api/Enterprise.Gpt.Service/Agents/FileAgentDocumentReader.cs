@@ -174,6 +174,10 @@ public sealed partial class FileAgentDocumentReader(
         return read;
     }
 
+    private sealed record SourceRef(Guid Id, string Name, string Extension, string MimeType, string Path, bool IsGenerated);
+
+    #region Private methods
+
     /// <summary>
     /// Reads the conversation's live files, authorized off the parent conversation.
     /// </summary>
@@ -222,5 +226,5 @@ public sealed partial class FileAgentDocumentReader(
         RegexOptions.IgnoreCase)]
     private static partial Regex FileNameToken();
 
-    private sealed record SourceRef(Guid Id, string Name, string Extension, string MimeType, string Path, bool IsGenerated);
+    #endregion
 }

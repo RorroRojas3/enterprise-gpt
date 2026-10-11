@@ -16,8 +16,10 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// or <c>appsettings.json</c>. A deployment that also resolves App Service Key Vault references into
 /// app settings would therefore be reading one key through two mechanisms.
 /// </remarks>
-internal static class KeyVaultConfiguration
+internal static partial class KeyVaultConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Reads the vault into configuration, and does nothing at all when the section leaves it off.
     /// </summary>
@@ -85,6 +87,7 @@ internal static class KeyVaultConfiguration
     /// <summary>
     /// Decides whether a vault should be read, and rejects a section that half-describes one.
     /// </summary>
+    /// <param name="configuration">The configuration built so far, whose <c>KeyVault</c> section is read and validated.</param>
     /// <param name="environment">The host environment, so a test host never reaches a vault.</param>
     /// <returns>The validated vault, or <see langword="null"/> when none is to be read.</returns>
     /// <exception cref="InvalidOperationException">The section enables a vault it does not describe.</exception>
@@ -117,6 +120,7 @@ internal static class KeyVaultConfiguration
     /// environment variable that happened to carry the same key.
     /// </summary>
     /// <param name="source">The result of <see cref="AddEnterpriseGptKeyVault"/>; <see langword="null"/> reports nothing.</param>
+    /// <param name="logger">The built application's logger: the vault is added before the host exists, so its status is reported afterwards.</param>
     internal static void LogStatus(KeyVaultSource? source, ILogger logger)
     {
         if (source is null)
@@ -126,10 +130,17 @@ internal static class KeyVaultConfiguration
 
         // The host, never the secret names: which secrets a deployment holds is itself worth not
         // publishing to a log sink.
-        logger.LogInformation(
-            "Configuration is reading secrets from key vault {VaultHost} (user-assigned identity: {UsesUserAssignedIdentity}, reload interval: {ReloadInterval})",
-            source.VaultUri.Host,
-            source.ManagedIdentityClientId is not null,
-            source.ReloadInterval);
+        LogReadingKeyVaultSecrets(
+            logger, source.VaultUri.Host, source.ManagedIdentityClientId is not null, source.ReloadInterval);
     }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Configuration is reading secrets from key vault {VaultHost} (user-assigned identity: {UsesUserAssignedIdentity}, reload interval: {ReloadInterval})")]
+    private static partial void LogReadingKeyVaultSecrets(
+        ILogger logger, string vaultHost, bool usesUserAssignedIdentity, TimeSpan? reloadInterval);
+
+    #endregion
 }

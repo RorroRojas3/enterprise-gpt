@@ -25,7 +25,7 @@ public sealed class CodeInterpreterReachabilityTests(SandboxSpikeFixture fixture
     [Fact]
     public async Task CodeInterpreter_OnResponsesRouteClient_ProducesAnArtifact()
     {
-        Assert.SkipUnless(_fixture.IsEnabled, SpikeConfiguration.SkipReason);
+        Assert.SkipUnless(SandboxSpikeFixture.IsEnabled, SpikeConfiguration.SkipReason);
 
         var session = _fixture.Session;
         session.SetInputs();
@@ -54,7 +54,7 @@ public sealed class CodeInterpreterReachabilityTests(SandboxSpikeFixture fixture
     [Fact]
     public async Task Sandbox_AttemptingAnOutboundCall_IsBlocked()
     {
-        Assert.SkipUnless(_fixture.IsEnabled, SpikeConfiguration.SkipReason);
+        Assert.SkipUnless(SandboxSpikeFixture.IsEnabled, SpikeConfiguration.SkipReason);
 
         var session = _fixture.Session;
         session.SetInputs();
@@ -86,7 +86,7 @@ public sealed class CodeInterpreterReachabilityTests(SandboxSpikeFixture fixture
     [Fact]
     public async Task Inputs_SuppliedAsHostedFileContent_AreVisibleToGeneratedCode()
     {
-        Assert.SkipUnless(_fixture.IsEnabled, SpikeConfiguration.SkipReason);
+        Assert.SkipUnless(SandboxSpikeFixture.IsEnabled, SpikeConfiguration.SkipReason);
 
         var session = _fixture.Session;
         var marker = $"hosted-{Guid.NewGuid():N}";
@@ -117,7 +117,7 @@ public sealed class CodeInterpreterReachabilityTests(SandboxSpikeFixture fixture
     [Fact]
     public async Task Inputs_SuppliedAsDataContent_AreSilentlyDropped()
     {
-        Assert.SkipUnless(_fixture.IsEnabled, SpikeConfiguration.SkipReason);
+        Assert.SkipUnless(SandboxSpikeFixture.IsEnabled, SpikeConfiguration.SkipReason);
 
         var session = _fixture.Session;
         var marker = $"inline-{Guid.NewGuid():N}";
@@ -153,7 +153,7 @@ public sealed class CodeInterpreterReachabilityTests(SandboxSpikeFixture fixture
     [Fact]
     public async Task ProducedArtifact_IsDownloadableThroughTheContainerScope()
     {
-        Assert.SkipUnless(_fixture.IsEnabled, SpikeConfiguration.SkipReason);
+        Assert.SkipUnless(SandboxSpikeFixture.IsEnabled, SpikeConfiguration.SkipReason);
 
         var session = _fixture.Session;
         session.SetInputs();
@@ -162,7 +162,7 @@ public sealed class CodeInterpreterReachabilityTests(SandboxSpikeFixture fixture
             SpikePaths.ReadScript("write-artifact.py"), TestContext.Current.CancellationToken);
 
         var artifact = run.Artifacts.FirstOrDefault(candidate => candidate.Name?.EndsWith(".txt", StringComparison.OrdinalIgnoreCase) == true)
-            ?? run.Artifacts.FirstOrDefault();
+            ?? (run.Artifacts is [var first, ..] ? first : null);
 
         _fixture.Record(
             "Can a produced artifact be read back by the API?",

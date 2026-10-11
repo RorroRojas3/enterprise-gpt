@@ -1,88 +1,87 @@
 ﻿using System.ComponentModel;
 
-namespace Enterprise.Gpt.Common.Enums
+namespace Enterprise.Gpt.Common.Enums;
+
+public enum FileExtensions
 {
-    public enum FileExtensions
-    {
-        [Description(".cs")]
-        Cs,
+    [Description(".cs")]
+    Cs,
 
-        [Description(".csproj")]
-        Csproj,
+    [Description(".csproj")]
+    Csproj,
 
-        [Description(".css")]
-        Css,
+    [Description(".css")]
+    Css,
 
-        [Description(".csv")]
-        Csv,
+    [Description(".csv")]
+    Csv,
 
-        [Description(".doc")]
-        Doc,
+    [Description(".doc")]
+    Doc,
 
-        [Description(".docx")]
-        Docx,
+    [Description(".docx")]
+    Docx,
 
-        [Description(".html")]
-        Html,
+    [Description(".html")]
+    Html,
 
-        [Description(".js")]
-        Js,
+    [Description(".js")]
+    Js,
 
-        [Description(".json")]
-        Json,
+    [Description(".json")]
+    Json,
 
-        [Description(".jsx")]
-        Jsx,
+    [Description(".jsx")]
+    Jsx,
 
-        [Description(".log")]
-        Log,
+    [Description(".log")]
+    Log,
 
-        [Description(".md")]
-        Md,
+    [Description(".md")]
+    Md,
 
-        [Description(".pdf")]
-        Pdf,
+    [Description(".pdf")]
+    Pdf,
 
-        [Description(".pptx")]
-        Pptx,
+    [Description(".pptx")]
+    Pptx,
 
-        [Description(".ps1")]
-        Ps1,
+    [Description(".ps1")]
+    Ps1,
 
-        [Description(".py")]
-        Py,
+    [Description(".py")]
+    Py,
 
-        [Description(".scss")]
-        Scss,
+    [Description(".scss")]
+    Scss,
 
-        [Description(".sql")]
-        Sql,
+    [Description(".sql")]
+    Sql,
 
-        [Description(".ts")]
-        Ts,
+    [Description(".ts")]
+    Ts,
 
-        [Description(".tsx")]
-        Tsx,
+    [Description(".tsx")]
+    Tsx,
 
-        [Description(".txt")]
-        Txt,
+    [Description(".txt")]
+    Txt,
 
-        [Description(".xls")]
-        Xls,
+    [Description(".xls")]
+    Xls,
 
-        [Description(".xlsm")]
-        Xlsm,
+    [Description(".xlsm")]
+    Xlsm,
 
-        [Description(".xlsx")]
-        Xlsx,
+    [Description(".xlsx")]
+    Xlsx,
 
-        [Description(".xml")]
-        Xml,
+    [Description(".xml")]
+    Xml,
 
-        [Description(".yaml")]
-        Yaml,
+    [Description(".yaml")]
+    Yaml,
 
-        [Description(".yml")]
-        Yml
-    }
+    [Description(".yml")]
+    Yml
 }

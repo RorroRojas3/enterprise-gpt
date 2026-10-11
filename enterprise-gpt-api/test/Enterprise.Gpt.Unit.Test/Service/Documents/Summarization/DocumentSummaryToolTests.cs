@@ -153,7 +153,7 @@ public sealed class DocumentSummaryToolTests
 
         var function = CreateFunction();
 
-        var result = await function.InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken);
+        var result = await function.InvokeAsync([], TestContext.Current.CancellationToken);
 
         await _summaryService.Received(1).CreateDigestAsync(
             ConversationId, Arg.Any<DocumentRetrievalScope>(), Arg.Any<CancellationToken>());
@@ -179,7 +179,7 @@ public sealed class DocumentSummaryToolTests
         var function = DocumentSummaryTool.Create(
             scope, ConversationId, _summaryService, TimeoutSeconds, NullLogger.Instance);
 
-        var result = await function.InvokeAsync(new AIFunctionArguments(), TestContext.Current.CancellationToken);
+        var result = await function.InvokeAsync([], TestContext.Current.CancellationToken);
 
         await _summaryService.Received(1).GetOrCreateAsync(
             ConversationId, HandbookId, DocumentSources.Conversation, Arg.Any<CancellationToken>());

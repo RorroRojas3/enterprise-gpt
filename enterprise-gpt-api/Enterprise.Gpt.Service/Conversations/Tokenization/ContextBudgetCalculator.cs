@@ -19,6 +19,8 @@ namespace Enterprise.Gpt.Service.Conversations.Tokenization;
 /// </remarks>
 public static class ContextBudgetCalculator
 {
+    #region Public static methods
+
     /// <summary>
     /// Applies a model's context window to a candidate message list.
     /// </summary>
@@ -82,7 +84,7 @@ public static class ContextBudgetCalculator
         }
 
         var kept = new HashSet<int>(all);
-        long remaining = total;
+        var remaining = total;
 
         // Oldest first, so what is lost is always the least recent context.
         for (var index = 0; index < messages.Count && remaining > budget; index++)
@@ -126,4 +128,6 @@ public static class ContextBudgetCalculator
             IsUnbounded: false,
             Fits: remaining <= budget);
     }
+
+    #endregion
 }

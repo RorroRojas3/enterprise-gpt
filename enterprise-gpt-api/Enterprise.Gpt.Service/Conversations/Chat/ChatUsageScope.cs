@@ -58,15 +58,6 @@ public sealed class ChatUsageScope
     public ChatUsageReport? Report => Volatile.Read(ref _report);
 
     /// <summary>
-    /// Creates a scope. It collects nothing until <see cref="Enter"/> is called.
-    /// </summary>
-    /// <returns>The new scope.</returns>
-    public static ChatUsageScope Create()
-    {
-        return new ChatUsageScope();
-    }
-
-    /// <summary>
     /// Makes this scope the target for reports raised on the current flow, until the returned
     /// handle is disposed.
     /// </summary>
@@ -117,4 +108,17 @@ public sealed class ChatUsageScope
             _current.Value = _previous;
         }
     }
+
+    #region Public static methods
+
+    /// <summary>
+    /// Creates a scope. It collects nothing until <see cref="Enter"/> is called.
+    /// </summary>
+    /// <returns>The new scope.</returns>
+    public static ChatUsageScope Create()
+    {
+        return new ChatUsageScope();
+    }
+
+    #endregion
 }

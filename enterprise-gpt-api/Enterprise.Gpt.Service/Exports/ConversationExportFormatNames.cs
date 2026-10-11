@@ -40,6 +40,8 @@ public static class ConversationExportFormatNames
     public static string SupportedList { get; } =
         string.Join(", ", Supported.Select(name => $"'{name}'"));
 
+    #region Public static methods
+
     /// <summary>
     /// Resolves a <c>?format=</c> value.
     /// </summary>
@@ -76,4 +78,6 @@ public static class ConversationExportFormatNames
         ConversationExportFormats.Pdf => "pdf",
         _ => format.ToString().ToLowerInvariant()
     };
+
+    #endregion
 }

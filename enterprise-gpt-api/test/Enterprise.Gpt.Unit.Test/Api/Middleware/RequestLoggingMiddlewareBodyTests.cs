@@ -25,7 +25,7 @@ public sealed class RequestLoggingMiddlewareBodyTests
 
         await _harness.Run(context);
 
-        var payload = _harness.Single(RequestLoggingTestHarness.PayloadEventId);
+        var payload = _harness.SingleRecord(RequestLoggingTestHarness.PayloadEventId);
         var body = RequestLoggingTestHarness.Field(payload, "RequestBody");
 
         Assert.Equal("""{"name":"acme","apiKey":"[redacted]"}""", body);
@@ -69,7 +69,7 @@ public sealed class RequestLoggingMiddlewareBodyTests
 
         Assert.Equal(
             """{"name":"acme"}""",
-            RequestLoggingTestHarness.Field(_harness.Single(RequestLoggingTestHarness.PayloadEventId), "RequestBody"));
+            RequestLoggingTestHarness.Field(_harness.SingleRecord(RequestLoggingTestHarness.PayloadEventId), "RequestBody"));
     }
 
     [Fact]
@@ -80,7 +80,7 @@ public sealed class RequestLoggingMiddlewareBodyTests
 
         await _harness.Run(context);
 
-        var payload = _harness.Single(RequestLoggingTestHarness.PayloadEventId);
+        var payload = _harness.SingleRecord(RequestLoggingTestHarness.PayloadEventId);
         var body = RequestLoggingTestHarness.Field(payload, "RequestBody");
 
         Assert.Contains("[skipped:", body);
@@ -116,7 +116,7 @@ public sealed class RequestLoggingMiddlewareBodyTests
             await ctx.Response.WriteAsync("""{"id":7,"secret":"hunter2"}""", TestContext.Current.CancellationToken);
         });
 
-        var payload = _harness.Single(RequestLoggingTestHarness.PayloadEventId);
+        var payload = _harness.SingleRecord(RequestLoggingTestHarness.PayloadEventId);
         Assert.Equal("""{"id":7,"secret":"[redacted]"}""", RequestLoggingTestHarness.Field(payload, "ResponseBody"));
         Assert.Equal("application/json", RequestLoggingTestHarness.Field(payload, "ResponseContentType"));
     }
@@ -134,7 +134,7 @@ public sealed class RequestLoggingMiddlewareBodyTests
             await ctx.Response.WriteAsync("0123456789abcdef", TestContext.Current.CancellationToken);
         });
 
-        var payload = _harness.Single(RequestLoggingTestHarness.PayloadEventId);
+        var payload = _harness.SingleRecord(RequestLoggingTestHarness.PayloadEventId);
         Assert.Equal("01234567", RequestLoggingTestHarness.Field(payload, "ResponseBody"));
         Assert.Equal("True", RequestLoggingTestHarness.Field(payload, "Truncated"));
 
@@ -156,7 +156,7 @@ public sealed class RequestLoggingMiddlewareBodyTests
             await ctx.Response.WriteAsync("efgh", TestContext.Current.CancellationToken);
         });
 
-        var payload = _harness.Single(RequestLoggingTestHarness.PayloadEventId);
+        var payload = _harness.SingleRecord(RequestLoggingTestHarness.PayloadEventId);
         Assert.Equal("abcd", RequestLoggingTestHarness.Field(payload, "ResponseBody"));
         Assert.Equal("True", RequestLoggingTestHarness.Field(payload, "Truncated"));
     }
@@ -246,7 +246,7 @@ public sealed class RequestLoggingMiddlewareBodyTests
 
         await _harness.Run(CreateJsonPost("""{"name":"acme"}"""));
 
-        Assert.Equal(LogLevel.Debug, _harness.Single(RequestLoggingTestHarness.PayloadEventId).Level);
+        Assert.Equal(LogLevel.Debug, _harness.SingleRecord(RequestLoggingTestHarness.PayloadEventId).Level);
     }
 
     [Fact]

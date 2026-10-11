@@ -12,6 +12,14 @@ namespace Enterprise.Gpt.Service.Agents;
 /// </remarks>
 public static class FileAgentFailures
 {
+    #region Private methods
+
+    private static string Space(string detail) => string.IsNullOrWhiteSpace(detail) ? string.Empty : $" {detail}";
+
+    #endregion
+
+    #region Public static methods
+
     /// <summary>The run reached the sandbox, answered, and produced nothing.</summary>
     /// <param name="detail">Anything the run wants to add, or empty.</param>
     /// <returns>The failure.</returns>
@@ -56,5 +64,5 @@ public static class FileAgentFailures
                 + "failed, and do not offer them a file.",
             "The run could not be completed");
 
-    private static string Space(string detail) => string.IsNullOrWhiteSpace(detail) ? string.Empty : $" {detail}";
+    #endregion
 }

@@ -13,7 +13,7 @@ public sealed class PdfExportOptions
     /// so a PDF export is only possible where faces can be found. The directory is searched first
     /// and the operating system's own font directories after it, which is what lets a developer
     /// machine work with nothing dropped in while a container is given an explicit, deterministic
-    /// set. See <c>Export/Fonts/ExportFontResolver.cs</c>.
+    /// set. See <c>Service/Exports/Fonts/ExportFontResolver.cs</c>.
     /// </remarks>
     public string? FontDirectory { get; set; }
 }

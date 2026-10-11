@@ -27,7 +27,7 @@ public interface ISheetQueryOptionsProvider
 /// configuration provider's own callback thread where nothing can catch a bad reload; see
 /// <c>docs/documents/sheet-query.md</c>.
 /// </remarks>
-public sealed class SheetQueryOptionsProvider : ISheetQueryOptionsProvider, IDisposable
+public sealed partial class SheetQueryOptionsProvider : ISheetQueryOptionsProvider, IDisposable
 {
     private readonly IOptionsFactory<SheetQueryOptions> _factory;
     private readonly ILogger<SheetQueryOptionsProvider> _logger;
@@ -71,6 +71,8 @@ public sealed class SheetQueryOptionsProvider : ISheetQueryOptionsProvider, IDis
         _registrations.Clear();
     }
 
+    #region Private methods
+
     private void Reload()
     {
         try
@@ -79,9 +81,16 @@ public sealed class SheetQueryOptionsProvider : ISheetQueryOptionsProvider, IDis
         }
         catch (Exception ex) when (ex is OptionsValidationException or InvalidOperationException)
         {
-            _logger.LogError(
-                ex,
-                "The SheetQuery configuration was reloaded with values that do not validate; the previous configuration stays in effect.");
+            LogInvalidReload(_logger, ex);
         }
     }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "The SheetQuery configuration was reloaded with values that do not validate; the previous configuration stays in effect.")]
+    private static partial void LogInvalidReload(ILogger logger, Exception exception);
+
+    #endregion
 }

@@ -63,7 +63,7 @@ public interface ISheetQueryService
 /// built on a guess. The turn's scope is the only source of the documents in play, so a sheet the caller
 /// cannot already read through <c>document_search</c> cannot be reached here either.
 /// </remarks>
-public sealed class SheetQueryService(
+public sealed partial class SheetQueryService(
     ILogger<SheetQueryService> logger,
     ISheetQueryOptionsProvider options,
     EnterpriseGptDbContext ctx) : ISheetQueryService
@@ -164,77 +164,33 @@ public sealed class SheetQueryService(
                 .ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Finds the sheets in scope whose name matches <paramref name="wanted"/>, widening the comparison
-    /// only as far as it has to.
-    /// </summary>
-    /// <param name="sheets">The sheets in the turn's scope.</param>
-    /// <param name="wanted">The name the model supplied.</param>
-    /// <returns>Every match at the narrowest rung that produced one.</returns>
-    /// <remarks>
-    /// A bare sheet name and its document-qualified label both match, because two workbooks in one
-    /// conversation can each hold a sheet called <c>Sheet1</c> and only the label tells them apart.
-    /// </remarks>
-    internal static IReadOnlyList<ResolvedSheet> MatchSheetByName(IReadOnlyList<ResolvedSheet> sheets, string wanted)
-    {
-        ArgumentNullException.ThrowIfNull(sheets);
+    private sealed record SheetRecord(
+        Guid Id,
+        Guid DocumentId,
+        DocumentSources Source,
+        int SheetIndex,
+        string SheetName,
+        int RowCount,
+        IReadOnlyList<ResolvedSheetColumn> Columns);
 
-        List<ResolvedSheet> matches =
-        [
-            .. sheets.Where(s =>
-                string.Equals(s.SheetName, wanted, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(s.Label, wanted, StringComparison.OrdinalIgnoreCase))
-        ];
+    private sealed record ResolvedQuery(
+        SheetQueryOperations Operation,
+        ResolvedSheet Sheet,
+        ResolvedSheetColumn? ValueColumn,
+        SheetColumnTypes? ValueType,
+        string? ValuePath,
+        ResolvedSheetColumn? GroupColumn,
+        string? GroupPath,
+        IReadOnlyList<SheetFilterSpec> FilterSpecs,
+        IReadOnlyList<string> FilterPaths,
+        IReadOnlyList<object> FilterValues,
+        IReadOnlyList<string> Notes);
 
-        if (matches.Count == 0)
-        {
-            matches =
-            [
-                .. sheets.Where(s =>
-                    s.SheetName.StartsWith(wanted, StringComparison.OrdinalIgnoreCase)
-                    || s.Label.StartsWith(wanted, StringComparison.OrdinalIgnoreCase))
-            ];
-        }
+    private sealed record AggregateRow(string? Group, int MatchedRows, int ValueRows, object? Value);
 
-        if (matches.Count == 0)
-        {
-            matches =
-            [
-                .. sheets.Where(s =>
-                    s.SheetName.Contains(wanted, StringComparison.OrdinalIgnoreCase)
-                    || s.Label.Contains(wanted, StringComparison.OrdinalIgnoreCase))
-            ];
-        }
+    private sealed record RowListRow(int RowIndex, string Cells, int MatchedRows);
 
-        return matches;
-    }
-
-    /// <summary>
-    /// Renders a column name as a JSON path, or reports that it cannot be rendered as one.
-    /// </summary>
-    /// <remarks>
-    /// A quoted member name follows JSON string rules, and SQL Server does not document escaping inside
-    /// one — so a name carrying a quote, a backslash or a control character is refused by name rather
-    /// than turned into a path that might parse as something else.
-    /// </remarks>
-    internal static bool TryBuildJsonPath(string columnName, out string path)
-    {
-        foreach (var character in columnName)
-        {
-            if (character is '"' or '\\' || char.IsControl(character))
-            {
-                path = string.Empty;
-
-                return false;
-            }
-        }
-
-        path = string.Create(CultureInfo.InvariantCulture, $"$.\"{columnName}\"");
-
-        return true;
-    }
-
-    #region Resolution
+    #region Private methods
 
     /// <summary>
     /// The scope's spreadsheet documents, split by the table their sheets would live in.
@@ -529,7 +485,7 @@ public sealed class SheetQueryService(
         // Sum and average always read the column as a number, whatever a bounded sample inferred it to
         // be: a column with one stray cell among its first rows infers as text and would otherwise be
         // permanently untotallable. Whatever the coercion drops is counted and reported.
-        SheetColumnTypes? valueType = operation switch
+        var valueType = operation switch
         {
             SheetQueryOperations.Sum or SheetQueryOperations.Avg => SheetColumnTypes.Number,
             SheetQueryOperations.Count or SheetQueryOperations.Filter => valueColumn?.Type,
@@ -575,9 +531,7 @@ public sealed class SheetQueryService(
         if (!TryBuildJsonPath(column.Name, out var built))
         {
             // The name itself is file content and stays out of the log.
-            _logger.LogWarning(
-                "Sheet {SheetId} has a column whose name cannot be expressed as a JSON path; it is not queryable.",
-                sheet.Id);
+            LogUnqueryableColumn(_logger, sheet.Id);
 
             path = null;
             refusal = Refusal(
@@ -595,10 +549,6 @@ public sealed class SheetQueryService(
 
         return true;
     }
-
-    #endregion
-
-    #region Execution
 
     private async Task<SheetQueryResult> ExecuteAsync(
         DocumentRetrievalScope scope, string echoed, ResolvedQuery query, CancellationToken cancellationToken)
@@ -823,7 +773,7 @@ public sealed class SheetQueryService(
             command.Transaction = _ctx.Database.CurrentTransaction?.GetDbTransaction();
             configure(command);
 
-            var results = new List<T>();
+            List<T> results = [];
 
             await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -841,10 +791,6 @@ public sealed class SheetQueryService(
             }
         }
     }
-
-    #endregion
-
-    #region Shaping
 
     private static SheetQueryResult Shape(string echoed, ResolvedQuery query) => new()
     {
@@ -875,7 +821,7 @@ public sealed class SheetQueryService(
     /// Names every sheet with its shape, so one refusal is enough for the model to ask the right
     /// question next rather than discovering the columns with a second refusal.
     /// </summary>
-    private static IReadOnlyList<string> DescribeSheets(IReadOnlyList<ResolvedSheet> sheets)
+    private static List<string> DescribeSheets(IReadOnlyList<ResolvedSheet> sheets)
     {
         List<string> described =
         [
@@ -893,7 +839,7 @@ public sealed class SheetQueryService(
         return described;
     }
 
-    private static IReadOnlyList<string> DescribeColumns(ResolvedSheet sheet)
+    private static List<string> DescribeColumns(ResolvedSheet sheet)
     {
         List<string> described =
         [
@@ -945,30 +891,6 @@ public sealed class SheetQueryService(
             : date.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
         _ => raw
     };
-
-    #endregion
-
-    #region Parsing
-
-    /// <summary>
-    /// Maps the model's own operation text onto the closed set, so a caller can name the operation
-    /// without trusting the unvalidated string a result echoes back.
-    /// </summary>
-    internal static bool TryParseOperation(string? value, out SheetQueryOperations operation)
-    {
-        operation = value?.Trim().ToLowerInvariant() switch
-        {
-            "sum" or "total" => SheetQueryOperations.Sum,
-            "avg" or "average" or "mean" => SheetQueryOperations.Avg,
-            "min" => SheetQueryOperations.Min,
-            "max" => SheetQueryOperations.Max,
-            "count" => SheetQueryOperations.Count,
-            "filter" => SheetQueryOperations.Filter,
-            _ => default
-        };
-
-        return operation is not default(SheetQueryOperations);
-    }
 
     private static bool TryParseComparator(string? value, out SheetFilterComparators comparator)
     {
@@ -1052,29 +974,104 @@ public sealed class SheetQueryService(
 
     #endregion
 
-    private sealed record SheetRecord(
-        Guid Id,
-        Guid DocumentId,
-        DocumentSources Source,
-        int SheetIndex,
-        string SheetName,
-        int RowCount,
-        IReadOnlyList<ResolvedSheetColumn> Columns);
+    #region Public static methods
 
-    private sealed record ResolvedQuery(
-        SheetQueryOperations Operation,
-        ResolvedSheet Sheet,
-        ResolvedSheetColumn? ValueColumn,
-        SheetColumnTypes? ValueType,
-        string? ValuePath,
-        ResolvedSheetColumn? GroupColumn,
-        string? GroupPath,
-        IReadOnlyList<SheetFilterSpec> FilterSpecs,
-        IReadOnlyList<string> FilterPaths,
-        IReadOnlyList<object> FilterValues,
-        IReadOnlyList<string> Notes);
+    /// <summary>
+    /// Finds the sheets in scope whose name matches <paramref name="wanted"/>, widening the comparison
+    /// only as far as it has to.
+    /// </summary>
+    /// <param name="sheets">The sheets in the turn's scope.</param>
+    /// <param name="wanted">The name the model supplied.</param>
+    /// <returns>Every match at the narrowest rung that produced one.</returns>
+    /// <remarks>
+    /// A bare sheet name and its document-qualified label both match, because two workbooks in one
+    /// conversation can each hold a sheet called <c>Sheet1</c> and only the label tells them apart.
+    /// </remarks>
+    internal static IReadOnlyList<ResolvedSheet> MatchSheetByName(IReadOnlyList<ResolvedSheet> sheets, string wanted)
+    {
+        ArgumentNullException.ThrowIfNull(sheets);
 
-    private sealed record AggregateRow(string? Group, int MatchedRows, int ValueRows, object? Value);
+        List<ResolvedSheet> matches =
+        [
+            .. sheets.Where(s =>
+                string.Equals(s.SheetName, wanted, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(s.Label, wanted, StringComparison.OrdinalIgnoreCase))
+        ];
 
-    private sealed record RowListRow(int RowIndex, string Cells, int MatchedRows);
+        if (matches.Count == 0)
+        {
+            matches =
+            [
+                .. sheets.Where(s =>
+                    s.SheetName.StartsWith(wanted, StringComparison.OrdinalIgnoreCase)
+                    || s.Label.StartsWith(wanted, StringComparison.OrdinalIgnoreCase))
+            ];
+        }
+
+        if (matches.Count == 0)
+        {
+            matches =
+            [
+                .. sheets.Where(s =>
+                    s.SheetName.Contains(wanted, StringComparison.OrdinalIgnoreCase)
+                    || s.Label.Contains(wanted, StringComparison.OrdinalIgnoreCase))
+            ];
+        }
+
+        return matches;
+    }
+
+    /// <summary>
+    /// Renders a column name as a JSON path, or reports that it cannot be rendered as one.
+    /// </summary>
+    /// <remarks>
+    /// A quoted member name follows JSON string rules, and SQL Server does not document escaping inside
+    /// one — so a name carrying a quote, a backslash or a control character is refused by name rather
+    /// than turned into a path that might parse as something else.
+    /// </remarks>
+    internal static bool TryBuildJsonPath(string columnName, out string path)
+    {
+        foreach (var character in columnName)
+        {
+            if (character is '"' or '\\' || char.IsControl(character))
+            {
+                path = string.Empty;
+
+                return false;
+            }
+        }
+
+        path = string.Create(CultureInfo.InvariantCulture, $"$.\"{columnName}\"");
+
+        return true;
+    }
+
+    /// <summary>
+    /// Maps the model's own operation text onto the closed set, so a caller can name the operation
+    /// without trusting the unvalidated string a result echoes back.
+    /// </summary>
+    internal static bool TryParseOperation(string? value, out SheetQueryOperations operation)
+    {
+        operation = value?.Trim().ToLowerInvariant() switch
+        {
+            "sum" or "total" => SheetQueryOperations.Sum,
+            "avg" or "average" or "mean" => SheetQueryOperations.Avg,
+            "min" => SheetQueryOperations.Min,
+            "max" => SheetQueryOperations.Max,
+            "count" => SheetQueryOperations.Count,
+            "filter" => SheetQueryOperations.Filter,
+            _ => default
+        };
+
+        return operation is not default(SheetQueryOperations);
+    }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Sheet {SheetId} has a column whose name cannot be expressed as a JSON path; it is not queryable.")]
+    private static partial void LogUnqueryableColumn(ILogger logger, Guid sheetId);
+
+    #endregion
 }

@@ -18,6 +18,8 @@ public static class EmailFence
     /// </summary>
     public const string Info = "email";
 
+    #region Public static methods
+
     /// <summary>
     /// Whether a fenced block is a composed email.
     /// </summary>
@@ -68,4 +70,6 @@ public static class EmailFence
             }
         }
     }
+
+    #endregion
 }

@@ -27,6 +27,19 @@ public static class UserSortKeyNames
     /// </summary>
     public static string SupportedList { get; } = string.Join(", ", Supported.Select(name => $"'{name}'"));
 
+    #region Private methods
+
+    // A directory reads A-Z; a provisioning date reads newest first.
+    private static SortDirections NaturalDirection(UserSortKeys key) => key switch
+    {
+        UserSortKeys.Created => SortDirections.Descending,
+        _ => SortDirections.Ascending
+    };
+
+    #endregion
+
+    #region Public static methods
+
     /// <summary>
     /// Resolves the <c>?sort=</c> and <c>?dir=</c> pair a caller sent.
     /// </summary>
@@ -41,10 +54,5 @@ public static class UserSortKeyNames
         return new SortSelection<UserSortKeys>(key, SortParameters.ResolveDirection(dir, NaturalDirection(key)));
     }
 
-    // A directory reads A-Z; a provisioning date reads newest first.
-    private static SortDirections NaturalDirection(UserSortKeys key) => key switch
-    {
-        UserSortKeys.Created => SortDirections.Descending,
-        _ => SortDirections.Ascending
-    };
+    #endregion
 }

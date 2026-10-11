@@ -7,6 +7,8 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </summary>
 internal static class OpenApiConfiguration
 {
+    #region Public static methods
+
     /// <summary>Registers OpenAPI document generation.</summary>
     internal static IServiceCollection AddEnterpriseGptOpenApi(this IServiceCollection services) => services.AddOpenApi();
 
@@ -21,4 +23,6 @@ internal static class OpenApiConfiguration
 
         return app;
     }
+
+    #endregion
 }

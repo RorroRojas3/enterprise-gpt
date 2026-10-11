@@ -121,15 +121,15 @@ public sealed class JobCancellationRegistryTests : IDisposable
         // The failure this guards is an ObjectDisposedException from linking a source another thread
         // disposed a moment earlier, which is why the registry links under its own gate rather than
         // handing tokens out.
-        await Parallel.ForAsync(0, 200, TestContext.Current.CancellationToken, async (i, _) =>
+        await Parallel.ForAsync(0, 200, TestContext.Current.CancellationToken, async (i, ct) =>
         {
             var jobId = $"job-{i}";
             _registry.Register(jobId);
 
             await Task.WhenAll(
-                Task.Run(() => _registry.CreateLinkedTokenSource(jobId, CancellationToken.None)?.Dispose()),
-                Task.Run(async () => await _registry.CancelAsync(jobId)),
-                Task.Run(() => _registry.Release(jobId)));
+                Task.Run(() => _registry.CreateLinkedTokenSource(jobId, CancellationToken.None)?.Dispose(), ct),
+                Task.Run(async () => await _registry.CancelAsync(jobId), ct),
+                Task.Run(() => _registry.Release(jobId), ct));
         });
 
         Assert.Equal(0, _registry.ActiveRegistrationCount);

@@ -1,7 +1,6 @@
-﻿namespace Enterprise.Gpt.Dto.Documents
+﻿namespace Enterprise.Gpt.Dto.Documents;
+
+public class JobDto
 {
-    public class JobDto
-    {
-        public string Id { get; set; } = null!;
-    }
+    public string Id { get; set; } = null!;
 }

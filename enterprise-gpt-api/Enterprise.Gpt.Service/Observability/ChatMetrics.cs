@@ -162,6 +162,8 @@ public static class ChatMetrics
         unit: "{session}",
         description: "Sandbox calls currently in flight across all conversations.");
 
+    #region Public static methods
+
     /// <summary>
     /// Records how far the local estimate was from what the provider reported.
     /// </summary>
@@ -312,4 +314,6 @@ public static class ChatMetrics
             1,
             new KeyValuePair<string, object?>("file_agent.outcome", passed ? "passed" : "failed"),
             new KeyValuePair<string, object?>("document.type", documentType));
+
+    #endregion
 }

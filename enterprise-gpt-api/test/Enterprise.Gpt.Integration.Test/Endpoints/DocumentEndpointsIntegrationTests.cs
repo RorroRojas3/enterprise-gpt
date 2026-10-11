@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -46,7 +47,7 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         var builder = new StringBuilder();
         for (var i = 1; i <= sentences; i++)
         {
-            builder.Append($"Sentence {i} describes an entirely unremarkable and deliberately verbose subject. ");
+            builder.Append(CultureInfo.InvariantCulture, $"Sentence {i} describes an entirely unremarkable and deliberately verbose subject. ");
         }
 
         return Upload(fileName, Encoding.UTF8.GetBytes(builder.ToString()), "text/plain");

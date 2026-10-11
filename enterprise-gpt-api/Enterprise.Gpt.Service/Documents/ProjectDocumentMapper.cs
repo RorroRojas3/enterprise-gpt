@@ -11,25 +11,6 @@ namespace Enterprise.Gpt.Service.Documents;
 public static class ProjectDocumentMapper
 {
     /// <summary>
-    /// Maps a materialized <see cref="ProjectDocument"/> entity to <see cref="ProjectDocumentDto"/>.
-    /// </summary>
-    /// <param name="document">The loaded document entity.</param>
-    /// <returns>The mapped DTO.</returns>
-    public static ProjectDocumentDto MapToProjectDocumentDto(this ProjectDocument document)
-    {
-        return new ProjectDocumentDto
-        {
-            Id = document.Id,
-            ProjectId = document.ProjectId,
-            Name = document.Name,
-            Extension = document.Extension,
-            MimeType = document.MimeType,
-            Size = document.Size,
-            DateCreated = document.DateCreated
-        };
-    }
-
-    /// <summary>
     /// LINQ projection from <see cref="ProjectDocument"/> to <see cref="ProjectDocumentDto"/> for use
     /// inside <c>IQueryable.Select(...)</c>.
     /// </summary>
@@ -48,4 +29,27 @@ public static class ProjectDocumentMapper
             Size = document.Size,
             DateCreated = document.DateCreated
         };
+
+    #region Public static methods
+
+    /// <summary>
+    /// Maps a materialized <see cref="ProjectDocument"/> entity to <see cref="ProjectDocumentDto"/>.
+    /// </summary>
+    /// <param name="document">The loaded document entity.</param>
+    /// <returns>The mapped DTO.</returns>
+    public static ProjectDocumentDto MapToProjectDocumentDto(this ProjectDocument document)
+    {
+        return new ProjectDocumentDto
+        {
+            Id = document.Id,
+            ProjectId = document.ProjectId,
+            Name = document.Name,
+            Extension = document.Extension,
+            MimeType = document.MimeType,
+            Size = document.Size,
+            DateCreated = document.DateCreated
+        };
+    }
+
+    #endregion
 }

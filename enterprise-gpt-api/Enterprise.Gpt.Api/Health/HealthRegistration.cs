@@ -28,6 +28,36 @@ internal static class HealthRegistration
     /// </remarks>
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
 
+    #region Private methods
+
+    /// <summary>
+    /// Answers with the aggregate status and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// Which dependency failed is what an operator wants and what an anonymous caller must not be told;
+    /// <see cref="ReadinessProbe"/> logs it instead. The body is deliberately not
+    /// <c>application/problem+json</c> — this one is read by a load balancer, not by a client of the API.
+    /// </remarks>
+    private static async Task<IResult> ReadinessAsync(
+        ReadinessProbe probe,
+        CancellationToken cancellationToken)
+    {
+        var report = await probe.CheckAsync(IsReadiness, cancellationToken).ConfigureAwait(false);
+
+        return Results.Json(
+            new { status = report.Status.ToString() },
+            statusCode: report.Status is HealthStatus.Unhealthy
+                ? StatusCodes.Status503ServiceUnavailable
+                : StatusCodes.Status200OK);
+    }
+
+    private static bool IsReadiness(HealthCheckRegistration registration) =>
+        registration.Tags.Contains(ReadyTag);
+
+    #endregion
+
+    #region Public static methods
+
     /// <summary>Registers the readiness checks and the cache in front of them.</summary>
     /// <param name="services">The service collection to register into.</param>
     /// <returns>The same <paramref name="services"/> for chaining.</returns>
@@ -82,27 +112,5 @@ internal static class HealthRegistration
         return app;
     }
 
-    /// <summary>
-    /// Answers with the aggregate status and nothing else.
-    /// </summary>
-    /// <remarks>
-    /// Which dependency failed is what an operator wants and what an anonymous caller must not be told;
-    /// <see cref="ReadinessProbe"/> logs it instead. The body is deliberately not
-    /// <c>application/problem+json</c> — this one is read by a load balancer, not by a client of the API.
-    /// </remarks>
-    private static async Task<IResult> ReadinessAsync(
-        ReadinessProbe probe,
-        CancellationToken cancellationToken)
-    {
-        var report = await probe.CheckAsync(IsReadiness, cancellationToken).ConfigureAwait(false);
-
-        return Results.Json(
-            new { status = report.Status.ToString() },
-            statusCode: report.Status is HealthStatus.Unhealthy
-                ? StatusCodes.Status503ServiceUnavailable
-                : StatusCodes.Status200OK);
-    }
-
-    private static bool IsReadiness(HealthCheckRegistration registration) =>
-        registration.Tags.Contains(ReadyTag);
+    #endregion
 }

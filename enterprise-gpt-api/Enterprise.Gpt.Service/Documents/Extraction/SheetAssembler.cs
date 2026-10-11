@@ -41,125 +41,7 @@ internal static class SheetAssembler
     // read directly in SQL Server should show its text instead of a run of \uXXXX escapes.
     private static readonly JsonWriterOptions _cellWriterOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-    /// <summary>
-    /// Assembles one sheet.
-    /// </summary>
-    /// <param name="rows">
-    /// The sheet's populated rows in reading order, each trimmed to its own last populated cell.
-    /// </param>
-    /// <param name="cellBudget">Serialized cell characters still available to this upload.</param>
-    public static SheetAssembly Assemble(
-        string sheetName,
-        int sheetIndex,
-        IReadOnlyList<string[]> rows,
-        RowWindowOptions options,
-        ITextChunker chunker,
-        int cellBudget,
-        CancellationToken cancellationToken)
-    {
-        var columnCount = 0;
-
-        for (var i = 0; i < rows.Count; i++)
-        {
-            columnCount = Math.Max(columnCount, rows[i].Length);
-        }
-
-        // A lone row is data: there is nothing for it to be the header of.
-        var header = rows.Count > 1 && IsHeaderRow(rows[0]) ? rows[0] : null;
-        var firstDataRow = header is null ? 0 : 1;
-        var rowCount = rows.Count - firstDataRow;
-
-        var columnNames = BuildColumnNames(header, columnCount);
-        var columnTypes = InferColumnTypes(rows, firstDataRow, columnCount);
-        var budget = Math.Max(1, (int)(chunker.MaxTokens * options.TargetTokenFraction));
-
-        var scratch = new StringBuilder();
-
-        List<DocumentSegmentDto> segments =
-        [
-            Segment(sheetIndex, BuildSchemaCard(sheetName, rows, firstDataRow, rowCount, columnNames, columnTypes, header, budget, chunker, scratch))
-        ];
-
-        var prefix = BuildWindowPrefix(sheetName, header, scratch);
-        var prefixTokens = chunker.CountTokens(prefix);
-
-        // Anything repeated onto every window costs the budget it takes; past half of it a window is
-        // mostly prefix and holds one row. The schema card carries both the name and the columns, so
-        // the prefix gives way rather than the data — the sheet line too, since a name is bounded in
-        // characters and a script that tokenizes several to the character can still crowd out a row.
-        if (prefixTokens * 2 > budget)
-        {
-            prefix = BuildWindowPrefix(sheetName, header: null, scratch);
-            prefixTokens = chunker.CountTokens(prefix);
-        }
-
-        if (prefixTokens * 2 > budget)
-        {
-            prefix = string.Empty;
-            prefixTokens = 0;
-        }
-
-        var window = new StringBuilder(prefix);
-        var windowTokens = prefixTokens;
-        var windowRows = 0;
-
-        var buffer = new ArrayBufferWriter<byte>();
-        using var writer = new Utf8JsonWriter(buffer, _cellWriterOptions);
-        var structuredRows = new List<SheetRowDto>(rowCount);
-        var cellCharacters = 0;
-
-        for (var i = firstDataRow; i < rows.Count; i++)
-        {
-            // Per row, not per sheet: counting tokens and growing the window over a sheet at the row
-            // ceiling is a long CPU-bound stretch, and the caller only checks between sheets.
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var row = rows[i];
-
-            scratch.Clear();
-            SheetSegmentBuilder.AppendRow(scratch, row, row.Length - 1);
-            var rowText = scratch.ToString();
-            var rowTokens = chunker.CountTokens(rowText);
-
-            // Only ever closed on a window that already holds a row, so a single row larger than the
-            // budget still gets a window of its own rather than stalling the loop.
-            if (windowRows > 0 && (windowRows == options.MaxRows || windowTokens + rowTokens > budget))
-            {
-                segments.Add(Segment(sheetIndex, window.ToString()));
-                window.Clear().Append(prefix);
-                windowTokens = prefixTokens;
-                windowRows = 0;
-            }
-
-            window.Append(rowText);
-            windowTokens += rowTokens;
-            windowRows++;
-
-            var cells = SerializeCells(row, columnNames, buffer, writer);
-            cellCharacters += cells.Length;
-
-            // Every populated cell carries its column's name, so a wide sheet's stored form outgrows
-            // the text it was read from — and all of it is resident until the document is saved.
-            if (cellCharacters > cellBudget)
-            {
-                throw SheetSegmentBuilder.CellLimitExceeded(cellBudget);
-            }
-
-            structuredRows.Add(new SheetRowDto(i - firstDataRow, cells));
-        }
-
-        if (windowRows > 0)
-        {
-            segments.Add(Segment(sheetIndex, window.ToString()));
-        }
-
-        List<SheetColumnDto> columns = [.. columnNames.Select((name, index) => new SheetColumnDto(index, name, columnTypes[index]))];
-
-        return new SheetAssembly(
-            segments,
-            new SheetStructureDto(sheetIndex, sheetName, rowCount, columnCount, columns, structuredRows),
-            cellCharacters);
-    }
+    #region Private methods
 
     private static DocumentSegmentDto Segment(int sheetIndex, string text)
     {
@@ -436,4 +318,135 @@ internal static class SheetAssembler
             _ => "text"
         };
     }
+
+    #endregion
+
+    #region Public static methods
+
+    /// <summary>
+    /// Assembles one sheet.
+    /// </summary>
+    /// <param name="sheetName">The name the segments and the persisted sheet carry, already normalized and truncated by the caller.</param>
+    /// <param name="sheetIndex">The sheet's 1-based position in its workbook, stamped on every segment as its source number.</param>
+    /// <param name="rows">
+    /// The sheet's populated rows in reading order, each trimmed to its own last populated cell.
+    /// </param>
+    /// <param name="options">How large a row window may grow, in rows and as a share of the chunker's token budget.</param>
+    /// <param name="chunker">The chunker whose token count and budget the schema card and the row windows are sized against.</param>
+    /// <param name="cellBudget">Serialized cell characters still available to this upload.</param>
+    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
+    public static SheetAssembly Assemble(
+        string sheetName,
+        int sheetIndex,
+        IReadOnlyList<string[]> rows,
+        RowWindowOptions options,
+        ITextChunker chunker,
+        int cellBudget,
+        CancellationToken cancellationToken)
+    {
+        var columnCount = 0;
+
+        for (var i = 0; i < rows.Count; i++)
+        {
+            columnCount = Math.Max(columnCount, rows[i].Length);
+        }
+
+        // A lone row is data: there is nothing for it to be the header of.
+        var header = rows.Count > 1 && IsHeaderRow(rows[0]) ? rows[0] : null;
+        var firstDataRow = header is null ? 0 : 1;
+        var rowCount = rows.Count - firstDataRow;
+
+        var columnNames = BuildColumnNames(header, columnCount);
+        var columnTypes = InferColumnTypes(rows, firstDataRow, columnCount);
+        var budget = Math.Max(1, (int)(chunker.MaxTokens * options.TargetTokenFraction));
+
+        var scratch = new StringBuilder();
+
+        List<DocumentSegmentDto> segments =
+        [
+            Segment(sheetIndex, BuildSchemaCard(sheetName, rows, firstDataRow, rowCount, columnNames, columnTypes, header, budget, chunker, scratch))
+        ];
+
+        var prefix = BuildWindowPrefix(sheetName, header, scratch);
+        var prefixTokens = chunker.CountTokens(prefix);
+
+        // Anything repeated onto every window costs the budget it takes; past half of it a window is
+        // mostly prefix and holds one row. The schema card carries both the name and the columns, so
+        // the prefix gives way rather than the data — the sheet line too, since a name is bounded in
+        // characters and a script that tokenizes several to the character can still crowd out a row.
+        if (prefixTokens * 2 > budget)
+        {
+            prefix = BuildWindowPrefix(sheetName, header: null, scratch);
+            prefixTokens = chunker.CountTokens(prefix);
+        }
+
+        if (prefixTokens * 2 > budget)
+        {
+            prefix = string.Empty;
+            prefixTokens = 0;
+        }
+
+        var window = new StringBuilder(prefix);
+        var windowTokens = prefixTokens;
+        var windowRows = 0;
+
+        var buffer = new ArrayBufferWriter<byte>();
+        using var writer = new Utf8JsonWriter(buffer, _cellWriterOptions);
+        var structuredRows = new List<SheetRowDto>(rowCount);
+        var cellCharacters = 0;
+
+        for (var i = firstDataRow; i < rows.Count; i++)
+        {
+            // Per row, not per sheet: counting tokens and growing the window over a sheet at the row
+            // ceiling is a long CPU-bound stretch, and the caller only checks between sheets.
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var row = rows[i];
+
+            scratch.Clear();
+            SheetSegmentBuilder.AppendRow(scratch, row, row.Length - 1);
+            var rowText = scratch.ToString();
+            var rowTokens = chunker.CountTokens(rowText);
+
+            // Only ever closed on a window that already holds a row, so a single row larger than the
+            // budget still gets a window of its own rather than stalling the loop.
+            if (windowRows > 0 && (windowRows == options.MaxRows || windowTokens + rowTokens > budget))
+            {
+                segments.Add(Segment(sheetIndex, window.ToString()));
+                window.Clear().Append(prefix);
+                windowTokens = prefixTokens;
+                windowRows = 0;
+            }
+
+            window.Append(rowText);
+            windowTokens += rowTokens;
+            windowRows++;
+
+            var cells = SerializeCells(row, columnNames, buffer, writer);
+            cellCharacters += cells.Length;
+
+            // Every populated cell carries its column's name, so a wide sheet's stored form outgrows
+            // the text it was read from — and all of it is resident until the document is saved.
+            if (cellCharacters > cellBudget)
+            {
+                throw SheetSegmentBuilder.CellLimitExceeded(cellBudget);
+            }
+
+            structuredRows.Add(new SheetRowDto(i - firstDataRow, cells));
+        }
+
+        if (windowRows > 0)
+        {
+            segments.Add(Segment(sheetIndex, window.ToString()));
+        }
+
+        List<SheetColumnDto> columns = [.. columnNames.Select((name, index) => new SheetColumnDto(index, name, columnTypes[index]))];
+
+        return new SheetAssembly(
+            segments,
+            new SheetStructureDto(sheetIndex, sheetName, rowCount, columnCount, columns, structuredRows),
+            cellCharacters);
+    }
+
+    #endregion
 }

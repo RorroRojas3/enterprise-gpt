@@ -106,6 +106,10 @@ public abstract class AzureV1EndpointOptions
         !Uri.TryCreate(Url, UriKind.Absolute, out var uri)
         || !uri.AbsolutePath.Contains("openai", StringComparison.OrdinalIgnoreCase);
 
+    #region Private methods
+
     private static string EnsureTrailingSlash(string url) =>
         url.EndsWith('/') ? url : $"{url}/";
+
+    #endregion
 }

@@ -2,6 +2,7 @@ using Enterprise.Gpt.Common.Validation;
 using Enterprise.Gpt.Service.BackgroundJobs;
 using Enterprise.Gpt.Service.Options;
 using FluentValidation;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Enterprise.Gpt.Api.Configuration;
 
@@ -10,6 +11,8 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </summary>
 internal static class BackgroundJobsConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Registers the queue, the status store clients poll, the cancellation registry and the processor.
     /// </summary>
@@ -21,6 +24,7 @@ internal static class BackgroundJobsConfiguration
             .ValidateWithFluentValidation()
             .ValidateOnStart();
 
+        services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IBackgroundJobQueue, BackgroundJobQueue>();
         services.AddSingleton<IJobStatusStore, JobStatusStore>();
         services.AddSingleton<IJobCancellationRegistry, JobCancellationRegistry>();
@@ -28,4 +32,6 @@ internal static class BackgroundJobsConfiguration
 
         return services;
     }
+
+    #endregion
 }

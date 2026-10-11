@@ -45,6 +45,23 @@ internal sealed record TurnUsage(
     List<ConversationUsageTurn> Turns)
 {
     /// <summary>
+    /// Every input token the request consumed: the assistant's own turns plus its tools.
+    /// </summary>
+    /// <remarks>
+    /// Derived from the same numbers written to the audit row rather than read separately off the
+    /// report, so a conversation's running counters can never disagree with the sum of its usage
+    /// rows.
+    /// </remarks>
+    public long TotalInputTokens => InputTokens + ToolInputTokens;
+
+    /// <summary>
+    /// Every output token the request produced, on the same terms as <see cref="TotalInputTokens"/>.
+    /// </summary>
+    public long TotalOutputTokens => OutputTokens + ToolOutputTokens;
+
+    #region Public static methods
+
+    /// <summary>
     /// Creates an empty result, for a request that produced no report at all.
     /// </summary>
     /// <returns>A result with no tokens, no tool calls and no turns.</returns>
@@ -67,18 +84,5 @@ internal sealed record TurnUsage(
             Turns: []);
     }
 
-    /// <summary>
-    /// Every input token the request consumed: the assistant's own turns plus its tools.
-    /// </summary>
-    /// <remarks>
-    /// Derived from the same numbers written to the audit row rather than read separately off the
-    /// report, so a conversation's running counters can never disagree with the sum of its usage
-    /// rows.
-    /// </remarks>
-    public long TotalInputTokens => InputTokens + ToolInputTokens;
-
-    /// <summary>
-    /// Every output token the request produced, on the same terms as <see cref="TotalInputTokens"/>.
-    /// </summary>
-    public long TotalOutputTokens => OutputTokens + ToolOutputTokens;
+    #endregion
 }

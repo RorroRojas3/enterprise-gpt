@@ -120,7 +120,7 @@ public interface ITranscriptStore
 /// <param name="cosmosClient">The account client.</param>
 /// <param name="options">The bound and validated Cosmos settings.</param>
 /// <param name="logger">The logger.</param>
-public sealed class CosmosTranscriptStore(
+public sealed partial class CosmosTranscriptStore(
     CosmosClient cosmosClient,
     IOptions<CosmosDbOptions> options,
     ILogger<CosmosTranscriptStore> logger) : ITranscriptStore
@@ -281,13 +281,22 @@ public sealed class CosmosTranscriptStore(
             // Falling through rather than throwing: the capability is enabled per account and the
             // only way to discover it is missing is to be refused, so a deployment that turned the
             // setting on optimistically still purges rather than leaving the documents behind.
-            _logger.LogWarning(
-                "Delete-by-partition-key returned {StatusCode}; falling back to batched deletes. Confirm the DeleteAllItemsByPartitionKey capability is enabled on the account, or clear CosmosDb:UsePartitionKeyDelete.",
-                (int)response.StatusCode);
+            LogPartitionDeleteFallback(_logger, (int)response.StatusCode);
         }
 
         await DeletePartitionInBatchesAsync(partitionKey, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Projection for queries that only need identifiers.
+    /// </summary>
+    private sealed record DocumentId
+    {
+        [JsonPropertyName("id")]
+        public string Id { get; init; } = null!;
+    }
+
+    #region Private methods
 
     private async Task DeletePartitionInBatchesAsync(PartitionKey partitionKey, CancellationToken cancellationToken)
     {
@@ -364,12 +373,12 @@ public sealed class CosmosTranscriptStore(
         }
     }
 
-    /// <summary>
-    /// Projection for queries that only need identifiers.
-    /// </summary>
-    private sealed record DocumentId
-    {
-        [JsonPropertyName("id")]
-        public string Id { get; init; } = null!;
-    }
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Delete-by-partition-key returned {StatusCode}; falling back to batched deletes. Confirm the DeleteAllItemsByPartitionKey capability is enabled on the account, or clear CosmosDb:UsePartitionKeyDelete.")]
+    private static partial void LogPartitionDeleteFallback(ILogger logger, int statusCode);
+
+    #endregion
 }

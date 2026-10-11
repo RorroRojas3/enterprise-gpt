@@ -28,8 +28,10 @@ namespace Enterprise.Gpt.Api.Startup;
 /// it can see the row as it stands.
 /// </para>
 /// </remarks>
-public static class SummarizerBootstrapper
+public static partial class SummarizerBootstrapper
 {
+    #region Public static methods
+
     /// <summary>
     /// Resolves the configured summarizer and verifies a chat client exists for its provider.
     /// </summary>
@@ -60,10 +62,16 @@ public static class SummarizerBootstrapper
         // PromptVersion is a const, so naming it would not touch the initialiser.
         _ = SummarizationPrompts.BuildReduce(["probe"]);
 
-        logger.LogInformation(
-            "Document summarization will use model {ModelId} ({DeploymentName}) on provider {ProviderId}.",
-            summarizer.ModelId,
-            summarizer.DeploymentName,
-            summarizer.ProviderId);
+        LogSummarizerModel(logger, summarizer.ModelId, summarizer.DeploymentName, summarizer.ProviderId);
     }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document summarization will use model {ModelId} ({DeploymentName}) on provider {ProviderId}.")]
+    private static partial void LogSummarizerModel(
+        ILogger logger, Guid modelId, string deploymentName, Guid providerId);
+
+    #endregion
 }

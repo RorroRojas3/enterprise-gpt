@@ -9,6 +9,8 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </summary>
 internal static class AuthenticationConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Validates incoming tokens against the <c>AzureAd</c> section and caches downstream tokens in memory.
     /// </summary>
@@ -31,4 +33,6 @@ internal static class AuthenticationConfiguration
 
         return services;
     }
+
+    #endregion
 }

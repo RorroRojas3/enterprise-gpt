@@ -5,7 +5,7 @@ transcript carries.
 
 ## Formats and the renderer registry
 
-`ExportRendererRegistration.AddExportRenderers` runs once at composition and decides which of the
+`ExportsConfiguration.AddExportRenderers` runs once at composition and decides which of the
 five `IConversationExportRenderer` implementations are registered:
 
 | Format | Registered unless | Extra requirement |
@@ -21,7 +21,7 @@ PDFsharp's process-global `GlobalFontSettings.FontResolver`, which is documented
 any font operation — so "can this deployment render a PDF?" is a startup answer rather than a
 per-request surprise.
 
-Five font faces ship under `Export/Fonts/`, so a bare `mcr.microsoft.com/dotnet/aspnet` container
+Five font faces ship under `Service/Exports/Fonts/`, so a bare `mcr.microsoft.com/dotnet/aspnet` container
 renders a PDF with no font package installed.
 
 `Export:DisabledFormats` is validated at startup against the same token list the route accepts, so a
@@ -30,7 +30,7 @@ typo fails app start rather than silently withdrawing nothing — the bargain
 
 Registration overwrites by indexer rather than `ToDictionary`: `ToDictionary` throws on a duplicate
 key, and that throw would land in the scoped service's constructor on *every* export request, giving
-a 400 with a LINQ exception message in the body.
+a 500 on every export request.
 
 `ExportAvailabilityLogger`, a hosted service, reports the outcome once at startup and re-derives
 *why* a format is missing. Absent and named in `DisabledFormats` means withdrawn on purpose; absent
@@ -39,11 +39,12 @@ will answer 503 to a request nobody configured it to refuse.
 
 ### The 503
 
-`ExportRendererNotConfiguredException` derives from `Exception`, **not** `InvalidOperationException`
-— the global handler maps the latter to 400, which would report a deployment gap as a client mistake
-and send the caller into a retry loop over a state no retry can change. It maps to 503 under
-`/problems/export-renderer-not-configured`, carrying a `format` extension so a client offering four
-formats can disable the unavailable one rather than the whole download control.
+`ExportRendererNotConfiguredException` derives from `ProblemException`, **not**
+`InvalidOperationException` — an unmapped exception is a 500, which would report a deployment gap
+as an unexplained server fault and send the caller into a retry loop over a state no retry can
+change. It carries 503 and `/problems/export-renderer-not-configured`, plus a `format` extension so
+a client offering four formats can disable the unavailable one rather than the whole download
+control.
 
 This is why format resolution is two steps: `TryParse` alone decides 400 (the token names nothing
 this API ever supported), and the registry lookup after it decides 503 (the token names something
@@ -164,13 +165,13 @@ fields.
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Export/ConversationExportService.cs` | Format resolution, 400 versus 503 |
-| `enterprise-gpt-api/Enterprise.Gpt.Api/Export/ExportRendererRegistration.cs` | Which renderers this deployment gets |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Export/MarkdownBlockMapper.cs` | Markdown AST to the block model |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Export/ExportTheme.cs` | Shared palette and type scale |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Rendering/EmailFence.cs` | The server half of the fence contract |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Exports/ConversationExportService.cs` | Format resolution, 400 versus 503 |
+| `enterprise-gpt-api/Enterprise.Gpt.Api/Configuration/ExportsConfiguration.cs` | Which renderers this deployment gets |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Exports/MarkdownBlockMapper.cs` | Markdown AST to the block model |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Exports/ExportTheme.cs` | Shared palette and type scale |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Conversations/Rendering/EmailFence.cs` | The server half of the fence contract |
 | `enterprise-gpt-ui/src/app/domain/email/` | `mailto:` construction from the same fence |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Export/MarkdownBlockMapperTests.cs` | Info-string and nesting edge cases |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Service/Exports/MarkdownBlockMapperTests.cs` | Info-string and nesting edge cases |
 
 ## Related
 

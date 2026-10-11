@@ -294,15 +294,15 @@ counted.
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Summarization/DocumentSummarizer.cs` | The single-pass, map, collapse, reduce and digest pipeline |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Summarization/SummarizationBudget.cs` | The fit decision and its zero-window refusal |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Summarization/MapUnitSplitter.cs` | Splitting strategy |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Summarization/DocumentTextAssembler.cs` | Chunk reassembly |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Summarization/SummarizerModelResolver.cs` | The pinned model, read fresh |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/Summarization/DocumentSummarizer.cs` | The single-pass, map, collapse, reduce and digest pipeline |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/Summarization/SummarizationBudgetCalculator.cs` | The fit decision and its zero-window refusal |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/Summarization/MapUnitSplitter.cs` | Splitting strategy |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/Summarization/DocumentTextAssembler.cs` | Chunk reassembly |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/Summarization/SummarizerModelResolver.cs` | The pinned model, read fresh |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Prompts/SummarizationPrompts.cs` | Builds the five templates' prompts; holds `PromptVersion` |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Prompts/document-summary-*.md` | The five call-shaped templates (single-pass, map, collapse, reduce, digest) plus the tool-facing prompt |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Tool/DocumentSummaryTool.cs` | The model-facing declaration |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Summarization/` | Budget, splitting, collapse and truncation tests |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/Summarization/DocumentSummaryTool.cs` | The model-facing declaration |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Service/Documents/Summarization/` | Budget, splitting, collapse and truncation tests |
 
 ## Related
 

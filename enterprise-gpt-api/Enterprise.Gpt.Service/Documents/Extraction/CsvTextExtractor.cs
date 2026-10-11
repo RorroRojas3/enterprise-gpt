@@ -24,7 +24,7 @@ namespace Enterprise.Gpt.Service.Documents.Extraction;
 /// the grid intact and which one is a header is decided once, by
 /// <see cref="SheetAssembler"/>, on the same terms as a worksheet's.
 /// </remarks>
-public sealed class CsvTextExtractor(
+public sealed partial class CsvTextExtractor(
     ILogger<CsvTextExtractor> logger,
     IOptions<SheetOptions> options,
     ITextChunker textChunker) : ISheetStructureExtractor
@@ -50,6 +50,17 @@ public sealed class CsvTextExtractor(
     public IReadOnlyCollection<FileExtensions> SupportedExtensions { get; } = [FileExtensions.Csv];
 
     /// <inheritdoc />
+    public Task<SheetExtractionResult> ExtractSheetsAsync(
+        FileDto file,
+        IProgress<DocumentExtractionProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+
+        return Task.FromResult(Read(file, progress, cancellationToken));
+    }
+
+    /// <inheritdoc />
     public Task<IReadOnlyList<DocumentSegmentDto>> ExtractAsync(
         FileDto file,
         IProgress<DocumentExtractionProgress>? progress,
@@ -60,16 +71,7 @@ public sealed class CsvTextExtractor(
         return Task.FromResult(Read(file, progress, cancellationToken).Segments);
     }
 
-    /// <inheritdoc />
-    public Task<SheetExtractionResult> ExtractSheetsAsync(
-        FileDto file,
-        IProgress<DocumentExtractionProgress>? progress,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(file);
-
-        return Task.FromResult(Read(file, progress, cancellationToken));
-    }
+    #region Private methods
 
     private SheetExtractionResult Read(
         FileDto file,
@@ -82,7 +84,7 @@ public sealed class CsvTextExtractor(
         }
         catch (CsvHelperException ex)
         {
-            _logger.LogWarning(ex, "Failed to read a CSV file");
+            LogCsvReadFailed(_logger, ex);
             throw new ValidationException(
             [
                 new FluentValidation.Results.ValidationFailure(nameof(FileDto.FileName),
@@ -110,8 +112,8 @@ public sealed class CsvTextExtractor(
         using var reader = new StringReader(text);
         using var parser = new CsvParser(reader, BuildConfiguration(delimiter));
 
-        var rows = new List<string[]>();
-        var cells = new List<string>();
+        List<string[]> rows = [];
+        List<string> cells = [];
         var characters = SheetSegmentBuilder.SheetHeaderLength(sheetName);
 
         while (parser.Read())
@@ -156,7 +158,7 @@ public sealed class CsvTextExtractor(
         }
 
         progress?.Report(new DocumentExtractionProgress(1d, $"Read {rows.Count} row(s)"));
-        _logger.LogInformation("Extracted {RowCount} row(s) from a CSV file", rows.Count);
+        LogRowsExtracted(_logger, rows.Count);
 
         if (rows.Count == 0)
         {
@@ -370,4 +372,16 @@ public sealed class CsvTextExtractor(
             ? "Sheet1"
             : SheetSegmentBuilder.TruncateName(SheetSegmentBuilder.NormalizeCell(name));
     }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to read a CSV file")]
+    private static partial void LogCsvReadFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Extracted {RowCount} row(s) from a CSV file")]
+    private static partial void LogRowsExtracted(ILogger logger, int rowCount);
+
+    #endregion
 }

@@ -16,76 +16,7 @@ namespace Enterprise.Gpt.Service.Conversations.Chat;
 /// </summary>
 internal static class UsageReportTranslator
 {
-    /// <summary>
-    /// Translates a completed request's usage report into the assistant/tool token split and the
-    /// tree of tool-call rows underneath it.
-    /// </summary>
-    /// <param name="report">
-    /// The report the middleware produced, or <see langword="null"/> when the request produced
-    /// none.
-    /// </param>
-    /// <param name="mcpServers">
-    /// The MCP servers leased for the request, used to attribute MCP tool calls back to a catalog
-    /// row.
-    /// </param>
-    /// <param name="fileAgent">
-    /// The File Agent's catalog row when the turn attached it, or <see langword="null"/> when it did
-    /// not — which is every turn that never offered the agent.
-    /// </param>
-    /// <returns>The token split and the tool-call rows; an empty result for a null report.</returns>
-    public static TurnUsage Translate(
-        ChatUsageReport? report,
-        IReadOnlyList<McpServerReference> mcpServers,
-        FileAgentModel? fileAgent = null)
-    {
-        ArgumentNullException.ThrowIfNull(mcpServers);
-
-        if (report is null)
-        {
-            return TurnUsage.Empty();
-        }
-
-        // Longest prefix first: two servers whose names sanitize to prefixes where one is a prefix
-        // of the other would otherwise attribute the more specific server's tools to the shorter.
-        var prefixes = mcpServers
-            .Select(server => (server.Id, Prefix: $"{McpToolProvider.SanitizeToolNamePrefix(server.Name)}_", server.Name))
-            .OrderByDescending(x => x.Prefix.Length)
-            .ToList();
-
-        List<ConversationUsageToolCall> flattened = [];
-        BuildToolCalls(report.ToolCalls, parentDepth: -1, prefixes, fileAgent, flattened);
-
-        // The top-level entries already roll their descendants up, so summing them is summing
-        // everything every tool consumed.
-        long toolInput = 0, toolOutput = 0;
-        foreach (var call in report.ToolCalls)
-        {
-            toolInput += call.Usage?.InputTokenCount ?? 0;
-            toolOutput += call.Usage?.OutputTokenCount ?? 0;
-        }
-
-        var turns = BuildTurns(report.Turns);
-
-        return new TurnUsage(
-            InputTokens: report.AssistantUsage.InputTokenCount ?? 0,
-            OutputTokens: report.AssistantUsage.OutputTokenCount ?? 0,
-            ToolInputTokens: toolInput,
-            ToolOutputTokens: toolOutput,
-            // Summed from the turns rather than read off AssistantUsage, so this reports the same
-            // number whichever of the two the middleware ends up carrying.
-            //
-            // Both are null through Andes 0.7.0 whatever the provider reported. Its usage arithmetic
-            // copies input, output, total and the AdditionalCounts dictionary and nothing else, and
-            // every UsageDetails on the report — the assistant aggregate and each turn alike — is
-            // produced by that copy. These two counts became first-class properties on UsageDetails
-            // after it was written, so they are dropped in transit. The columns are written anyway:
-            // they are correct the day the middleware carries the values, and a null that means
-            // "not reported" is the same null either way.
-            CachedInputTokens: SumReported(turns, turn => turn.CachedInputTokens),
-            ReasoningTokens: SumReported(turns, turn => turn.ReasoningTokens),
-            ToolCalls: flattened,
-            Turns: turns);
-    }
+    #region Private methods
 
     /// <summary>
     /// Builds one row per model turn the report broke the request into.
@@ -297,4 +228,81 @@ internal static class UsageReportTranslator
     /// </summary>
     private static string? Truncate(string? value, int maxLength) =>
         value is null || value.Length <= maxLength ? value : value[..maxLength];
+
+    #endregion
+
+    #region Public static methods
+
+    /// <summary>
+    /// Translates a completed request's usage report into the assistant/tool token split and the
+    /// tree of tool-call rows underneath it.
+    /// </summary>
+    /// <param name="report">
+    /// The report the middleware produced, or <see langword="null"/> when the request produced
+    /// none.
+    /// </param>
+    /// <param name="mcpServers">
+    /// The MCP servers leased for the request, used to attribute MCP tool calls back to a catalog
+    /// row.
+    /// </param>
+    /// <param name="fileAgent">
+    /// The File Agent's catalog row when the turn attached it, or <see langword="null"/> when it did
+    /// not — which is every turn that never offered the agent.
+    /// </param>
+    /// <returns>The token split and the tool-call rows; an empty result for a null report.</returns>
+    public static TurnUsage Translate(
+        ChatUsageReport? report,
+        IReadOnlyList<McpServerReference> mcpServers,
+        FileAgentModel? fileAgent = null)
+    {
+        ArgumentNullException.ThrowIfNull(mcpServers);
+
+        if (report is null)
+        {
+            return TurnUsage.Empty();
+        }
+
+        // Longest prefix first: two servers whose names sanitize to prefixes where one is a prefix
+        // of the other would otherwise attribute the more specific server's tools to the shorter.
+        var prefixes = mcpServers
+            .Select(server => (server.Id, Prefix: $"{McpToolProvider.SanitizeToolNamePrefix(server.Name)}_", server.Name))
+            .OrderByDescending(x => x.Prefix.Length)
+            .ToList();
+
+        List<ConversationUsageToolCall> flattened = [];
+        BuildToolCalls(report.ToolCalls, parentDepth: -1, prefixes, fileAgent, flattened);
+
+        // The top-level entries already roll their descendants up, so summing them is summing
+        // everything every tool consumed.
+        long toolInput = 0, toolOutput = 0;
+        foreach (var call in report.ToolCalls)
+        {
+            toolInput += call.Usage?.InputTokenCount ?? 0;
+            toolOutput += call.Usage?.OutputTokenCount ?? 0;
+        }
+
+        var turns = BuildTurns(report.Turns);
+
+        return new TurnUsage(
+            InputTokens: report.AssistantUsage.InputTokenCount ?? 0,
+            OutputTokens: report.AssistantUsage.OutputTokenCount ?? 0,
+            ToolInputTokens: toolInput,
+            ToolOutputTokens: toolOutput,
+            // Summed from the turns rather than read off AssistantUsage, so this reports the same
+            // number whichever of the two the middleware ends up carrying.
+            //
+            // Both are null through Andes 0.7.0 whatever the provider reported. Its usage arithmetic
+            // copies input, output, total and the AdditionalCounts dictionary and nothing else, and
+            // every UsageDetails on the report — the assistant aggregate and each turn alike — is
+            // produced by that copy. These two counts became first-class properties on UsageDetails
+            // after it was written, so they are dropped in transit. The columns are written anyway:
+            // they are correct the day the middleware carries the values, and a null that means
+            // "not reported" is the same null either way.
+            CachedInputTokens: SumReported(turns, turn => turn.CachedInputTokens),
+            ReasoningTokens: SumReported(turns, turn => turn.ReasoningTokens),
+            ToolCalls: flattened,
+            Turns: turns);
+    }
+
+    #endregion
 }

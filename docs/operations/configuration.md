@@ -5,10 +5,13 @@ follows.
 
 ## The `ValidateOnStart` convention
 
-Nearly every options block is registered
-`AddOptions<T>().Bind(...).ValidateDataAnnotations().Validate(...).ValidateOnStart()`. A bad value
-fails the host rather than the first request that reaches it. When adding configuration, follow it —
-an unvalidated setting surfaces months later as an unexplained failure in an unrelated feature.
+Every options block is registered
+`AddOptions<T>().Bind(...).ValidateWithFluentValidation().ValidateOnStart()`, with an
+`<Area>OptionsValidator` in the same file as its `<Area>Options` class. A bad value fails the host
+rather than the first request that reaches it. That covers nested sections, `Mcp:Cache`, the
+`DocumentIntelligence` `OCRModelId` and `AnalysisTimeout`, and a `RetentionMinutes` of zero or less.
+When adding configuration, follow it — an unvalidated setting surfaces months later as an
+unexplained failure in an unrelated feature.
 
 ## Sections
 
@@ -83,7 +86,7 @@ A vault is added **if and only if** `Enabled` is true **and** the host is not in
 environment. The `Testing` check exists so the integration-test host never blocks on a credential
 exchange it can never complete.
 
-`AddEnterpriseKeyVault()` is the **first line** of `Program.cs`, and that ordering is load-bearing
+`AddEnterpriseGptKeyVault()` is the **first line** of `Program.cs`, and that ordering is load-bearing
 rather than stylistic: `IConfigurationBuilder` rebuilds its composed view every time a source is
 appended, so adding the vault first means every subsequent `Bind` and `ValidateOnStart` already sees
 the vault's values merged in.
@@ -172,9 +175,9 @@ The dev client also needs `dotnet dev-certs https --trust`. Until that is done, 
 | `enterprise-gpt-api/Enterprise.Gpt.Api/appsettings.json` | Non-secret defaults for every section |
 | `enterprise-gpt-api/Enterprise.Gpt.Api/Configuration/KeyVaultConfiguration.cs` | When a vault is added, and the failure rules |
 | `enterprise-gpt-api/Enterprise.Gpt.Api/Configuration/DataProtectionConfiguration.cs` | The key ring and its wrapping key |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Settings/` | The options classes, one per section |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Options/` | The options classes and their validators, one per section; host-level ones sit in `Api/Options/` |
 | `enterprise-gpt-ui/public/config.json` | The client's runtime configuration |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/` | Binds the shipped `appsettings.json` in config tests |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/` | Binds the shipped `appsettings.json` in config tests |
 
 ## Related
 

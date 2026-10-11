@@ -12,19 +12,19 @@ public abstract class BaseEntityConfiguration<T, TKey> : IEntityTypeConfiguratio
     where T : BaseEntity<TKey>
     where TKey : struct, IEquatable<TKey>
 {
-    /// <inheritdoc />
-    public void Configure(EntityTypeBuilder<T> builder)
-    {
-        ConfigureBase(builder);
-        ConfigureEntity(builder);
-    }
-
     /// <summary>Whether the <see cref="QueryFilterNames.SoftDelete"/> filter hides this entity's deactivated rows.</summary>
     /// <remarks>
     /// Off for a principal that history and reports reach through a required navigation, which a filtered
     /// principal would turn into an inner join that drops the history row.
     /// </remarks>
     protected virtual bool IsSoftDeleteFiltered => true;
+
+    /// <inheritdoc />
+    public void Configure(EntityTypeBuilder<T> builder)
+    {
+        ConfigureBase(builder);
+        ConfigureEntity(builder);
+    }
 
     /// <summary>Maps the members the base classes declare.</summary>
     protected virtual void ConfigureBase(EntityTypeBuilder<T> builder)

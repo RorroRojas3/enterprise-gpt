@@ -18,6 +18,8 @@ namespace Enterprise.Gpt.Repository.Sql;
 /// </summary>
 public static class SqlPersistenceConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Registers the validated connection options, the <see cref="EnterpriseGptDbContext"/> with its interceptors,
     /// and the schema migrator.
@@ -59,4 +61,6 @@ public static class SqlPersistenceConfiguration
     /// </summary>
     public static IHealthChecksBuilder AddEnterpriseGptSqlHealthCheck(this IHealthChecksBuilder builder, string name, IEnumerable<string> tags) =>
         builder.AddDbContextCheck<EnterpriseGptDbContext>(name, tags: tags);
+
+    #endregion
 }

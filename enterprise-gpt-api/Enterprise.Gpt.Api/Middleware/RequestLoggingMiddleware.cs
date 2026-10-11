@@ -116,10 +116,14 @@ public sealed class RequestLoggingMiddleware(
                 // An exception leaving a finally replaces whatever was already propagating, so an
                 // unlucky logger or a custom redactor could turn a working request into a 500 and hide
                 // the real fault on the way. Nothing the access log does is worth that.
-                RequestLogMessages.LoggingFailed(_logger, request.Method, path, logFailure);
+                RequestLogMessages.LogRequestLoggingFailed(_logger, request.Method, path, logFailure);
             }
         }
     }
+
+    private sealed record CapturedBody(string Content, string? ContentType, bool Truncated);
+
+    #region Private methods
 
     private void LogStart(HttpContext context, string path, bool excluded)
     {
@@ -128,7 +132,7 @@ public sealed class RequestLoggingMiddleware(
             return;
         }
 
-        RequestLogMessages.RequestStarted(
+        RequestLogMessages.LogRequestStarted(
             _logger,
             _options.RequestStartLevel,
             context.Request.Method,
@@ -160,7 +164,11 @@ public sealed class RequestLoggingMiddleware(
 
         var endpoint = context.GetEndpoint();
 
-        RequestLogMessages.RequestCompleted(
+        // Read straight off the principal rather than through ITokenService, which throws when the
+        // request is anonymous — and an anonymous request is one of the cases most worth logging.
+        var userId = context.User.GetObjectId();
+
+        RequestLogMessages.LogRequestCompleted(
             _logger,
             level,
             context.Request.Method,
@@ -169,9 +177,7 @@ public sealed class RequestLoggingMiddleware(
             elapsed.TotalMilliseconds,
             (endpoint as RouteEndpoint)?.RoutePattern.RawText,
             endpoint?.DisplayName,
-            // Read straight off the principal rather than through ITokenService, which throws when the
-            // request is anonymous — and an anonymous request is one of the cases most worth logging.
-            context.User.GetObjectId(),
+            userId,
             outcome,
             context.Response.ContentLength,
             failure);
@@ -202,7 +208,7 @@ public sealed class RequestLoggingMiddleware(
 
         var responseContentType = responseCapture?.CapturedContentType;
 
-        RequestLogMessages.RequestPayload(
+        RequestLogMessages.LogRequestPayload(
             _logger,
             level,
             context.Request.Method,
@@ -329,7 +335,7 @@ public sealed class RequestLoggingMiddleware(
         {
             // Logging must never be the reason a request fails. A body that could not be read is a
             // missing log field; letting the exception out would turn it into a failed request.
-            RequestLogMessages.PayloadCaptureFailed(_logger, request.Method, path, exception);
+            RequestLogMessages.LogPayloadCaptureFailed(_logger, request.Method, path, exception);
             return null;
         }
         finally
@@ -404,7 +410,7 @@ public sealed class RequestLoggingMiddleware(
         catch (Exception exception)
         {
             // Throwing from here would replace whatever fault the pipeline was already reporting.
-            RequestLogMessages.LoggingFailed(_logger, context.Request.Method, path, exception);
+            RequestLogMessages.LogRequestLoggingFailed(_logger, context.Request.Method, path, exception);
         }
         finally
         {
@@ -444,5 +450,5 @@ public sealed class RequestLoggingMiddleware(
 
     private static string? NullIfEmpty(string value) => string.IsNullOrEmpty(value) ? null : value;
 
-    private sealed record CapturedBody(string Content, string? ContentType, bool Truncated);
+    #endregion
 }

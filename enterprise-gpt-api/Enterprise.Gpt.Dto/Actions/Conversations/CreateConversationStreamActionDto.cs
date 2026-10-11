@@ -25,6 +25,6 @@ public class CreateConversationStreamActionDtoValidator : AbstractValidator<Crea
                 mcp.RuleFor(m => m.Id)
                     .NotEmpty().WithMessage("MCP Server id is required.");
             })
-            .When(x => x.McpServers != null && x.McpServers.Count > 0);
+            .When(x => x.McpServers is not null && x.McpServers.Count > 0);
     }
 }

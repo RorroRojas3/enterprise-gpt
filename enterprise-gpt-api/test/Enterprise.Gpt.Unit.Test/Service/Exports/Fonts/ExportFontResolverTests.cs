@@ -45,7 +45,7 @@ public sealed class ExportFontResolverTests : IDisposable
 
     /// <summary>
     /// The five role-named faces are committed and copied beside the assembly, so a deployment that
-    /// provisioned nothing still renders a PDF — see <c>Export/Fonts/README.md</c>.
+    /// provisioned nothing still renders a PDF — see <c>Service/Exports/Fonts/README.md</c>.
     /// </summary>
     /// <remarks>
     /// The directory is named rather than defaulted, and the files are asserted directly: an

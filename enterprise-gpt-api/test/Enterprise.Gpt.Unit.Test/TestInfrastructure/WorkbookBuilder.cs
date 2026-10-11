@@ -24,11 +24,13 @@ public static class WorkbookBuilder
     /// <summary>Cell-format index carrying a custom format that is <em>not</em> a date.</summary>
     public const uint CustomNumberStyle = 3;
 
+    /// <param name="Name">The sheet's tab name, written to the workbook's sheet list as given.</param>
     /// <param name="Rows">
     /// Each entry is one row. A <see cref="string"/> becomes a shared string, a <see cref="double"/> or
     /// <see cref="int"/> a number, a <see cref="bool"/> a boolean, a <see cref="DateTime"/> a
     /// date-styled serial, and <see langword="null"/> is omitted entirely so the row carries a real gap.
     /// </param>
+    /// <param name="Hidden">Whether the sheet is marked hidden, as a workbook's lookup tables often are.</param>
     public sealed record SheetSpec(string Name, IReadOnlyList<object?[]> Rows, bool Hidden = false);
 
     public sealed record InlineText(string Value);
@@ -55,7 +57,7 @@ public static class WorkbookBuilder
             var workbookPart = document.AddWorkbookPart();
             workbookPart.Workbook = new Workbook();
 
-            var sharedStrings = new List<string>();
+            List<string> sharedStrings = [];
             var sharedStringIndexes = new Dictionary<string, int>(StringComparer.Ordinal);
             var sheetElements = new Sheets();
             var sheetId = 1U;
@@ -111,7 +113,7 @@ public static class WorkbookBuilder
             var chartsheetPart = workbookPart.AddNewPart<ChartsheetPart>();
             chartsheetPart.Chartsheet = new Chartsheet(new SheetProperties());
 
-            var sharedStrings = new List<string>();
+            List<string> sharedStrings = [];
             var sharedStringIndexes = new Dictionary<string, int>(StringComparer.Ordinal);
 
             var worksheetPart = workbookPart.AddNewPart<WorksheetPart>();

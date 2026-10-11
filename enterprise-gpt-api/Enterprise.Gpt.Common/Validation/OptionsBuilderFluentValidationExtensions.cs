@@ -7,6 +7,8 @@ namespace Enterprise.Gpt.Common.Validation;
 /// <summary>Wires FluentValidation into the options pipeline.</summary>
 public static class OptionsBuilderFluentValidationExtensions
 {
+    #region Public static methods
+
     /// <summary>
     /// Validates the options with the <see cref="IValidator{T}"/> registered for <typeparamref name="TOptions"/>.
     /// </summary>
@@ -21,4 +23,6 @@ public static class OptionsBuilderFluentValidationExtensions
 
         return builder;
     }
+
+    #endregion
 }

@@ -11,8 +11,12 @@ namespace Enterprise.Gpt.Service.Documents.Summarization.Exceptions;
 /// <remarks>
 /// It shares <see cref="ProblemCodes.ProviderNotConfigured"/>: to a caller both mean this deployment
 /// cannot serve the model. Raised at startup and again per request, since the row can change at runtime.
+/// A row can resolve and still be unusable, such as a seeded context window of zero, so the message says how.
 /// </remarks>
-public class SummarizerNotConfiguredException : ProblemException
+/// <param name="modelId">The configured model id.</param>
+/// <param name="message">What is wrong with the row.</param>
+public class SummarizerNotConfiguredException(Guid modelId, string message)
+    : ProblemException(HttpStatusCode.ServiceUnavailable, ProblemCodes.ProviderNotConfigured, message)
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="SummarizerNotConfiguredException"/> class for a
@@ -25,23 +29,7 @@ public class SummarizerNotConfiguredException : ProblemException
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="SummarizerNotConfiguredException"/> class with a
-    /// message describing how the row is unusable.
-    /// </summary>
-    /// <param name="modelId">The configured model id.</param>
-    /// <param name="message">What is wrong with the row.</param>
-    /// <remarks>
-    /// A row can resolve and still be unusable, such as a seeded context window of zero; "names no
-    /// active model" would send an operator looking for a row that is present.
-    /// </remarks>
-    public SummarizerNotConfiguredException(Guid modelId, string message)
-        : base(HttpStatusCode.ServiceUnavailable, ProblemCodes.ProviderNotConfigured, message)
-    {
-        ModelId = modelId;
-    }
-
-    /// <summary>
     /// Gets the configured model id the failure concerns.
     /// </summary>
-    public Guid ModelId { get; }
+    public Guid ModelId { get; } = modelId;
 }

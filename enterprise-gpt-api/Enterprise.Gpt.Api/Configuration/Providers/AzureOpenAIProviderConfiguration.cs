@@ -16,6 +16,26 @@ namespace Enterprise.Gpt.Api.Configuration.Providers;
 /// </summary>
 internal static class AzureOpenAIProviderConfiguration
 {
+    #region Private methods
+
+    private static IChatClient CreateResponsesClient(IServiceProvider services)
+    {
+        var settings = services.GetRequiredService<IOptions<AzureOpenAIOptions>>().Value;
+
+        // The Responses adapter is still experimental; suppressed at the call site rather than project-wide so a
+        // second experimental API cannot slip in unnoticed behind it. See AzureOpenAIDefaults for why no upgrade
+        // retires either.
+#pragma warning disable OPENAI001, MEAI001
+        return services.GetRequiredService<OpenAIClient>()
+            .GetResponsesClient()
+            .AsIChatClient(settings.DefaultModel);
+#pragma warning restore OPENAI001, MEAI001
+    }
+
+    #endregion
+
+    #region Public static methods
+
     /// <summary>
     /// Registers the validated options, the shared <see cref="OpenAIClient"/>, both keyed chat clients and the
     /// embedding generator.
@@ -94,22 +114,6 @@ internal static class AzureOpenAIProviderConfiguration
         });
 
         return services;
-    }
-
-    #region Private methods
-
-    private static IChatClient CreateResponsesClient(IServiceProvider services)
-    {
-        var settings = services.GetRequiredService<IOptions<AzureOpenAIOptions>>().Value;
-
-        // The Responses adapter is still experimental; suppressed at the call site rather than project-wide so a
-        // second experimental API cannot slip in unnoticed behind it. See AzureOpenAIDefaults for why no upgrade
-        // retires either.
-#pragma warning disable OPENAI001, MEAI001
-        return services.GetRequiredService<OpenAIClient>()
-            .GetResponsesClient()
-            .AsIChatClient(settings.DefaultModel);
-#pragma warning restore OPENAI001, MEAI001
     }
 
     #endregion

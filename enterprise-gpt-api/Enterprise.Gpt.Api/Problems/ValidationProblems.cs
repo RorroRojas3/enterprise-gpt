@@ -8,6 +8,8 @@ namespace Enterprise.Gpt.Api.Problems;
 /// </summary>
 internal static class ValidationProblems
 {
+    #region Public static methods
+
     /// <summary>
     /// Creates a validation problem whose <c>errors</c> are keyed by the failing property name.
     /// </summary>
@@ -29,4 +31,6 @@ internal static class ValidationProblems
             Title = ProblemTypes.Validation.Title
         };
     }
+
+    #endregion
 }

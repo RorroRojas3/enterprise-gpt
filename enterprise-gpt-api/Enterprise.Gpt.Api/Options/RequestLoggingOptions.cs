@@ -135,7 +135,7 @@ public sealed class RequestLoggingOptions
     }
 
     /// <summary>
-    /// Validates the list contents that a <see cref="ValidationAttribute"/> cannot express.
+    /// Validates the list contents, which no single-property rule can express.
     /// </summary>
     /// <returns><see langword="true"/> when every entry is usable.</returns>
     /// <remarks>
@@ -150,8 +150,12 @@ public sealed class RequestLoggingOptions
         && SafeQueryKeys.All(key => !string.IsNullOrWhiteSpace(key))
         && Bodies.HasValidEntries();
 
+    #region Public static methods
+
     internal static bool IsRootedPath(string? path) =>
         !string.IsNullOrWhiteSpace(path) && path.StartsWith('/');
+
+    #endregion
 }
 
 internal sealed class RequestLoggingOptionsValidator : AbstractValidator<RequestLoggingOptions>

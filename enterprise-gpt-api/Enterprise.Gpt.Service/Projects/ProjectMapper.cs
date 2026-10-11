@@ -12,25 +12,6 @@ namespace Enterprise.Gpt.Service.Projects;
 public static class ProjectMapper
 {
     /// <summary>
-    /// Maps a materialized <see cref="Project"/> entity to <see cref="ProjectDto"/>.
-    /// </summary>
-    /// <param name="project">The loaded project entity.</param>
-    /// <returns>The mapped DTO.</returns>
-    public static ProjectDto MapToProjectDto(this Project project)
-    {
-        return new ProjectDto
-        {
-            Id = project.Id,
-            Name = project.Name,
-            Description = project.Description,
-            Instructions = project.Instructions,
-            IsFavorite = project.IsFavorite,
-            DateCreated = project.DateCreated,
-            DateModified = project.DateModified
-        };
-    }
-
-    /// <summary>
     /// LINQ projection from <see cref="Project"/> to <see cref="ProjectDto"/> for use inside
     /// <c>IQueryable.Select(...)</c>.
     /// </summary>
@@ -63,6 +44,27 @@ public static class ProjectMapper
             DateCreated = project.DateCreated,
             DateModified = project.DateModified
         };
+
+    #region Public static methods
+
+    /// <summary>
+    /// Maps a materialized <see cref="Project"/> entity to <see cref="ProjectDto"/>.
+    /// </summary>
+    /// <param name="project">The loaded project entity.</param>
+    /// <returns>The mapped DTO.</returns>
+    public static ProjectDto MapToProjectDto(this Project project)
+    {
+        return new ProjectDto
+        {
+            Id = project.Id,
+            Name = project.Name,
+            Description = project.Description,
+            Instructions = project.Instructions,
+            IsFavorite = project.IsFavorite,
+            DateCreated = project.DateCreated,
+            DateModified = project.DateModified
+        };
+    }
 
     /// <summary>
     /// Creates a new <see cref="Project"/> entity from a <see cref="CreateProjectActionDto"/>.
@@ -97,4 +99,6 @@ public static class ProjectMapper
         project.Description = dto.Description;
         project.Instructions = dto.Instructions;
     }
+
+    #endregion
 }

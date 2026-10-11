@@ -8,6 +8,8 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </summary>
 internal static class ValidationConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Registers every validator in the Dto assembly.
     /// </summary>
@@ -21,4 +23,6 @@ internal static class ValidationConfiguration
 
         return services;
     }
+
+    #endregion
 }

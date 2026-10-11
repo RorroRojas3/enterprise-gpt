@@ -15,6 +15,8 @@ namespace Enterprise.Gpt.Api.Configuration.Providers;
 /// </summary>
 internal static class AnthropicProviderConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Registers the validated options and, when <c>Anthropic:Enabled</c> is set, the SDK client and the keyed chat
     /// client.
@@ -67,4 +69,6 @@ internal static class AnthropicProviderConfiguration
 
         return services;
     }
+
+    #endregion
 }

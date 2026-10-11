@@ -40,7 +40,7 @@ public sealed class DocumentIntelligenceTextExtractorTests
     {
         var pages = pageLines.Select((lines, i) => DocumentIntelligenceModelFactory.DocumentPage(
             pageNumber: i + 1,
-            lines: lines.Select(line => DocumentIntelligenceModelFactory.DocumentLine(content: line)).ToList()));
+            lines: [.. lines.Select(line => DocumentIntelligenceModelFactory.DocumentLine(content: line))]));
 
         return DocumentIntelligenceModelFactory.AnalyzeResult(content: content, pages: pages);
     }
@@ -177,7 +177,7 @@ public sealed class DocumentIntelligenceTextExtractorTests
                 return AnalyzeResult("content", ["a line"]);
             });
 
-        var reports = new List<DocumentExtractionProgress>();
+        List<DocumentExtractionProgress> reports = [];
         await _extractor.ExtractAsync(File(), new CollectingProgress<DocumentExtractionProgress>(reports), TestContext.Current.CancellationToken);
 
         Assert.Contains(reports, r => r.Fraction is null && r.Message.Contains("8s"));

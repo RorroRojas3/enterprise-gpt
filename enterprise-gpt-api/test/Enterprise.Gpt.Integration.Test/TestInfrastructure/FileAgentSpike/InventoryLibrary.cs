@@ -5,4 +5,6 @@ namespace Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 /// </summary>
 /// <param name="Module">The import name, which is not always the package name.</param>
 /// <param name="Package">The distribution name a skill would cite.</param>
+/// <param name="Importable">Whether importing <paramref name="Module"/> succeeded in the sandbox.</param>
+/// <param name="Version">The version the module or its distribution reports, or <see langword="null"/> when it would not import or reported none.</param>
 internal sealed record InventoryLibrary(string Module, string Package, bool Importable, string? Version);

@@ -69,7 +69,7 @@ public sealed class FakeEmbeddingGenerator : IEmbeddingGenerator<string, Embeddi
             return new Embedding<float>(vector);
         });
 
-        return new GeneratedEmbeddings<Embedding<float>>(embeddings);
+        return [.. embeddings];
     }
 
     /// <inheritdoc />

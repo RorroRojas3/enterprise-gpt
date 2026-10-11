@@ -187,8 +187,7 @@ public sealed class DocumentServiceTests : IDisposable
             .Returns(call =>
             {
                 var inputs = (call.Arg<IEnumerable<string>>() ?? []).ToList();
-                return new GeneratedEmbeddings<Embedding<float>>(
-                    inputs.Select(_ => new Embedding<float>(new float[] { 0.1f, 0.2f })));
+                return [.. inputs.Select(_ => new Embedding<float>(new float[] { 0.1f, 0.2f }))];
             });
     }
     #endregion
@@ -795,7 +794,7 @@ public sealed class DocumentServiceTests : IDisposable
     }
 
     #region CancelUploadAsync
-    private JobStatusSnapshot JobSnapshot(
+    private static JobStatusSnapshot JobSnapshot(
         JobStatuses status = JobStatuses.Embedding,
         Guid? documentId = null,
         JobTarget? target = null,

@@ -64,10 +64,12 @@ public interface IDocumentStore
 }
 
 /// <inheritdoc />
-public sealed partial class BlobDocumentStore(ILogger<BlobDocumentStore> logger, BlobServiceClient blobServiceClient) : IDocumentStore
+public sealed partial class BlobDocumentStore(
+    ILogger<BlobDocumentStore> logger, BlobServiceClient blobServiceClient, TimeProvider timeProvider) : IDocumentStore
 {
     private readonly ILogger<BlobDocumentStore> _logger = logger;
     private readonly BlobServiceClient _blobServiceClient = blobServiceClient;
+    private readonly TimeProvider _timeProvider = timeProvider;
 
     /// <inheritdoc />
     public async Task<byte[]> DownloadAsync(string container, string blob, CancellationToken cancellationToken)
@@ -135,13 +137,14 @@ public sealed partial class BlobDocumentStore(ILogger<BlobDocumentStore> logger,
             return null;
         }
 
+        var now = _timeProvider.GetUtcNow();
         var sasBuilder = new BlobSasBuilder
         {
             BlobContainerName = container,
             BlobName = blob,
             Resource = "b",
-            StartsOn = DateTimeOffset.UtcNow.AddMinutes(-5),
-            ExpiresOn = DateTimeOffset.UtcNow.Add(expiresIn)
+            StartsOn = now.AddMinutes(-5),
+            ExpiresOn = now.Add(expiresIn)
         };
 
         // Left unset rather than assigned null: BlobSasBuilder signs every non-null field, so an

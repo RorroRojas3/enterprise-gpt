@@ -10,6 +10,8 @@ namespace Enterprise.Gpt.Api.Configuration.Providers;
 /// </summary>
 internal static class GraphProviderConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Registers the client, authenticated as this application with its client secret.
     /// </summary>
@@ -27,4 +29,6 @@ internal static class GraphProviderConfiguration
 
         return services;
     }
+
+    #endregion
 }

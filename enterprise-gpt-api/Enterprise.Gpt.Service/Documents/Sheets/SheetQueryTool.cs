@@ -19,7 +19,7 @@ namespace Enterprise.Gpt.Service.Documents.Sheets;
 /// sheet the caller was already entitled to read. The model names a sheet, a column, an operation from a
 /// closed set and literal comparison values, and nothing else.
 /// </remarks>
-public static class SheetQueryTool
+public static partial class SheetQueryTool
 {
     /// <summary>
     /// The name the model calls this tool by, and the name it appears under in the activity feed and the
@@ -45,42 +45,10 @@ public static class SheetQueryTool
             + "name first to see which sheets and columns exist.";
 
     /// <summary>
-    /// Builds the sheet-query function for one turn.
-    /// </summary>
-    /// <param name="scope">The corpus this turn may query, from <see cref="IDocumentRetrievalService.GetScopeAsync"/>.</param>
-    /// <param name="sheetQueryService">The service backing the tool.</param>
-    /// <param name="toolTimeoutSeconds">How long one whole invocation may run before it is abandoned.</param>
-    /// <param name="logger">Logger for failures that must not reach the model verbatim.</param>
-    /// <returns>The function to attach to <see cref="ChatOptions.Tools"/>.</returns>
-    /// <exception cref="ArgumentNullException">Any reference argument is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="toolTimeoutSeconds"/> is not positive.</exception>
-    public static AIFunction Create(
-        DocumentRetrievalScope scope,
-        ISheetQueryService sheetQueryService,
-        int toolTimeoutSeconds,
-        ILogger logger)
-    {
-        ArgumentNullException.ThrowIfNull(scope);
-        ArgumentNullException.ThrowIfNull(sheetQueryService);
-        ArgumentNullException.ThrowIfNull(logger);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(toolTimeoutSeconds);
-
-        var invoker = new SheetQueryInvoker(scope, sheetQueryService, toolTimeoutSeconds, logger);
-
-        return AIFunctionFactory.Create(invoker.QueryAsync, ToolName, ToolDescription);
-    }
-
-    /// <summary>
-    /// Counts the spreadsheets in a scope, for a progress message that names no file.
-    /// </summary>
-    internal static int CountSpreadsheets(DocumentRetrievalScope scope) => scope.Documents
-        .Count(d => DocumentRetrievalService.SpreadsheetExtensions.Contains(Path.GetExtension(d.Name)));
-
-    /// <summary>
     /// Holds the per-turn state the function body needs, so the state is captured once rather than
     /// resolved on every call.
     /// </summary>
-    private sealed class SheetQueryInvoker(
+    private sealed partial class SheetQueryInvoker(
         DocumentRetrievalScope scope,
         ISheetQueryService sheetQueryService,
         int toolTimeoutSeconds,
@@ -168,10 +136,7 @@ public static class SheetQueryTool
                 // Either the deadline above or the statement's own command timeout, whichever came first.
                 // Reported to the model rather than thrown at the turn, because a query that took too long
                 // is something the user can be told.
-                _logger.LogWarning(
-                    ex,
-                    "A sheet query for conversation {ConversationId} ran past its deadline of {TimeoutSeconds}s.",
-                    _scope.ConversationId, _toolTimeoutSeconds);
+                LogSheetQueryTimedOut(_logger, ex, _scope.ConversationId, _toolTimeoutSeconds);
 
                 throw new InvalidOperationException(
                     "Reading the spreadsheet took too long and was stopped. Tell the user the sheet was too large "
@@ -184,12 +149,59 @@ public static class SheetQueryTool
                 // Function invocation is configured with detailed errors, so whatever is thrown here is
                 // handed to the model verbatim. The real exception goes to the log; the model gets a
                 // sentence it can act on and nothing about the database behind it.
-                _logger.LogError(ex, "The sheet query failed for conversation {ConversationId}.", _scope.ConversationId);
+                LogSheetQueryFailed(_logger, ex, _scope.ConversationId);
 
                 throw new InvalidOperationException(
                     "The spreadsheet could not be read. Answer from the conversation so far, and tell the user their "
                         + "spreadsheet could not be queried.");
             }
         }
+
+        #region Logging
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "A sheet query for conversation {ConversationId} ran past its deadline of {TimeoutSeconds}s.")]
+        private static partial void LogSheetQueryTimedOut(
+            ILogger logger, Exception exception, Guid conversationId, int timeoutSeconds);
+
+        [LoggerMessage(Level = LogLevel.Error, Message = "The sheet query failed for conversation {ConversationId}.")]
+        private static partial void LogSheetQueryFailed(ILogger logger, Exception exception, Guid conversationId);
+
+        #endregion
     }
+
+    #region Public static methods
+
+    /// <summary>
+    /// Builds the sheet-query function for one turn.
+    /// </summary>
+    /// <param name="scope">The corpus this turn may query, from <see cref="IDocumentRetrievalService.GetScopeAsync"/>.</param>
+    /// <param name="sheetQueryService">The service backing the tool.</param>
+    /// <param name="toolTimeoutSeconds">How long one whole invocation may run before it is abandoned.</param>
+    /// <param name="logger">Logger for failures that must not reach the model verbatim.</param>
+    /// <returns>The function to attach to <see cref="ChatOptions.Tools"/>.</returns>
+    /// <exception cref="ArgumentNullException">Any reference argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="toolTimeoutSeconds"/> is not positive.</exception>
+    public static AIFunction Create(
+        DocumentRetrievalScope scope,
+        ISheetQueryService sheetQueryService,
+        int toolTimeoutSeconds,
+        ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(sheetQueryService);
+        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(toolTimeoutSeconds);
+
+        var invoker = new SheetQueryInvoker(scope, sheetQueryService, toolTimeoutSeconds, logger);
+
+        return AIFunctionFactory.Create(invoker.QueryAsync, ToolName, ToolDescription);
+    }
+
+    /// <summary>
+    /// Counts the spreadsheets in a scope, for a progress message that names no file.
+    /// </summary>
+    internal static int CountSpreadsheets(DocumentRetrievalScope scope) => scope.Documents
+        .Count(d => DocumentRetrievalService.SpreadsheetExtensions.Contains(Path.GetExtension(d.Name)));
+
+    #endregion
 }

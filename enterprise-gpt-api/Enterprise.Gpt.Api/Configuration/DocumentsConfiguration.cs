@@ -17,6 +17,23 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </summary>
 internal static class DocumentsConfiguration
 {
+    #region Private methods
+
+    private static void AddValidatedOptions<TOptions, TValidator>(IServiceCollection services, IConfiguration configuration, string sectionName)
+        where TOptions : class
+        where TValidator : class, IValidator<TOptions>
+    {
+        services.AddSingleton<IValidator<TOptions>, TValidator>();
+        services.AddOptions<TOptions>()
+            .Bind(configuration.GetSection(sectionName))
+            .ValidateWithFluentValidation()
+            .ValidateOnStart();
+    }
+
+    #endregion
+
+    #region Public static methods
+
     /// <summary>
     /// Registers the document services and their validated options.
     /// </summary>
@@ -65,19 +82,6 @@ internal static class DocumentsConfiguration
         services.AddScoped<IDocumentSummaryService, DocumentSummaryService>();
 
         return services;
-    }
-
-    #region Private methods
-
-    private static void AddValidatedOptions<TOptions, TValidator>(IServiceCollection services, IConfiguration configuration, string sectionName)
-        where TOptions : class
-        where TValidator : class, IValidator<TOptions>
-    {
-        services.AddSingleton<IValidator<TOptions>, TValidator>();
-        services.AddOptions<TOptions>()
-            .Bind(configuration.GetSection(sectionName))
-            .ValidateWithFluentValidation()
-            .ValidateOnStart();
     }
 
     #endregion

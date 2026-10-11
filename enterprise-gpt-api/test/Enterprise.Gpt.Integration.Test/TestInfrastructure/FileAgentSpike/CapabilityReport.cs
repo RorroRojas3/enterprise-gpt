@@ -3,6 +3,7 @@ namespace Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 /// <summary>
 /// What the Responses route actually does in this tenant.
 /// </summary>
+/// <param name="RecordedUtc">When the run finished and the report was written.</param>
 /// <param name="Deployment">The deployment name, never the endpoint: the resource hostname is the one
 /// tenant-identifying string that could land here, and it says nothing about the sandbox.</param>
 /// <param name="Findings">Every question asked, in the order asked.</param>

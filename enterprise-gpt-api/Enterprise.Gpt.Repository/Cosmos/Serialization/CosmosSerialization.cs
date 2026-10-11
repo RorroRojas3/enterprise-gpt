@@ -23,6 +23,8 @@ namespace Enterprise.Gpt.Repository.Cosmos.Serialization;
 /// </remarks>
 public static class CosmosSerialization
 {
+    #region Public static methods
+
     /// <summary>
     /// Creates the serializer options for the Cosmos DB client.
     /// </summary>
@@ -47,4 +49,6 @@ public static class CosmosSerialization
             }
         };
     }
+
+    #endregion
 }

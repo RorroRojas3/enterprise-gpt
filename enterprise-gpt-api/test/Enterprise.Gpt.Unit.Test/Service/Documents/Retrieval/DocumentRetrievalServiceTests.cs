@@ -529,7 +529,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     {
         var documentId = Guid.NewGuid();
         var scope = ScopeWith(documentId, "handbook.pdf");
-        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 1), 1.0, 0.2, 0) };
+        ScoredChunk[] hits = [new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 1), 1.0, 0.2, 0)];
         var chunks = new[]
         {
             Chunk(documentId, 0, "Refunds are handled by the finance team.", page: 4, distance: 0.5),
@@ -574,7 +574,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     {
         var documentId = Guid.NewGuid();
         var scope = ScopeWith(documentId, "handbook.pdf");
-        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 5), 1.0, 0.2, 0) };
+        ScoredChunk[] hits = [new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 5), 1.0, 0.2, 0)];
         var chunks = new[]
         {
             Chunk(documentId, 1, "A neighbour of nothing.", page: 1, distance: 0.9),
@@ -592,7 +592,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     {
         var documentId = Guid.NewGuid();
         var scope = ScopeWith(documentId, "handbook.pdf");
-        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 1), 1.0, 0.4, 0) };
+        ScoredChunk[] hits = [new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 1), 1.0, 0.4, 0)];
         var chunks = new[]
         {
             Chunk(documentId, 1, "The match.", page: 1, distance: 0.4),
@@ -610,8 +610,8 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     {
         var documentId = Guid.NewGuid();
         var scope = ScopeWith(documentId, "notes.txt");
-        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 0), 1.0, 0.2, 0) };
-        var chunks = new[] { Chunk(documentId, 0, "Some note.", page: null, distance: 0.2) };
+        ScoredChunk[] hits = [new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 0), 1.0, 0.2, 0)];
+        ChunkText[] chunks = [Chunk(documentId, 0, "Some note.", page: null, distance: 0.2)];
 
         var passage = Assert.Single(CreateService().BuildPassages(scope, hits, chunks));
 
@@ -654,7 +654,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     {
         var documentId = Guid.NewGuid();
         var scope = ScopeWith(documentId, "handbook.pdf");
-        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 2), 1.0, 0.2, 0) };
+        ScoredChunk[] hits = [new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 2), 1.0, 0.2, 0)];
         var chunks = new[]
         {
             Chunk(documentId, 1, "The tail of the previous page.", page: 4, distance: 0.8),
@@ -689,8 +689,8 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     {
         var documentId = Guid.NewGuid();
         var scope = ScopeWith(documentId, "budget.xlsx");
-        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 0), 1.0, 0.2, 0) };
-        var chunks = new[] { Chunk(documentId, 0, "SKU | Region\nW-1 | East", page: 3, distance: 0.2) };
+        ScoredChunk[] hits = [new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 0), 1.0, 0.2, 0)];
+        ChunkText[] chunks = [Chunk(documentId, 0, "SKU | Region\nW-1 | East", page: 3, distance: 0.2)];
         var sheetNames = new Dictionary<(Guid DocumentId, int SheetIndex), string> { [(documentId, 3)] = "Regional Revenue" };
 
         var passage = Assert.Single(CreateService().BuildPassages(scope, hits, chunks, sheetNames));
@@ -706,8 +706,8 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
         // the reference rather than claim one the file does not have.
         var documentId = Guid.NewGuid();
         var scope = ScopeWith(documentId, "orders.csv");
-        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 0), 1.0, 0.2, 0) };
-        var chunks = new[] { Chunk(documentId, 0, "SKU | Region", page: 1, distance: 0.2) };
+        ScoredChunk[] hits = [new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 0), 1.0, 0.2, 0)];
+        ChunkText[] chunks = [Chunk(documentId, 0, "SKU | Region", page: 1, distance: 0.2)];
 
         var passage = Assert.Single(CreateService().BuildPassages(scope, hits, chunks));
 
@@ -719,8 +719,8 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     {
         var documentId = Guid.NewGuid();
         var scope = ScopeWith(documentId, "handbook.pdf");
-        var hits = new[] { new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 0), 1.0, 0.2, 0) };
-        var chunks = new[] { Chunk(documentId, 0, "Refunds are issued within 30 days.", page: 12, distance: 0.2) };
+        ScoredChunk[] hits = [new ScoredChunk(new ChunkKey(documentId, DocumentSources.Conversation, 0), 1.0, 0.2, 0)];
+        ChunkText[] chunks = [Chunk(documentId, 0, "Refunds are issued within 30 days.", page: 12, distance: 0.2)];
         var sheetNames = new Dictionary<(Guid DocumentId, int SheetIndex), string> { [(documentId, 12)] = "Never Used" };
 
         var passage = Assert.Single(CreateService().BuildPassages(scope, hits, chunks, sheetNames));
@@ -827,7 +827,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     public void ApplyTokenBudget_EverythingFits_KeepsAllAndReportsNoTruncation()
     {
         _options.MaxResultTokens = 100;
-        var passages = new[] { Passage("one two three"), Passage("four five") };
+        RetrievedPassage[] passages = [Passage("one two three"), Passage("four five")];
 
         var (kept, truncated) = CreateService().ApplyTokenBudget(passages);
 
@@ -839,7 +839,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     public void ApplyTokenBudget_BudgetExhausted_DropsTheTailAndFlagsTruncation()
     {
         _options.MaxResultTokens = 4;
-        var passages = new[] { Passage("one two three"), Passage("four five six"), Passage("seven") };
+        RetrievedPassage[] passages = [Passage("one two three"), Passage("four five six"), Passage("seven")];
 
         var (kept, truncated) = CreateService().ApplyTokenBudget(passages);
 
@@ -851,7 +851,7 @@ public sealed class DocumentRetrievalServiceTests : IDisposable
     public void ApplyTokenBudget_FirstPassageAloneExceedsTheBudget_IsStillReturned()
     {
         _options.MaxResultTokens = 2;
-        var passages = new[] { Passage("one two three four five") };
+        RetrievedPassage[] passages = [Passage("one two three four five")];
 
         var (kept, truncated) = CreateService().ApplyTokenBudget(passages);
 

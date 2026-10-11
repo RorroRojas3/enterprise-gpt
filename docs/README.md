@@ -11,7 +11,7 @@ for whichever side you are working on, then the subsystem you are touching.
 | Doc | Covers |
 | --- | --- |
 | [overview.md](architecture/overview.md) | The two applications, the external services, and three traced request paths |
-| [backend.md](architecture/backend.md) | Project graph, endpoint modules, filters, problem details, `Program.cs` |
+| [backend.md](architecture/backend.md) | Project graph, endpoint modules, filters, problem details, startup composition |
 | [frontend.md](architecture/frontend.md) | Angular layers, bootstrap order, routing, styling chain, build gates |
 | [data-model.md](architecture/data-model.md) | SQL schema and conventions, migrations, Cosmos transcript documents |
 | [auth-and-permissions.md](architecture/auth-and-permissions.md) | Entra ID, on-behalf-of, the permission filter and its cache, secrets |

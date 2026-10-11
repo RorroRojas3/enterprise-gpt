@@ -68,7 +68,7 @@ public interface IDocumentSummaryService
 }
 
 /// <inheritdoc />
-public sealed class DocumentSummaryService(
+public sealed partial class DocumentSummaryService(
     IDocumentSummarizer summarizer,
     EnterpriseGptDbContext ctx,
     IServiceScopeFactory scopeFactory,
@@ -161,6 +161,8 @@ public sealed class DocumentSummaryService(
 
         return run.Summary;
     }
+
+    #region Private methods
 
     /// <remarks>
     /// Filtered on the running prompt version, which is the whole cache-invalidation mechanism: a
@@ -358,17 +360,13 @@ public sealed class DocumentSummaryService(
             // Another run wrote the summary first, as an update or as the first insert; its text stands,
             // and this run is still billed.
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-            _logger.LogInformation(
-                "A concurrent run already rewrote the summary of document {DocumentId}; this run's text was discarded",
-                documentId);
+            LogConcurrentSummaryWon(_logger, documentId);
             await BillAsync(conversationId, run, cancellationToken).ConfigureAwait(false);
             return;
         }
 
-        _logger.LogInformation(
-            "Summarized document {DocumentId} ({Source}) for conversation {ConversationId} in {CallCount} call(s), "
-                + "{MapUnitCount} map unit(s), {CollapsePasses} collapse pass(es)",
-            documentId, source, conversationId, run.ModelCallCount, run.MapUnitCount, run.CollapsePasses);
+        LogDocumentSummarized(
+            _logger, documentId, source, conversationId, run.ModelCallCount, run.MapUnitCount, run.CollapsePasses);
     }
 
     /// <summary>
@@ -506,4 +504,17 @@ public sealed class DocumentSummaryService(
     /// <summary>Whether the filtered one-live-summary-per-document index rejected an insert.</summary>
     private static bool IsUniqueViolation(DbUpdateException exception) =>
         exception.InnerException is SqlException { Number: 2601 or 2627 };
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "A concurrent run already rewrote the summary of document {DocumentId}; this run's text was discarded")]
+    private static partial void LogConcurrentSummaryWon(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Summarized document {DocumentId} ({Source}) for conversation {ConversationId} in {CallCount} call(s), {MapUnitCount} map unit(s), {CollapsePasses} collapse pass(es)")]
+    private static partial void LogDocumentSummarized(
+        ILogger logger, Guid documentId, DocumentSources source, Guid conversationId, int callCount, int mapUnitCount, int collapsePasses);
+
+    #endregion
 }

@@ -28,6 +28,19 @@ public static class ProjectSortKeyNames
     /// </summary>
     public static string SupportedList { get; } = string.Join(", ", Supported.Select(name => $"'{name}'"));
 
+    #region Private methods
+
+    // Dates and the favourite flag read most usefully newest-and-starred first; a name reads A-Z.
+    private static SortDirections NaturalDirection(ProjectSortKeys key) => key switch
+    {
+        ProjectSortKeys.Name => SortDirections.Ascending,
+        _ => SortDirections.Descending
+    };
+
+    #endregion
+
+    #region Public static methods
+
     /// <summary>
     /// Resolves the <c>?sort=</c> and <c>?dir=</c> pair a caller sent.
     /// </summary>
@@ -42,10 +55,5 @@ public static class ProjectSortKeyNames
         return new SortSelection<ProjectSortKeys>(key, SortParameters.ResolveDirection(dir, NaturalDirection(key)));
     }
 
-    // Dates and the favourite flag read most usefully newest-and-starred first; a name reads A-Z.
-    private static SortDirections NaturalDirection(ProjectSortKeys key) => key switch
-    {
-        ProjectSortKeys.Name => SortDirections.Ascending,
-        _ => SortDirections.Descending
-    };
+    #endregion
 }

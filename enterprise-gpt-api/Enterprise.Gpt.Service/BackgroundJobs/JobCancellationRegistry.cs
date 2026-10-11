@@ -60,7 +60,7 @@ public interface IJobCancellationRegistry
 /// Whoever removes an entry under the gate owns disposing it, and only cancelling and releasing
 /// remove — which is what keeps a source from ever being observed half-disposed.
 /// </remarks>
-public sealed class JobCancellationRegistry(ILogger<JobCancellationRegistry> logger) : IJobCancellationRegistry, IDisposable
+public sealed partial class JobCancellationRegistry(ILogger<JobCancellationRegistry> logger) : IJobCancellationRegistry, IDisposable
 {
     private readonly ILogger<JobCancellationRegistry> _logger = logger;
     private readonly Dictionary<string, CancellationTokenSource> _sources = [];
@@ -137,7 +137,7 @@ public sealed class JobCancellationRegistry(ILogger<JobCancellationRegistry> log
         catch (Exception ex)
         {
             // A callback that throws belongs to the work being cancelled, not to the caller asking.
-            _logger.LogWarning(ex, "A cancellation callback for job {JobId} threw", jobId);
+            LogCancellationCallbackThrew(_logger, ex, jobId);
         }
 
         // After cancelling, never before: disposing an uncancelled source strands the linked child.
@@ -174,4 +174,11 @@ public sealed class JobCancellationRegistry(ILogger<JobCancellationRegistry> log
             _sources.Clear();
         }
     }
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "A cancellation callback for job {JobId} threw")]
+    private static partial void LogCancellationCallbackThrew(ILogger logger, Exception exception, string jobId);
+
+    #endregion
 }

@@ -7,6 +7,8 @@ public static class ExportFileNames
 {
     private const int MaxStemLength = 60;
 
+    #region Public static methods
+
     /// <summary>
     /// Reduces a conversation name to something safe to put in a file name.
     /// </summary>
@@ -28,4 +30,6 @@ public static class ExportFileNames
 
         return string.IsNullOrEmpty(stem) ? "conversation" : stem[..Math.Min(stem.Length, MaxStemLength)];
     }
+
+    #endregion
 }

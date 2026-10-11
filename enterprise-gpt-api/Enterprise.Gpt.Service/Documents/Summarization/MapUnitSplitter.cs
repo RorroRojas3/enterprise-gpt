@@ -24,70 +24,7 @@ namespace Enterprise.Gpt.Service.Documents.Summarization;
 /// </remarks>
 public static partial class MapUnitSplitter
 {
-    /// <summary>
-    /// Splits text into units of at most <paramref name="maxTokens"/> tokens each.
-    /// </summary>
-    /// <param name="text">The document's reassembled text.</param>
-    /// <param name="maxTokens">The most tokens one unit may carry.</param>
-    /// <param name="estimator">The summarizer's own token estimator.</param>
-    /// <param name="deploymentName">The summarizer's deployment name, for tokenizer selection.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <returns>
-    /// The units in document order. Every non-whitespace character of the input survives in exactly
-    /// one unit — though a slice taken by length can land mid-word, which summarization tolerates.
-    /// </returns>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="text"/> is <see langword="null"/> or whitespace.</exception>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="estimator"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="maxTokens"/> is less than one.</exception>
-    /// <remarks>
-    /// Paragraphs are packed greedily up to the cap; a paragraph over the cap is split on sentence
-    /// boundaries, and a sentence still over it is sliced by length. Token counts are measured per
-    /// piece and summed rather than re-measured for every candidate join — the counts are very
-    /// slightly sub-additive across a join, which the map-unit fraction's own headroom covers, and
-    /// re-measuring would make splitting a large document quadratic.
-    /// </remarks>
-    public static IReadOnlyList<string> Split(
-        string text,
-        long maxTokens,
-        ITokenEstimator estimator,
-        string deploymentName,
-        CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(text);
-        ArgumentNullException.ThrowIfNull(estimator);
-        ArgumentOutOfRangeException.ThrowIfLessThan(maxTokens, 1);
-
-        var units = new List<string>();
-        var current = new StringBuilder();
-        long currentTokens = 0;
-
-        foreach (var paragraph in EnumeratePieces(text, maxTokens, estimator, deploymentName, cancellationToken))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (currentTokens > 0 && currentTokens + paragraph.Tokens > maxTokens)
-            {
-                units.Add(current.ToString());
-                current.Clear();
-                currentTokens = 0;
-            }
-
-            if (current.Length > 0)
-            {
-                current.Append("\n\n");
-            }
-
-            current.Append(paragraph.Text);
-            currentTokens += paragraph.Tokens;
-        }
-
-        if (current.Length > 0)
-        {
-            units.Add(current.ToString());
-        }
-
-        return units;
-    }
+    private readonly record struct TextPiece(string Text, long Tokens);
 
     #region Private methods
 
@@ -232,7 +169,74 @@ public static partial class MapUnitSplitter
     [GeneratedRegex(@"(?<=[.!?…。！？])[ \t]+|\n")]
     private static partial Regex SentenceBoundary();
 
-    private readonly record struct TextPiece(string Text, long Tokens);
+    #endregion
+
+    #region Public static methods
+
+    /// <summary>
+    /// Splits text into units of at most <paramref name="maxTokens"/> tokens each.
+    /// </summary>
+    /// <param name="text">The document's reassembled text.</param>
+    /// <param name="maxTokens">The most tokens one unit may carry.</param>
+    /// <param name="estimator">The summarizer's own token estimator.</param>
+    /// <param name="deploymentName">The summarizer's deployment name, for tokenizer selection.</param>
+    /// <param name="cancellationToken">A token that propagates cancellation.</param>
+    /// <returns>
+    /// The units in document order. Every non-whitespace character of the input survives in exactly
+    /// one unit — though a slice taken by length can land mid-word, which summarization tolerates.
+    /// </returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="text"/> is <see langword="null"/> or whitespace.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="estimator"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="maxTokens"/> is less than one.</exception>
+    /// <remarks>
+    /// Paragraphs are packed greedily up to the cap; a paragraph over the cap is split on sentence
+    /// boundaries, and a sentence still over it is sliced by length. Token counts are measured per
+    /// piece and summed rather than re-measured for every candidate join — the counts are very
+    /// slightly sub-additive across a join, which the map-unit fraction's own headroom covers, and
+    /// re-measuring would make splitting a large document quadratic.
+    /// </remarks>
+    public static IReadOnlyList<string> Split(
+        string text,
+        long maxTokens,
+        ITokenEstimator estimator,
+        string deploymentName,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        ArgumentNullException.ThrowIfNull(estimator);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxTokens, 1);
+
+        List<string> units = [];
+        var current = new StringBuilder();
+        long currentTokens = 0;
+
+        foreach (var paragraph in EnumeratePieces(text, maxTokens, estimator, deploymentName, cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (currentTokens > 0 && currentTokens + paragraph.Tokens > maxTokens)
+            {
+                units.Add(current.ToString());
+                current.Clear();
+                currentTokens = 0;
+            }
+
+            if (current.Length > 0)
+            {
+                current.Append("\n\n");
+            }
+
+            current.Append(paragraph.Text);
+            currentTokens += paragraph.Tokens;
+        }
+
+        if (current.Length > 0)
+        {
+            units.Add(current.ToString());
+        }
+
+        return units;
+    }
 
     #endregion
 }

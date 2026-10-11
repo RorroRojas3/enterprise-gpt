@@ -27,7 +27,7 @@ trade, since a turn's evidence base should not move while it is being answered.
 
 ### Soft delete is filtered by hand, at three levels
 
-There is no `HasQueryFilter` in this model, so every query filters itself.
+The `SoftDelete` query filter only reaches LINQ. These statements are raw SQL, so every query filters itself.
 
 | Level | Predicate |
 | --- | --- |
@@ -144,11 +144,11 @@ result count for exactly that reason.
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Tool/DocumentRetrievalService.cs` | Scope, passes, fusion, gate |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Tool/DocumentRetrievalSql.cs` | The two statements |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Tool/DocumentRetrievalModels.cs` | Scope and result shapes |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Tool/DocumentTool.cs` | The model-facing tool declaration |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/Persistence/` | Soft-delete levels and ranking |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/Retrieval/DocumentRetrievalService.cs` | Scope, passes, fusion, gate |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/Retrieval/DocumentRetrievalSql.cs` | The two statements |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/Retrieval/Models/` | Scope and result shapes |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/Retrieval/DocumentTool.cs` | The model-facing tool declaration |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Integration.Test/Persistence/` | Soft-delete levels and ranking |
 
 ## Related
 

@@ -11,6 +11,8 @@ namespace Enterprise.Gpt.Api.Startup;
 /// </summary>
 internal static partial class StartupBootstrapper
 {
+    #region Public static methods
+
     /// <summary>
     /// Migrates the SQL schema, provisions Cosmos, then validates the summarizer and the File Agent, in that order.
     /// </summary>
@@ -69,6 +71,8 @@ internal static partial class StartupBootstrapper
             throw;
         }
     }
+
+    #endregion
 
     #region Logging
 

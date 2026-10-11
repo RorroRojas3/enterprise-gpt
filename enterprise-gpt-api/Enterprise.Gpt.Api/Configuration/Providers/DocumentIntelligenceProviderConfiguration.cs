@@ -12,6 +12,8 @@ namespace Enterprise.Gpt.Api.Configuration.Providers;
 /// </summary>
 internal static class DocumentIntelligenceProviderConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Registers the validated options and the client, which is built on first use.
     /// </summary>
@@ -32,4 +34,6 @@ internal static class DocumentIntelligenceProviderConfiguration
 
         return services;
     }
+
+    #endregion
 }

@@ -111,8 +111,7 @@ public sealed partial class TokenTextChunker : ITextChunker
 
         if (OverlapTokens != chunking.OverlapTokens)
         {
-            _logger.LogWarning("Configured chunk overlap of {Configured} tokens was clamped to {Applied} for a maximum chunk size of {MaxTokens}",
-                chunking.OverlapTokens, OverlapTokens, MaxTokens);
+            LogOverlapClamped(_logger, chunking.OverlapTokens, OverlapTokens, MaxTokens);
         }
 
         _tokenizer = CreateTokenizer(azureOpenAIOptions.Value.EmbeddingModel, logger);
@@ -136,8 +135,8 @@ public sealed partial class TokenTextChunker : ITextChunker
     {
         ArgumentNullException.ThrowIfNull(segments);
 
-        var chunks = new List<TextChunkDto>();
-        var current = new List<TextUnit>();
+        List<TextChunkDto> chunks = [];
+        List<TextUnit> current = [];
         var currentTokens = 0;
 
         foreach (var unit in EnumerateUnits(segments, cancellationToken))
@@ -175,13 +174,18 @@ public sealed partial class TokenTextChunker : ITextChunker
             chunks[i].Index = i;
         }
 
-        _logger.LogInformation("Chunked {SegmentCount} segment(s) into {ChunkCount} chunk(s) of at most {MaxTokens} tokens with {OverlapTokens} tokens of overlap",
-            segments.Count, chunks.Count, MaxTokens, OverlapTokens);
+        LogChunked(_logger, segments.Count, chunks.Count, MaxTokens, OverlapTokens);
 
         return chunks;
     }
 
-    #region Chunk assembly
+    /// <summary>
+    /// A span of text small enough to be packed into a chunk, tagged with where it came from.
+    /// </summary>
+    private sealed record TextUnit(string Text, int TokenCount, int? SourceNumber);
+
+    #region Private methods
+
     /// <summary>
     /// Materializes the accumulated units into one chunk, or into several if the joined text
     /// re-tokenizes to more than <see cref="MaxTokens"/>.
@@ -206,7 +210,7 @@ public sealed partial class TokenTextChunker : ITextChunker
         // Belt and braces. Joining units is accounted for separator by separator, so this is not
         // expected to trigger; re-slicing rather than trusting the arithmetic keeps the "no chunk
         // exceeds MaxTokens" guarantee true for every possible input.
-        _logger.LogWarning("Joined chunk re-tokenized to {TokenCount} tokens, exceeding the {MaxTokens} token limit; splitting it", tokenCount, MaxTokens);
+        LogJoinedChunkSplit(_logger, tokenCount, MaxTokens);
 
         foreach (var slice in SplitByTokens(text, MaxTokens, CancellationToken.None))
         {
@@ -229,7 +233,7 @@ public sealed partial class TokenTextChunker : ITextChunker
             return [];
         }
 
-        var carried = new List<TextUnit>();
+        List<TextUnit> carried = [];
         var total = 0;
 
         for (var i = emitted.Count - 1; i >= 0; i--)
@@ -272,9 +276,7 @@ public sealed partial class TokenTextChunker : ITextChunker
 
         return units.Sum(u => u.TokenCount) + ((units.Count - 1) * _separatorTokens);
     }
-    #endregion
 
-    #region Unit enumeration
     /// <summary>
     /// Flattens segments into a stream of units small enough to pack, progressively falling back to
     /// coarser splits only where a finer one leaves something too large.
@@ -468,25 +470,22 @@ public sealed partial class TokenTextChunker : ITextChunker
 
         return text[index..];
     }
-    #endregion
 
-    private static Tokenizer CreateTokenizer(string? embeddingModel, ILogger logger)
+    private static TiktokenTokenizer CreateTokenizer(string? embeddingModel, ILogger logger)
     {
         if (!string.IsNullOrWhiteSpace(embeddingModel))
         {
             try
             {
                 var tokenizer = TiktokenTokenizer.CreateForModel(embeddingModel);
-                logger.LogInformation("Chunking with the tokenizer for embedding model '{EmbeddingModel}'", embeddingModel);
+                LogChunkingTokenizer(logger, embeddingModel);
                 return tokenizer;
             }
             catch (Exception ex) when (ex is NotSupportedException or ArgumentException)
             {
                 // Azure OpenAI addresses models by deployment name, which is chosen by whoever created
                 // the deployment and often is not a model identifier the tokenizer library knows.
-                logger.LogInformation(
-                    "'{EmbeddingModel}' is not a recognized tokenizer model name (it is likely a deployment name); falling back to the {Encoding} encoding",
-                    embeddingModel, FallbackEncoding);
+                LogTokenizerFallback(logger, embeddingModel, FallbackEncoding);
             }
         }
 
@@ -501,8 +500,25 @@ public sealed partial class TokenTextChunker : ITextChunker
     [GeneratedRegex(@"(?<=[.!?…。！？])[ \t]+|\n", RegexOptions.CultureInvariant)]
     private static partial Regex SentenceBoundary();
 
-    /// <summary>
-    /// A span of text small enough to be packed into a chunk, tagged with where it came from.
-    /// </summary>
-    private sealed record TextUnit(string Text, int TokenCount, int? SourceNumber);
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Configured chunk overlap of {Configured} tokens was clamped to {Applied} for a maximum chunk size of {MaxTokens}")]
+    private static partial void LogOverlapClamped(ILogger logger, int configured, int applied, int maxTokens);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Chunked {SegmentCount} segment(s) into {ChunkCount} chunk(s) of at most {MaxTokens} tokens with {OverlapTokens} tokens of overlap")]
+    private static partial void LogChunked(
+        ILogger logger, int segmentCount, int chunkCount, int maxTokens, int overlapTokens);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Joined chunk re-tokenized to {TokenCount} tokens, exceeding the {MaxTokens} token limit; splitting it")]
+    private static partial void LogJoinedChunkSplit(ILogger logger, int tokenCount, int maxTokens);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Chunking with the tokenizer for embedding model '{EmbeddingModel}'")]
+    private static partial void LogChunkingTokenizer(ILogger logger, string embeddingModel);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "'{EmbeddingModel}' is not a recognized tokenizer model name (it is likely a deployment name); falling back to the {Encoding} encoding")]
+    private static partial void LogTokenizerFallback(ILogger logger, string embeddingModel, string encoding);
+
+    #endregion
 }

@@ -32,7 +32,7 @@ public sealed class BackgroundJobProcessorTests : IDisposable
 
     public BackgroundJobProcessorTests()
     {
-        _store = new JobStatusStore(_options, NullLogger<JobStatusStore>.Instance);
+        _store = new JobStatusStore(_options, TimeProvider.System, NullLogger<JobStatusStore>.Instance);
         _processor = new BackgroundJobProcessor(
             _queue,
             _store,

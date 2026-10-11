@@ -23,12 +23,12 @@ public sealed class RequestLoggingMiddlewareTests
             return Task.CompletedTask;
         });
 
-        var started = _harness.Single(RequestLoggingTestHarness.StartedEventId);
+        var started = _harness.SingleRecord(RequestLoggingTestHarness.StartedEventId);
         Assert.Equal(LogLevel.Information, started.Level);
         Assert.Equal("GET", RequestLoggingTestHarness.Field(started, "RequestMethod"));
         Assert.Equal("/api/models", RequestLoggingTestHarness.Field(started, "RequestPath"));
 
-        var completed = _harness.Single(RequestLoggingTestHarness.CompletedEventId);
+        var completed = _harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId);
         Assert.Equal(LogLevel.Information, completed.Level);
         Assert.Equal("200", RequestLoggingTestHarness.Field(completed, "StatusCode"));
         Assert.Equal("Completed", RequestLoggingTestHarness.Field(completed, "Outcome"));
@@ -42,8 +42,8 @@ public sealed class RequestLoggingMiddlewareTests
 
         await _harness.Run(RequestLoggingTestHarness.CreateContext());
 
-        Assert.Equal(LogLevel.Debug, _harness.Single(RequestLoggingTestHarness.StartedEventId).Level);
-        Assert.Equal(LogLevel.Information, _harness.Single(RequestLoggingTestHarness.CompletedEventId).Level);
+        Assert.Equal(LogLevel.Debug, _harness.SingleRecord(RequestLoggingTestHarness.StartedEventId).Level);
+        Assert.Equal(LogLevel.Information, _harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId).Level);
     }
 
     [Theory]
@@ -63,7 +63,7 @@ public sealed class RequestLoggingMiddlewareTests
             return Task.CompletedTask;
         });
 
-        var completed = _harness.Single(RequestLoggingTestHarness.CompletedEventId);
+        var completed = _harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId);
         Assert.Equal(expected, completed.Level);
         Assert.Equal("Completed", RequestLoggingTestHarness.Field(completed, "Outcome"));
     }
@@ -79,7 +79,7 @@ public sealed class RequestLoggingMiddlewareTests
             return Task.CompletedTask;
         });
 
-        var completed = _harness.Single(RequestLoggingTestHarness.CompletedEventId);
+        var completed = _harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId);
         Assert.Equal(LogLevel.Warning, completed.Level);
         Assert.Equal("4000", RequestLoggingTestHarness.Field(completed, "ElapsedMilliseconds"));
     }
@@ -95,7 +95,7 @@ public sealed class RequestLoggingMiddlewareTests
             return Task.CompletedTask;
         });
 
-        Assert.Equal(LogLevel.Information, _harness.Single(RequestLoggingTestHarness.CompletedEventId).Level);
+        Assert.Equal(LogLevel.Information, _harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId).Level);
     }
 
     [Fact]
@@ -108,7 +108,7 @@ public sealed class RequestLoggingMiddlewareTests
 
         Assert.Same(failure, thrown);
 
-        var completed = _harness.Single(RequestLoggingTestHarness.CompletedEventId);
+        var completed = _harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId);
         Assert.Equal(LogLevel.Error, completed.Level);
         Assert.Equal("Faulted", RequestLoggingTestHarness.Field(completed, "Outcome"));
         Assert.Same(failure, completed.Exception);
@@ -123,7 +123,7 @@ public sealed class RequestLoggingMiddlewareTests
 
         await _harness.Run(context);
 
-        var completed = _harness.Single(RequestLoggingTestHarness.CompletedEventId);
+        var completed = _harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId);
         Assert.Equal(LogLevel.Information, completed.Level);
         Assert.Equal("ClientAborted", RequestLoggingTestHarness.Field(completed, "Outcome"));
     }
@@ -150,7 +150,7 @@ public sealed class RequestLoggingMiddlewareTests
         });
 
         Assert.Empty(_harness.All(RequestLoggingTestHarness.StartedEventId));
-        Assert.Equal(LogLevel.Error, _harness.Single(RequestLoggingTestHarness.CompletedEventId).Level);
+        Assert.Equal(LogLevel.Error, _harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId).Level);
     }
 
     [Fact]
@@ -160,7 +160,7 @@ public sealed class RequestLoggingMiddlewareTests
 
         await _harness.Run(RequestLoggingTestHarness.CreateContext(userId: userId));
 
-        var completed = _harness.Single(RequestLoggingTestHarness.CompletedEventId);
+        var completed = _harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId);
         Assert.Equal(userId.ToString(), RequestLoggingTestHarness.Field(completed, "UserId"));
     }
 
@@ -175,7 +175,7 @@ public sealed class RequestLoggingMiddlewareTests
             return Task.CompletedTask;
         });
 
-        var completed = _harness.Single(RequestLoggingTestHarness.CompletedEventId);
+        var completed = _harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId);
         Assert.Null(RequestLoggingTestHarness.Field(completed, "UserId"));
         Assert.Equal("401", RequestLoggingTestHarness.Field(completed, "StatusCode"));
     }
@@ -193,7 +193,7 @@ public sealed class RequestLoggingMiddlewareTests
 
         await _harness.Run(context);
 
-        var completed = _harness.Single(RequestLoggingTestHarness.CompletedEventId);
+        var completed = _harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId);
         Assert.Equal("api/models/{id}", RequestLoggingTestHarness.Field(completed, "RouteTemplate"));
         Assert.Equal("GetModel", RequestLoggingTestHarness.Field(completed, "EndpointName"));
     }
@@ -207,7 +207,7 @@ public sealed class RequestLoggingMiddlewareTests
             return Task.CompletedTask;
         });
 
-        var completed = _harness.Single(RequestLoggingTestHarness.CompletedEventId);
+        var completed = _harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId);
         Assert.Null(RequestLoggingTestHarness.Field(completed, "RouteTemplate"));
         Assert.Equal("/nope", RequestLoggingTestHarness.Field(completed, "RequestPath"));
     }
@@ -222,7 +222,7 @@ public sealed class RequestLoggingMiddlewareTests
         await _harness.Run(context);
 
         var path = RequestLoggingTestHarness.Field(
-            _harness.Single(RequestLoggingTestHarness.CompletedEventId), "RequestPath");
+            _harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId), "RequestPath");
 
         Assert.Equal("/api/conversations/search?name=[redacted]&take=20", path);
         Assert.DoesNotContain("confidential", path);
@@ -241,7 +241,7 @@ public sealed class RequestLoggingMiddlewareTests
 
         Assert.Equal(
             "/api/users?sort=email&dir=desc&permissionId=8e1b2c3d-0000-0000-0000-000000000001",
-            RequestLoggingTestHarness.Field(_harness.Single(RequestLoggingTestHarness.CompletedEventId), "RequestPath"));
+            RequestLoggingTestHarness.Field(_harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId), "RequestPath"));
     }
 
     [Fact]
@@ -254,7 +254,7 @@ public sealed class RequestLoggingMiddlewareTests
 
         Assert.Equal(
             "/api/conversations/search?name=confidential",
-            RequestLoggingTestHarness.Field(_harness.Single(RequestLoggingTestHarness.CompletedEventId), "RequestPath"));
+            RequestLoggingTestHarness.Field(_harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId), "RequestPath"));
     }
 
     [Fact]
@@ -264,7 +264,7 @@ public sealed class RequestLoggingMiddlewareTests
 
         Assert.Equal(
             "/api/models",
-            RequestLoggingTestHarness.Field(_harness.Single(RequestLoggingTestHarness.CompletedEventId), "RequestPath"));
+            RequestLoggingTestHarness.Field(_harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId), "RequestPath"));
     }
 
     [Fact]
@@ -276,7 +276,7 @@ public sealed class RequestLoggingMiddlewareTests
 
         await _harness.Run(context);
 
-        var started = _harness.Single(RequestLoggingTestHarness.StartedEventId);
+        var started = _harness.SingleRecord(RequestLoggingTestHarness.StartedEventId);
         Assert.Null(RequestLoggingTestHarness.Field(started, "ClientIp"));
         Assert.Equal("test-agent", RequestLoggingTestHarness.Field(started, "UserAgent"));
     }
@@ -293,7 +293,7 @@ public sealed class RequestLoggingMiddlewareTests
 
         await _harness.Run(context);
 
-        var started = _harness.Single(RequestLoggingTestHarness.StartedEventId);
+        var started = _harness.SingleRecord(RequestLoggingTestHarness.StartedEventId);
         Assert.Equal("203.0.113.7", RequestLoggingTestHarness.Field(started, "ClientIp"));
         Assert.Null(RequestLoggingTestHarness.Field(started, "UserAgent"));
     }
@@ -312,7 +312,7 @@ public sealed class RequestLoggingMiddlewareTests
             return Task.CompletedTask;
         });
 
-        Assert.Equal(LogLevel.Information, _harness.Single(RequestLoggingTestHarness.CompletedEventId).Level);
+        Assert.Equal(LogLevel.Information, _harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId).Level);
     }
 
     [Fact]

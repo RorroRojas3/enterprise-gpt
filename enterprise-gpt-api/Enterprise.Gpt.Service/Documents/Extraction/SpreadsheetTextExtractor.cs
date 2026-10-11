@@ -26,7 +26,7 @@ namespace Enterprise.Gpt.Service.Documents.Extraction;
 /// Every ceiling in <see cref="SheetOptions"/> is enforced while streaming, because a workbook is a
 /// compressed archive and its uncompressed size is not bounded by the accepted upload size.
 /// </remarks>
-public sealed class SpreadsheetTextExtractor(
+public sealed partial class SpreadsheetTextExtractor(
     ILogger<SpreadsheetTextExtractor> logger,
     IOptions<SheetOptions> options,
     ITextChunker textChunker) : ISheetStructureExtractor
@@ -70,6 +70,17 @@ public sealed class SpreadsheetTextExtractor(
     public IReadOnlyCollection<FileExtensions> SupportedExtensions { get; } = [FileExtensions.Xlsx];
 
     /// <inheritdoc />
+    public Task<SheetExtractionResult> ExtractSheetsAsync(
+        FileDto file,
+        IProgress<DocumentExtractionProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+
+        return Task.FromResult(Read(file, progress, cancellationToken));
+    }
+
+    /// <inheritdoc />
     public Task<IReadOnlyList<DocumentSegmentDto>> ExtractAsync(
         FileDto file,
         IProgress<DocumentExtractionProgress>? progress,
@@ -80,16 +91,7 @@ public sealed class SpreadsheetTextExtractor(
         return Task.FromResult(Read(file, progress, cancellationToken).Segments);
     }
 
-    /// <inheritdoc />
-    public Task<SheetExtractionResult> ExtractSheetsAsync(
-        FileDto file,
-        IProgress<DocumentExtractionProgress>? progress,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(file);
-
-        return Task.FromResult(Read(file, progress, cancellationToken));
-    }
+    #region Private methods
 
     private SheetExtractionResult Read(
         FileDto file,
@@ -113,7 +115,7 @@ public sealed class SpreadsheetTextExtractor(
             or ArgumentOutOfRangeException
             or KeyNotFoundException)
         {
-            _logger.LogWarning(ex, "Failed to read an Excel workbook");
+            LogWorkbookReadFailed(_logger, ex);
             throw new ValidationException(
             [
                 new ValidationFailure(nameof(FileDto.FileName),
@@ -181,8 +183,7 @@ public sealed class SpreadsheetTextExtractor(
                 $"Reading sheet {sheetNumber} of {sheets.Count}"));
         }
 
-        _logger.LogInformation("Extracted {SegmentCount} segment(s) from {ReadCount} of {SheetCount} sheet(s)",
-            segments.Count, structures.Count, sheets.Count);
+        LogSheetsExtracted(_logger, segments.Count, structures.Count, sheets.Count);
 
         return new SheetExtractionResult(segments, structures);
     }
@@ -198,8 +199,8 @@ public sealed class SpreadsheetTextExtractor(
         out int characters,
         CancellationToken cancellationToken)
     {
-        var rows = new List<string[]>();
-        var cells = new List<string>();
+        List<string[]> rows = [];
+        List<string> cells = [];
         var columnCursor = 0;
         characters = SheetSegmentBuilder.SheetHeaderLength(sheetName);
 
@@ -368,7 +369,7 @@ public sealed class SpreadsheetTextExtractor(
             return [];
         }
 
-        var values = new List<string>();
+        List<string> values = [];
 
         using var reader = OpenXmlReader.Create(part);
 
@@ -408,7 +409,7 @@ public sealed class SpreadsheetTextExtractor(
             return [];
         }
 
-        var customDateFormats = new HashSet<uint>();
+        HashSet<uint> customDateFormats = [];
 
         if (stylesheet.NumberingFormats is { } numberingFormats)
         {
@@ -632,4 +633,16 @@ public sealed class SpreadsheetTextExtractor(
             ? $"Sheet{sheetNumber}"
             : SheetSegmentBuilder.TruncateName(SheetSegmentBuilder.NormalizeCell(name));
     }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to read an Excel workbook")]
+    private static partial void LogWorkbookReadFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Extracted {SegmentCount} segment(s) from {ReadCount} of {SheetCount} sheet(s)")]
+    private static partial void LogSheetsExtracted(ILogger logger, int segmentCount, int readCount, int sheetCount);
+
+    #endregion
 }

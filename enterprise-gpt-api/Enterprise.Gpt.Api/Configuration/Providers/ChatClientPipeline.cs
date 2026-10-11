@@ -8,6 +8,8 @@ namespace Enterprise.Gpt.Api.Configuration.Providers;
 /// </summary>
 internal static class ChatClientPipeline
 {
+    #region Public static methods
+
     /// <summary>Applies the shared tool-invocation bounds.</summary>
     internal static void ConfigureFunctionInvocation(FunctionInvokingChatClient client)
     {
@@ -27,4 +29,6 @@ internal static class ChatClientPipeline
         options.UseMcpToolClassification();
         options.UseAgentToolClassification();
     }
+
+    #endregion
 }

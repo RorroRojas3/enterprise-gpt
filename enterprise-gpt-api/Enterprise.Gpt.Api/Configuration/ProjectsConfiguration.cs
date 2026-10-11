@@ -7,6 +7,8 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </summary>
 internal static class ProjectsConfiguration
 {
+    #region Public static methods
+
     /// <summary>Registers the project service.</summary>
     internal static IServiceCollection AddProjects(this IServiceCollection services)
     {
@@ -14,4 +16,6 @@ internal static class ProjectsConfiguration
 
         return services;
     }
+
+    #endregion
 }

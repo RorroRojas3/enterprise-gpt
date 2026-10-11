@@ -20,6 +20,8 @@ namespace Enterprise.Gpt.Service.Documents.Summarization;
 /// </remarks>
 public static class SummarizationBudgetCalculator
 {
+    #region Public static methods
+
     /// <summary>
     /// Computes the token budget for one summarization stage.
     /// </summary>
@@ -85,4 +87,6 @@ public static class SummarizationBudgetCalculator
 
         return new SummarizationBudget(perCall, mapUnit);
     }
+
+    #endregion
 }

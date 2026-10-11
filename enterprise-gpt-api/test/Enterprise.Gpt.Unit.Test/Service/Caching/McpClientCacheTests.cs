@@ -14,17 +14,19 @@ public class McpClientCacheTests
     {
         // A long sweep interval keeps the background sweep inert during these short tests.
         options ??= new McpClientCacheOptions { SweepInterval = TimeSpan.FromHours(1) };
-        return new McpClientCache(NullLogger<McpClientCache>.Instance, Microsoft.Extensions.Options.Options.Create(options));
+        return new McpClientCache(NullLogger<McpClientCache>.Instance, Microsoft.Extensions.Options.Options.Create(options), TimeProvider.System);
     }
 
     private static McpCacheEntrySource CreateSource(
         IAsyncDisposable client, DateTimeOffset? tokenExpiresOn = null)
     {
-        // A fresh list per source lets tests prove co-waiters share one entry by reference.
+        // A fresh list per source lets tests prove co-waiters share one entry by reference; an interface
+        // target would get the shared empty singleton instead.
+        List<AITool> tools = [];
         return new McpCacheEntrySource
         {
             Client = client,
-            Tools = new List<AITool>(),
+            Tools = tools,
             TokenExpiresOn = tokenExpiresOn
         };
     }

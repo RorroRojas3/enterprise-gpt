@@ -36,7 +36,7 @@ public interface IUserSecretProtector
 /// key ring, makes every stored credential unreadable — recoverably, since a payload that will
 /// not open is treated as "no credential", but every user is then asked to supply theirs again.
 /// </remarks>
-public sealed class UserSecretProtector(IDataProtectionProvider provider, ILogger<UserSecretProtector> logger)
+public sealed partial class UserSecretProtector(IDataProtectionProvider provider, ILogger<UserSecretProtector> logger)
     : IUserSecretProtector
 {
     private const string RootPurpose = "Enterprise.Gpt.McpUserCredential.v1";
@@ -70,21 +70,19 @@ public sealed class UserSecretProtector(IDataProtectionProvider provider, ILogge
             // cause. An inner exception is what tells the two apart.
             if (ex.InnerException is not null)
             {
-                _logger.LogError(ex,
-                    "The Data Protection key ring could not open a stored MCP credential for server {McpServerId}; users will be asked to supply their keys again while this persists",
-                    mcpServerId);
+                LogKeyRingCannotDecrypt(_logger, ex, mcpServerId);
             }
             else
             {
-                _logger.LogWarning(ex,
-                    "Stored MCP credential for server {McpServerId} could not be decrypted and will be treated as absent",
-                    mcpServerId);
+                LogCredentialUndecryptable(_logger, ex, mcpServerId);
             }
 
             plaintext = null;
             return false;
         }
     }
+
+    #region Private methods
 
     private IDataProtector CreateProtector(Guid userOid, Guid mcpServerId)
     {
@@ -93,4 +91,16 @@ public sealed class UserSecretProtector(IDataProtectionProvider provider, ILogge
             .CreateProtector(userOid.ToString("N"))
             .CreateProtector(mcpServerId.ToString("N"));
     }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "The Data Protection key ring could not open a stored MCP credential for server {McpServerId}; users will be asked to supply their keys again while this persists")]
+    private static partial void LogKeyRingCannotDecrypt(ILogger logger, Exception exception, Guid mcpServerId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Stored MCP credential for server {McpServerId} could not be decrypted and will be treated as absent")]
+    private static partial void LogCredentialUndecryptable(ILogger logger, Exception exception, Guid mcpServerId);
+
+    #endregion
 }

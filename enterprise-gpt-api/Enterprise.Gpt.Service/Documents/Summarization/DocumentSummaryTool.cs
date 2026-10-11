@@ -25,7 +25,7 @@ namespace Enterprise.Gpt.Service.Documents.Summarization;
 /// search is cheap, and summarizing the wrong document is not.
 /// </para>
 /// </remarks>
-public static class DocumentSummaryTool
+public static partial class DocumentSummaryTool
 {
     /// <summary>
     /// The name the model calls this tool by, and the name it appears under in the activity feed
@@ -47,38 +47,10 @@ public static class DocumentSummaryTool
         "cheaply. The first summary of a document takes a while; later ones are instant.";
 
     /// <summary>
-    /// Builds the summarization function for one turn.
-    /// </summary>
-    /// <param name="scope">The corpus this turn may summarize, from <see cref="IDocumentRetrievalService.GetScopeAsync"/>.</param>
-    /// <param name="conversationId">The conversation every model call this tool makes is billed to.</param>
-    /// <param name="summaryService">The service backing the tool.</param>
-    /// <param name="toolTimeoutSeconds">How long one whole invocation may run before it is abandoned.</param>
-    /// <param name="logger">Logger for failures that must not reach the model verbatim.</param>
-    /// <returns>The function to attach to <see cref="ChatOptions.Tools"/>.</returns>
-    /// <exception cref="ArgumentNullException">Any reference argument is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="toolTimeoutSeconds"/> is not positive.</exception>
-    public static AIFunction Create(
-        DocumentRetrievalScope scope,
-        Guid conversationId,
-        IDocumentSummaryService summaryService,
-        int toolTimeoutSeconds,
-        ILogger logger)
-    {
-        ArgumentNullException.ThrowIfNull(scope);
-        ArgumentNullException.ThrowIfNull(summaryService);
-        ArgumentNullException.ThrowIfNull(logger);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(toolTimeoutSeconds);
-
-        var invoker = new DocumentSummaryInvoker(scope, conversationId, summaryService, toolTimeoutSeconds, logger);
-
-        return AIFunctionFactory.Create(invoker.SummarizeAsync, ToolName, ToolDescription);
-    }
-
-    /// <summary>
     /// Holds the per-turn state the function body needs, so the state is captured once rather than
     /// resolved on every call.
     /// </summary>
-    private sealed class DocumentSummaryInvoker(
+    private sealed partial class DocumentSummaryInvoker(
         DocumentRetrievalScope scope,
         Guid conversationId,
         IDocumentSummaryService summaryService,
@@ -126,10 +98,7 @@ public static class DocumentSummaryTool
             {
                 // The deadline above, not the caller. Reported to the model rather than thrown at
                 // the turn, because a summary that took too long is something the user can be told.
-                _logger.LogWarning(
-                    ex,
-                    "Summarization for conversation {ConversationId} exceeded its {TimeoutSeconds}s tool deadline.",
-                    _conversationId, _toolTimeoutSeconds);
+                LogSummarizationTimedOut(_logger, ex, _conversationId, _toolTimeoutSeconds);
 
                 throw new InvalidOperationException(
                     "Summarizing took too long and was stopped. Tell the user the document was too large to "
@@ -142,8 +111,7 @@ public static class DocumentSummaryTool
                 // path — so it is relayed rather than replaced.
                 var message = ex.Errors.FirstOrDefault()?.ErrorMessage ?? "This document could not be summarized.";
 
-                _logger.LogInformation(
-                    "Summarization refused for conversation {ConversationId}: {Reason}", _conversationId, message);
+                LogSummarizationRefused(_logger, _conversationId, message);
 
                 throw new InvalidOperationException(
                     $"{message} Tell the user this, and do not try to summarize the same thing again.");
@@ -153,14 +121,15 @@ public static class DocumentSummaryTool
                 // Function invocation is configured with detailed errors, so whatever is thrown here
                 // is handed to the model verbatim. The real exception goes to the log; the model
                 // gets a sentence it can act on and nothing about the machinery behind it.
-                _logger.LogError(
-                    ex, "Summarization failed for conversation {ConversationId}.", _conversationId);
+                LogSummarizationFailed(_logger, ex, _conversationId);
 
                 throw new InvalidOperationException(
                     "The summary could not be produced. Tell the user their documents could not be summarized, "
                         + "and offer to answer specific questions about them instead.");
             }
         }
+
+        #region Private methods
 
         private async Task<DocumentSummaryToolResult> SummarizeOneAsync(
             string documentName, CancellationToken cancellationToken)
@@ -228,5 +197,53 @@ public static class DocumentSummaryTool
                 Summary = digest
             };
         }
+
+        #endregion
+
+        #region Logging
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Summarization for conversation {ConversationId} exceeded its {TimeoutSeconds}s tool deadline.")]
+        private static partial void LogSummarizationTimedOut(
+            ILogger logger, Exception exception, Guid conversationId, int timeoutSeconds);
+
+        [LoggerMessage(Level = LogLevel.Information, Message = "Summarization refused for conversation {ConversationId}: {Reason}")]
+        private static partial void LogSummarizationRefused(ILogger logger, Guid conversationId, string reason);
+
+        [LoggerMessage(Level = LogLevel.Error, Message = "Summarization failed for conversation {ConversationId}.")]
+        private static partial void LogSummarizationFailed(ILogger logger, Exception exception, Guid conversationId);
+
+        #endregion
     }
+
+    #region Public static methods
+
+    /// <summary>
+    /// Builds the summarization function for one turn.
+    /// </summary>
+    /// <param name="scope">The corpus this turn may summarize, from <see cref="IDocumentRetrievalService.GetScopeAsync"/>.</param>
+    /// <param name="conversationId">The conversation every model call this tool makes is billed to.</param>
+    /// <param name="summaryService">The service backing the tool.</param>
+    /// <param name="toolTimeoutSeconds">How long one whole invocation may run before it is abandoned.</param>
+    /// <param name="logger">Logger for failures that must not reach the model verbatim.</param>
+    /// <returns>The function to attach to <see cref="ChatOptions.Tools"/>.</returns>
+    /// <exception cref="ArgumentNullException">Any reference argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="toolTimeoutSeconds"/> is not positive.</exception>
+    public static AIFunction Create(
+        DocumentRetrievalScope scope,
+        Guid conversationId,
+        IDocumentSummaryService summaryService,
+        int toolTimeoutSeconds,
+        ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(summaryService);
+        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(toolTimeoutSeconds);
+
+        var invoker = new DocumentSummaryInvoker(scope, conversationId, summaryService, toolTimeoutSeconds, logger);
+
+        return AIFunctionFactory.Create(invoker.SummarizeAsync, ToolName, ToolDescription);
+    }
+
+    #endregion
 }

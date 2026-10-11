@@ -89,7 +89,7 @@ public sealed class RequestLoggingTestHarness
     /// </summary>
     /// <param name="eventId">One of the <c>*EventId</c> constants on this class.</param>
     /// <returns>The matching record.</returns>
-    public FakeLogRecord Single(int eventId) =>
+    public FakeLogRecord SingleRecord(int eventId) =>
         Assert.Single(Collector.GetSnapshot(), record => record.Id.Id == eventId);
 
     /// <summary>

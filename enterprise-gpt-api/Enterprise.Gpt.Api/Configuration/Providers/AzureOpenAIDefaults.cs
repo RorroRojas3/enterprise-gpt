@@ -27,6 +27,45 @@ namespace Enterprise.Gpt.Api.Configuration.Providers;
 /// </remarks>
 internal static class AzureOpenAIDefaults
 {
+    #region Private methods
+
+    /// <summary>
+    /// Reads the catalog's per-model reasoning flag off the request.
+    /// </summary>
+    /// <remarks>
+    /// Absent means no. Only <c>ConversationService</c> writes this key, and it writes a
+    /// <see cref="bool"/>, but a request assembled anywhere else must not turn a stray value into a
+    /// reasoning request that the deployment then rejects.
+    /// </remarks>
+    private static bool IsReasoningRequested(ChatOptions options) =>
+        options.AdditionalProperties?.TryGetValue(ChatRequestProperties.IsReasoningEnabled, out var value) == true
+        && value is true;
+
+    private static ResponseReasoningSummaryVerbosity ParseSummary(string summary) =>
+        summary.ToLowerInvariant() switch
+        {
+            "auto" => ResponseReasoningSummaryVerbosity.Auto,
+            "concise" => ResponseReasoningSummaryVerbosity.Concise,
+            "detailed" => ResponseReasoningSummaryVerbosity.Detailed,
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(summary), summary, "Unknown Azure OpenAI reasoning summary verbosity.")
+        };
+
+    private static ResponseReasoningEffortLevel ParseEffort(string effort) =>
+        effort.ToLowerInvariant() switch
+        {
+            "minimal" => ResponseReasoningEffortLevel.Minimal,
+            "low" => ResponseReasoningEffortLevel.Low,
+            "medium" => ResponseReasoningEffortLevel.Medium,
+            "high" => ResponseReasoningEffortLevel.High,
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(effort), effort, "Unknown Azure OpenAI reasoning effort level.")
+        };
+
+    #endregion
+
+    #region Public static methods
+
     /// <summary>
     /// Creates the <see cref="ChatOptions"/> callback for the Azure OpenAI provider.
     /// </summary>
@@ -131,36 +170,5 @@ internal static class AzureOpenAIDefaults
         };
     }
 
-    /// <summary>
-    /// Reads the catalog's per-model reasoning flag off the request.
-    /// </summary>
-    /// <remarks>
-    /// Absent means no. Only <c>ConversationService</c> writes this key, and it writes a
-    /// <see cref="bool"/>, but a request assembled anywhere else must not turn a stray value into a
-    /// reasoning request that the deployment then rejects.
-    /// </remarks>
-    private static bool IsReasoningRequested(ChatOptions options) =>
-        options.AdditionalProperties?.TryGetValue(ChatRequestProperties.IsReasoningEnabled, out var value) == true
-        && value is true;
-
-    private static ResponseReasoningSummaryVerbosity ParseSummary(string summary) =>
-        summary.ToLowerInvariant() switch
-        {
-            "auto" => ResponseReasoningSummaryVerbosity.Auto,
-            "concise" => ResponseReasoningSummaryVerbosity.Concise,
-            "detailed" => ResponseReasoningSummaryVerbosity.Detailed,
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(summary), summary, "Unknown Azure OpenAI reasoning summary verbosity.")
-        };
-
-    private static ResponseReasoningEffortLevel ParseEffort(string effort) =>
-        effort.ToLowerInvariant() switch
-        {
-            "minimal" => ResponseReasoningEffortLevel.Minimal,
-            "low" => ResponseReasoningEffortLevel.Low,
-            "medium" => ResponseReasoningEffortLevel.Medium,
-            "high" => ResponseReasoningEffortLevel.High,
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(effort), effort, "Unknown Azure OpenAI reasoning effort level.")
-        };
+    #endregion
 }

@@ -18,6 +18,7 @@ internal static class ArtifactVerifier
 
     /// <summary>Verifies an artifact against the format it was converted to.</summary>
     /// <param name="format">The target format's extension, without a dot.</param>
+    /// <param name="bytes">The artifact as downloaded from the sandbox; fewer than 32 bytes fails outright.</param>
     /// <returns>Whether it verified, and what was found either way.</returns>
     public static (bool Verified, string Detail) Verify(string format, byte[] bytes)
     {

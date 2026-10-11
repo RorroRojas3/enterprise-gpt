@@ -71,7 +71,7 @@ public interface IDocumentRetrievalService
 /// for each sentence once.
 /// </para>
 /// </remarks>
-public sealed class DocumentRetrievalService(
+public sealed partial class DocumentRetrievalService(
     ILogger<DocumentRetrievalService> logger,
     IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
     ITextChunker textChunker,
@@ -217,9 +217,7 @@ public sealed class DocumentRetrievalService(
         var selected = SelectHits(dense, lexical, terms.Count);
         if (selected.Count == 0)
         {
-            _logger.LogInformation(
-                "Document search for conversation {ConversationId} matched none of {ChunkCount} candidate chunk(s).",
-                scope.ConversationId, dense.Count + lexical.Count);
+            LogSearchMatchedNothing(_logger, scope.ConversationId, dense.Count + lexical.Count);
 
             return EmptyResult(scope, trimmedQuery, Combine(filterNote, "Nothing in the documents matched closely enough. Try different or broader wording."));
         }
@@ -229,9 +227,7 @@ public sealed class DocumentRetrievalService(
         var passages = BuildPassages(scope, selected, chunks, sheetNames);
         var (budgeted, truncated) = ApplyTokenBudget(passages);
 
-        _logger.LogInformation(
-            "Document search for conversation {ConversationId} returned {PassageCount} passage(s) from {ChunkCount} chunk(s).",
-            scope.ConversationId, budgeted.Count, chunks.Count);
+        LogSearchReturned(_logger, scope.ConversationId, budgeted.Count, chunks.Count);
 
         return new DocumentSearchResult
         {
@@ -243,188 +239,6 @@ public sealed class DocumentRetrievalService(
             Note = Combine(filterNote, budgeted.Count == 0 ? "Nothing in the documents matched closely enough." : null)
         };
     }
-
-    #region Query preparation
-
-    /// <summary>
-    /// Turns the query into a vector the database can compare against the stored embeddings.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">The generator returned nothing, or a vector of the wrong size.</exception>
-    private async Task<SqlVector<float>> EmbedQueryAsync(string query, CancellationToken cancellationToken)
-    {
-        var generated = await _embeddingGenerator.GenerateAsync([query], cancellationToken: cancellationToken).ConfigureAwait(false);
-
-        if (generated.Count == 0)
-        {
-            throw new InvalidOperationException("The embedding generator returned no vector for the search query.");
-        }
-
-        var vector = generated[0].Vector;
-
-        if (vector.Length != DocumentChunkLimits.EmbeddingDimensions)
-        {
-            throw new InvalidOperationException(
-                $"The embedding generator returned a {vector.Length}-dimension vector, but stored chunks are {DocumentChunkLimits.EmbeddingDimensions}-dimension. " +
-                "The configured embedding deployment does not match the one documents were ingested with.");
-        }
-
-        return new SqlVector<float>(vector);
-    }
-
-    /// <summary>
-    /// Picks the distinct terms worth searching for literally.
-    /// </summary>
-    /// <param name="query">The raw query.</param>
-    /// <param name="maxTerms">The most terms to return.</param>
-    /// <returns>The terms, most distinctive first.</returns>
-    /// <remarks>
-    /// Ordering puts tokens containing digits first and longer tokens next, as a cheap stand-in for
-    /// inverse document frequency: identifiers and long words discriminate between chunks, common short
-    /// words do not. Two-character tokens survive only when they contain a digit, which keeps <c>v2</c>
-    /// and <c>5g</c> while dropping the noise a two-letter word would add.
-    /// </remarks>
-    internal static IReadOnlyList<string> ExtractTerms(string query, int maxTerms)
-    {
-        if (string.IsNullOrWhiteSpace(query) || maxTerms <= 0)
-        {
-            return [];
-        }
-
-        List<string> tokens = [];
-        var current = new StringBuilder();
-
-        foreach (var character in query)
-        {
-            if (char.IsLetterOrDigit(character))
-            {
-                current.Append(char.ToLowerInvariant(character));
-                continue;
-            }
-
-            AddToken(tokens, current);
-        }
-
-        AddToken(tokens, current);
-
-        return [.. tokens
-            .Distinct(StringComparer.Ordinal)
-            .Where(t => !StopWords.Contains(t))
-            .OrderByDescending(t => t.Any(char.IsDigit))
-            .ThenByDescending(t => t.Length)
-            .ThenBy(t => t, StringComparer.Ordinal)
-            .Take(maxTerms)];
-
-        static void AddToken(List<string> tokens, StringBuilder current)
-        {
-            if (current.Length == 0)
-            {
-                return;
-            }
-
-            var token = current.ToString();
-            current.Clear();
-
-            var keep = token.Length >= 3 || (token.Length >= 2 && token.Any(char.IsDigit));
-            if (keep)
-            {
-                tokens.Add(token);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Escapes the characters <c>LIKE</c> treats as wildcards so a term matches itself literally.
-    /// </summary>
-    /// <param name="term">The term to escape.</param>
-    /// <returns>The escaped term, for use with <c>ESCAPE '\'</c>.</returns>
-    /// <remarks>
-    /// The backslash is escaped first by virtue of being in the same pass — it is the escape character
-    /// itself, so a term containing one would otherwise consume the character after it.
-    /// </remarks>
-    internal static string EscapeLikePattern(string term)
-    {
-        var escaped = new StringBuilder(term.Length + 8);
-
-        foreach (var character in term)
-        {
-            if (character is '\\' or '%' or '_' or '[' or ']')
-            {
-                escaped.Append('\\');
-            }
-
-            escaped.Append(character);
-        }
-
-        return escaped.ToString();
-    }
-
-    /// <summary>
-    /// Finds the documents in scope whose name matches <paramref name="wanted"/>, widening the
-    /// comparison only as far as it has to.
-    /// </summary>
-    /// <param name="scope">The documents to match against.</param>
-    /// <param name="wanted">The name to match, already trimmed.</param>
-    /// <returns>
-    /// Every match at the narrowest rung that produced any: an exact name, else a prefix, else a
-    /// substring. Empty when nothing matches at all.
-    /// </returns>
-    /// <remarks>
-    /// Shared rather than duplicated because the two tools that take a document name must agree on
-    /// what a name means; they deliberately disagree on what to do about an ambiguous one, which is
-    /// why this returns the matches instead of a decision.
-    /// </remarks>
-    internal static IReadOnlyList<RetrievableDocument> MatchByName(DocumentRetrievalScope scope, string wanted)
-    {
-        ArgumentNullException.ThrowIfNull(scope);
-
-        List<RetrievableDocument> matches =
-            [.. scope.Documents.Where(d => string.Equals(d.Name, wanted, StringComparison.OrdinalIgnoreCase))];
-
-        if (matches.Count == 0)
-        {
-            matches = [.. scope.Documents.Where(d => d.Name.StartsWith(wanted, StringComparison.OrdinalIgnoreCase))];
-        }
-
-        if (matches.Count == 0)
-        {
-            matches = [.. scope.Documents.Where(d => d.Name.Contains(wanted, StringComparison.OrdinalIgnoreCase))];
-        }
-
-        return matches;
-    }
-
-    /// <summary>
-    /// Maps a caller-supplied document name onto a document to restrict a <em>search</em> to.
-    /// </summary>
-    /// <returns>
-    /// The document to restrict to and a note for the model, either of which may be
-    /// <see langword="null"/>. An unknown or ambiguous name searches everything rather than nothing:
-    /// silently returning no results for a near-miss on a file name reads to the model as "the documents
-    /// do not say", which is a worse failure than a wider search with an explanation attached. Summarizing
-    /// takes the opposite decision on the same matches, because a wider search is cheap and summarizing
-    /// the wrong document is not.
-    /// </returns>
-    private static (Guid? DocumentId, string? Note) ResolveDocumentFilter(DocumentRetrievalScope scope, string? documentName)
-    {
-        if (string.IsNullOrWhiteSpace(documentName))
-        {
-            return (null, null);
-        }
-
-        var wanted = documentName.Trim();
-        var matches = MatchByName(scope, wanted);
-
-        return matches.Count switch
-        {
-            1 => (matches[0].Id, null),
-            0 => (null, $"No document is named '{wanted}'; searched all documents instead. Available: {string.Join(", ", scope.DocumentNames)}."),
-            _ => (null, $"'{wanted}' matches more than one document; searched all documents instead. Available: {string.Join(", ", scope.DocumentNames)}.")
-        };
-    }
-
-    #endregion
-
-    #region Ranking
 
     /// <summary>
     /// Fuses the two passes, drops what is not relevant enough, and caps how much any one document can
@@ -439,7 +253,7 @@ public sealed class DocumentRetrievalService(
         IReadOnlyList<ChunkCandidate> lexical,
         int termCount)
     {
-        var fused = new Dictionary<ChunkKey, ScoredChunk>();
+        Dictionary<ChunkKey, ScoredChunk> fused = [];
 
         Fuse(fused, dense);
         Fuse(fused, lexical);
@@ -455,7 +269,7 @@ public sealed class DocumentRetrievalService(
             .ThenBy(c => c.Distance ?? double.MaxValue)
             .ThenBy(c => c.Key.Index);
 
-        var perDocument = new Dictionary<Guid, int>();
+        Dictionary<Guid, int> perDocument = [];
         var selected = new List<ScoredChunk>(_options.MaxResults);
 
         foreach (var candidate in ranked)
@@ -510,7 +324,7 @@ public sealed class DocumentRetrievalService(
     internal IReadOnlyList<ChunkKey> ExpandToNeighbours(IReadOnlyList<ScoredChunk> hits)
     {
         var window = _options.NeighborWindow;
-        var wanted = new HashSet<ChunkKey>();
+        HashSet<ChunkKey> wanted = [];
 
         foreach (var hit in hits)
         {
@@ -526,10 +340,6 @@ public sealed class DocumentRetrievalService(
 
         return [.. wanted];
     }
-
-    #endregion
-
-    #region Passage assembly
 
     /// <summary>
     /// Merges the read-back chunks into contiguous passages, one per unbroken run of chunk indices.
@@ -646,25 +456,90 @@ public sealed class DocumentRetrievalService(
     }
 
     /// <summary>
-    /// Builds the reference the model is told to quote verbatim.
+    /// Trims the passage list to the configured token budget.
     /// </summary>
+    /// <param name="passages">The passages, most relevant first.</param>
+    /// <returns>The passages that fit, and whether any were dropped.</returns>
     /// <remarks>
-    /// A spreadsheet chunk's source number is a sheet ordinal, so rendering it as <c>p.3</c> would cite
-    /// a page the file does not have; the file name alone is the fallback when the sheet cannot be named,
-    /// which is what a document ingested before sheets were stored gets.
+    /// The first passage is always kept even if it alone exceeds the budget: returning nothing because
+    /// the single best match is long is worse than overshooting once. A merged passage is bounded by
+    /// the chunk size times the neighbour window, so the overshoot is bounded too.
     /// </remarks>
-    internal static string BuildCitation(string documentName, int? page, string? sheetName)
+    internal (IReadOnlyList<RetrievedPassage> Passages, bool Truncated) ApplyTokenBudget(IReadOnlyList<RetrievedPassage> passages)
     {
-        if (!IsSpreadsheet(documentName))
+        var kept = new List<RetrievedPassage>(passages.Count);
+        var used = 0;
+
+        foreach (var passage in passages)
         {
-            return page is { } number
-                ? string.Create(CultureInfo.InvariantCulture, $"{documentName} p.{number}")
-                : documentName;
+            var tokens = _textChunker.CountTokens(passage.Text);
+
+            if (kept.Count > 0 && used + tokens > _options.MaxResultTokens)
+            {
+                return (kept, true);
+            }
+
+            kept.Add(passage);
+            used += tokens;
         }
 
-        return sheetName is null
-            ? documentName
-            : string.Create(CultureInfo.InvariantCulture, $"{documentName} — {sheetName}");
+        return (kept, false);
+    }
+
+    #region Private methods
+
+    /// <summary>
+    /// Turns the query into a vector the database can compare against the stored embeddings.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The generator returned nothing, or a vector of the wrong size.</exception>
+    private async Task<SqlVector<float>> EmbedQueryAsync(string query, CancellationToken cancellationToken)
+    {
+        var generated = await _embeddingGenerator.GenerateAsync([query], cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        if (generated.Count == 0)
+        {
+            throw new InvalidOperationException("The embedding generator returned no vector for the search query.");
+        }
+
+        var vector = generated[0].Vector;
+
+        if (vector.Length != DocumentChunkLimits.EmbeddingDimensions)
+        {
+            throw new InvalidOperationException(
+                $"The embedding generator returned a {vector.Length}-dimension vector, but stored chunks are {DocumentChunkLimits.EmbeddingDimensions}-dimension. " +
+                "The configured embedding deployment does not match the one documents were ingested with.");
+        }
+
+        return new SqlVector<float>(vector);
+    }
+
+    /// <summary>
+    /// Maps a caller-supplied document name onto a document to restrict a <em>search</em> to.
+    /// </summary>
+    /// <returns>
+    /// The document to restrict to and a note for the model, either of which may be
+    /// <see langword="null"/>. An unknown or ambiguous name searches everything rather than nothing:
+    /// silently returning no results for a near-miss on a file name reads to the model as "the documents
+    /// do not say", which is a worse failure than a wider search with an explanation attached. Summarizing
+    /// takes the opposite decision on the same matches, because a wider search is cheap and summarizing
+    /// the wrong document is not.
+    /// </returns>
+    private static (Guid? DocumentId, string? Note) ResolveDocumentFilter(DocumentRetrievalScope scope, string? documentName)
+    {
+        if (string.IsNullOrWhiteSpace(documentName))
+        {
+            return (null, null);
+        }
+
+        var wanted = documentName.Trim();
+        var matches = MatchByName(scope, wanted);
+
+        return matches.Count switch
+        {
+            1 => (matches[0].Id, null),
+            0 => (null, $"No document is named '{wanted}'; searched all documents instead. Available: {string.Join(", ", scope.DocumentNames)}."),
+            _ => (null, $"'{wanted}' matches more than one document; searched all documents instead. Available: {string.Join(", ", scope.DocumentNames)}.")
+        };
     }
 
     /// <summary>
@@ -710,7 +585,7 @@ public sealed class DocumentRetrievalService(
             }
         }
 
-        var names = new Dictionary<(Guid DocumentId, int SheetIndex), string>();
+        Dictionary<(Guid DocumentId, int SheetIndex), string> names = [];
 
         if (conversationDocumentIds.Count > 0)
         {
@@ -749,87 +624,6 @@ public sealed class DocumentRetrievalService(
     {
         return SpreadsheetExtensions.Contains(Path.GetExtension(documentName));
     }
-
-    /// <summary>
-    /// Appends <paramref name="next"/> to <paramref name="accumulated"/>, dropping the text the two
-    /// already share at the seam.
-    /// </summary>
-    /// <param name="accumulated">The passage built so far; appended to in place.</param>
-    /// <param name="next">The following chunk's text.</param>
-    /// <param name="maxOverlapChars">The longest seam to look for.</param>
-    /// <remarks>
-    /// Consecutive chunks are built to overlap: the chunker seeds each one with the tail of the last, so
-    /// the head of <paramref name="next"/> is character-for-character the tail of
-    /// <paramref name="accumulated"/>. Finding that seam and skipping it is what stops a three-chunk
-    /// passage from repeating a quarter of itself twice. The longest seam is preferred so a repeated
-    /// short phrase inside the real overlap cannot cut it short, and a run with no seam at all — which a
-    /// re-sliced oversized chunk can produce — falls back to a paragraph break.
-    /// </remarks>
-    internal static void AppendWithoutOverlap(StringBuilder accumulated, string next, int maxOverlapChars)
-    {
-        if (next.Length == 0)
-        {
-            return;
-        }
-
-        if (accumulated.Length == 0)
-        {
-            accumulated.Append(next);
-            return;
-        }
-
-        var tail = accumulated.ToString(
-            Math.Max(0, accumulated.Length - maxOverlapChars),
-            Math.Min(maxOverlapChars, accumulated.Length));
-
-        var longest = Math.Min(tail.Length, next.Length);
-
-        for (var length = longest; length >= MinOverlapChars; length--)
-        {
-            if (string.CompareOrdinal(tail, tail.Length - length, next, 0, length) == 0)
-            {
-                accumulated.Append(next, length, next.Length - length);
-                return;
-            }
-        }
-
-        accumulated.Append("\n\n").Append(next);
-    }
-
-    /// <summary>
-    /// Trims the passage list to the configured token budget.
-    /// </summary>
-    /// <param name="passages">The passages, most relevant first.</param>
-    /// <returns>The passages that fit, and whether any were dropped.</returns>
-    /// <remarks>
-    /// The first passage is always kept even if it alone exceeds the budget: returning nothing because
-    /// the single best match is long is worse than overshooting once. A merged passage is bounded by
-    /// the chunk size times the neighbour window, so the overshoot is bounded too.
-    /// </remarks>
-    internal (IReadOnlyList<RetrievedPassage> Passages, bool Truncated) ApplyTokenBudget(IReadOnlyList<RetrievedPassage> passages)
-    {
-        var kept = new List<RetrievedPassage>(passages.Count);
-        var used = 0;
-
-        foreach (var passage in passages)
-        {
-            var tokens = _textChunker.CountTokens(passage.Text);
-
-            if (kept.Count > 0 && used + tokens > _options.MaxResultTokens)
-            {
-                return (kept, true);
-            }
-
-            kept.Add(passage);
-            used += tokens;
-        }
-
-        return (kept, false);
-    }
-
-    #endregion
-
-    #region Data access
 
     private async Task<IReadOnlyList<ChunkCandidate>> RunDenseSearchAsync(
         DocumentRetrievalScope scope,
@@ -957,7 +751,7 @@ public sealed class DocumentRetrievalService(
             command.Transaction = _ctx.Database.CurrentTransaction?.GetDbTransaction();
             configure(command);
 
-            var results = new List<T>();
+            List<T> results = [];
 
             await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -975,8 +769,6 @@ public sealed class DocumentRetrievalService(
             }
         }
     }
-
-    #endregion
 
     private static DocumentSearchResult EmptyResult(DocumentRetrievalScope scope, string query, string? note) => new()
     {
@@ -996,4 +788,211 @@ public sealed class DocumentRetrievalService(
             (_, null or "") => first,
             _ => $"{first} {second}"
         };
+
+    #endregion
+
+    #region Public static methods
+
+    /// <summary>
+    /// Picks the distinct terms worth searching for literally.
+    /// </summary>
+    /// <param name="query">The raw query.</param>
+    /// <param name="maxTerms">The most terms to return.</param>
+    /// <returns>The terms, most distinctive first.</returns>
+    /// <remarks>
+    /// Ordering puts tokens containing digits first and longer tokens next, as a cheap stand-in for
+    /// inverse document frequency: identifiers and long words discriminate between chunks, common short
+    /// words do not. Two-character tokens survive only when they contain a digit, which keeps <c>v2</c>
+    /// and <c>5g</c> while dropping the noise a two-letter word would add.
+    /// </remarks>
+    internal static IReadOnlyList<string> ExtractTerms(string query, int maxTerms)
+    {
+        if (string.IsNullOrWhiteSpace(query) || maxTerms <= 0)
+        {
+            return [];
+        }
+
+        List<string> tokens = [];
+        var current = new StringBuilder();
+
+        foreach (var character in query)
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                current.Append(char.ToLowerInvariant(character));
+                continue;
+            }
+
+            AddToken(tokens, current);
+        }
+
+        AddToken(tokens, current);
+
+        return [.. tokens
+            .Distinct(StringComparer.Ordinal)
+            .Where(t => !StopWords.Contains(t))
+            .OrderByDescending(t => t.Any(char.IsDigit))
+            .ThenByDescending(t => t.Length)
+            .ThenBy(t => t, StringComparer.Ordinal)
+            .Take(maxTerms)];
+
+        static void AddToken(List<string> tokens, StringBuilder current)
+        {
+            if (current.Length == 0)
+            {
+                return;
+            }
+
+            var token = current.ToString();
+            current.Clear();
+
+            var keep = token.Length >= 3 || (token.Length >= 2 && token.Any(char.IsDigit));
+            if (keep)
+            {
+                tokens.Add(token);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Escapes the characters <c>LIKE</c> treats as wildcards so a term matches itself literally.
+    /// </summary>
+    /// <param name="term">The term to escape.</param>
+    /// <returns>The escaped term, for use with <c>ESCAPE '\'</c>.</returns>
+    /// <remarks>
+    /// The backslash is escaped first by virtue of being in the same pass — it is the escape character
+    /// itself, so a term containing one would otherwise consume the character after it.
+    /// </remarks>
+    internal static string EscapeLikePattern(string term)
+    {
+        var escaped = new StringBuilder(term.Length + 8);
+
+        foreach (var character in term)
+        {
+            if (character is '\\' or '%' or '_' or '[' or ']')
+            {
+                escaped.Append('\\');
+            }
+
+            escaped.Append(character);
+        }
+
+        return escaped.ToString();
+    }
+
+    /// <summary>
+    /// Finds the documents in scope whose name matches <paramref name="wanted"/>, widening the
+    /// comparison only as far as it has to.
+    /// </summary>
+    /// <param name="scope">The documents to match against.</param>
+    /// <param name="wanted">The name to match, already trimmed.</param>
+    /// <returns>
+    /// Every match at the narrowest rung that produced any: an exact name, else a prefix, else a
+    /// substring. Empty when nothing matches at all.
+    /// </returns>
+    /// <remarks>
+    /// Shared rather than duplicated because the two tools that take a document name must agree on
+    /// what a name means; they deliberately disagree on what to do about an ambiguous one, which is
+    /// why this returns the matches instead of a decision.
+    /// </remarks>
+    internal static IReadOnlyList<RetrievableDocument> MatchByName(DocumentRetrievalScope scope, string wanted)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        List<RetrievableDocument> matches =
+            [.. scope.Documents.Where(d => string.Equals(d.Name, wanted, StringComparison.OrdinalIgnoreCase))];
+
+        if (matches.Count == 0)
+        {
+            matches = [.. scope.Documents.Where(d => d.Name.StartsWith(wanted, StringComparison.OrdinalIgnoreCase))];
+        }
+
+        if (matches.Count == 0)
+        {
+            matches = [.. scope.Documents.Where(d => d.Name.Contains(wanted, StringComparison.OrdinalIgnoreCase))];
+        }
+
+        return matches;
+    }
+
+    /// <summary>
+    /// Builds the reference the model is told to quote verbatim.
+    /// </summary>
+    /// <remarks>
+    /// A spreadsheet chunk's source number is a sheet ordinal, so rendering it as <c>p.3</c> would cite
+    /// a page the file does not have; the file name alone is the fallback when the sheet cannot be named,
+    /// which is what a document ingested before sheets were stored gets.
+    /// </remarks>
+    internal static string BuildCitation(string documentName, int? page, string? sheetName)
+    {
+        if (!IsSpreadsheet(documentName))
+        {
+            return page is { } number
+                ? string.Create(CultureInfo.InvariantCulture, $"{documentName} p.{number}")
+                : documentName;
+        }
+
+        return sheetName is null
+            ? documentName
+            : string.Create(CultureInfo.InvariantCulture, $"{documentName} — {sheetName}");
+    }
+
+    /// <summary>
+    /// Appends <paramref name="next"/> to <paramref name="accumulated"/>, dropping the text the two
+    /// already share at the seam.
+    /// </summary>
+    /// <param name="accumulated">The passage built so far; appended to in place.</param>
+    /// <param name="next">The following chunk's text.</param>
+    /// <param name="maxOverlapChars">The longest seam to look for.</param>
+    /// <remarks>
+    /// Consecutive chunks are built to overlap: the chunker seeds each one with the tail of the last, so
+    /// the head of <paramref name="next"/> is character-for-character the tail of
+    /// <paramref name="accumulated"/>. Finding that seam and skipping it is what stops a three-chunk
+    /// passage from repeating a quarter of itself twice. The longest seam is preferred so a repeated
+    /// short phrase inside the real overlap cannot cut it short, and a run with no seam at all — which a
+    /// re-sliced oversized chunk can produce — falls back to a paragraph break.
+    /// </remarks>
+    internal static void AppendWithoutOverlap(StringBuilder accumulated, string next, int maxOverlapChars)
+    {
+        if (next.Length == 0)
+        {
+            return;
+        }
+
+        if (accumulated.Length == 0)
+        {
+            accumulated.Append(next);
+            return;
+        }
+
+        var tail = accumulated.ToString(
+            Math.Max(0, accumulated.Length - maxOverlapChars),
+            Math.Min(maxOverlapChars, accumulated.Length));
+
+        var longest = Math.Min(tail.Length, next.Length);
+
+        for (var length = longest; length >= MinOverlapChars; length--)
+        {
+            if (string.CompareOrdinal(tail, tail.Length - length, next, 0, length) == 0)
+            {
+                accumulated.Append(next, length, next.Length - length);
+                return;
+            }
+        }
+
+        accumulated.Append("\n\n").Append(next);
+    }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document search for conversation {ConversationId} matched none of {ChunkCount} candidate chunk(s).")]
+    private static partial void LogSearchMatchedNothing(ILogger logger, Guid conversationId, int chunkCount);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document search for conversation {ConversationId} returned {PassageCount} passage(s) from {ChunkCount} chunk(s).")]
+    private static partial void LogSearchReturned(
+        ILogger logger, Guid conversationId, int passageCount, int chunkCount);
+
+    #endregion
 }

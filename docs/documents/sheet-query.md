@@ -77,8 +77,8 @@ statement `SheetQuerySql` builds has to be safe by construction rather than by r
   against another turn's parameters.
 
 Soft delete is filtered by hand at row, sheet and owning-document level, in **both** arms of the
-`UNION ALL` — six predicates, each pinned by test. A missing one would silently resurrect a deleted
-row into a real answer.
+`UNION ALL` — six predicates, each pinned by test, because the `SoftDelete` query filter does not
+reach raw SQL. A missing one would silently resurrect a deleted row into a real answer.
 
 Only the **number** of filter arms and the **presence** of a `groupBy` clause vary with the request
 — never a value.
@@ -132,11 +132,11 @@ bound result size and row windows.
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Tool/SheetQueryService.cs` | Name resolution, refusals, result assembly |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Tool/SheetQuerySql.cs` | Statement construction and its safety rules |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Tool/SheetQueryTool.cs` | The model-facing declaration |
-| `enterprise-gpt-api/Enterprise.Gpt.Common/Enums/SheetColumnType.cs` | The type catalog the expressions switch on |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Tool/SheetQuerySqlTests.cs` | No literals, no JSON path, all six soft-delete predicates |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/Sheets/SheetQueryService.cs` | Name resolution, refusals, result assembly |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/Sheets/SheetQuerySql.cs` | Statement construction and its safety rules |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/Sheets/SheetQueryTool.cs` | The model-facing declaration |
+| `enterprise-gpt-api/Enterprise.Gpt.Common/Enums/SheetColumnTypes.cs` | The type catalog the expressions switch on |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Service/Documents/Sheets/SheetQuerySqlTests.cs` | No literals, no JSON path, all six soft-delete predicates |
 
 ## Related
 

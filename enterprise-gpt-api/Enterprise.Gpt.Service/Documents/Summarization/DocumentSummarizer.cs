@@ -61,7 +61,7 @@ public interface IDocumentSummarizer
 /// <param name="assembler">Reassembles a document's text from its chunk rows.</param>
 /// <param name="options">The bound summarization options.</param>
 /// <param name="logger">The logger.</param>
-public sealed class DocumentSummarizer(
+public sealed partial class DocumentSummarizer(
     ISummarizerModelResolver summarizerModelResolver,
     IChatClientResolver chatClientResolver,
     ITokenEstimatorResolver tokenEstimatorResolver,
@@ -77,8 +77,6 @@ public sealed class DocumentSummarizer(
     private readonly IDocumentTextAssembler _assembler = assembler;
     private readonly SummarizationOptions _options = options.Value;
     private readonly ILogger<DocumentSummarizer> _logger = logger;
-
-    #region Public methods
 
     /// <inheritdoc />
     public async Task<SummarizationRun> SummarizeDocumentAsync(
@@ -117,7 +115,22 @@ public sealed class DocumentSummarizer(
             .ConfigureAwait(false);
     }
 
-    #endregion
+    private sealed record RunContext(
+        SummarizerModel Summarizer,
+        ITokenEstimator Estimator,
+        IChatClient ChatClient);
+
+    private readonly record struct CallResult(
+        string Text,
+        long InputTokens,
+        long OutputTokens,
+        bool Truncated);
+
+    private enum SummaryStage
+    {
+        Document,
+        Digest
+    }
 
     #region Private methods
 
@@ -148,10 +161,7 @@ public sealed class DocumentSummarizer(
             // Only a cancellation the caller actually asked for passes through. One that nobody's
             // token explains is a provider failure wearing a cancellation's clothes, and letting it
             // escape would report it to the user as though they had abandoned the request.
-            _logger.LogError(
-                ex,
-                "A document summarization run failed against deployment {DeploymentName}",
-                deployment);
+            LogSummarizationRunFailed(_logger, ex, deployment);
 
             throw Invalid("summary", "This document could not be summarized. Please try again.");
         }
@@ -222,10 +232,7 @@ public sealed class DocumentSummarizer(
                     + $"the limit is {_options.MaxMapUnits}.");
         }
 
-        _logger.LogInformation(
-            "Summarizing an oversized document of {DocumentTokens} tokens as {UnitCount} map units "
-                + "against a per-unit budget of {UnitBudget} tokens",
-            documentTokens, units.Count, mapBudget.MapUnitTokens);
+        LogSummarizingOversizedDocument(_logger, documentTokens, units.Count, mapBudget.MapUnitTokens);
 
         var (mapped, mapCalls) = await RunMapPhaseAsync(context, units, cancellationToken)
             .ConfigureAwait(false);
@@ -343,11 +350,9 @@ public sealed class DocumentSummarizer(
             // enough is what the pass limit above answers; it is not knowable from the grouping.
             var groups = GroupToFit(context, partials, collapseBudget.PerCallTokens);
 
-            _logger.LogInformation(
-                "Collapse pass {Pass} reducing {PartialCount} partial summaries into {GroupCount}",
-                passes, partials.Count, groups.Count);
+            LogCollapsePass(_logger, passes, partials.Count, groups.Count);
 
-            var collapsed = new List<CallResult>();
+            List<CallResult> collapsed = [];
 
             foreach (var group in groups)
             {
@@ -365,8 +370,8 @@ public sealed class DocumentSummarizer(
 
     private List<List<string>> GroupToFit(RunContext context, IReadOnlyList<string> partials, long budget)
     {
-        var groups = new List<List<string>>();
-        var current = new List<string>();
+        List<List<string>> groups = [];
+        List<string> current = [];
         long currentTokens = 0;
 
         foreach (var partial in partials)
@@ -416,10 +421,7 @@ public sealed class DocumentSummarizer(
                 var ceiling = TimeSpan.FromMilliseconds(500 * Math.Pow(2, attempt));
                 var delay = TimeSpan.FromMilliseconds(Random.Shared.NextDouble() * ceiling.TotalMilliseconds);
 
-                _logger.LogWarning(
-                    ex,
-                    "A summarization call failed on attempt {Attempt} of {MaxAttempts}; retrying in {Delay}",
-                    attempt + 1, _options.MaxCallRetries + 1, delay);
+                LogSummarizationCallRetrying(_logger, ex, attempt + 1, _options.MaxCallRetries + 1, delay);
 
                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
             }
@@ -500,10 +502,8 @@ public sealed class DocumentSummarizer(
 
         if (truncated)
         {
-            _logger.LogWarning(
-                "A summarization call against deployment {DeploymentName} was cut off at its "
-                    + "{MaxOutputTokens}-token output cap",
-                context.Summarizer.DeploymentName, context.Summarizer.MaxOutputTokens);
+            LogSummarizationCallTruncated(
+                _logger, context.Summarizer.DeploymentName, context.Summarizer.MaxOutputTokens);
         }
 
         if (string.IsNullOrEmpty(text))
@@ -556,7 +556,7 @@ public sealed class DocumentSummarizer(
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Token estimation failed while sizing a summarization call");
+            LogTokenEstimationFailed(_logger, ex);
 
             return 0;
         }
@@ -589,20 +589,28 @@ public sealed class DocumentSummarizer(
 
     #endregion
 
-    private sealed record RunContext(
-        SummarizerModel Summarizer,
-        ITokenEstimator Estimator,
-        IChatClient ChatClient);
+    #region Logging
 
-    private readonly record struct CallResult(
-        string Text,
-        long InputTokens,
-        long OutputTokens,
-        bool Truncated);
+    [LoggerMessage(Level = LogLevel.Error, Message = "A document summarization run failed against deployment {DeploymentName}")]
+    private static partial void LogSummarizationRunFailed(ILogger logger, Exception exception, string deploymentName);
 
-    private enum SummaryStage
-    {
-        Document,
-        Digest
-    }
+    [LoggerMessage(Level = LogLevel.Information, Message = "Summarizing an oversized document of {DocumentTokens} tokens as {UnitCount} map units against a per-unit budget of {UnitBudget} tokens")]
+    private static partial void LogSummarizingOversizedDocument(
+        ILogger logger, long documentTokens, int unitCount, long unitBudget);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Collapse pass {Pass} reducing {PartialCount} partial summaries into {GroupCount}")]
+    private static partial void LogCollapsePass(ILogger logger, int pass, int partialCount, int groupCount);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "A summarization call failed on attempt {Attempt} of {MaxAttempts}; retrying in {Delay}")]
+    private static partial void LogSummarizationCallRetrying(
+        ILogger logger, Exception exception, int attempt, int maxAttempts, TimeSpan delay);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "A summarization call against deployment {DeploymentName} was cut off at its {MaxOutputTokens}-token output cap")]
+    private static partial void LogSummarizationCallTruncated(
+        ILogger logger, string deploymentName, decimal maxOutputTokens);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Token estimation failed while sizing a summarization call")]
+    private static partial void LogTokenEstimationFailed(ILogger logger, Exception exception);
+
+    #endregion
 }

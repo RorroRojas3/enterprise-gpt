@@ -6,6 +6,9 @@ namespace Enterprise.Gpt.Integration.Test.TestInfrastructure.FileAgentSpike;
 /// The conversion matrix: which format pairs this platform serves, and at what fidelity.
 /// </summary>
 /// <param name="SchemaVersion">The document's shape, so a reader can refuse one it does not know.</param>
+/// <param name="Status"><c>proposed</c> until a run has attempted every offered pair, then <c>confirmed</c>.</param>
+/// <param name="RecordedUtc">When the confirming run finished, or <see langword="null"/> for a matrix still proposed.</param>
+/// <param name="Deployment">The deployment the confirming run used, by name and never by endpoint; <see langword="null"/> for a matrix still proposed.</param>
 /// <param name="OfficeConverterPresent">Whether the image carried a headless office suite, which is
 /// what separates a faithful Office-to-PDF render from a structural one.</param>
 /// <param name="Formats">The formats in play, in the order the published table lists them.</param>

@@ -19,7 +19,7 @@ namespace Enterprise.Gpt.Service.Agents;
 // The hosted-file surface is still marked experimental in Microsoft.Extensions.AI 10.9.0. Suppressed
 // on this one file rather than project-wide, so a second experimental API cannot slip in behind it.
 #pragma warning disable MEAI001
-internal sealed class FileAgentSandbox(IHostedFileClient files, ILogger logger)
+internal sealed partial class FileAgentSandbox(IHostedFileClient files, ILogger logger)
 {
     /// <summary>The purpose an uploaded input is registered under, which is what makes it mountable.</summary>
     private const string UploadPurpose = "assistants";
@@ -42,6 +42,71 @@ internal sealed class FileAgentSandbox(IHostedFileClient files, ILogger logger)
 
         return uploaded;
     }
+
+    /// <summary>Downloads an artifact the sandbox produced.</summary>
+    /// <exception cref="InvalidOperationException">The artifact carries no container to read it from.</exception>
+    public async Task<byte[]> DownloadAsync(SandboxArtifact artifact, CancellationToken cancellationToken)
+    {
+        if (artifact.ContainerId is not { Length: > 0 } scope)
+        {
+            // Loud rather than best-effort: without the scope this call resolves against the standard
+            // Files API and 404s, and a silent empty file is worse than a named failure.
+            throw new InvalidOperationException(
+                "The sandbox produced a file whose container could not be determined, so it cannot be read back.");
+        }
+
+        using var stream = await _files
+            .DownloadAsync(artifact.FileId, new HostedFileClientOptions { Scope = scope }, cancellationToken)
+            .ConfigureAwait(false);
+
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
+
+        return buffer.ToArray();
+    }
+
+    /// <summary>Deletes every file this run uploaded. Idempotent, and never throws.</summary>
+    /// <remarks>
+    /// Best effort by design: a leak costs file quota and must not fail a turn that has already
+    /// answered. Logged rather than swallowed, because nothing else would notice.
+    /// </remarks>
+    public async Task ReleaseAsync()
+    {
+        foreach (var fileId in _uploaded)
+        {
+            try
+            {
+                await _files.DeleteAsync(fileId).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                LogCouldNotDeleteSandboxInput(_logger, exception, fileId);
+            }
+        }
+
+        _uploaded.Clear();
+    }
+
+    #region Private methods
+
+    private static string? ContainerIdOf(AIContent content) =>
+        content is HostedFileContent { Scope: { Length: > 0 } scope } ? scope : ContainerIdOf(content.AdditionalProperties);
+
+    private static string? ContainerIdOf(AIAnnotation annotation) =>
+        ContainerIdOf(annotation.AdditionalProperties) ?? ContainerIdOf(annotation.RawRepresentation);
+
+    private static string? ContainerIdOf(AdditionalPropertiesDictionary? properties) =>
+        properties is not null && properties.TryGetValue("container_id", out var value) ? value?.ToString() : null;
+
+    // Reflection because the SDK model behind the annotation is not on OpenAI 2.12.0's public surface,
+    // and CitationAnnotation has no member for a container. The property is public on a non-public
+    // type, which reflection reads and a cast cannot.
+    private static string? ContainerIdOf(object? rawRepresentation) =>
+        rawRepresentation?.GetType().GetProperty("ContainerId")?.GetValue(rawRepresentation) as string;
+
+    #endregion
+
+    #region Public static methods
 
     /// <summary>Finds every file a completed run produced.</summary>
     /// <param name="messages">The run's own messages.</param>
@@ -101,63 +166,12 @@ internal sealed class FileAgentSandbox(IHostedFileClient files, ILogger logger)
         ];
     }
 
-    /// <summary>Downloads an artifact the sandbox produced.</summary>
-    /// <exception cref="InvalidOperationException">The artifact carries no container to read it from.</exception>
-    public async Task<byte[]> DownloadAsync(SandboxArtifact artifact, CancellationToken cancellationToken)
-    {
-        if (artifact.ContainerId is not { Length: > 0 } scope)
-        {
-            // Loud rather than best-effort: without the scope this call resolves against the standard
-            // Files API and 404s, and a silent empty file is worse than a named failure.
-            throw new InvalidOperationException(
-                "The sandbox produced a file whose container could not be determined, so it cannot be read back.");
-        }
+    #endregion
 
-        using var stream = await _files
-            .DownloadAsync(artifact.FileId, new HostedFileClientOptions { Scope = scope }, cancellationToken)
-            .ConfigureAwait(false);
+    #region Logging
 
-        using var buffer = new MemoryStream();
-        await stream.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not delete the sandbox input {FileId}; it remains against the account's quota")]
+    private static partial void LogCouldNotDeleteSandboxInput(ILogger logger, Exception exception, string fileId);
 
-        return buffer.ToArray();
-    }
-
-    /// <summary>Deletes every file this run uploaded. Idempotent, and never throws.</summary>
-    /// <remarks>
-    /// Best effort by design: a leak costs file quota and must not fail a turn that has already
-    /// answered. Logged rather than swallowed, because nothing else would notice.
-    /// </remarks>
-    public async Task ReleaseAsync()
-    {
-        foreach (var fileId in _uploaded)
-        {
-            try
-            {
-                await _files.DeleteAsync(fileId).ConfigureAwait(false);
-            }
-            catch (Exception exception) when (exception is not OutOfMemoryException)
-            {
-                _logger.LogWarning(
-                    exception, "Could not delete the sandbox input {FileId}; it remains against the account's quota", fileId);
-            }
-        }
-
-        _uploaded.Clear();
-    }
-
-    private static string? ContainerIdOf(AIContent content) =>
-        content is HostedFileContent { Scope: { Length: > 0 } scope } ? scope : ContainerIdOf(content.AdditionalProperties);
-
-    private static string? ContainerIdOf(AIAnnotation annotation) =>
-        ContainerIdOf(annotation.AdditionalProperties) ?? ContainerIdOf(annotation.RawRepresentation);
-
-    private static string? ContainerIdOf(AdditionalPropertiesDictionary? properties) =>
-        properties is not null && properties.TryGetValue("container_id", out var value) ? value?.ToString() : null;
-
-    // Reflection because the SDK model behind the annotation is not on OpenAI 2.12.0's public surface,
-    // and CitationAnnotation has no member for a container. The property is public on a non-public
-    // type, which reflection reads and a cast cannot.
-    private static string? ContainerIdOf(object? rawRepresentation) =>
-        rawRepresentation?.GetType().GetProperty("ContainerId")?.GetValue(rawRepresentation) as string;
+    #endregion
 }

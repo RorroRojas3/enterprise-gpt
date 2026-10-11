@@ -47,6 +47,8 @@ public static class FileAgentFormats
         ["txt"] = "txt"
     }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
+    #region Public static methods
+
     /// <summary>Splits a string into the distinct words a topic or format can be matched against.</summary>
     /// <param name="text">The instruction, or <see langword="null"/>.</param>
     /// <returns>The words, compared case-insensitively.</returns>
@@ -108,4 +110,6 @@ public static class FileAgentFormats
                 pair => string.Equals(pair.Value, format, StringComparison.Ordinal) && words.Contains(pair.Key)))
         ];
     }
+
+    #endregion
 }

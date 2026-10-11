@@ -16,6 +16,8 @@ namespace Enterprise.Gpt.Api.Endpoints;
 /// </remarks>
 public static class ReportEndpoints
 {
+    #region Public static methods
+
     /// <summary>
     /// Maps the <c>api/reports</c> endpoint group.
     /// </summary>
@@ -51,4 +53,6 @@ public static class ReportEndpoints
         var response = await reportService.GetUsageReportAsync(from, to, groupBy, cancellationToken);
         return TypedResults.Ok(response);
     }
+
+    #endregion
 }

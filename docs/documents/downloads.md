@@ -37,8 +37,9 @@ original file name nor a content type. The SAS therefore has to sign both in as 
 overrides (`rscd` and `rsct`) — that is what makes the browser save `q3-budget.xlsx` rather than a
 GUID.
 
-A storage account that cannot sign (no shared key available) raises `StorageNotConfiguredException`,
-mapping to 503 `storage-not-configured`.
+A storage account that cannot sign (no shared key available) makes `IDocumentStore.GenerateReadUri`
+(`Repository/Blob/BlobDocumentStore.cs`) return null, and the service raises
+`StorageNotConfiguredException`, mapping to 503 `storage-not-configured`.
 
 ## Generated files
 
@@ -100,13 +101,13 @@ not leave an orphan the user can see but never reach.
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/DocumentService.cs` | Download authorization and SAS signing |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/BlobStorageService.cs` | `GenerateSasUri`, and the 503 when it cannot |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/DocumentStorage.cs` | Container resolution and the content-type map |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/GeneratedDocumentService.cs` | Persisting and withdrawing generated files |
-| `enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/ConversationDocumentTypes.cs` | The discriminator |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/DocumentService.cs` | Download authorization and SAS signing |
+| `enterprise-gpt-api/Enterprise.Gpt.Repository/Blob/BlobDocumentStore.cs` | `IDocumentStore`: blob access and `GenerateReadUri`, null when the client cannot sign |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/DocumentStorage.cs` | Container resolution and the content-type map |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/GeneratedDocumentService.cs` | Persisting and withdrawing generated files |
+| `enterprise-gpt-api/Enterprise.Gpt.Common/Enums/ConversationDocumentTypes.cs` | The discriminator |
 | `enterprise-gpt-ui/src/app/core/documents/document-download-store.ts` | The detached anchor click |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/` | Ownership and 404-uniformity tests |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Integration.Test/` | Ownership and 404-uniformity tests |
 
 ## Related
 

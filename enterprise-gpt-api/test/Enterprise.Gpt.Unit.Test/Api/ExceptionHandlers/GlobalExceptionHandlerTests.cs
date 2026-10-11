@@ -330,7 +330,7 @@ public class GlobalExceptionHandlerTests
     public async Task TryHandleAsync_UnexpectedException_Returns500WithoutLeakingDetails()
     {
         var httpContext = CreateHttpContext();
-        var exception = new Exception("internal details");
+        var exception = new InvalidOperationException("internal details");
 
         var handled = await _handler.TryHandleAsync(httpContext, exception, TestContext.Current.CancellationToken);
 
@@ -352,7 +352,7 @@ public class GlobalExceptionHandlerTests
         httpContext.Request.Headers.Accept = accept;
 
         await _handler.TryHandleAsync(
-            httpContext, new Exception("internal details"), TestContext.Current.CancellationToken);
+            httpContext, new InvalidOperationException("internal details"), TestContext.Current.CancellationToken);
 
         Assert.Equal(StatusCodes.Status500InternalServerError, httpContext.Response.StatusCode);
         var problem = await ReadProblemAsync(httpContext);

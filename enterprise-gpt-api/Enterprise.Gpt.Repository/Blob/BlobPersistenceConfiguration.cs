@@ -2,6 +2,7 @@ using Azure.Storage.Blobs;
 using Enterprise.Gpt.Repository.Blob.Options;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Repository.Blob;
@@ -11,6 +12,8 @@ namespace Enterprise.Gpt.Repository.Blob;
 /// </summary>
 public static class BlobPersistenceConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Registers the storage options, the account client and the <see cref="IDocumentStore"/> gateway.
     /// </summary>
@@ -23,8 +26,11 @@ public static class BlobPersistenceConfiguration
 
         services.AddSingleton(services =>
             new BlobServiceClient(services.GetRequiredService<IOptions<BlobStorageOptions>>().Value.ConnectionString));
+        services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IDocumentStore, BlobDocumentStore>();
 
         return services;
     }
+
+    #endregion
 }

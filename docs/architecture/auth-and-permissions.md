@@ -102,7 +102,7 @@ cache.
 
 ## Secrets
 
-`AddEnterpriseKeyVault()` is the first line of `Program.cs`, so configuration rebuilds — or fails —
+`AddEnterpriseGptKeyVault()` is the first line of `Program.cs`, so configuration rebuilds — or fails —
 before anything reads a secret. Key Vault secret names use `--` where the configuration key uses
 `:`. Prefer `DefaultAzureCredential` and managed identity over secrets in configuration.
 
@@ -124,11 +124,12 @@ expires; the next `POST api/users/me` is what fails.
 | --- | --- |
 | `enterprise-gpt-api/Enterprise.Gpt.Api/Program.cs` | JWT bearer, on-behalf-of, Key Vault, Data Protection |
 | `enterprise-gpt-api/Enterprise.Gpt.Api/Filters/PermissionEndpointFilter.cs` | The AND filter and its map-time validation |
-| `enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/PermissionIds.cs` | Built-in ids and the static name map |
+| `enterprise-gpt-api/Enterprise.Gpt.Common/Constants/PermissionIds.cs` | Built-in ids and the static name map |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Caching/UserPermissionCache.cs` | The cache and its invalidation |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Security/UserSecretProtector.cs` | Data Protection wrapper for user credentials |
 | `enterprise-gpt-ui/src/app/core/auth/` | MSAL instance, guards, bearer interceptor |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/` | Cache invalidation and grant-diff tests |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Service/Caching/` | Cache invalidation tests |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Service/Permissions/` | Grant-diff tests |
 
 ## Related
 

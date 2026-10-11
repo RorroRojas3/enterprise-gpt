@@ -8,6 +8,8 @@ namespace Enterprise.Gpt.Service.Caching.Models;
 /// <param name="UserOid">The user's Entra object id, or <see langword="null"/> for a shared entry.</param>
 public readonly record struct McpCacheKey(Guid McpServerId, Guid? UserOid)
 {
+    #region Public static methods
+
     /// <summary>
     /// Creates a per-user key for servers authenticated on behalf of the user.
     /// </summary>
@@ -28,4 +30,6 @@ public readonly record struct McpCacheKey(Guid McpServerId, Guid? UserOid)
     {
         return new McpCacheKey(mcpServerId, null);
     }
+
+    #endregion
 }

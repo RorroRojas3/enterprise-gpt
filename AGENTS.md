@@ -71,17 +71,32 @@ Agent configuration: this file is the single instruction source. `.claude/CLAUDE
 
 ### `enterprise-gpt-api/` — .NET 10 backend (`Enterprise.Gpt.slnx`)
 
-Six projects plus two test projects under `test/`. `global.json` pins the SDK and selects the Microsoft Testing Platform test runner. `Directory.Build.props` sets `net10.0`, `Nullable` and `ImplicitUsings` for every project, and `Directory.Packages.props` holds every package version (central package management). `.editorconfig` makes a namespace that does not match its folder (IDE0130) a build error.
+Six projects plus two test projects under `test/`. `global.json` pins the SDK and selects the Microsoft Testing Platform test runner. `Directory.Packages.props` holds every package version (central package management).
+
+- **The build is the style gate.** `Directory.Build.props` sets `net10.0`, `Nullable` and `ImplicitUsings`, plus:
+  - `TreatWarningsAsErrors` and `AnalysisLevel` `latest-recommended`;
+  - `EnforceCodeStyleInBuild`;
+  - `GenerateDocumentationFile`, with CS1591 off. It also turns on cref/param checks and unused-using detection (IDE0005).
+- **`.editorconfig`** raises `var`, collection expressions, file-scoped namespaces and primary constructors to warnings, so a violation fails the build, and a namespace that does not match its folder (IDE0130) is an error. Every suppression there carries a one-line reason.
+- **Incremental builds** skip up-to-date projects and do not repeat their warnings. Use `--no-incremental` when auditing the warning count.
+- **`Program.cs` is composition only.**
+  - Each feature registers through `Api/Configuration/<Feature>Configuration.cs`. Persistence registers through `Repository/{Sql,Cosmos,Blob}/*PersistenceConfiguration.cs`.
+  - Startup provisioning (schema → Cosmos → summarizer → File Agent) runs from `Api/Startup/StartupBootstrapper.cs`, and is skipped in the `Testing` environment.
+  - Options bind with `AddOptions<T>().Bind(…).ValidateWithFluentValidation().ValidateOnStart()`. Each `<Area>Options` has its `SectionName` and an `<Area>OptionsValidator` in the same file.
 
 - **Layering:** `Api → Service → Repository → Entity → Common`, plus `Dto → Common` and `Service → Dto`. Entity and Repository never reference Dto; enums live in `Common/Enums/` and constant catalogs in `Common/Constants/`.
   - The folder map follows `dotnet-api-architecture`: Service by feature (`Conversations/`, `Documents/`, `Exports/`, `McpServers/`, `ChatModels/`, …), Repository by provider (`Sql/`, `Cosmos/`), Entity and Dto by feature. `ChatModels/` is the model-catalog feature, named so it never clashes with the kind-first `Models/` subfolders.
   - There is no `Abstractions` project. An interface with one implementation shares its file: `IModelService` and `ModelService` are both in `Service/ChatModels/ModelService.cs`.
-  - `InternalsVisibleTo("Enterprise.Gpt.Unit.Test")` in `Api` and `Service` lets unit tests call `internal static` endpoint handlers directly.
+  - `InternalsVisibleTo("Enterprise.Gpt.Unit.Test")` in `Api`, `Service` and `Repository` lets unit tests reach `internal` endpoint handlers, interceptors and the Cosmos gateway directly.
 - **Endpoints:** eight minimal-API modules in `Enterprise.Gpt.Api/Endpoints/` (Conversation, Document, Mcp, Model, Permission, Project, Report, User). `ModelEndpoints.cs` is the template for new work.
   - No controllers exist, and `Program.cs` never calls `MapControllers()`.
   - The SSE action is `ConversationEndpoints.StreamConversationAsync`. It sets its `text/event-stream` headers lazily on the first fragment, so a pre-stream failure still returns `application/problem+json`.
   - Every group carries `.RequireAuthorization()`.
   - Conversation routes carry no permission filter. Ownership is enforced in the service, and another user's conversation is a 404, not a 403.
+- **Validation:** FluentValidation only.
+  - A request body is validated by `ValidationEndpointFilter<T>` (`Api/Filters/`) before the handler runs. Services do not take `IValidator<T>`.
+  - Rules that need the database stay in the service and throw `ValidationException`.
+  - DTO validators share the DTO's file and read their limits from `Common/Constants/<Feature>/<Entity>Limits.cs`.
 - **Endpoint filters** (`Api/Filters/`): `PermissionEndpointFilter.Require(...)` and `MaxUploadSizeEndpointFilter.Require(...)` are static factories, not `IEndpointFilter`s.
   - `Require(params Guid[])` is **AND**: the caller must hold every listed permission.
   - It validates its ids against `PermissionIds.Names` at *map* time, so a bad id fails app start rather than emitting a nameless 403.
@@ -94,34 +109,54 @@ Six projects plus two test projects under `test/`. `global.json` pins the SDK an
   - `McpToolProvider.AcquireToolsAsync` and `McpServerService.GetPermittedMcpServersAsync` deliberately stay on the database. Read the comments there before "optimizing" them onto the cache.
 - **Errors:** RFC 9457 Problem Details (`application/problem+json`) everywhere.
   - Who writes them:
-    - three chained `IExceptionHandler`s, through `IProblemDetailsService`;
-    - the endpoint filters;
+    - the single `GlobalExceptionHandler` (`Api/ExceptionHandlers/`), through `IProblemDetailsService`;
+    - `ValidationEndpointFilter<T>` and the permission and upload filters;
     - `app.UseStatusCodePages()`, so bare 401s, unrouted 404s and 405s carry a body too.
   - Domain problem types:
-    - They live in `Api/Problems/Constants/ProblemTypes.cs` under the relative base `/problems/`: `validation-error`, `upload-too-large`, `resource-not-found`, `forbidden`, `permission-required`, `conversation-busy`, `mcp-server-unavailable`, `provider-not-configured`, `storage-not-configured`.
+    - The codes live in `Common/Constants/ProblemCodes.cs`, and `Api/Problems/Constants/ProblemTypes.cs` builds each as `/problems/{code}`.
+    - The codes are `validation-error`, `upload-too-large`, `resource-not-found`, `forbidden`, `permission-required`, `conversation-busy`, `mcp-server-unavailable`, `mcp-credential-required`, `mcp-credential-rejected`, `provider-not-configured`, `storage-not-configured` and `export-renderer-not-configured`.
     - They are **opaque identifiers clients match verbatim, not links**, so changing one is a breaking API change.
     - A problem with no domain type carries the RFC 9110 status-section link ASP.NET Core supplies.
   - `CustomizeProblemDetails` (`Problems/ProblemDetailsRegistration.cs`) stamps `traceId` (`Activity.Current?.Id`, else `HttpContext.TraceIdentifier`) and `instance` on every problem, in one place.
+  - **Domain exceptions** derive from `ProblemException` (`Service/Exceptions/`), which carries the status code, the problem code and any extension members. A new failure gets a subclass, never a new arm in the handler.
   - Status mapping:
 
     | Exception | Status |
     |---|---|
-    | `ValidationException` | 400 as `HttpValidationProblemDetails`; `errors` is keyed by the failing **property name** |
-    | `ConversationBusyException` | 409 |
+    | `ValidationException` (FluentValidation) | 400 as `HttpValidationProblemDetails`; `errors` is keyed by the failing **property name** |
+    | `BadHttpRequestException` | its own status (413 for an oversized chunked upload) |
     | `NotFoundException` | 404 |
     | `ForbiddenException` | 403 |
+    | `ConflictException`, including `ConversationBusyException`, `SummarizerProtectedException` and a lost row-version race | 409 |
+    | `McpCredentialRequiredException`, `McpCredentialRejectedException` | 428 |
     | `McpServerUnavailableException` | 502 (see below) |
-    | `OperationCanceledException` | 499, no body |
-    | anything else | 500, message suppressed |
+    | `ProviderNotConfigured`, `SummarizerNotConfigured`, `StorageNotConfigured`, `ExportRendererNotConfigured` exceptions | 503 |
+    | `OperationCanceledException` after the client disconnected | 499, no body |
+    | anything else, including a timeout inside the request | 500, message suppressed, logged |
 
     `McpServerUnavailableException` also covers a token acquisition that needs user interaction. These servers are consented tenant-wide, so that state is a broken registration, not something the user can act on.
-  - Handlers short-circuit on `Response.HasStarted`, so a faulting SSE stream is not corrupted.
+  - Only 5xx responses are logged as errors; a 4xx is the caller's problem.
+  - The handler short-circuits on `Response.HasStarted`, so a faulting SSE stream is not corrupted.
   - New endpoints declare error responses with `.ProducesProblem(status)` and `.ProducesValidationProblem()`, **never** `.Produces<T>(status)`. Every route group carries a group-level `.ProducesProblem(401)`.
 - **Persistence:** `EnterpriseGptDbContext` on SQL Server, EF Core 10.
   - `UseCompatibilityLevel(170)` means **SQL Server 2025**; pre-2025 engines and LocalDB reject it.
-  - Every FK is forced to `DeleteBehavior.NoAction`. The 26 `IEntityTypeConfiguration`s are applied explicitly, not by assembly scan.
-  - Soft delete uses a nullable `DateDeactivated` on `BaseEntity` with **no `HasQueryFilter`**; every query filters manually.
-  - Optimistic concurrency uses `[Timestamp] byte[] Version`.
+  - Every FK is forced to `DeleteBehavior.NoAction`.
+  - **Entities** derive from the generic bases in `Entity/Base/`: `BaseEntity<TKey>`, `BaseCreatedEntity<TKey>`, `BaseModifiedEntity<TKey>`, `BaseModifiedByEntity<TKey>` and the `BaseDocument*<TKey>` family.
+    - Entities carry no attributes.
+    - Column lengths live in `Common/Constants/<Feature>/<Entity>Limits.cs`, which both the configuration and the DTO validator read.
+    - Each configuration derives from the matching abstract base in `Sql/Configurations/Base/` (`ConfigureBase` / `ConfigureEntity`), and `ApplyConfigurationsFromAssembly` picks them up.
+  - **Soft delete** is the named `SoftDelete` query filter (`QueryFilterNames.SoftDelete`) on `DateDeactivated`.
+    - It covers every entity except User, Model, Provider and McpServer. History and reports reach deactivated rows of those four through required navigations.
+    - `ExecuteUpdate`/`ExecuteDelete` honour the filter too.
+    - Read deactivated rows only through `IgnoreQueryFilters([QueryFilterNames.SoftDelete])`, in a method whose name says so (`…IncludingDeactivatedAsync`). Tests use `.IncludingDeactivated()`.
+    - A required navigation into a filtered principal throws at model build. `SoftDeleteModelTests` pins the reviewed filtered→filtered list.
+  - **Interceptors** run on the injected `TimeProvider`:
+    - `SoftDeleteInterceptor` turns a `Remove` into a `DateDeactivated` stamp.
+    - `AuditTimestampInterceptor` stamps `DateCreated`/`DateModified` once per save, and only on a real change.
+    - Services never stamp tracked entities. `ExecuteUpdateAsync` calls stamp from the same `TimeProvider`.
+  - **Optimistic concurrency:** `BaseModifiedEntity.Version` is a rowversion.
+    - `SaveChangesOrConflictAsync` (`Service/Extensions/`) turns a lost race into a 409 `ConflictException`.
+    - The append-only ledger tables (Provider and the `ConversationUsage*` family) carry no rowversion.
   - Migrations:
     - `Repository/Sql/Migrations/` holds `Initial` (the whole schema plus the `HasData` seeds) followed by incremental migrations.
     - `Database.Migrate()` runs at startup (skipped in the `Testing` environment), so a database built from empty is migrated and seeded.
@@ -194,10 +229,13 @@ Angular **21.2**, standalone components, **zoneless**. Zoneless is the v21 defau
 
 ```bash
 # in enterprise-gpt-api/
-dotnet build                                          # compile the solution
+dotnet build                                          # compile; warnings are errors, so this is also the style gate
 dotnet test                                           # all tests (integration needs Docker running)
 dotnet test --project test/Enterprise.Gpt.Unit.Test   # unit tests only
+dotnet test --project test/Enterprise.Gpt.Unit.Test -- --filter-class "*ModelServiceTests"   # one class (MTP filter syntax)
 dotnet format --verify-no-changes                     # formatting gate (dotnet format to apply)
+dotnet ef migrations add <VerbSubject> --project Enterprise.Gpt.Repository --startup-project Enterprise.Gpt.Api --output-dir Sql/Migrations
+dotnet ef migrations has-pending-model-changes --project Enterprise.Gpt.Repository --startup-project Enterprise.Gpt.Api
 
 # in enterprise-gpt-ui/
 npm start               # ng serve on http://localhost:4200 (the only origin the API's CORS policy allows)
@@ -239,12 +277,37 @@ Write for a senior engineer who knows the language and can read the code.
 
 - **XML docs:**
   - A one-sentence `<summary>` on public API surface. Interfaces carry the docs; implementations use `/// <inheritdoc />`.
-  - `<param>`/`<returns>` only where they add what the signature does not.
+  - `<param>`/`<returns>` only where they add what the signature does not. `<param>` tags are all-or-nothing per member: the build rejects a partial set (CS1573) and a stale one (CS1572).
   - `<remarks>` is for a caveat a caller must know, two sentences at most.
   - `internal` and test types are commented only where a *why* exists.
   - **This overrides `csharp-docs` wherever the two disagree.**
+- **Code shape** (the build enforces most of this):
+  - Primary constructors, captured into `private readonly _camelCase` fields.
+  - Collection expressions and `var`.
+  - `is null` / `is not null`, except inside expression trees (EF queries, value comparers, NSubstitute `Arg.Is`), where C# forbids patterns.
+  - An empty `[]` aimed at an interface type is a shared singleton. Target `List<T>` when callers need a fresh instance.
+- **Member layout** in production types:
+  1. fields, properties and constructors;
+  2. interface members in interface order, then other non-private instance members;
+  3. nested types;
+  4. `#region Private methods`;
+  5. `#region Public static methods`;
+  6. `#region Logging`.
+
+  Test classes keep their own grouping regions.
+- **Logging:**
+  - Only through `[LoggerMessage]` `private static partial void LogXxx(ILogger logger, …)` methods in the `Logging` region; never `_logger.LogX(…)`.
+  - Message templates and levels are a contract with the KQL in `docs/observability/`, so change one only together with its queries.
+  - Compute an expensive argument such as a `string.Join` inside an `IsEnabled` guard.
+- **Time:** inject `TimeProvider`, never `DateTimeOffset.UtcNow`.
+  - Each feature configuration that needs it calls `TryAddSingleton(TimeProvider.System)`.
+  - Tests drive the clock with `FakeTimeProvider`.
+- **Writes** go through the context (`_ctx.Add`, `_ctx.Remove`), never the `DbSet`.
 - **`ConfigureAwait(false)`** is applied in hosted-service, cache, lock and MCP-client paths. Follow the surrounding file.
-- **Unit tests:** services taking `EnterpriseGptDbContext` run on SQLite in-memory via `SqliteDbContextFixture`. A model customizer neutralizes the rowversion and vector columns SQLite cannot handle. Each test class news up its own fixture rather than using `IClassFixture`.
+- **Unit tests:** services taking `EnterpriseGptDbContext` run on SQLite in-memory via `SqliteDbContextFixture`.
+  - A model customizer neutralizes the rowversion and vector columns SQLite cannot handle.
+  - `Context` and the scoped contexts carry the production interceptors. `CreateContext()` is bare, so arrange and assert code writes and reads exactly what it states.
+  - Each test class news up its own fixture rather than using `IClassFixture`.
 - **Integration tests:** `WebApplicationFactory<Program>` + Testcontainers **SQL Server 2025** (`CustomWebApplicationFactory` + `TestAuthHandler`, header `X-Test-User`). They need Docker and carry both `[Collection("Integration")]` and `[Trait("Category", "Integration")]`.
 - **Live-model tests:** `FileAgentSpike` / `ConversionMatrixTests` / `SandboxInventoryTests` drive a live model and a remote sandbox. Rerun them alone before calling a failure a regression.
 
@@ -270,13 +333,30 @@ The skills set the target. These rows are where the code has not migrated yet. W
 
 | Rule (target) | Codebase today | For new code |
 |---|---|---|
-| File-scoped namespaces | Mixed; `test/` is all file-scoped | File-scoped in new files |
-| `[LoggerMessage]` logging | ~185 direct `ILogger` calls; Serilog is not used | `[LoggerMessage]` partials in a `Logging` region; do not add Serilog |
 | Schema via migrations | `Initial` plus incremental migrations; `Migrate()` runs at startup; tests use `EnsureCreated()` | `dotnet ef migrations add <Verb><Subject>` |
 | API versioning | None; routes are plain `api/{resource}` | Match the existing routes |
 | Zoneless Angular | Zoneless throughout; no `zone.js` | Nothing re-renders without a signal write, `markForCheck`, or `AsyncPipe` |
 | `OnPush` everywhere | `angular.json` sets it as the schematic default | `OnPush` on new components |
 | Frontend lint | ESLint plus the bundle and safety gates, green | Run `npm run lint` before handing work back; do not add a second lint mechanism |
+
+### Sanctioned deviations from the Andes standards
+
+These differ from `ef-core-base-entities`, `dotnet-api-architecture` or `csharp-standards` on purpose. Keep them unless the reason goes away.
+
+- **Soft-delete column:** it is named `DateDeactivated`.
+- **`DateModified`:** non-null, and stamped on insert too.
+- **Unfiltered entities:** User, Model, Provider and McpServer carry no soft-delete filter, because history and reports join to their deactivated rows.
+- **No `HasIndex(DateDeactivated)`.**
+- **No `EnableRetryOnFailure`:** the conversation-create SQL transaction wraps a Cosmos batch that is not idempotent.
+- **Model rows** stay `HasData` seeds.
+- **`Version` never travels to the client.** Concurrency detects races between concurrent requests only.
+- **Extra entity bases:** `BaseModifiedByEntity<TKey>` and `BaseDocument*<TKey>` extend the standard set.
+- **Entity references `Microsoft.Data.SqlClient`**, for `SqlVector<float>`.
+- **Domain exceptions** derive from `ProblemException`.
+- **`FileDtoValidator` stays in Service**, because it needs `DocumentOptions` and the extractor factory.
+- **The Cosmos gateway** exposes `PartitionKey` and `PatchOperation`.
+- **Explicit constructors:** a class whose construction needs `this`, or derives several members from one computed value, keeps an explicit constructor. Examples are `JobStatusStore`, `McpClientCache` and `TokenTextChunker`; IDE0290 polices the rest. FluentValidation validators define their rules in a constructor body.
+- **Analyzer suppressions:** CA1711 and CA1716 are off; the reasons are in `.editorconfig`. In `test/`, CA1707 (test-name underscores), CA2012 (NSubstitute `Received()` on `ValueTask` members), CA1859 and CA1861 are off.
 
 ### Workflow
 

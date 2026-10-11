@@ -21,6 +21,22 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </remarks>
 internal static class ExportsConfiguration
 {
+    #region Private methods
+
+    private static void Register<TRenderer>(
+        IServiceCollection services, ExportOptions options, ConversationExportFormats format)
+        where TRenderer : class, IConversationExportRenderer
+    {
+        if (IsEnabled(options, format))
+        {
+            services.AddSingleton<IConversationExportRenderer, TRenderer>();
+        }
+    }
+
+    #endregion
+
+    #region Public static methods
+
     /// <summary>
     /// Registers the export options, the export service and the available renderers.
     /// </summary>
@@ -47,22 +63,6 @@ internal static class ExportsConfiguration
 
         return services;
     }
-
-    #region Private methods
-
-    private static void Register<TRenderer>(
-        IServiceCollection services, ExportOptions options, ConversationExportFormats format)
-        where TRenderer : class, IConversationExportRenderer
-    {
-        if (IsEnabled(options, format))
-        {
-            services.AddSingleton<IConversationExportRenderer, TRenderer>();
-        }
-    }
-
-    #endregion
-
-    #region Public static methods
 
     /// <summary>
     /// Adds one <see cref="IConversationExportRenderer"/> per format this deployment can render.

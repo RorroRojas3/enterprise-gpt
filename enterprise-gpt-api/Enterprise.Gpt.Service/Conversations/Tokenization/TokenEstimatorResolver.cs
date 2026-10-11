@@ -45,7 +45,7 @@ public interface ITokenEstimatorResolver
 /// <param name="serviceProvider">The container the keyed estimators are registered in.</param>
 /// <param name="fallback">The uncalibrated estimator used for a provider with no registration.</param>
 /// <param name="logger">The logger.</param>
-public sealed class TokenEstimatorResolver(
+public sealed partial class TokenEstimatorResolver(
     IServiceProvider serviceProvider,
     ITokenEstimator fallback,
     ILogger<TokenEstimatorResolver> logger) : ITokenEstimatorResolver
@@ -76,11 +76,16 @@ public sealed class TokenEstimatorResolver(
 
         if (_reported.TryAdd(providerId, true))
         {
-            _logger.LogWarning(
-                "No token estimator is registered for provider {ProviderId}; counting with the uncalibrated default. Message token counts for this provider carry the tiktoken error uncorrected.",
-                providerId);
+            LogNoTokenEstimator(_logger, providerId);
         }
 
         return _fallback;
     }
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No token estimator is registered for provider {ProviderId}; counting with the uncalibrated default. Message token counts for this provider carry the tiktoken error uncorrected.")]
+    private static partial void LogNoTokenEstimator(ILogger logger, Guid providerId);
+
+    #endregion
 }

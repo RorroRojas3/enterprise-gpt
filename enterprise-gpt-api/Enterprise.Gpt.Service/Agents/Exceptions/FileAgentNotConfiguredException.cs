@@ -6,7 +6,9 @@ namespace Enterprise.Gpt.Service.Agents.Exceptions;
 /// interpreter. Raised at startup by the file-agent bootstrapper, and again per turn, because the
 /// row can be deactivated or repointed after the application is already running.
 /// </summary>
-public class FileAgentNotConfiguredException : Exception
+/// <param name="modelId">The configured model id.</param>
+/// <param name="message">What is wrong with the row.</param>
+public class FileAgentNotConfiguredException(Guid modelId, string message) : Exception(message)
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="FileAgentNotConfiguredException"/> class for a
@@ -19,19 +21,7 @@ public class FileAgentNotConfiguredException : Exception
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="FileAgentNotConfiguredException"/> class with a
-    /// message describing how the row is unusable.
-    /// </summary>
-    /// <param name="modelId">The configured model id.</param>
-    /// <param name="message">What is wrong with the row.</param>
-    public FileAgentNotConfiguredException(Guid modelId, string message)
-        : base(message)
-    {
-        ModelId = modelId;
-    }
-
-    /// <summary>
     /// Gets the configured model id the failure concerns.
     /// </summary>
-    public Guid ModelId { get; }
+    public Guid ModelId { get; } = modelId;
 }

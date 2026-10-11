@@ -6,20 +6,6 @@ namespace Enterprise.Gpt.Service.Conversations;
 
 public static class ConversationMapper
 {
-    public static ConversationDto MapToChatDto(this Conversation source)
-    {
-        return new ConversationDto
-        {
-            Id = source.Id,
-            ProjectId = source.ProjectId,
-            ModelId = source.ModelId,
-            Name = source.Name,
-            IsFavorite = source.IsFavorite,
-            DateCreated = source.DateCreated,
-            DateModified = source.DateModified
-        };
-    }
-
     /// <summary>
     /// LINQ projection from <see cref="Conversation"/> to <see cref="ConversationDto"/> for use
     /// inside <c>IQueryable.Select(...)</c>.
@@ -40,4 +26,22 @@ public static class ConversationMapper
             DateCreated = source.DateCreated,
             DateModified = source.DateModified
         };
+
+    #region Public static methods
+
+    public static ConversationDto MapToChatDto(this Conversation source)
+    {
+        return new ConversationDto
+        {
+            Id = source.Id,
+            ProjectId = source.ProjectId,
+            ModelId = source.ModelId,
+            Name = source.Name,
+            IsFavorite = source.IsFavorite,
+            DateCreated = source.DateCreated,
+            DateModified = source.DateModified
+        };
+    }
+
+    #endregion
 }

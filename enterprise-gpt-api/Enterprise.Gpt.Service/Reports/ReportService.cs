@@ -1,3 +1,4 @@
+using System.Globalization;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto.Reports;
 using Enterprise.Gpt.Entity.Usage;
@@ -58,7 +59,7 @@ public interface IReportService
 /// into both, which is what makes the prior-period comparison arithmetic rather than an estimate.
 /// </para>
 /// </remarks>
-public class ReportService(
+public partial class ReportService(
     EnterpriseGptDbContext ctx,
     IOptions<ReportOptions> options,
     ILogger<ReportService> logger,
@@ -126,11 +127,14 @@ public class ReportService(
             // The day breakdown is the series re-sorted. Asking the database for it twice would
             // return the same rows in a different order for no benefit.
             ? Rank(byDay.Select(entry => ToGroup(
-                entry.Value, entry.Key.ToString("yyyy-MM-dd"), entry.Key.ToString("yyyy-MM-dd"), null)), depth)
+                entry.Value,
+                entry.Key.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                entry.Key.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                null)), depth)
             : await ReadGroupsAsync(current, groupKey, depth, cancellationToken);
 
         var truncated = fetched.Count > limit;
-        List<UsageGroupDto> groups = truncated ? [.. fetched.Take(limit)] : fetched;
+        var groups = truncated ? [.. fetched.Take(limit)] : fetched;
 
         return new UsageReportDto
         {
@@ -151,6 +155,11 @@ public class ReportService(
             GroupLimit = limit
         };
     }
+
+    private readonly record struct PeriodTotals(
+        UsageReportTotalsDto Report, IReadOnlyList<UsageOutcomeDto> Outcomes);
+
+    #region Private methods
 
     /// <summary>
     /// Fills in whichever bounds the caller left out and refuses a window that cannot be reported.
@@ -321,7 +330,7 @@ public class ReportService(
     /// shape of the chart stops being a function of time.
     /// </remarks>
     private List<UsageSeriesPointDto> BuildSeries<TKey>(
-        DateTimeOffset start, DateTimeOffset end, IReadOnlyDictionary<DateOnly, AggregateRow<TKey>> byDay)
+        DateTimeOffset start, DateTimeOffset end, Dictionary<DateOnly, AggregateRow<TKey>> byDay)
         where TKey : notnull
     {
         var first = DateOnly.FromDateTime(start.UtcDateTime);
@@ -334,15 +343,13 @@ public class ReportService(
         // say so. The only way to produce one is a row stored with a non-UTC offset, so this is
         // where that assumption fails loudly instead of quietly.
         var stray = byDay.Keys.Where(day => day < first || day > last).ToArray();
-        if (stray.Length > 0)
+        if (stray.Length > 0 && _logger.IsEnabled(LogLevel.Warning))
         {
-            _logger.LogWarning(
-                "Usage report dropped {StrayDayCount} day bucket(s) outside the reported window " +
-                "{From:o}..{To:o}: {StrayDays}. Rows are expected to carry a UTC offset.",
-                stray.Length, start, end, string.Join(", ", stray));
+            var days = string.Join(", ", stray);
+            LogStrayDayBuckets(_logger, stray.Length, start, end, days);
         }
 
-        var series = new List<UsageSeriesPointDto>();
+        List<UsageSeriesPointDto> series = [];
         for (var day = first; day <= last; day = day.AddDays(1))
         {
             series.Add(byDay.TryGetValue(day, out var row)
@@ -382,29 +389,6 @@ public class ReportService(
             .Take(take)
     ];
 
-    /// <summary>
-    /// Adds the cost of every group that could be priced, or <see langword="null"/> when none could.
-    /// </summary>
-    /// <remarks>
-    /// Null and zero mean different things here and the distinction survives the fold: a group
-    /// whose calls all lacked a price contributes nothing, and a period in which <em>no</em> group
-    /// could be priced answers null rather than a total that reads as free.
-    /// </remarks>
-    internal static decimal? FoldCost<TKey>(IEnumerable<AggregateRow<TKey>> rows)
-        where TKey : notnull
-    {
-        decimal? total = null;
-        foreach (var row in rows)
-        {
-            if (row.EstimatedCost is { } cost)
-            {
-                total = (total ?? 0m) + cost;
-            }
-        }
-
-        return total;
-    }
-
     private static UsageGroupDto ToGroup<TKey>(AggregateRow<TKey> row, string key, string label, string? sublabel)
         where TKey : notnull =>
         new()
@@ -422,9 +406,6 @@ public class ReportService(
             EstimatedCost = row.EstimatedCost,
             UnpricedTurns = row.UnpricedTurns
         };
-
-    private readonly record struct PeriodTotals(
-        UsageReportTotalsDto Report, IReadOnlyList<UsageOutcomeDto> Outcomes);
 
     /// <summary>
     /// The one projection every grouped query in this file shares.
@@ -471,4 +452,41 @@ public class ReportService(
             UnpricedTurns = group.LongCount(x =>
                 x.InputPricePerMillionTokens == null || x.OutputPricePerMillionTokens == null)
         });
+
+    #endregion
+
+    #region Public static methods
+
+    /// <summary>
+    /// Adds the cost of every group that could be priced, or <see langword="null"/> when none could.
+    /// </summary>
+    /// <remarks>
+    /// Null and zero mean different things here and the distinction survives the fold: a group
+    /// whose calls all lacked a price contributes nothing, and a period in which <em>no</em> group
+    /// could be priced answers null rather than a total that reads as free.
+    /// </remarks>
+    internal static decimal? FoldCost<TKey>(IEnumerable<AggregateRow<TKey>> rows)
+        where TKey : notnull
+    {
+        decimal? total = null;
+        foreach (var row in rows)
+        {
+            if (row.EstimatedCost is { } cost)
+            {
+                total = (total ?? 0m) + cost;
+            }
+        }
+
+        return total;
+    }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Usage report dropped {StrayDayCount} day bucket(s) outside the reported window {From:o}..{To:o}: {StrayDays}. Rows are expected to carry a UTC offset.")]
+    private static partial void LogStrayDayBuckets(
+        ILogger logger, int strayDayCount, DateTimeOffset from, DateTimeOffset to, string strayDays);
+
+    #endregion
 }

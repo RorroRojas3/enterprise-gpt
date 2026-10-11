@@ -41,20 +41,70 @@ public static class SummarizationPrompts
     /// </remarks>
     public const string PromptVersion = "2";
 
-    private static readonly string SinglePassTemplate =
-        PromptTemplateLoader.Load("document-summary-single-pass-prompt.md");
+    private static readonly CompositeFormat SinglePassTemplate =
+        CompositeFormat.Parse(PromptTemplateLoader.Load("document-summary-single-pass-prompt.md"));
 
-    private static readonly string MapTemplate =
-        PromptTemplateLoader.Load("document-summary-map-prompt.md");
+    private static readonly CompositeFormat MapTemplate =
+        CompositeFormat.Parse(PromptTemplateLoader.Load("document-summary-map-prompt.md"));
 
-    private static readonly string ReduceTemplate =
-        PromptTemplateLoader.Load("document-summary-reduce-prompt.md");
+    private static readonly CompositeFormat ReduceTemplate =
+        CompositeFormat.Parse(PromptTemplateLoader.Load("document-summary-reduce-prompt.md"));
 
-    private static readonly string CollapseTemplate =
-        PromptTemplateLoader.Load("document-summary-collapse-prompt.md");
+    private static readonly CompositeFormat CollapseTemplate =
+        CompositeFormat.Parse(PromptTemplateLoader.Load("document-summary-collapse-prompt.md"));
 
-    private static readonly string DigestTemplate =
-        PromptTemplateLoader.Load("document-summary-digest-prompt.md");
+    private static readonly CompositeFormat DigestTemplate =
+        CompositeFormat.Parse(PromptTemplateLoader.Load("document-summary-digest-prompt.md"));
+
+    #region Private methods
+
+    /// <remarks>
+    /// The parts are numbered inside one fenced block rather than fenced individually, so the model
+    /// sees a single trust boundary it was told about rather than a sequence of them.
+    /// </remarks>
+    private static SummarizationPrompt BuildNumberedParts(
+        CompositeFormat template,
+        IReadOnlyList<string> partialSummaries)
+    {
+        ArgumentNullException.ThrowIfNull(partialSummaries);
+
+        if (partialSummaries.Count == 0)
+        {
+            throw new ArgumentException(
+                "At least one part summary is required to reduce.", nameof(partialSummaries));
+        }
+
+        var delimiter = CreateDelimiter();
+        var body = new StringBuilder();
+
+        for (var i = 0; i < partialSummaries.Count; i++)
+        {
+            if (i > 0)
+            {
+                body.Append("\n\n");
+            }
+
+            body.Append(CultureInfo.InvariantCulture, $"Part {i + 1} of {partialSummaries.Count}:\n")
+                .Append(partialSummaries[i]);
+        }
+
+        return new SummarizationPrompt(
+            string.Format(CultureInfo.InvariantCulture, template, delimiter),
+            Fence(delimiter, body.ToString()));
+    }
+
+    /// <remarks>
+    /// Unguessable per call rather than a fixed string, for the reason
+    /// <c>ConversationPrompts.BuildProjectInstructionsPrompt</c> gives: a fixed delimiter can be
+    /// reproduced inside the untrusted body, which lets the text appear to close its own block and
+    /// continue as if it were part of the frame.
+    /// </remarks>
+    private static string CreateDelimiter() => $"<<<document-text:{Guid.NewGuid():N}>>>";
+
+    private static string Fence(string delimiter, string content) =>
+        $"{delimiter}\n{content}\n{delimiter}";
+
+    #endregion
 
     #region Public static methods
 
@@ -140,56 +190,6 @@ public static class SummarizationPrompts
             string.Format(CultureInfo.InvariantCulture, DigestTemplate, delimiter),
             Fence(delimiter, summaries));
     }
-
-    #endregion
-
-    #region Private methods
-
-    /// <remarks>
-    /// The parts are numbered inside one fenced block rather than fenced individually, so the model
-    /// sees a single trust boundary it was told about rather than a sequence of them.
-    /// </remarks>
-    private static SummarizationPrompt BuildNumberedParts(
-        string template,
-        IReadOnlyList<string> partialSummaries)
-    {
-        ArgumentNullException.ThrowIfNull(partialSummaries);
-
-        if (partialSummaries.Count == 0)
-        {
-            throw new ArgumentException(
-                "At least one part summary is required to reduce.", nameof(partialSummaries));
-        }
-
-        var delimiter = CreateDelimiter();
-        var body = new StringBuilder();
-
-        for (var i = 0; i < partialSummaries.Count; i++)
-        {
-            if (i > 0)
-            {
-                body.Append("\n\n");
-            }
-
-            body.Append(CultureInfo.InvariantCulture, $"Part {i + 1} of {partialSummaries.Count}:\n")
-                .Append(partialSummaries[i]);
-        }
-
-        return new SummarizationPrompt(
-            string.Format(CultureInfo.InvariantCulture, template, delimiter),
-            Fence(delimiter, body.ToString()));
-    }
-
-    /// <remarks>
-    /// Unguessable per call rather than a fixed string, for the reason
-    /// <c>ConversationPrompts.BuildProjectInstructionsPrompt</c> gives: a fixed delimiter can be
-    /// reproduced inside the untrusted body, which lets the text appear to close its own block and
-    /// continue as if it were part of the frame.
-    /// </remarks>
-    private static string CreateDelimiter() => $"<<<document-text:{Guid.NewGuid():N}>>>";
-
-    private static string Fence(string delimiter, string content) =>
-        $"{delimiter}\n{content}\n{delimiter}";
 
     #endregion
 }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -329,7 +330,7 @@ public sealed class ReportEndpointsIntegrationTests(IntegrationTestFixture fixtu
         var report = await GetAsync(groupBy: "day");
 
         Assert.Equal(2, report.Groups.Count);
-        Assert.Equal(_anchor.AddDays(-2).ToString("yyyy-MM-dd"), report.Groups[0].Key);
+        Assert.Equal(_anchor.AddDays(-2).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), report.Groups[0].Key);
         Assert.Equal(20, report.Groups[0].TotalTokens);
         Assert.All(report.Groups, group => Assert.Equal(group.Key, group.Label));
     }
@@ -745,7 +746,7 @@ public sealed class ReportEndpointsIntegrationTests(IntegrationTestFixture fixtu
             _anchor.AddDays(-5), _anchor, groupBy, TestContext.Current.CancellationToken);
     }
 
-    private string Route(DateTimeOffset from, DateTimeOffset to) =>
+    private static string Route(DateTimeOffset from, DateTimeOffset to) =>
         $"api/reports/usage?from={Uri.EscapeDataString(from.ToString("O"))}"
         + $"&to={Uri.EscapeDataString(to.ToString("O"))}";
 }

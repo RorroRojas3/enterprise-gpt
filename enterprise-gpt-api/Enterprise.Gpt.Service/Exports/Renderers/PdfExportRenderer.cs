@@ -97,6 +97,8 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
             $"{ExportFileNames.Stem(document.Name)}.pdf");
     }
 
+    #region Private methods
+
     private void AppendBlock(Section section, ExportBlock block, int indentLevel, ExportBlockStyles style)
     {
         switch (block)
@@ -200,7 +202,7 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
             // otherwise lose its bullet, which an HTML <li> never does. Everything after the first
             // paragraph is indented rather than numbered: a continuation line carrying its own
             // number restarts the count against it.
-            var opening = item.Children.FirstOrDefault() as ParagraphBlock;
+            var opening = item.Children is [ParagraphBlock lead, ..] ? lead : null;
 
             AppendListItem(section, opening?.Runs ?? [], listType, level, continues: !first, style);
             first = false;
@@ -321,6 +323,8 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
     /// <summary>
     /// Draws whatever encloses a paragraph — a prompt's band, a block quote's rule, or neither.
     /// </summary>
+    /// <param name="paragraph">The paragraph to enclose, styled in place and returned.</param>
+    /// <param name="style">What encloses it; a quote inside a prompt keeps the prompt's rule, since a paragraph has only one left border.</param>
     /// <param name="keepsOwnShading">
     /// <see langword="true"/> for a paragraph whose style already fills it — a code block, which a
     /// band marks with its rule alone rather than erasing the distinction between prose and code.
@@ -481,4 +485,6 @@ public sealed class PdfExportRenderer(IMarkdownBlockMapper mapper) : IConversati
             heading.ParagraphFormat.KeepWithNext = true;
         }
     }
+
+    #endregion
 }

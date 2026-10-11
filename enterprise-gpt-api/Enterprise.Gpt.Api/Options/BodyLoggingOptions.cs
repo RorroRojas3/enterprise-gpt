@@ -128,7 +128,7 @@ public sealed class BodyLoggingOptions
     }
 
     /// <summary>
-    /// Validates the list contents that a <see cref="ValidationAttribute"/> cannot express.
+    /// Validates the list contents, which no single-property rule can express.
     /// </summary>
     /// <returns><see langword="true"/> when every entry is usable.</returns>
     internal bool HasValidEntries() =>

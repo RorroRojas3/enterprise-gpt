@@ -38,6 +38,8 @@ public static class DocumentTypeNames
     /// </summary>
     public static string SupportedList { get; } = string.Join(", ", Supported.Select(name => $"'{name}'"));
 
+    #region Public static methods
+
     /// <summary>
     /// Resolves a <c>?type=</c> value into the origin a listing should narrow to.
     /// </summary>
@@ -67,4 +69,6 @@ public static class DocumentTypeNames
                 $"'{type}' is not a supported document type. Supported types are {SupportedList}.")
         ]);
     }
+
+    #endregion
 }

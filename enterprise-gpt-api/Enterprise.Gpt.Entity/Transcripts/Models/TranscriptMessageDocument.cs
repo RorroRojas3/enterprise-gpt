@@ -130,6 +130,8 @@ public sealed record TranscriptMessageDocument
     [JsonPropertyName("dateCreated")]
     public DateTimeOffset DateCreated { get; init; }
 
+    #region Public static methods
+
     /// <summary>
     /// Creates a message document for a conversation.
     /// </summary>
@@ -163,4 +165,6 @@ public sealed record TranscriptMessageDocument
             DateCreated = createdAt
         };
     }
+
+    #endregion
 }

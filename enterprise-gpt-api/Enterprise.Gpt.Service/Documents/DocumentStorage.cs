@@ -14,13 +14,44 @@ namespace Enterprise.Gpt.Service.Documents;
 /// either — a generated file signed against the uploads container would 404, and a content type
 /// resolved twice would drift.
 /// </remarks>
-internal static class DocumentStorage
+internal static partial class DocumentStorage
 {
     /// <summary>The setting naming the container uploaded documents live in.</summary>
     public const string DocumentsContainerKey = "AzureStorage:DocumentsContainer";
 
     /// <summary>The setting naming the container generated documents live in.</summary>
     public const string GeneratedContainerKey = "AzureStorage:GeneratedContainer";
+
+    private static readonly FrozenDictionary<string, string> _contentTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        [".csv"] = "text/csv",
+        [".doc"] = "application/msword",
+        [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        [".md"] = "text/markdown",
+        [".pdf"] = "application/pdf",
+        [".pptx"] = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        [".txt"] = "text/plain",
+        [".xlsx"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
+    #region Private methods
+
+    private static string RequireContainer(string? container, string key, ILogger logger)
+    {
+        if (string.IsNullOrWhiteSpace(container))
+        {
+            // Diagnosable as the operator condition it is. Left to the Azure SDK, a missing
+            // container name surfaces as an opaque 500 with the message suppressed.
+            LogStorageNotConfigured(logger, key);
+            throw new StorageNotConfiguredException();
+        }
+
+        return container;
+    }
+
+    #endregion
+
+    #region Public static methods
 
     /// <summary>Returns the container uploaded documents live in.</summary>
     /// <param name="options">The current storage options; pass <c>IOptionsMonitor.CurrentValue</c> so a reload applies without a restart.</param>
@@ -35,19 +66,6 @@ internal static class DocumentStorage
     /// <exception cref="StorageNotConfiguredException">The container name is not configured.</exception>
     public static string RequireGeneratedContainer(BlobStorageOptions options, ILogger logger) =>
         RequireContainer(options.GeneratedContainer, GeneratedContainerKey, logger);
-
-    private static string RequireContainer(string? container, string key, ILogger logger)
-    {
-        if (string.IsNullOrWhiteSpace(container))
-        {
-            // Diagnosable as the operator condition it is. Left to the Azure SDK, a missing
-            // container name surfaces as an opaque 500 with the message suppressed.
-            logger.LogError("{SettingKey} is not configured, so no document blob can be read or written", key);
-            throw new StorageNotConfiguredException();
-        }
-
-        return container;
-    }
 
     /// <summary>
     /// Maps a stored file extension to the content type the download link is served under.
@@ -65,15 +83,12 @@ internal static class DocumentStorage
     public static string ResolveContentType(string extension) =>
         _contentTypes.GetValueOrDefault(extension, "application/octet-stream");
 
-    private static readonly FrozenDictionary<string, string> _contentTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-    {
-        [".csv"] = "text/csv",
-        [".doc"] = "application/msword",
-        [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        [".md"] = "text/markdown",
-        [".pdf"] = "application/pdf",
-        [".pptx"] = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        [".txt"] = "text/plain",
-        [".xlsx"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{SettingKey} is not configured, so no document blob can be read or written")]
+    private static partial void LogStorageNotConfigured(ILogger logger, string settingKey);
+
+    #endregion
 }

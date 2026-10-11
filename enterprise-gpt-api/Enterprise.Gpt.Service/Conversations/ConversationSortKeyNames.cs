@@ -26,6 +26,18 @@ public static class ConversationSortKeyNames
     /// </summary>
     public static string SupportedList { get; } = string.Join(", ", Supported.Select(name => $"'{name}'"));
 
+    #region Private methods
+
+    private static SortDirections NaturalDirection(ConversationSortKeys key) => key switch
+    {
+        ConversationSortKeys.Name => SortDirections.Ascending,
+        _ => SortDirections.Descending
+    };
+
+    #endregion
+
+    #region Public static methods
+
     /// <summary>
     /// Resolves the <c>?sort=</c> and <c>?dir=</c> pair a caller sent.
     /// </summary>
@@ -40,9 +52,5 @@ public static class ConversationSortKeyNames
         return new SortSelection<ConversationSortKeys>(key, SortParameters.ResolveDirection(dir, NaturalDirection(key)));
     }
 
-    private static SortDirections NaturalDirection(ConversationSortKeys key) => key switch
-    {
-        ConversationSortKeys.Name => SortDirections.Ascending,
-        _ => SortDirections.Descending
-    };
+    #endregion
 }

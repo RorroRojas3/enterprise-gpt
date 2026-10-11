@@ -9,6 +9,8 @@ namespace Enterprise.Gpt.Service.Agents.Models;
 /// <param name="Reason">Why it failed, in a sentence safe to relay. <see langword="null"/> on a pass.</param>
 public sealed record ArtifactVerification(bool Passed, string Shape, string? Reason)
 {
+    #region Public static methods
+
     /// <summary>A file that opened, with what was measured in it.</summary>
     /// <param name="shape">The measurement, for the answer to quote.</param>
     /// <returns>A passing verdict.</returns>
@@ -18,4 +20,6 @@ public sealed record ArtifactVerification(bool Passed, string Shape, string? Rea
     /// <param name="reason">A clause that completes "… could not be saved because …".</param>
     /// <returns>A failing verdict.</returns>
     public static ArtifactVerification Fail(string reason) => new(false, string.Empty, reason);
+
+    #endregion
 }

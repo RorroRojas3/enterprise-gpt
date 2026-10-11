@@ -25,6 +25,42 @@ internal static class SheetSegmentBuilder
 
     private static readonly SearchValues<char> _cellBreaks = SearchValues.Create("\r\n\t");
 
+    #region Private methods
+
+    private static ValidationException Refuse(string message)
+    {
+        return new ValidationException([new ValidationFailure(nameof(FileDto.FileName), message)]);
+    }
+
+    private static string FoldBreaks(string value)
+    {
+        var builder = new StringBuilder(value.Length);
+        var pendingSpace = false;
+
+        foreach (var c in value)
+        {
+            if (c is '\r' or '\n' or '\t')
+            {
+                pendingSpace = builder.Length > 0;
+                continue;
+            }
+
+            if (pendingSpace)
+            {
+                builder.Append(' ');
+                pendingSpace = false;
+            }
+
+            builder.Append(c);
+        }
+
+        return builder.ToString().Trim();
+    }
+
+    #endregion
+
+    #region Public static methods
+
     public static void AppendSheetName(StringBuilder builder, string sheetName)
     {
         builder.Append(SheetPrefix).Append(sheetName).Append('\n');
@@ -152,33 +188,5 @@ internal static class SheetSegmentBuilder
         return Refuse($"The workbook expands to more than the {size} an upload accepts once decompressed. Split it into smaller files and try again.");
     }
 
-    private static ValidationException Refuse(string message)
-    {
-        return new ValidationException([new ValidationFailure(nameof(FileDto.FileName), message)]);
-    }
-
-    private static string FoldBreaks(string value)
-    {
-        var builder = new StringBuilder(value.Length);
-        var pendingSpace = false;
-
-        foreach (var c in value)
-        {
-            if (c is '\r' or '\n' or '\t')
-            {
-                pendingSpace = builder.Length > 0;
-                continue;
-            }
-
-            if (pendingSpace)
-            {
-                builder.Append(' ');
-                pendingSpace = false;
-            }
-
-            builder.Append(c);
-        }
-
-        return builder.ToString().Trim();
-    }
+    #endregion
 }

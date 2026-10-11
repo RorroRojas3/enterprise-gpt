@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Enterprise.Gpt.Common.Enums;
@@ -234,7 +235,7 @@ public sealed class ConversionMatrixDocumentTests
     private static string Recorded(JsonElement root) =>
         root.GetProperty("recordedUtc").ValueKind is JsonValueKind.Null
             ? "never"
-            : root.GetProperty("recordedUtc").GetDateTimeOffset().ToString("yyyy-MM-dd");
+            : root.GetProperty("recordedUtc").GetDateTimeOffset().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     private static string OfficeConverter(JsonElement root) =>
         root.GetProperty("officeConverterPresent").ValueKind switch

@@ -20,6 +20,8 @@ namespace Enterprise.Gpt.Api.Endpoints;
 /// </remarks>
 public static class ProjectEndpoints
 {
+    #region Public static methods
+
     /// <summary>
     /// Maps the <c>api/projects</c> endpoint group.
     /// </summary>
@@ -131,4 +133,6 @@ public static class ProjectEndpoints
         await projectService.DeactivateProjectDocumentAsync(projectId, documentId, cancellationToken);
         return TypedResults.NoContent();
     }
+
+    #endregion
 }

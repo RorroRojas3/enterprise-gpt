@@ -34,11 +34,20 @@ public sealed partial class HtmlExportRenderer(IMarkdownBlockMapper mapper) : IC
 
     private readonly IMarkdownBlockMapper _mapper = mapper;
 
-    [GeneratedRegex(@"\{\{(THEME|TITLE|DATE|MESSAGES)\}\}")]
-    private static partial Regex Placeholder();
-
     /// <inheritdoc />
     public ConversationExportFormats Format => ConversationExportFormats.Html;
+
+    /// <summary>
+    /// Gets the path the template is loaded from.
+    /// </summary>
+    /// <remarks>
+    /// Exposed so composition can decline to register this renderer when the file is missing: the
+    /// renderers resolve as a collection, so an absent template would otherwise fault the first
+    /// export of every format rather than of HTML. Computed per read rather than cached, because a
+    /// static field initialising after <see cref="Template"/> would be read while still empty.
+    /// </remarks>
+    public static string TemplatePath =>
+        Path.Combine(AppContext.BaseDirectory, "Files", "conversation-history.html");
 
     /// <inheritdoc />
     public ConversationExport Render(ConversationExportDocument document)
@@ -77,17 +86,10 @@ public sealed partial class HtmlExportRenderer(IMarkdownBlockMapper mapper) : IC
             $"{ExportFileNames.Stem(document.Name)}.html");
     }
 
-    /// <summary>
-    /// Gets the path the template is loaded from.
-    /// </summary>
-    /// <remarks>
-    /// Exposed so composition can decline to register this renderer when the file is missing: the
-    /// renderers resolve as a collection, so an absent template would otherwise fault the first
-    /// export of every format rather than of HTML. Computed per read rather than cached, because a
-    /// static field initialising after <see cref="Template"/> would be read while still empty.
-    /// </remarks>
-    public static string TemplatePath =>
-        Path.Combine(AppContext.BaseDirectory, "Files", "conversation-history.html");
+    #region Private methods
+
+    [GeneratedRegex(@"\{\{(THEME|TITLE|DATE|MESSAGES)\}\}")]
+    private static partial Regex Placeholder();
 
     private static string LoadTemplate()
     {
@@ -109,4 +111,6 @@ public sealed partial class HtmlExportRenderer(IMarkdownBlockMapper mapper) : IC
 
         return builder.Append("      }").ToString();
     }
+
+    #endregion
 }

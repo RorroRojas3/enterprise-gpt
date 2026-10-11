@@ -48,6 +48,8 @@ public static class SortParameters
     /// </summary>
     public static string SupportedDirectionList { get; } = $"'{AscendingName}', '{DescendingName}'";
 
+    #region Public static methods
+
     /// <summary>
     /// Reports whether the caller asked for no particular order.
     /// </summary>
@@ -135,4 +137,6 @@ public static class SortParameters
                 $"'{dir}' is not a supported sort direction. Supported directions are {SupportedDirectionList}.")
         ]);
     }
+
+    #endregion
 }

@@ -94,6 +94,8 @@ public sealed record TranscriptHeaderDocument
     [JsonPropertyName("dateDeactivated")]
     public DateTimeOffset? DateDeactivated { get; set; }
 
+    #region Public static methods
+
     /// <summary>
     /// Creates a header for a new conversation.
     /// </summary>
@@ -119,4 +121,6 @@ public sealed record TranscriptHeaderDocument
             DateModified = createdAt
         };
     }
+
+    #endregion
 }

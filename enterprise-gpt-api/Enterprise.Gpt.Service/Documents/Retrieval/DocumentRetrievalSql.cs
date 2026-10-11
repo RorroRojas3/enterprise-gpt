@@ -93,6 +93,8 @@ internal static class DocumentRetrievalSql
         ORDER BY [Distance];
         """;
 
+    #region Public static methods
+
     /// <summary>
     /// Builds the keyword pass: the scoped chunks scored by how many of the query terms they contain,
     /// best first.
@@ -226,4 +228,6 @@ internal static class DocumentRetrievalSql
               AND ph.[DateDeactivated] IS NULL;
             """;
     }
+
+    #endregion
 }

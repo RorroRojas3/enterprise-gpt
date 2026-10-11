@@ -13,6 +13,41 @@ namespace Enterprise.Gpt.Service.Exports;
 public static class ExportTheme
 {
     /// <summary>
+    /// Gets the custom properties the HTML export's template resolves every value against.
+    /// </summary>
+    /// <remarks>
+    /// The template carries no literal of its own, so this list is the only place an export's
+    /// appearance is stated — which is what keeps the HTML, Word and PDF documents in step.
+    /// </remarks>
+    public static IReadOnlyList<KeyValuePair<string, string>> CssVariables { get; } =
+    [
+        new("--page-bg", Hex(Colors.PageBackground)),
+        new("--surface", Hex(Colors.Surface)),
+        new("--surface-alt", Hex(Colors.SurfaceAlt)),
+        new("--text", Hex(Colors.Text)),
+        new("--muted", Hex(Colors.Muted)),
+        new("--border", Hex(Colors.Border)),
+        new("--brand", Hex(Colors.Brand)),
+        new("--link", Hex(Colors.Link)),
+        new("--user-band", Hex(Colors.UserBand)),
+        new("--font-sans", Stack(Fonts.SansStack)),
+        new("--font-mono", Stack(Fonts.MonoStack)),
+        new("--size-body", Points(Sizes.Body)),
+        new("--size-code", Points(Sizes.Code)),
+        new("--size-code-lang", Points(Sizes.CodeLanguage)),
+        new("--size-cell", Points(Sizes.TableCell)),
+        new("--size-title", Points(Sizes.Title)),
+        new("--size-subtitle", Points(Sizes.Subtitle)),
+        new("--size-role", Points(Sizes.RoleLabel)),
+        new("--size-h1", Points(Sizes.Heading(1))),
+        new("--size-h2", Points(Sizes.Heading(2))),
+        new("--size-h3", Points(Sizes.Heading(3))),
+        new("--size-h4", Points(Sizes.Heading(4))),
+        new("--size-h5", Points(Sizes.Heading(5))),
+        new("--size-h6", Points(Sizes.Heading(6)))
+    ];
+
+    /// <summary>
     /// The palette, as six-digit hex with no leading <c>#</c>.
     /// </summary>
     /// <remarks>
@@ -115,40 +150,7 @@ public static class ExportTheme
         public static double Heading(int level) => Headings[Math.Clamp(level, 1, 6) - 1];
     }
 
-    /// <summary>
-    /// Gets the custom properties the HTML export's template resolves every value against.
-    /// </summary>
-    /// <remarks>
-    /// The template carries no literal of its own, so this list is the only place an export's
-    /// appearance is stated — which is what keeps the HTML, Word and PDF documents in step.
-    /// </remarks>
-    public static IReadOnlyList<KeyValuePair<string, string>> CssVariables { get; } =
-    [
-        new("--page-bg", Hex(Colors.PageBackground)),
-        new("--surface", Hex(Colors.Surface)),
-        new("--surface-alt", Hex(Colors.SurfaceAlt)),
-        new("--text", Hex(Colors.Text)),
-        new("--muted", Hex(Colors.Muted)),
-        new("--border", Hex(Colors.Border)),
-        new("--brand", Hex(Colors.Brand)),
-        new("--link", Hex(Colors.Link)),
-        new("--user-band", Hex(Colors.UserBand)),
-        new("--font-sans", Stack(Fonts.SansStack)),
-        new("--font-mono", Stack(Fonts.MonoStack)),
-        new("--size-body", Points(Sizes.Body)),
-        new("--size-code", Points(Sizes.Code)),
-        new("--size-code-lang", Points(Sizes.CodeLanguage)),
-        new("--size-cell", Points(Sizes.TableCell)),
-        new("--size-title", Points(Sizes.Title)),
-        new("--size-subtitle", Points(Sizes.Subtitle)),
-        new("--size-role", Points(Sizes.RoleLabel)),
-        new("--size-h1", Points(Sizes.Heading(1))),
-        new("--size-h2", Points(Sizes.Heading(2))),
-        new("--size-h3", Points(Sizes.Heading(3))),
-        new("--size-h4", Points(Sizes.Heading(4))),
-        new("--size-h5", Points(Sizes.Heading(5))),
-        new("--size-h6", Points(Sizes.Heading(6)))
-    ];
+    #region Private methods
 
     private static string Hex(string color) => $"#{color}";
 
@@ -160,4 +162,6 @@ public static class ExportTheme
     private static string Stack(IReadOnlyList<string> families) =>
         string.Join(", ", families.Select(family =>
             family.Contains(' ', StringComparison.Ordinal) ? $"'{family}'" : family));
+
+    #endregion
 }

@@ -22,9 +22,12 @@ internal static class DataProtectionConfiguration
     /// </remarks>
     private const string ApplicationName = "Enterprise.Gpt";
 
+    #region Public static methods
+
     /// <summary>
     /// Persists the key ring in the application database, wrapped by a vault key.
     /// </summary>
+    /// <param name="builder">The application builder whose services gain Data Protection, and whose environment decides whether an unwrapped key ring is refused.</param>
     /// <param name="keyVault">The resolved vault, or <see langword="null"/> when none is read.</param>
     /// <exception cref="InvalidOperationException">No wrapping key is configured outside development.</exception>
     /// <remarks>
@@ -54,4 +57,6 @@ internal static class DataProtectionConfiguration
                 $"{KeyVaultOptions.SectionName}:{nameof(KeyVaultOptions.DataProtectionKeyUri)} is required outside development: without it the Data Protection key ring is stored unencrypted beside the credentials it protects.");
         }
     }
+
+    #endregion
 }

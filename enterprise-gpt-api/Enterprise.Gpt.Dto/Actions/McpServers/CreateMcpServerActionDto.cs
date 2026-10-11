@@ -85,9 +85,13 @@ public class CreateMcpServerActionDtoValidator : AbstractValidator<CreateMcpServ
 
     private const string IconKeyPattern = "^[a-z0-9]+(-[a-z0-9]+)*$";
 
+    #region Private methods
+
     private static bool BeAnAbsoluteHttpUri(string url)
     {
         return Uri.TryCreate(url, UriKind.Absolute, out var uri)
             && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
     }
+
+    #endregion
 }

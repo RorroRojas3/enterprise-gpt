@@ -10,6 +10,8 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </summary>
 internal static class AgentsConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Registers the File Agent's options, its collaborators and the conversion matrix.
     /// </summary>
@@ -34,4 +36,6 @@ internal static class AgentsConfiguration
 
         return services;
     }
+
+    #endregion
 }

@@ -67,88 +67,7 @@ internal static class SheetQuerySql
         ) AS r
         """;
 
-    /// <summary>
-    /// Builds an ungrouped aggregate over one sheet.
-    /// </summary>
-    /// <param name="operation">The aggregate to compute.</param>
-    /// <param name="valueType">The aggregated column's inferred type, or <see langword="null"/> for a bare count.</param>
-    /// <param name="filters">The shape of each filter, in order.</param>
-    /// <returns>The command text.</returns>
-    /// <remarks>
-    /// Returns one row of three columns. <c>MatchedRows</c> and <c>ValueRows</c> are both reported so a
-    /// total that skipped cells its column's type could not read is never mistaken for a complete one.
-    /// </remarks>
-    /// <exception cref="ArgumentNullException"><paramref name="filters"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="operation"/> is not an aggregate.</exception>
-    internal static string BuildAggregate(
-        SheetQueryOperations operation, SheetColumnTypes? valueType, IReadOnlyList<SheetFilterSpec> filters)
-    {
-        ArgumentNullException.ThrowIfNull(filters);
-
-        return $"""
-            SELECT COUNT(*) AS [MatchedRows],
-                   {ValueRowsExpression(operation, valueType)} AS [ValueRows],
-                   {AggregateExpression(operation, valueType)} AS [Value]
-            FROM {ScopedSheetRows}
-            {BuildWhere(filters)};
-            """;
-    }
-
-    /// <summary>
-    /// Builds an aggregate grouped by a second column.
-    /// </summary>
-    /// <param name="operation">The aggregate to compute.</param>
-    /// <param name="valueType">The aggregated column's inferred type, or <see langword="null"/> for a bare count.</param>
-    /// <param name="filters">The shape of each filter, in order.</param>
-    /// <returns>The command text.</returns>
-    /// <remarks>
-    /// Ordered by the group key rather than by the aggregate so the same question returns the same rows
-    /// in the same order, and so a result trimmed by the group cap is trimmed predictably.
-    /// </remarks>
-    /// <exception cref="ArgumentNullException"><paramref name="filters"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="operation"/> is not an aggregate.</exception>
-    internal static string BuildGroupedAggregate(
-        SheetQueryOperations operation, SheetColumnTypes? valueType, IReadOnlyList<SheetFilterSpec> filters)
-    {
-        ArgumentNullException.ThrowIfNull(filters);
-
-        return $"""
-            SELECT TOP (@maxGroups)
-                   {RawExpression(GroupPathParameter)} COLLATE Latin1_General_CI_AI AS [GroupKey],
-                   COUNT(*) AS [MatchedRows],
-                   {ValueRowsExpression(operation, valueType)} AS [ValueRows],
-                   {AggregateExpression(operation, valueType)} AS [Value]
-            FROM {ScopedSheetRows}
-            {BuildWhere(filters)}
-            GROUP BY {RawExpression(GroupPathParameter)} COLLATE Latin1_General_CI_AI
-            ORDER BY [GroupKey];
-            """;
-    }
-
-    /// <summary>
-    /// Builds the matching-row listing.
-    /// </summary>
-    /// <param name="filters">The shape of each filter, in order.</param>
-    /// <returns>The command text.</returns>
-    /// <remarks>
-    /// <c>COUNT(*) OVER ()</c> carries the full match count on every returned row, so the cap can be
-    /// reported as a truncation instead of costing a second round trip to discover.
-    /// </remarks>
-    /// <exception cref="ArgumentNullException"><paramref name="filters"/> is <see langword="null"/>.</exception>
-    internal static string BuildRowList(IReadOnlyList<SheetFilterSpec> filters)
-    {
-        ArgumentNullException.ThrowIfNull(filters);
-
-        return $"""
-            SELECT TOP (@maxRows)
-                   r.[RowIndex],
-                   r.[Cells],
-                   COUNT(*) OVER () AS [MatchedRows]
-            FROM {ScopedSheetRows}
-            {BuildWhere(filters)}
-            ORDER BY r.[RowIndex];
-            """;
-    }
+    #region Private methods
 
     /// <summary>
     /// The typed read of one cell, chosen by the column's own inferred type.
@@ -262,4 +181,93 @@ internal static class SheetQuerySql
 
         return $"{expression} {comparison} {value}";
     }
+
+    #endregion
+
+    #region Public static methods
+
+    /// <summary>
+    /// Builds an ungrouped aggregate over one sheet.
+    /// </summary>
+    /// <param name="operation">The aggregate to compute.</param>
+    /// <param name="valueType">The aggregated column's inferred type, or <see langword="null"/> for a bare count.</param>
+    /// <param name="filters">The shape of each filter, in order.</param>
+    /// <returns>The command text.</returns>
+    /// <remarks>
+    /// Returns one row of three columns. <c>MatchedRows</c> and <c>ValueRows</c> are both reported so a
+    /// total that skipped cells its column's type could not read is never mistaken for a complete one.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="filters"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="operation"/> is not an aggregate.</exception>
+    internal static string BuildAggregate(
+        SheetQueryOperations operation, SheetColumnTypes? valueType, IReadOnlyList<SheetFilterSpec> filters)
+    {
+        ArgumentNullException.ThrowIfNull(filters);
+
+        return $"""
+            SELECT COUNT(*) AS [MatchedRows],
+                   {ValueRowsExpression(operation, valueType)} AS [ValueRows],
+                   {AggregateExpression(operation, valueType)} AS [Value]
+            FROM {ScopedSheetRows}
+            {BuildWhere(filters)};
+            """;
+    }
+
+    /// <summary>
+    /// Builds an aggregate grouped by a second column.
+    /// </summary>
+    /// <param name="operation">The aggregate to compute.</param>
+    /// <param name="valueType">The aggregated column's inferred type, or <see langword="null"/> for a bare count.</param>
+    /// <param name="filters">The shape of each filter, in order.</param>
+    /// <returns>The command text.</returns>
+    /// <remarks>
+    /// Ordered by the group key rather than by the aggregate so the same question returns the same rows
+    /// in the same order, and so a result trimmed by the group cap is trimmed predictably.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="filters"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="operation"/> is not an aggregate.</exception>
+    internal static string BuildGroupedAggregate(
+        SheetQueryOperations operation, SheetColumnTypes? valueType, IReadOnlyList<SheetFilterSpec> filters)
+    {
+        ArgumentNullException.ThrowIfNull(filters);
+
+        return $"""
+            SELECT TOP (@maxGroups)
+                   {RawExpression(GroupPathParameter)} COLLATE Latin1_General_CI_AI AS [GroupKey],
+                   COUNT(*) AS [MatchedRows],
+                   {ValueRowsExpression(operation, valueType)} AS [ValueRows],
+                   {AggregateExpression(operation, valueType)} AS [Value]
+            FROM {ScopedSheetRows}
+            {BuildWhere(filters)}
+            GROUP BY {RawExpression(GroupPathParameter)} COLLATE Latin1_General_CI_AI
+            ORDER BY [GroupKey];
+            """;
+    }
+
+    /// <summary>
+    /// Builds the matching-row listing.
+    /// </summary>
+    /// <param name="filters">The shape of each filter, in order.</param>
+    /// <returns>The command text.</returns>
+    /// <remarks>
+    /// <c>COUNT(*) OVER ()</c> carries the full match count on every returned row, so the cap can be
+    /// reported as a truncation instead of costing a second round trip to discover.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="filters"/> is <see langword="null"/>.</exception>
+    internal static string BuildRowList(IReadOnlyList<SheetFilterSpec> filters)
+    {
+        ArgumentNullException.ThrowIfNull(filters);
+
+        return $"""
+            SELECT TOP (@maxRows)
+                   r.[RowIndex],
+                   r.[Cells],
+                   COUNT(*) OVER () AS [MatchedRows]
+            FROM {ScopedSheetRows}
+            {BuildWhere(filters)}
+            ORDER BY r.[RowIndex];
+            """;
+    }
+
+    #endregion
 }

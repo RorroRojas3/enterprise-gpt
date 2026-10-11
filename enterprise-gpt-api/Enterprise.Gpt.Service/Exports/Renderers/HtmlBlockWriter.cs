@@ -14,18 +14,7 @@ namespace Enterprise.Gpt.Service.Exports.Renderers;
 /// </remarks>
 public static class HtmlBlockWriter
 {
-    /// <summary>
-    /// Writes blocks as HTML.
-    /// </summary>
-    /// <param name="blocks">The blocks, in document order.</param>
-    /// <returns>The markup, carrying no wrapping element of its own.</returns>
-    public static string Write(IReadOnlyList<ExportBlock> blocks)
-    {
-        var builder = new StringBuilder();
-        WriteBlocks(builder, blocks);
-
-        return builder.ToString();
-    }
+    #region Private methods
 
     private static void WriteBlocks(StringBuilder builder, IReadOnlyList<ExportBlock> blocks)
     {
@@ -135,7 +124,7 @@ public static class HtmlBlockWriter
 
     private static void WriteTable(StringBuilder builder, TableBlock table)
     {
-        IReadOnlyList<TableRowBlock> rows =
+        var rows =
             table.HeaderRow is null ? table.Rows : [table.HeaderRow, .. table.Rows];
 
         if (rows.Count == 0)
@@ -267,4 +256,23 @@ public static class HtmlBlockWriter
     }
 
     private static string Encode(string value) => WebUtility.HtmlEncode(value);
+
+    #endregion
+
+    #region Public static methods
+
+    /// <summary>
+    /// Writes blocks as HTML.
+    /// </summary>
+    /// <param name="blocks">The blocks, in document order.</param>
+    /// <returns>The markup, carrying no wrapping element of its own.</returns>
+    public static string Write(IReadOnlyList<ExportBlock> blocks)
+    {
+        var builder = new StringBuilder();
+        WriteBlocks(builder, blocks);
+
+        return builder.ToString();
+    }
+
+    #endregion
 }

@@ -17,6 +17,8 @@ namespace Enterprise.Gpt.Api.Configuration.Providers;
 /// </summary>
 internal static class AmazonBedrockProviderConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Registers the validated options and, when <c>AmazonBedrock:Enabled</c> is set, the runtime client and the
     /// keyed chat client.
@@ -62,4 +64,6 @@ internal static class AmazonBedrockProviderConfiguration
 
         return services;
     }
+
+    #endregion
 }

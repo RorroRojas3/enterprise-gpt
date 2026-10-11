@@ -24,7 +24,7 @@ public sealed class SandboxSpikeFixture : IAsyncLifetime
     private Task<SandboxInventory>? _inventory;
 
     /// <summary>Gets whether the spike is opted in and configured on this machine.</summary>
-    public bool IsEnabled => SpikeConfiguration.IsEnabled;
+    public static bool IsEnabled => SpikeConfiguration.IsEnabled;
 
     /// <summary>Gets the shared sandbox conversation.</summary>
     /// <exception cref="InvalidOperationException">The spike is not enabled, so no session was opened —

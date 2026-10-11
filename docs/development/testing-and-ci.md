@@ -8,18 +8,39 @@ xUnit **v3**, NSubstitute for isolation, plain `Assert` (no FluentAssertions —
 commercially licensed). Tests are named `MethodName_Scenario_ExpectedBehavior` and follow
 Arrange-Act-Assert without `// Arrange` comments.
 
+The solution is `enterprise-gpt-api/Enterprise.Gpt.slnx`, and both test projects live under
+`enterprise-gpt-api/test/`. `global.json` selects the **Microsoft Testing Platform** runner, so
+`dotnet test` takes the project through `--project`, and xUnit's own filters go after a bare `--`
+(the VSTest `--filter` expression does not apply).
+
+### The build is the style gate
+
+`Directory.Build.props` sets `TreatWarningsAsErrors`, `AnalysisLevel` `latest-recommended`,
+`EnforceCodeStyleInBuild` and `GenerateDocumentationFile` (CS1591 off, which still turns on cref and
+`<param>` checks and unused-using detection, IDE0005). `.editorconfig` raises `var`, collection
+expressions, file-scoped namespaces and primary constructors to warnings, so a violation fails
+`dotnet build` rather than waiting for review; a namespace that does not match its folder (IDE0130)
+is an error. Incremental builds skip up-to-date projects and do not repeat their warnings, so use
+`--no-incremental` when auditing the warning count. `dotnet format --verify-no-changes` is the
+formatting gate.
+
 ### `Enterprise.Gpt.Unit.Test`
+
+The folders mirror the product projects (`Api/`, `Service/`, `Repository/`, `Dto/`, and so on).
 
 Services that take `EnterpriseGptDbContext` run on **SQLite in-memory** via `SqliteDbContextFixture`
 — chosen over the EF in-memory provider because `ExecuteUpdateAsync` is relational. A model
-customizer neutralizes the rowversion and vector columns SQLite cannot handle. Each test class news
-up its own fixture rather than sharing one through `IClassFixture`.
+customizer neutralizes the rowversion and vector columns SQLite cannot handle. The fixture's
+`Context` and scoped contexts carry the production `SoftDeleteInterceptor` and
+`AuditTimestampInterceptor`, driven by the test's `TimeProvider`; `CreateContext()` is bare, so
+arrange and assert code writes and reads exactly what it states. Each test class news up its own
+fixture rather than sharing one through `IClassFixture`.
 
 The project links the real `Enterprise.Gpt.Api/appsettings.json` in, so configuration tests bind the
 shipped file rather than a copy.
 
-`InternalsVisibleTo` on `Api` and `Service` is what lets these tests call the internal endpoint
-handlers directly, without a host.
+`InternalsVisibleTo` on `Api`, `Service` and `Repository` is what lets these tests call the internal
+endpoint handlers, interceptors and the Cosmos gateway directly, without a host.
 
 ### `Enterprise.Gpt.Integration.Test`
 
@@ -38,8 +59,10 @@ will do) and the Cosmos vNext emulator. No secrets and no Azure credentials are 
 
 ```bash
 # in enterprise-gpt-api/
-dotnet test                                     # everything; integration needs Docker
-dotnet test --filter "Category!=Integration"    # unit only
+dotnet test                                                    # everything; integration needs Docker
+dotnet test --project test/Enterprise.Gpt.Unit.Test            # unit only
+dotnet test --project test/Enterprise.Gpt.Unit.Test -- --filter-class "*ModelServiceTests"   # one class
+dotnet test --project test/Enterprise.Gpt.Unit.Test -- --filter-not-trait "Category=Integration"   # what api-ci.yml runs
 ```
 
 ## Frontend tests
@@ -184,8 +207,8 @@ with no result at all.
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/TestInfrastructure/` | SQLite fixture, time provider, harnesses |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/TestInfrastructure/` | Containers, factory, auth handler, fakes |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/TestInfrastructure/` | SQLite fixture, time provider, harnesses |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Integration.Test/TestInfrastructure/` | Containers, factory, auth handler, fakes |
 | `enterprise-gpt-ui/src/testing/` | Providers, DOM patches, axe harness, route coverage |
 | `enterprise-gpt-ui/scripts/` | The five gate scripts |
 | `enterprise-gpt-ui/angular.json` | The two test targets and the budgets |

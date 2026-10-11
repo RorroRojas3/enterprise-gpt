@@ -73,7 +73,7 @@ public interface IMcpClientCache : IAsyncDisposable
 /// (users × servers), so no size management is needed. A background sweep disposes
 /// expired, unleased entries; the container disposes the cache itself on shutdown.
 /// </summary>
-public sealed class McpClientCache : IMcpClientCache
+public sealed partial class McpClientCache : IMcpClientCache
 {
     // Retries cover benign races only (a co-waiter's creator canceling, an entry evicted
     // between completion and leasing); real factory failures always rethrow immediately.
@@ -82,13 +82,15 @@ public sealed class McpClientCache : IMcpClientCache
     private readonly ConcurrentDictionary<McpCacheKey, Lazy<Task<McpCacheEntry>>> _entries = new();
     private readonly ILogger<McpClientCache> _logger;
     private readonly McpClientCacheOptions _options;
+    private readonly TimeProvider _timeProvider;
     private readonly CancellationTokenSource _sweepCts = new();
     private readonly Task _sweepTask;
 
-    public McpClientCache(ILogger<McpClientCache> logger, IOptions<McpClientCacheOptions> options)
+    public McpClientCache(ILogger<McpClientCache> logger, IOptions<McpClientCacheOptions> options, TimeProvider timeProvider)
     {
         _logger = logger;
         _options = options.Value;
+        _timeProvider = timeProvider;
         _sweepTask = SweepLoopAsync(_sweepCts.Token);
     }
 
@@ -151,7 +153,7 @@ public sealed class McpClientCache : IMcpClientCache
             // The freshness gate applies to previously cached entries only. A freshly
             // created entry is always served — even when the identity provider returned a
             // short-lived token — otherwise it would be evicted and recreated forever.
-            if (!created && entry.EffectiveExpiry - DateTimeOffset.UtcNow < _options.MinRemainingLifetimeForStream)
+            if (!created && entry.EffectiveExpiry - _timeProvider.GetUtcNow() < _options.MinRemainingLifetimeForStream)
             {
                 if (RemoveIfCurrent(key, lazy))
                 {
@@ -208,7 +210,7 @@ public sealed class McpClientCache : IMcpClientCache
             }
         }
 
-        _logger.LogInformation("Evicted cached MCP clients for server {McpServerId}", mcpServerId);
+        LogEvictedServerClients(_logger, mcpServerId);
     }
 
     /// <inheritdoc />
@@ -224,8 +226,7 @@ public sealed class McpClientCache : IMcpClientCache
             _ = EvictWhenCompletedAsync(lazy);
         }
 
-        _logger.LogInformation(
-            "Evicted the cached MCP client for server {McpServerId} and user {UserId}", mcpServerId, userOid);
+        LogEvictedUserClient(_logger, mcpServerId, userOid);
     }
 
     /// <inheritdoc />
@@ -245,134 +246,21 @@ public sealed class McpClientCache : IMcpClientCache
     }
 
     /// <summary>
-    /// Releases one lease; called by <see cref="McpToolLease.DisposeAsync"/>. Disposes the
-    /// client when the entry is evicted and this was the last lease.
-    /// </summary>
-    private async ValueTask ReleaseLeaseAsync(McpCacheEntry entry)
-    {
-        if (entry.ReleaseLease())
-        {
-            await DisposeClientAsync(entry).ConfigureAwait(false);
-        }
-    }
-
-    private async Task<McpCacheEntry> CreateEntryAsync(
-        Func<CancellationToken, Task<McpCacheEntrySource>> factory,
-        CancellationToken cancellationToken)
-    {
-        var source = await factory(cancellationToken).ConfigureAwait(false);
-
-        // The entry expires when its token does (minus a safety buffer) and never later
-        // than the hard age cap; entries without a token only get the age cap.
-        var now = DateTimeOffset.UtcNow;
-        var maxLifetimeExpiry = now + _options.MaxEntryLifetime;
-        var effectiveExpiry = source.TokenExpiresOn is { } tokenExpiresOn
-            ? Min(tokenExpiresOn - _options.TokenExpiryBuffer, maxLifetimeExpiry)
-            : maxLifetimeExpiry;
-
-        return new McpCacheEntry(source, effectiveExpiry);
-    }
-
-    private static DateTimeOffset Min(DateTimeOffset left, DateTimeOffset right)
-    {
-        return left <= right ? left : right;
-    }
-
-    private bool RemoveIfCurrent(McpCacheKey key, Lazy<Task<McpCacheEntry>> lazy)
-    {
-        return _entries.TryRemove(new KeyValuePair<McpCacheKey, Lazy<Task<McpCacheEntry>>>(key, lazy));
-    }
-
-    private void EvictEntry(McpCacheEntry entry)
-    {
-        if (entry.MarkEvicted())
-        {
-            _ = DisposeClientAsync(entry);
-        }
-    }
-
-    private async Task EvictWhenCompletedAsync(Lazy<Task<McpCacheEntry>> lazy)
-    {
-        try
-        {
-            var entry = await lazy.Value.ConfigureAwait(false);
-            EvictEntry(entry);
-        }
-        catch
-        {
-            // The factory failed or was canceled; it disposed any partial client itself.
-        }
-    }
-
-    private async Task DisposeClientAsync(McpCacheEntry entry)
-    {
-        try
-        {
-            await entry.Client.DisposeAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to dispose an evicted MCP client.");
-        }
-    }
-
-    private async Task SweepLoopAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var timer = new PeriodicTimer(_options.SweepInterval);
-            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
-            {
-                await SweepExpiredEntriesAsync().ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Normal shutdown.
-        }
-    }
-
-    private async Task SweepExpiredEntriesAsync()
-    {
-        var now = DateTimeOffset.UtcNow;
-        foreach (var kvp in _entries)
-        {
-            if (!kvp.Value.IsValueCreated || !kvp.Value.Value.IsCompletedSuccessfully)
-            {
-                continue;
-            }
-
-            var entry = await kvp.Value.Value.ConfigureAwait(false);
-            if (entry.EffectiveExpiry <= now && _entries.TryRemove(kvp))
-            {
-                EvictEntry(entry);
-            }
-        }
-    }
-
-    /// <summary>
     /// A cached client with its tools, expiry, and lease state. Lease transitions are
     /// small lock-protected critical sections; exactly one path ever disposes the client.
     /// </summary>
-    private sealed class McpCacheEntry
+    private sealed class McpCacheEntry(McpCacheEntrySource source, DateTimeOffset effectiveExpiry)
     {
         private readonly object _sync = new();
         private int _leaseCount;
         private bool _evicted;
         private bool _disposed;
 
-        public McpCacheEntry(McpCacheEntrySource source, DateTimeOffset effectiveExpiry)
-        {
-            Client = source.Client;
-            Tools = source.Tools;
-            EffectiveExpiry = effectiveExpiry;
-        }
+        public IAsyncDisposable Client { get; } = source.Client;
 
-        public IAsyncDisposable Client { get; }
+        public IReadOnlyList<AITool> Tools { get; } = source.Tools;
 
-        public IReadOnlyList<AITool> Tools { get; }
-
-        public DateTimeOffset EffectiveExpiry { get; }
+        public DateTimeOffset EffectiveExpiry { get; } = effectiveExpiry;
 
         public bool TryAddLease()
         {
@@ -444,4 +332,127 @@ public sealed class McpClientCache : IMcpClientCache
             await cache.ReleaseLeaseAsync(entry).ConfigureAwait(false);
         }
     }
+
+    #region Private methods
+
+    /// <summary>
+    /// Releases one lease; called by <see cref="McpToolLease.DisposeAsync"/>. Disposes the
+    /// client when the entry is evicted and this was the last lease.
+    /// </summary>
+    private async ValueTask ReleaseLeaseAsync(McpCacheEntry entry)
+    {
+        if (entry.ReleaseLease())
+        {
+            await DisposeClientAsync(entry).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<McpCacheEntry> CreateEntryAsync(
+        Func<CancellationToken, Task<McpCacheEntrySource>> factory,
+        CancellationToken cancellationToken)
+    {
+        var source = await factory(cancellationToken).ConfigureAwait(false);
+
+        // The entry expires when its token does (minus a safety buffer) and never later
+        // than the hard age cap; entries without a token only get the age cap.
+        var now = _timeProvider.GetUtcNow();
+        var maxLifetimeExpiry = now + _options.MaxEntryLifetime;
+        var effectiveExpiry = source.TokenExpiresOn is { } tokenExpiresOn
+            ? Min(tokenExpiresOn - _options.TokenExpiryBuffer, maxLifetimeExpiry)
+            : maxLifetimeExpiry;
+
+        return new McpCacheEntry(source, effectiveExpiry);
+    }
+
+    private static DateTimeOffset Min(DateTimeOffset left, DateTimeOffset right)
+    {
+        return left <= right ? left : right;
+    }
+
+    private bool RemoveIfCurrent(McpCacheKey key, Lazy<Task<McpCacheEntry>> lazy)
+    {
+        return _entries.TryRemove(new KeyValuePair<McpCacheKey, Lazy<Task<McpCacheEntry>>>(key, lazy));
+    }
+
+    private void EvictEntry(McpCacheEntry entry)
+    {
+        if (entry.MarkEvicted())
+        {
+            _ = DisposeClientAsync(entry);
+        }
+    }
+
+    private async Task EvictWhenCompletedAsync(Lazy<Task<McpCacheEntry>> lazy)
+    {
+        try
+        {
+            var entry = await lazy.Value.ConfigureAwait(false);
+            EvictEntry(entry);
+        }
+        catch
+        {
+            // The factory failed or was canceled; it disposed any partial client itself.
+        }
+    }
+
+    private async Task DisposeClientAsync(McpCacheEntry entry)
+    {
+        try
+        {
+            await entry.Client.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            LogEvictedClientDisposeFailed(_logger, ex);
+        }
+    }
+
+    private async Task SweepLoopAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(_options.SweepInterval, _timeProvider);
+            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+            {
+                await SweepExpiredEntriesAsync().ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal shutdown.
+        }
+    }
+
+    private async Task SweepExpiredEntriesAsync()
+    {
+        var now = _timeProvider.GetUtcNow();
+        foreach (var kvp in _entries)
+        {
+            if (!kvp.Value.IsValueCreated || !kvp.Value.Value.IsCompletedSuccessfully)
+            {
+                continue;
+            }
+
+            var entry = await kvp.Value.Value.ConfigureAwait(false);
+            if (entry.EffectiveExpiry <= now && _entries.TryRemove(kvp))
+            {
+                EvictEntry(entry);
+            }
+        }
+    }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Evicted cached MCP clients for server {McpServerId}")]
+    private static partial void LogEvictedServerClients(ILogger logger, Guid mcpServerId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Evicted the cached MCP client for server {McpServerId} and user {UserId}")]
+    private static partial void LogEvictedUserClient(ILogger logger, Guid mcpServerId, Guid userId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to dispose an evicted MCP client.")]
+    private static partial void LogEvictedClientDisposeFailed(ILogger logger, Exception exception);
+
+    #endregion
 }

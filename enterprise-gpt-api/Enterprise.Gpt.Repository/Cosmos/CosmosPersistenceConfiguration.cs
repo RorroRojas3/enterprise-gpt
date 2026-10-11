@@ -16,6 +16,8 @@ namespace Enterprise.Gpt.Repository.Cosmos;
 /// </summary>
 public static class CosmosPersistenceConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Registers the validated Cosmos options, the account client, the transcript store and its provisioner.
     /// </summary>
@@ -45,4 +47,6 @@ public static class CosmosPersistenceConfiguration
     /// </summary>
     public static IHealthChecksBuilder AddEnterpriseGptCosmosHealthCheck(this IHealthChecksBuilder builder, string name, IEnumerable<string> tags) =>
         builder.AddCheck<CosmosHealthCheck>(name, tags: tags);
+
+    #endregion
 }

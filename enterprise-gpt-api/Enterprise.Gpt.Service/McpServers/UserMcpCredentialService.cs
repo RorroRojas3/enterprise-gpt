@@ -52,7 +52,7 @@ public interface IUserMcpCredentialService
     Task MarkRejectedAsync(Guid mcpServerId, Guid userOid, CancellationToken cancellationToken = default);
 }
 
-public class UserMcpCredentialService(ILogger<UserMcpCredentialService> logger,
+public partial class UserMcpCredentialService(ILogger<UserMcpCredentialService> logger,
     ITokenService tokenService,
     EnterpriseGptDbContext ctx,
     IUserSecretProtector protector,
@@ -86,11 +86,68 @@ public class UserMcpCredentialService(ILogger<UserMcpCredentialService> logger,
 
         _mcpClientCache.InvalidateServerForUser(mcpServerId, oid);
 
-        _logger.LogInformation(
-            "User {UserId} saved an API key for MCP server {McpServerId}", oid, mcpServerId);
+        LogApiKeySaved(_logger, oid, mcpServerId);
 
         return credential.MapToMcpCredentialStatusDto(mcpServerId);
     }
+
+    /// <inheritdoc />
+    public async Task DeleteAsync(Guid mcpServerId, CancellationToken cancellationToken = default)
+    {
+        var oid = _tokenService.GetOid();
+        _ = await LoadPermittedServerAsync(mcpServerId, oid, cancellationToken);
+
+        var credential = await _ctx.UserMcpCredentials
+            .FirstOrDefaultAsync(c => c.UserId == oid && c.McpServerId == mcpServerId, cancellationToken)
+            ?? throw new NotFoundException("No API key is stored for this MCP server.");
+
+        credential.DateDeactivated = _timeProvider.GetUtcNow();
+        credential.ModifiedById = oid;
+
+        await _ctx.SaveChangesOrConflictAsync("Your API key for this MCP server was changed by another request. Reload and try again.", cancellationToken);
+
+        _mcpClientCache.InvalidateServerForUser(mcpServerId, oid);
+
+        LogApiKeyRemoved(_logger, oid, mcpServerId);
+    }
+
+    /// <inheritdoc />
+    public async Task MarkRejectedAsync(Guid mcpServerId, Guid userOid, CancellationToken cancellationToken = default)
+    {
+        var date = _timeProvider.GetUtcNow();
+
+        // ExecuteUpdate rather than load-and-save: this is called mid-turn on the streaming
+        // request's own scoped context, and SaveChangesAsync there would flush whatever else
+        // that request happens to be tracking.
+        var updated = await _ctx.UserMcpCredentials
+            .Where(c => c.UserId == userOid && c.McpServerId == mcpServerId && !c.DateRejected.HasValue)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(c => c.DateRejected, date)
+                    .SetProperty(c => c.DateModified, date)
+                    .SetProperty(c => c.ModifiedById, userOid),
+                cancellationToken);
+
+        if (updated == 0)
+        {
+            return;
+        }
+
+        // ExecuteUpdate writes past the change tracker, so a copy this context already holds
+        // would answer the next read with the pre-rejection value — and the save that clears a
+        // rejection would then find nothing to change.
+        foreach (var entry in _ctx.ChangeTracker
+            .Entries<UserMcpCredential>()
+            .Where(e => e.Entity.UserId == userOid && e.Entity.McpServerId == mcpServerId)
+            .ToList())
+        {
+            entry.State = EntityState.Detached;
+        }
+
+        LogApiKeyRejected(_logger, mcpServerId, userOid);
+    }
+
+    #region Private methods
 
     /// <summary>
     /// Writes the user's key, inserting or updating, and retries once when a concurrent save
@@ -149,64 +206,6 @@ public class UserMcpCredentialService(ILogger<UserMcpCredentialService> logger,
         }
     }
 
-    /// <inheritdoc />
-    public async Task DeleteAsync(Guid mcpServerId, CancellationToken cancellationToken = default)
-    {
-        var oid = _tokenService.GetOid();
-        _ = await LoadPermittedServerAsync(mcpServerId, oid, cancellationToken);
-
-        var credential = await _ctx.UserMcpCredentials
-            .FirstOrDefaultAsync(c => c.UserId == oid && c.McpServerId == mcpServerId, cancellationToken)
-            ?? throw new NotFoundException("No API key is stored for this MCP server.");
-
-        credential.DateDeactivated = _timeProvider.GetUtcNow();
-        credential.ModifiedById = oid;
-
-        await _ctx.SaveChangesOrConflictAsync("Your API key for this MCP server was changed by another request. Reload and try again.", cancellationToken);
-
-        _mcpClientCache.InvalidateServerForUser(mcpServerId, oid);
-
-        _logger.LogInformation(
-            "User {UserId} removed their API key for MCP server {McpServerId}", oid, mcpServerId);
-    }
-
-    /// <inheritdoc />
-    public async Task MarkRejectedAsync(Guid mcpServerId, Guid userOid, CancellationToken cancellationToken = default)
-    {
-        var date = _timeProvider.GetUtcNow();
-
-        // ExecuteUpdate rather than load-and-save: this is called mid-turn on the streaming
-        // request's own scoped context, and SaveChangesAsync there would flush whatever else
-        // that request happens to be tracking.
-        var updated = await _ctx.UserMcpCredentials
-            .Where(c => c.UserId == userOid && c.McpServerId == mcpServerId && !c.DateRejected.HasValue)
-            .ExecuteUpdateAsync(
-                setters => setters
-                    .SetProperty(c => c.DateRejected, date)
-                    .SetProperty(c => c.DateModified, date)
-                    .SetProperty(c => c.ModifiedById, userOid),
-                cancellationToken);
-
-        if (updated == 0)
-        {
-            return;
-        }
-
-        // ExecuteUpdate writes past the change tracker, so a copy this context already holds
-        // would answer the next read with the pre-rejection value — and the save that clears a
-        // rejection would then find nothing to change.
-        foreach (var entry in _ctx.ChangeTracker
-            .Entries<UserMcpCredential>()
-            .Where(e => e.Entity.UserId == userOid && e.Entity.McpServerId == mcpServerId)
-            .ToList())
-        {
-            entry.State = EntityState.Detached;
-        }
-
-        _logger.LogInformation(
-            "MCP server {McpServerId} rejected the API key of user {UserId}", mcpServerId, userOid);
-    }
-
     /// <summary>
     /// Loads an active server the caller is permitted to use.
     /// </summary>
@@ -246,4 +245,19 @@ public class UserMcpCredentialService(ILogger<UserMcpCredentialService> logger,
     {
         return apiKey.Length <= 4 ? string.Empty : apiKey[^4..];
     }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "User {UserId} saved an API key for MCP server {McpServerId}")]
+    private static partial void LogApiKeySaved(ILogger logger, Guid userId, Guid mcpServerId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "User {UserId} removed their API key for MCP server {McpServerId}")]
+    private static partial void LogApiKeyRemoved(ILogger logger, Guid userId, Guid mcpServerId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "MCP server {McpServerId} rejected the API key of user {UserId}")]
+    private static partial void LogApiKeyRejected(ILogger logger, Guid mcpServerId, Guid userId);
+
+    #endregion
 }

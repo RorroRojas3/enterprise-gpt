@@ -25,8 +25,10 @@ namespace Enterprise.Gpt.Api.Startup;
 /// <c>WebApplicationFactory</c> starts the host before the integration fixture creates the schema.
 /// </para>
 /// </remarks>
-public static class FileAgentBootstrapper
+public static partial class FileAgentBootstrapper
 {
+    #region Public static methods
+
     /// <summary>
     /// Resolves the pinned model, verifies its client and its keyed sandbox client exist, and forces
     /// the prompt and skill content to be read off disk.
@@ -63,13 +65,17 @@ public static class FileAgentBootstrapper
 
         var skills = FileAgentSkills.Discover(skillsRoot);
 
-        logger.LogInformation(
-            "The File Agent will use model {ModelId} ({DeploymentName}) on provider {ProviderId}, with {SkillCount} skill(s) "
-                + "and a conversion matrix of {CellCount} cell(s).",
-            model.ModelId,
-            model.DeploymentName,
-            model.ProviderId,
-            skills.Count,
-            matrix.Cells.Count);
+        LogFileAgentModel(
+            logger, model.ModelId, model.DeploymentName, model.ProviderId, skills.Count, matrix.Cells.Count);
     }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "The File Agent will use model {ModelId} ({DeploymentName}) on provider {ProviderId}, with {SkillCount} skill(s) and a conversion matrix of {CellCount} cell(s).")]
+    private static partial void LogFileAgentModel(
+        ILogger logger, Guid modelId, string deploymentName, Guid providerId, int skillCount, int cellCount);
+
+    #endregion
 }

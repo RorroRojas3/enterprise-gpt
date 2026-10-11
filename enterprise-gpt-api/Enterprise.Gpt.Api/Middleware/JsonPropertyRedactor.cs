@@ -81,6 +81,8 @@ public sealed class JsonPropertyRedactor(IOptions<RequestLoggingOptions> options
         }
     }
 
+    #region Private methods
+
     private void WriteRedacted(Utf8JsonWriter writer, JsonElement element)
     {
         switch (element.ValueKind)
@@ -147,4 +149,6 @@ public sealed class JsonPropertyRedactor(IOptions<RequestLoggingOptions> options
         contentType is not null
         && (contentType.Contains("/json", StringComparison.OrdinalIgnoreCase)
             || contentType.Contains("+json", StringComparison.OrdinalIgnoreCase));
+
+    #endregion
 }

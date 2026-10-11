@@ -137,7 +137,7 @@ before every cell in it is materialized.
 ## Status model
 
 ```csharp
-public enum JobStatus
+public enum JobStatuses
 {
     Queued = 1, Uploading = 2, Extracting = 3, Embedding = 4, Processed = 5, Failed = 6,
     Chunking = 7, Persisting = 8,
@@ -150,7 +150,7 @@ matches execution order. Never renumber; always append.
 
 `DocumentEndpoints.MapState` projects the stage onto a four-value vocabulary:
 
-| `JobStatus` | `state` |
+| `JobStatuses` | `state` |
 | --- | --- |
 | `Queued` | `Enqueued` |
 | `Processed` | `Succeeded` |
@@ -198,7 +198,7 @@ stopping token, and tells a caller's cancel apart from a shutdown with
 `!stoppingToken.IsCancellationRequested` — both throw `OperationCanceledException` off the same
 linked token, so the host token is the only thing that tells them apart.
 
-`JobStatus.Cancelled = 9` is terminal and, like `Chunking` and `Persisting` before it, **appended**
+`JobStatuses.Cancelled = 9` is terminal and, like `Chunking` and `Persisting` before it, **appended**
 rather than inserted in pipeline order. `DocumentEndpoints.MapState` maps it **explicitly** to
 `state: "Failed"` — falling through to the `Processing` default would leave a client polling a job
 that will never move again — while the free-form `message`/`status` still reads `"Cancelled"`. The
@@ -241,17 +241,17 @@ another replica, which is worse than the honest 404 today's process-local pair g
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/DocumentService.cs` | Sequencing, persistence, the parent re-check, `DeactivateConversationDocumentAsync`'s cascade, `CancelUploadAsync`'s race |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/` | The five extractors and the factory |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Extraction/SheetSegmentBuilder.cs` | Shared shaping and refusals for `.xlsx` and `.csv` |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Chunking/TokenTextChunker.cs` | Splitting |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/DocumentService.cs` | Sequencing, persistence, the parent re-check, `DeactivateConversationDocumentAsync`'s cascade, `CancelUploadAsync`'s race |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/Extraction/` | The five extractors and the factory |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/Extraction/SheetSegmentBuilder.cs` | Shared shaping and refusals for `.xlsx` and `.csv` |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/Chunking/TokenTextChunker.cs` | Splitting |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/BackgroundJobs/` | Queue, processor, status store, cancellation registry |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/BackgroundJobs/JobCancellationRegistry.cs` | Per-job `CancellationTokenSource`s, registered at enqueue |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Exceptions/JobCancelledException.cs` | Signals a job that lost the terminal-slot race |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Validators/UploadedFileValidator.cs` | Extension and size validation |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/BackgroundJobs/Exceptions/JobCancelledException.cs` | Signals a job that lost the terminal-slot race |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/FileDtoValidator.cs` | Extension and size validation |
 | `enterprise-gpt-ui/src/app/core/documents/upload-cancel-client.ts` | Fire-and-forget `DELETE` for the composer's Stop control |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Extraction/` | Extractor and ceiling tests |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/BackgroundJobs/BackgroundJobProcessorTests.cs` | The cancel-vs-shutdown and terminal-slot-race tests |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Service/Documents/Extraction/` | Extractor and ceiling tests |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Service/BackgroundJobs/BackgroundJobProcessorTests.cs` | The cancel-vs-shutdown and terminal-slot-race tests |
 
 ## Related
 

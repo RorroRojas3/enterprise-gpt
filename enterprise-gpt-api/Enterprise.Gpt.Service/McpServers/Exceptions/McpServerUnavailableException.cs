@@ -12,23 +12,16 @@ namespace Enterprise.Gpt.Service.McpServers.Exceptions;
 /// A consent or Conditional Access requirement lands here too: these servers are consented tenant-wide,
 /// so a UI-required result is a registration fault, not a state the signed-in user can resolve.
 /// </remarks>
-public class McpServerUnavailableException : ProblemException
+/// <param name="serverName">The display name of the server that could not be used.</param>
+/// <param name="innerException">The connection, protocol or token failure.</param>
+public class McpServerUnavailableException(string serverName, Exception innerException)
+    : ProblemException(
+        HttpStatusCode.BadGateway, ProblemCodes.McpServerUnavailable, $"MCP server '{serverName}' is unavailable.", innerException)
 {
-    /// <summary>
-    /// Initializes a new instance of the <see cref="McpServerUnavailableException"/> class.
-    /// </summary>
-    /// <param name="serverName">The display name of the server that could not be used.</param>
-    /// <param name="innerException">The connection, protocol or token failure.</param>
-    public McpServerUnavailableException(string serverName, Exception innerException)
-        : base(HttpStatusCode.BadGateway, ProblemCodes.McpServerUnavailable, $"MCP server '{serverName}' is unavailable.", innerException)
-    {
-        ServerName = serverName;
-    }
-
     /// <summary>
     /// Gets the display name of the MCP server that could not be used.
     /// </summary>
-    public string ServerName { get; }
+    public string ServerName { get; } = serverName;
 
     /// <inheritdoc />
     public override IReadOnlyDictionary<string, object?> Extensions =>

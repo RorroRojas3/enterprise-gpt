@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Andes.Extensions.AI;
 using Enterprise.Gpt.Common.Constants;
@@ -371,7 +372,7 @@ public sealed class ConversationServiceTests : IDisposable
 
                 var ordered = descending
                     ? filtered.OrderByDescending(x => x.DateCreated).ToList()
-                    : filtered.OrderBy(x => x.DateCreated).ToList();
+                    : [.. filtered.OrderBy(x => x.DateCreated)];
 
                 // Deliberately smaller than asked for, which Cosmos is entitled to return.
                 var take = Math.Min(serverPageSize, requested ?? serverPageSize);
@@ -379,7 +380,7 @@ public sealed class ConversationServiceTests : IDisposable
                 var next = offset + items.Count;
 
                 return new TranscriptPage<TranscriptMessageDocument>(
-                    items, next < ordered.Count ? next.ToString() : null);
+                    items, next < ordered.Count ? next.ToString(CultureInfo.InvariantCulture) : null);
             });
     }
 
@@ -589,7 +590,7 @@ public sealed class ConversationServiceTests : IDisposable
         ConversationService? service = null)
     {
         var token = cancellationToken ?? TestContext.Current.CancellationToken;
-        var events = new List<AssistantUiEvent>();
+        List<AssistantUiEvent> events = [];
         await foreach (var uiEvent in (service ?? _service).StreamConversationAsync(conversationId, request, token))
         {
             events.Add(uiEvent);
@@ -1488,7 +1489,7 @@ public sealed class ConversationServiceTests : IDisposable
         var model = SetUpModel(isToolEnabled: true);
         var firstServerId = Guid.NewGuid();
         var secondServerId = Guid.NewGuid();
-        var tools = new List<AITool> { new FakeTool(), new FakeTool() };
+        List<AITool> tools = [new FakeTool(), new FakeTool()];
         var leaseSet = Substitute.For<IMcpToolLeaseSet>();
         leaseSet.Tools.Returns(tools);
         _mcpToolProvider.AcquireToolsAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
@@ -2494,7 +2495,7 @@ public sealed class ConversationServiceTests : IDisposable
     #endregion
 
     #region Transcript reads
-    private List<TranscriptMessageDocument> BuildTranscript(Guid conversationId, int userTurns)
+    private static List<TranscriptMessageDocument> BuildTranscript(Guid conversationId, int userTurns)
     {
         var start = new DateTimeOffset(2026, 8, 15, 12, 0, 0, TimeSpan.Zero);
 
@@ -3710,7 +3711,7 @@ public sealed class ConversationServiceTests : IDisposable
         _chatClient.StreamUsage = new UsageDetails { InputTokenCount = 11, OutputTokenCount = 7 };
         var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
 
-        var events = new List<AssistantUiEvent>();
+        List<AssistantUiEvent> events = [];
 
         await foreach (var uiEvent in _service.StreamConversationAsync(
             conversation.Id, request, TestContext.Current.CancellationToken))
@@ -3744,7 +3745,7 @@ public sealed class ConversationServiceTests : IDisposable
         var model = SetUpModel(isToolEnabled: true);
         var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
 
-        var events = new List<AssistantUiEvent>();
+        List<AssistantUiEvent> events = [];
 
         // Deleting the row the usage insert references breaks its foreign key, so the write throws
         // on a turn that otherwise ran to completion.
@@ -3784,7 +3785,7 @@ public sealed class ConversationServiceTests : IDisposable
         _chatClient.StreamFailure = new HttpRequestException("The provider dropped the connection.");
         var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
 
-        var events = new List<AssistantUiEvent>();
+        List<AssistantUiEvent> events = [];
 
         await Assert.ThrowsAsync<HttpRequestException>(async () =>
         {

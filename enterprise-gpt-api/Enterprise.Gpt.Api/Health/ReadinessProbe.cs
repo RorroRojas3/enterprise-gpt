@@ -14,10 +14,10 @@ namespace Enterprise.Gpt.Api.Health;
 /// <param name="health">Runs the registered checks.</param>
 /// <param name="timeProvider">Supplies the monotonic timestamps a snapshot ages against.</param>
 /// <param name="logger">Receives which dependency failed, which the anonymous response cannot carry.</param>
-internal sealed class ReadinessProbe(
+internal sealed partial class ReadinessProbe(
     HealthCheckService health,
     TimeProvider timeProvider,
-    ILogger<ReadinessProbe> logger)
+    ILogger<ReadinessProbe> logger) : IDisposable
 {
     /// <summary>How long one report is served for.</summary>
     /// <remarks>Below every platform's probe interval, so a real state change is never hidden for long.</remarks>
@@ -29,6 +29,9 @@ internal sealed class ReadinessProbe(
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     private Snapshot? _snapshot;
+
+    /// <inheritdoc />
+    public void Dispose() => _gate.Dispose();
 
     /// <summary>Returns the current report, running the checks only when the last one has aged out.</summary>
     /// <param name="predicate">Selects the checks that gate readiness.</param>
@@ -74,6 +77,14 @@ internal sealed class ReadinessProbe(
         }
     }
 
+    /// <summary>
+    /// Report and timestamp published as one reference, so the lock-free read cannot pair a fresh
+    /// timestamp with a stale report.
+    /// </summary>
+    private sealed record Snapshot(HealthReport Report, long TakenAt);
+
+    #region Private methods
+
     private void LogFailures(HealthReport report)
     {
         if (report.Status is HealthStatus.Healthy)
@@ -83,12 +94,7 @@ internal sealed class ReadinessProbe(
 
         foreach (var (name, entry) in report.Entries.Where(entry => entry.Value.Status is not HealthStatus.Healthy))
         {
-            _logger.LogError(
-                entry.Exception,
-                "Readiness check {CheckName} reported {CheckStatus} after {ElapsedMilliseconds} ms",
-                name,
-                entry.Status,
-                entry.Duration.TotalMilliseconds);
+            LogReadinessCheckReported(_logger, entry.Exception, name, entry.Status, entry.Duration.TotalMilliseconds);
         }
     }
 
@@ -97,9 +103,13 @@ internal sealed class ReadinessProbe(
             ? snapshot.Report
             : null;
 
-    /// <summary>
-    /// Report and timestamp published as one reference, so the lock-free read cannot pair a fresh
-    /// timestamp with a stale report.
-    /// </summary>
-    private sealed record Snapshot(HealthReport Report, long TakenAt);
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Readiness check {CheckName} reported {CheckStatus} after {ElapsedMilliseconds} ms")]
+    private static partial void LogReadinessCheckReported(
+        ILogger logger, Exception? exception, string checkName, HealthStatus checkStatus, double elapsedMilliseconds);
+
+    #endregion
 }

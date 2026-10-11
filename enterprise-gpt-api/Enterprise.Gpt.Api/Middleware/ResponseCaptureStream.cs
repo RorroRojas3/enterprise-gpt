@@ -51,19 +51,6 @@ internal sealed class ResponseCaptureStream(
     /// </summary>
     internal string? CapturedContentType { get; private set; }
 
-    /// <summary>
-    /// Returns what was captured, or <see langword="null"/> when nothing was.
-    /// </summary>
-    /// <returns>The captured text, decoded as UTF-8.</returns>
-    /// <remarks>
-    /// The cap is a byte count, so a truncated capture can end mid-sequence and decode to a replacement
-    /// character. Cutting on a character boundary instead would mean decoding incrementally on the write
-    /// path, which is real work on every response to tidy up the last glyph of a payload that is already
-    /// explicitly marked as truncated.
-    /// </remarks>
-    internal string? GetCapturedText() =>
-        _capturedBytes > 0 ? Encoding.UTF8.GetString(_captureBuffer!, 0, _capturedBytes) : null;
-
     /// <inheritdoc />
     public override bool CanRead => false;
 
@@ -82,6 +69,19 @@ internal sealed class ResponseCaptureStream(
         get => throw new NotSupportedException();
         set => throw new NotSupportedException();
     }
+
+    /// <summary>
+    /// Returns what was captured, or <see langword="null"/> when nothing was.
+    /// </summary>
+    /// <returns>The captured text, decoded as UTF-8.</returns>
+    /// <remarks>
+    /// The cap is a byte count, so a truncated capture can end mid-sequence and decode to a replacement
+    /// character. Cutting on a character boundary instead would mean decoding incrementally on the write
+    /// path, which is real work on every response to tidy up the last glyph of a payload that is already
+    /// explicitly marked as truncated.
+    /// </remarks>
+    internal string? GetCapturedText() =>
+        _capturedBytes > 0 ? Encoding.UTF8.GetString(_captureBuffer!, 0, _capturedBytes) : null;
 
     /// <inheritdoc />
     public override void Flush() => _inner.Flush();
@@ -128,16 +128,13 @@ internal sealed class ResponseCaptureStream(
     public override void SetLength(long value) => throw new NotSupportedException();
 
     /// <summary>
-    /// Releases nothing: the wrapped stream belongs to the server, and disposing it here would close the
+    /// Leaves the wrapped stream open: it belongs to the server, and disposing it here would close the
     /// response out from under the host.
     /// </summary>
-    /// <param name="disposing">Unused.</param>
-    protected override void Dispose(bool disposing)
-    {
-    }
+    /// <param name="disposing">Whether the call comes from <see cref="Stream.Dispose()"/>.</param>
+    protected override void Dispose(bool disposing) => base.Dispose(disposing);
 
-    /// <inheritdoc />
-    public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    #region Private methods
 
     private void Capture(ReadOnlySpan<byte> data)
     {
@@ -200,4 +197,6 @@ internal sealed class ResponseCaptureStream(
         var capacity = Math.Min(_options.MaxBodyBytes, Math.Max(required, _captureBuffer.Length * 2));
         Array.Resize(ref _captureBuffer, capacity);
     }
+
+    #endregion
 }

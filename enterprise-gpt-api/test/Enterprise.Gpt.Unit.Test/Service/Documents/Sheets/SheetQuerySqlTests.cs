@@ -28,7 +28,7 @@ public sealed class SheetQuerySqlTests
             // group separator a numeric read strips along with the empty string it is replaced by.
             for (var i = 1; i < quoted.Length; i += 2)
             {
-                Assert.Contains(quoted[i], new[] { "\\", ",", "" }, StringComparer.Ordinal);
+                Assert.Contains(quoted[i], ["\\", ",", ""], StringComparer.Ordinal);
             }
         }
     }

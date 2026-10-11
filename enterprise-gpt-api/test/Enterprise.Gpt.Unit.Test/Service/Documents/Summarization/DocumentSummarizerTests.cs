@@ -17,7 +17,7 @@ using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Service.Documents.Summarization;
 
-public sealed class DocumentSummarizerTests
+public sealed class DocumentSummarizerTests : IDisposable
 {
     private static readonly Guid ModelId = Guid.Parse("c36e22ed-262a-47a1-b2ba-06a38355ae0f");
     private const string DeploymentName = "rr-gpt5.6-luna";
@@ -44,6 +44,8 @@ public sealed class DocumentSummarizerTests
         _chatClientResolver.Resolve(Arg.Any<Guid>()).Returns(_chatClient);
         SetSummarizer();
     }
+
+    public void Dispose() => _chatClient.Dispose();
 
     #region Single pass
 

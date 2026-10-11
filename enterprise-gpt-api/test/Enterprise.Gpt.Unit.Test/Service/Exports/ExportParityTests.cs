@@ -8,7 +8,6 @@ using Enterprise.Gpt.Service.Exports;
 using Enterprise.Gpt.Service.Exports.Models;
 using Enterprise.Gpt.Service.Exports.Renderers;
 using Enterprise.Gpt.Unit.Test.TestInfrastructure;
-using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 using Xunit;
 
@@ -177,7 +176,7 @@ public sealed partial class ExportParityTests(PdfFontFixture fonts)
         using var document = PdfReader.Open(input, PdfDocumentOpenMode.Import);
         var builder = new StringBuilder();
 
-        foreach (PdfPage page in document.Pages)
+        foreach (var page in document.Pages)
         {
             builder.Append(
                 Encoding.Latin1.GetString(page.Contents.CreateSingleContent().Stream.UnfilteredValue));

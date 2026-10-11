@@ -473,7 +473,7 @@ public sealed class SpreadsheetTextExtractorTests
             new SheetSpec("Two", [["b"]]),
             new SheetSpec("Three", [["c"]])
         ]);
-        var reports = new List<DocumentExtractionProgress>();
+        List<DocumentExtractionProgress> reports = [];
 
         await ExtractAsync(_extractor, content, new CollectingProgress<DocumentExtractionProgress>(reports));
 

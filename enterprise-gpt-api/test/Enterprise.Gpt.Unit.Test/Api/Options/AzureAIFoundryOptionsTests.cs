@@ -9,7 +9,7 @@ namespace Enterprise.Gpt.Unit.Test.Api.Options;
 /// that it actually inherits that behaviour.
 /// </summary>
 /// <remarks>
-/// The URL predicates themselves are exercised in depth by <see cref="AzureOpenAIOptionsTests"/>,
+/// The URL predicates themselves are exercised in depth by <see cref="Service.Options.AzureOpenAIOptionsTests"/>,
 /// against the same <see cref="AzureV1EndpointOptions"/> base. Repeating every theory here would
 /// duplicate the table without testing anything new — what these cover is the derivation being
 /// wired at all, which a refactor that gave this type its own copy of the logic would break.

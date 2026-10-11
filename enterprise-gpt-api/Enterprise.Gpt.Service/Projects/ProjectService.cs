@@ -142,7 +142,7 @@ public interface IProjectService
 /// is reported as <see cref="NotFoundException"/> rather than <see cref="ForbiddenException"/> — the
 /// same reasoning as the document upload path, so the API cannot be used to probe for project ids.
 /// </remarks>
-public class ProjectService(ILogger<ProjectService> logger,
+public partial class ProjectService(ILogger<ProjectService> logger,
     ITokenService tokenService,
     EnterpriseGptDbContext ctx,
     TimeProvider timeProvider) : IProjectService
@@ -206,54 +206,6 @@ public class ProjectService(ILogger<ProjectService> logger,
         };
     }
 
-    /// <remarks>
-    /// The string comparison is the database collation's, not the CLR's — case-insensitive on a SQL
-    /// Server default and ordinal on the SQLite the unit tests run against. A client must not re-sort
-    /// a page with <c>localeCompare</c> and expect to agree with it.
-    /// </remarks>
-    private static IOrderedQueryable<Project> OrderProjects(
-        IQueryable<Project> query,
-        SortSelection<ProjectSortKeys>? order)
-    {
-        if (order is not { } requested)
-        {
-            // Left exactly as it was before this listing accepted an order, because that is what
-            // clients written against it are promised. Id breaks ties: DateCreated alone is not a
-            // total order, so two projects created in the same tick could straddle a page boundary
-            // and be duplicated or skipped.
-            return query
-                .OrderByDescending(x => x.DateCreated)
-                .ThenByDescending(x => x.Id);
-        }
-
-        var ordered = requested.Key switch
-        {
-            ProjectSortKeys.Updated => requested.IsAscending
-                ? query.OrderBy(x => x.DateModified)
-                : query.OrderByDescending(x => x.DateModified),
-            ProjectSortKeys.Name => requested.IsAscending
-                ? query.OrderBy(x => x.Name)
-                : query.OrderByDescending(x => x.Name),
-            // A two-value flag leaves almost every row tied, so the name carries the order inside
-            // each group rather than leaving it to whatever the engine returns. It stays ascending in
-            // both directions on purpose: a name reads A-Z whichever end of the list its group is at.
-            ProjectSortKeys.Favorite => requested.IsAscending
-                ? query.OrderBy(x => x.IsFavorite).ThenBy(x => x.Name)
-                : query.OrderByDescending(x => x.IsFavorite).ThenBy(x => x.Name),
-            _ => requested.IsAscending
-                ? query.OrderBy(x => x.DateCreated)
-                : query.OrderByDescending(x => x.DateCreated)
-        };
-
-        // Every requested order gets the same tie-break, for the reason the default one has it: a
-        // client draining pages needs the row at a page boundary to be the same row every time. It
-        // follows the requested direction, or a listing whose rows are all tied on the primary key
-        // would return the same page for both directions and the control would look inert.
-        return requested.IsAscending
-            ? ordered.ThenBy(x => x.Id)
-            : ordered.ThenByDescending(x => x.Id);
-    }
-
     /// <inheritdoc />
     public async Task<ProjectDto> GetProjectAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -281,7 +233,7 @@ public class ProjectService(ILogger<ProjectService> logger,
         _ctx.Add(project);
         await SaveTranslatingDuplicateNameAsync(request.Name, cancellationToken);
 
-        _logger.LogInformation("Project {ProjectId} created by user {UserId}", project.Id, userId);
+        LogProjectCreated(_logger, project.Id, userId);
 
         return project.MapToProjectDto();
     }
@@ -303,7 +255,7 @@ public class ProjectService(ILogger<ProjectService> logger,
 
         await SaveTranslatingDuplicateNameAsync(request.Name, cancellationToken);
 
-        _logger.LogInformation("Project {ProjectId} updated by user {UserId}", id, userId);
+        LogProjectUpdated(_logger, id, userId);
 
         return project.MapToProjectDto();
     }
@@ -406,7 +358,7 @@ public class ProjectService(ILogger<ProjectService> logger,
 
         await transaction.CommitAsync(cancellationToken);
 
-        _logger.LogInformation("Project {ProjectId} deactivated by user {UserId}", id, userId);
+        LogProjectDeactivated(_logger, id, userId);
     }
 
     /// <inheritdoc />
@@ -435,7 +387,7 @@ public class ProjectService(ILogger<ProjectService> logger,
 
         if (!exists)
         {
-            _logger.LogWarning("Document {DocumentId} not found in project {ProjectId} for user {UserId}", documentId, projectId, userId);
+            LogDocumentNotFoundInProject(_logger, documentId, projectId, userId);
             throw new NotFoundException($"Document with id '{documentId}' was not found.");
         }
 
@@ -486,7 +438,57 @@ public class ProjectService(ILogger<ProjectService> logger,
         // The blob is deliberately left in storage: it is the original the user uploaded, the row is
         // only soft-deleted, and reclaiming it belongs to a retention job that can also handle the
         // blobs orphaned by failed ingestions.
-        _logger.LogInformation("Project document {DocumentId} deactivated by user {UserId}", documentId, userId);
+        LogProjectDocumentDeactivated(_logger, documentId, userId);
+    }
+
+    #region Private methods
+
+    /// <remarks>
+    /// The string comparison is the database collation's, not the CLR's — case-insensitive on a SQL
+    /// Server default and ordinal on the SQLite the unit tests run against. A client must not re-sort
+    /// a page with <c>localeCompare</c> and expect to agree with it.
+    /// </remarks>
+    private static IOrderedQueryable<Project> OrderProjects(
+        IQueryable<Project> query,
+        SortSelection<ProjectSortKeys>? order)
+    {
+        if (order is not { } requested)
+        {
+            // Left exactly as it was before this listing accepted an order, because that is what
+            // clients written against it are promised. Id breaks ties: DateCreated alone is not a
+            // total order, so two projects created in the same tick could straddle a page boundary
+            // and be duplicated or skipped.
+            return query
+                .OrderByDescending(x => x.DateCreated)
+                .ThenByDescending(x => x.Id);
+        }
+
+        var ordered = requested.Key switch
+        {
+            ProjectSortKeys.Updated => requested.IsAscending
+                ? query.OrderBy(x => x.DateModified)
+                : query.OrderByDescending(x => x.DateModified),
+            ProjectSortKeys.Name => requested.IsAscending
+                ? query.OrderBy(x => x.Name)
+                : query.OrderByDescending(x => x.Name),
+            // A two-value flag leaves almost every row tied, so the name carries the order inside
+            // each group rather than leaving it to whatever the engine returns. It stays ascending in
+            // both directions on purpose: a name reads A-Z whichever end of the list its group is at.
+            ProjectSortKeys.Favorite => requested.IsAscending
+                ? query.OrderBy(x => x.IsFavorite).ThenBy(x => x.Name)
+                : query.OrderByDescending(x => x.IsFavorite).ThenBy(x => x.Name),
+            _ => requested.IsAscending
+                ? query.OrderBy(x => x.DateCreated)
+                : query.OrderByDescending(x => x.DateCreated)
+        };
+
+        // Every requested order gets the same tie-break, for the reason the default one has it: a
+        // client draining pages needs the row at a page boundary to be the same row every time. It
+        // follows the requested direction, or a listing whose rows are all tied on the primary key
+        // would return the same page for both directions and the control would look inert.
+        return requested.IsAscending
+            ? ordered.ThenBy(x => x.Id)
+            : ordered.ThenByDescending(x => x.Id);
     }
 
     /// <summary>
@@ -559,7 +561,7 @@ public class ProjectService(ILogger<ProjectService> logger,
                 entry.State = EntityState.Detached;
             }
 
-            _logger.LogInformation(ex, "A concurrent request already claimed a project name for this user");
+            LogDuplicateNameRace(_logger, ex);
 
             throw CreateDuplicateNameException(name);
         }
@@ -598,8 +600,36 @@ public class ProjectService(ILogger<ProjectService> logger,
     {
         // Deliberately indistinguishable from "does not exist" so the endpoints cannot be used to
         // probe for project ids belonging to other users.
-        _logger.LogWarning("Project {ProjectId} not found, deactivated, or not owned by user {UserId}", projectId, userId);
+        LogProjectNotAccessible(_logger, projectId, userId);
 
         return new NotFoundException($"Project with id '{projectId}' was not found.");
     }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Project {ProjectId} created by user {UserId}")]
+    private static partial void LogProjectCreated(ILogger logger, Guid projectId, Guid userId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Project {ProjectId} updated by user {UserId}")]
+    private static partial void LogProjectUpdated(ILogger logger, Guid projectId, Guid userId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Project {ProjectId} deactivated by user {UserId}")]
+    private static partial void LogProjectDeactivated(ILogger logger, Guid projectId, Guid userId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Document {DocumentId} not found in project {ProjectId} for user {UserId}")]
+    private static partial void LogDocumentNotFoundInProject(
+        ILogger logger, Guid documentId, Guid projectId, Guid userId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Project document {DocumentId} deactivated by user {UserId}")]
+    private static partial void LogProjectDocumentDeactivated(ILogger logger, Guid documentId, Guid userId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "A concurrent request already claimed a project name for this user")]
+    private static partial void LogDuplicateNameRace(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Project {ProjectId} not found, deactivated, or not owned by user {UserId}")]
+    private static partial void LogProjectNotAccessible(ILogger logger, Guid projectId, Guid userId);
+
+    #endregion
 }

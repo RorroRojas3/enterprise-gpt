@@ -108,9 +108,13 @@ internal static class ProblemTypes
         McpCredentialRequired, McpCredentialRejected, ProviderNotConfigured, StorageNotConfigured, ExportRendererNotConfigured
     }.ToFrozenDictionary(problemType => problemType.Type[BaseUri.Length..], StringComparer.Ordinal);
 
+    #region Public static methods
+
     /// <summary>
     /// Gets the problem type a <see cref="ProblemCodes"/> value names, or <see langword="null"/> when it names none.
     /// </summary>
     public static ProblemType? ForCode(string problemCode) =>
         _byCode.TryGetValue(problemCode, out var problemType) ? problemType : null;
+
+    #endregion
 }

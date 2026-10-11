@@ -16,6 +16,33 @@ namespace Enterprise.Gpt.Api.Configuration.Providers;
 /// </remarks>
 internal static class AnthropicDefaults
 {
+    #region Private methods
+
+    private static ThinkingConfigParam ParseThinking(string thinking) =>
+        thinking.ToLowerInvariant() switch
+        {
+            "adaptive" => new ThinkingConfigAdaptive(),
+            AnthropicOptions.DisabledThinking => new ThinkingConfigDisabled(),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(thinking), thinking, "Unknown Anthropic thinking mode.")
+        };
+
+    private static Effort ParseEffort(string effort) =>
+        effort.ToLowerInvariant() switch
+        {
+            "low" => Effort.Low,
+            "medium" => Effort.Medium,
+            "high" => Effort.High,
+            "xhigh" => Effort.Xhigh,
+            "max" => Effort.Max,
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(effort), effort, "Unknown Anthropic effort level.")
+        };
+
+    #endregion
+
+    #region Public static methods
+
     /// <summary>
     /// Creates the <see cref="ChatOptions"/> callback for a configured Anthropic provider.
     /// </summary>
@@ -68,24 +95,5 @@ internal static class AnthropicDefaults
         };
     }
 
-    private static ThinkingConfigParam ParseThinking(string thinking) =>
-        thinking.ToLowerInvariant() switch
-        {
-            "adaptive" => new ThinkingConfigAdaptive(),
-            AnthropicOptions.DisabledThinking => new ThinkingConfigDisabled(),
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(thinking), thinking, "Unknown Anthropic thinking mode.")
-        };
-
-    private static Effort ParseEffort(string effort) =>
-        effort.ToLowerInvariant() switch
-        {
-            "low" => Effort.Low,
-            "medium" => Effort.Medium,
-            "high" => Effort.High,
-            "xhigh" => Effort.Xhigh,
-            "max" => Effort.Max,
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(effort), effort, "Unknown Anthropic effort level.")
-        };
+    #endregion
 }

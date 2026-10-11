@@ -31,6 +31,54 @@ public static partial class FileAgentPreflight
         "prepare", "preparing", "assemble", "assembling", "output", "call", "called", "name", "named"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
+    #region Private methods
+
+    /// <summary>Whether an unmatched name is a source the run needs rather than a file it would write.</summary>
+    /// <remarks>
+    /// Nothing in an instruction says which direction a name points, so the refusal is held to the case
+    /// where it can only be a source: something was there to be named, nothing resolved, and either
+    /// nothing asks for a file to be written or one of the names is read from regardless.
+    /// </remarks>
+    private static bool NamesAMissingSource(FileAgentSourceResolution resolution, string instruction) =>
+        resolution.Unresolved.Count > 0
+        && resolution.Available.Count > 0
+        && resolution.Matched.Count == 0
+        && (ReadsFromAMissingName(instruction, resolution.Unresolved)
+
+            // Struck out first: a name is a bag of ordinary words once split, and "draft.docx" would
+            // otherwise supply the very verb that proves the request is a create.
+            || !FileAgentFormats
+                .Words(FileAgentFormats.Without(instruction, resolution.Unresolved))
+                .Overlaps(_writingWords));
+
+    /// <summary>Whether the instruction reads one of these names out of the conversation.</summary>
+    /// <remarks>
+    /// A create says what to put in a file; only a read says where the content comes from. The
+    /// preposition settles a name the surrounding verb would otherwise claim, as in "write a summary of
+    /// q3-report.pdf", which is a read however it opens.
+    /// </remarks>
+    private static bool ReadsFromAMissingName(string instruction, IReadOnlyList<string> names)
+    {
+        foreach (var name in names)
+        {
+            var index = instruction.IndexOf(name, StringComparison.OrdinalIgnoreCase);
+
+            if (index > 0 && SourcePreposition().IsMatch(instruction[..index]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    [GeneratedRegex(@"\b(?:from|of|in|within|using|between|against)\s+$", RegexOptions.IgnoreCase)]
+    private static partial Regex SourcePreposition();
+
+    #endregion
+
+    #region Public static methods
+
     /// <summary>
     /// Weighs one run's resolved sources and its instruction against the confirmed matrix.
     /// </summary>
@@ -91,45 +139,5 @@ public static partial class FileAgentPreflight
             $"{cell.From} to {cell.To} is not supported");
     }
 
-    /// <summary>Whether an unmatched name is a source the run needs rather than a file it would write.</summary>
-    /// <remarks>
-    /// Nothing in an instruction says which direction a name points, so the refusal is held to the case
-    /// where it can only be a source: something was there to be named, nothing resolved, and either
-    /// nothing asks for a file to be written or one of the names is read from regardless.
-    /// </remarks>
-    private static bool NamesAMissingSource(FileAgentSourceResolution resolution, string instruction) =>
-        resolution.Unresolved.Count > 0
-        && resolution.Available.Count > 0
-        && resolution.Matched.Count == 0
-        && (ReadsFromAMissingName(instruction, resolution.Unresolved)
-
-            // Struck out first: a name is a bag of ordinary words once split, and "draft.docx" would
-            // otherwise supply the very verb that proves the request is a create.
-            || !FileAgentFormats
-                .Words(FileAgentFormats.Without(instruction, resolution.Unresolved))
-                .Overlaps(_writingWords));
-
-    /// <summary>Whether the instruction reads one of these names out of the conversation.</summary>
-    /// <remarks>
-    /// A create says what to put in a file; only a read says where the content comes from. The
-    /// preposition settles a name the surrounding verb would otherwise claim, as in "write a summary of
-    /// q3-report.pdf", which is a read however it opens.
-    /// </remarks>
-    private static bool ReadsFromAMissingName(string instruction, IReadOnlyList<string> names)
-    {
-        foreach (var name in names)
-        {
-            var index = instruction.IndexOf(name, StringComparison.OrdinalIgnoreCase);
-
-            if (index > 0 && SourcePreposition().IsMatch(instruction[..index]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    [GeneratedRegex(@"\b(?:from|of|in|within|using|between|against)\s+$", RegexOptions.IgnoreCase)]
-    private static partial Regex SourcePreposition();
+    #endregion
 }

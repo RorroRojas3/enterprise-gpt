@@ -16,6 +16,8 @@ namespace Enterprise.Gpt.Api.Configuration.Providers;
 /// </summary>
 internal static class AzureAIFoundryProviderConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Registers the validated options and, when <c>AzureAIFoundry:Enabled</c> is set, the keyed chat client.
     /// </summary>
@@ -56,4 +58,6 @@ internal static class AzureAIFoundryProviderConfiguration
 
         return services;
     }
+
+    #endregion
 }

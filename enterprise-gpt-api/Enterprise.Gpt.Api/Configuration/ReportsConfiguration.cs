@@ -10,6 +10,8 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </summary>
 internal static class ReportsConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Registers the report service and its range and grouping bounds.
     /// </summary>
@@ -25,4 +27,6 @@ internal static class ReportsConfiguration
 
         return services;
     }
+
+    #endregion
 }

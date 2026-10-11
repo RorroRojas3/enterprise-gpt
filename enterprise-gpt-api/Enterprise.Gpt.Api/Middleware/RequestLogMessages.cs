@@ -28,6 +28,8 @@ internal static partial class RequestLogMessages
     /// <summary>Outcome for a request that ended in an exception escaping the pipeline.</summary>
     internal const string OutcomeFaulted = "Faulted";
 
+    #region Logging
+
     /// <summary>
     /// Records a request arriving, before authentication has run.
     /// </summary>
@@ -44,7 +46,7 @@ internal static partial class RequestLogMessages
         EventName = "HttpRequestStarted",
         Message = "HTTP {RequestMethod} {RequestPath} started (contentType: {RequestContentType}, " +
                   "contentLength: {RequestContentLength}, userAgent: {UserAgent}, clientIp: {ClientIp})")]
-    internal static partial void RequestStarted(
+    internal static partial void LogRequestStarted(
         ILogger logger,
         LogLevel level,
         string requestMethod,
@@ -78,7 +80,7 @@ internal static partial class RequestLogMessages
         Message = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {ElapsedMilliseconds} ms " +
                   "(route: {RouteTemplate}, endpoint: {EndpointName}, user: {UserId}, outcome: {Outcome}, " +
                   "responseContentLength: {ResponseContentLength})")]
-    internal static partial void RequestCompleted(
+    internal static partial void LogRequestCompleted(
         ILogger logger,
         LogLevel level,
         string requestMethod,
@@ -111,7 +113,7 @@ internal static partial class RequestLogMessages
         Message = "HTTP {RequestMethod} {RequestPath} payload (requestContentType: {RequestContentType}, " +
                   "requestBody: {RequestBody}, responseContentType: {ResponseContentType}, " +
                   "responseBody: {ResponseBody}, truncated: {Truncated})")]
-    internal static partial void RequestPayload(
+    internal static partial void LogRequestPayload(
         ILogger logger,
         LogLevel level,
         string requestMethod,
@@ -138,7 +140,7 @@ internal static partial class RequestLogMessages
         EventName = "HttpRequestPayloadCaptureFailed",
         Level = LogLevel.Warning,
         Message = "Could not capture the request body for HTTP {RequestMethod} {RequestPath}")]
-    internal static partial void PayloadCaptureFailed(
+    internal static partial void LogPayloadCaptureFailed(
         ILogger logger,
         string requestMethod,
         string requestPath,
@@ -161,9 +163,11 @@ internal static partial class RequestLogMessages
         EventName = "HttpRequestLoggingFailed",
         Level = LogLevel.Warning,
         Message = "Request logging failed for HTTP {RequestMethod} {RequestPath}")]
-    internal static partial void LoggingFailed(
+    internal static partial void LogRequestLoggingFailed(
         ILogger logger,
         string requestMethod,
         string requestPath,
         Exception exception);
+
+    #endregion
 }

@@ -7,6 +7,8 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </summary>
 internal static class UsersConfiguration
 {
+    #region Public static methods
+
     /// <summary>Registers the user service and the Graph service.</summary>
     internal static IServiceCollection AddUsers(this IServiceCollection services)
     {
@@ -15,4 +17,6 @@ internal static class UsersConfiguration
 
         return services;
     }
+
+    #endregion
 }

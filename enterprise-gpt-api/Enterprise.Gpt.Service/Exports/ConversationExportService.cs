@@ -63,7 +63,7 @@ public interface IConversationExportService
 /// <param name="ctx">The relational context, read for ownership.</param>
 /// <param name="renderers">Every export renderer this deployment registered.</param>
 /// <param name="timeProvider">Supplies the export timestamp.</param>
-public sealed class ConversationExportService(
+public sealed partial class ConversationExportService(
     ILogger<ConversationExportService> logger,
     ITranscriptStore transcriptStore,
     ITokenService tokenService,
@@ -97,7 +97,7 @@ public sealed class ConversationExportService(
 
         if (!exists)
         {
-            _logger.LogError("Conversation {Id} not found for export.", id);
+            LogConversationNotFound(_logger, id);
             throw new NotFoundException($"Conversation {id} not found.");
         }
 
@@ -108,7 +108,7 @@ public sealed class ConversationExportService(
 
         if (header is null || header.DateDeactivated.HasValue)
         {
-            _logger.LogError("Conversation {Id} not found for export.", id);
+            LogConversationNotFound(_logger, id);
             throw new NotFoundException($"Conversation {id} not found.");
         }
 
@@ -122,6 +122,8 @@ public sealed class ConversationExportService(
         return renderer.Render(
             new ConversationExportDocument(header, messages, _timeProvider.GetUtcNow()));
     }
+
+    #region Private methods
 
     private static Dictionary<ConversationExportFormats, IConversationExportRenderer> BuildRegistry(
         IEnumerable<IConversationExportRenderer> renderers)
@@ -155,9 +157,8 @@ public sealed class ConversationExportService(
 
         // Info rather than Error: the deployment is configured this way on purpose more often than
         // not, and a request for a format an operator withdrew is not a fault to page anyone about.
-        _logger.LogInformation(
-            "Conversation export to {Format} was requested, but no renderer for it is registered.",
-            requested.ToWireFormat());
+        var wireFormat = requested.ToWireFormat();
+        LogNoExportRenderer(_logger, wireFormat);
 
         throw new ExportRendererNotConfiguredException(requested);
     }
@@ -192,4 +193,16 @@ public sealed class ConversationExportService(
             .OrderBy(x => x.DateCreated)
             .ThenBy(x => x.Id, StringComparer.Ordinal)];
     }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Conversation {Id} not found for export.")]
+    private static partial void LogConversationNotFound(ILogger logger, Guid id);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Conversation export to {Format} was requested, but no renderer for it is registered.")]
+    private static partial void LogNoExportRenderer(ILogger logger, string format);
+
+    #endregion
 }

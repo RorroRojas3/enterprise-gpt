@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Enterprise.Gpt.Dto.Documents;
 using Enterprise.Gpt.Service.Documents.Chunking;
@@ -40,7 +41,7 @@ public sealed class TokenTextChunkerTests
         var builder = new StringBuilder();
         for (var i = 1; i <= count; i++)
         {
-            builder.Append($"Sentence {i} describes an entirely unremarkable and deliberately verbose subject. ");
+            builder.Append(CultureInfo.InvariantCulture, $"Sentence {i} describes an entirely unremarkable and deliberately verbose subject. ");
         }
 
         return builder.ToString();

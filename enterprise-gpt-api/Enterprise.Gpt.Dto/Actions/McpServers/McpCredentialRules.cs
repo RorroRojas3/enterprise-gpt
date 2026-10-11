@@ -6,6 +6,8 @@ namespace Enterprise.Gpt.Dto.Actions.McpServers;
 /// </summary>
 public static class McpCredentialRules
 {
+    #region Public static methods
+
     /// <summary>
     /// Whether a credential is printable ASCII with no whitespace.
     /// </summary>
@@ -21,4 +23,6 @@ public static class McpCredentialRules
         return !string.IsNullOrEmpty(apiKey)
             && apiKey.All(c => c is > ' ' and <= '~');
     }
+
+    #endregion
 }

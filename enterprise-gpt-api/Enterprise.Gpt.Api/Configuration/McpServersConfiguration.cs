@@ -3,6 +3,7 @@ using Enterprise.Gpt.Service.Caching;
 using Enterprise.Gpt.Service.McpServers;
 using Enterprise.Gpt.Service.Options;
 using FluentValidation;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Enterprise.Gpt.Api.Configuration;
 
@@ -11,6 +12,8 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </summary>
 internal static class McpServersConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Registers the MCP services, the singleton connection cache and the per-request tool provider.
     /// </summary>
@@ -22,6 +25,7 @@ internal static class McpServersConfiguration
             .ValidateWithFluentValidation()
             .ValidateOnStart();
 
+        services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IMcpClientCache, McpClientCache>();
         services.AddScoped<IMcpToolProvider, McpToolProvider>();
         // No timeout: MCP sessions stream over SSE. Connecting is bounded by McpClientCacheOptions.ConnectionTimeout.
@@ -32,4 +36,6 @@ internal static class McpServersConfiguration
 
         return services;
     }
+
+    #endregion
 }

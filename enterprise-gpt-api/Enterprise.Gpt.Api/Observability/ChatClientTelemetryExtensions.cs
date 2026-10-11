@@ -7,6 +7,8 @@ namespace Enterprise.Gpt.Api.Observability;
 /// </summary>
 internal static class ChatClientTelemetryExtensions
 {
+    #region Public static methods
+
     /// <summary>
     /// Adds OpenTelemetry to the pipeline under the source the exporter registration subscribes to.
     /// </summary>
@@ -19,4 +21,6 @@ internal static class ChatClientTelemetryExtensions
     /// <returns>The same <paramref name="builder"/> for chaining.</returns>
     internal static ChatClientBuilder UseEnterpriseGptTelemetry(this ChatClientBuilder builder) =>
         builder.UseOpenTelemetry(sourceName: TelemetryRegistration.ChatTelemetrySourceName);
+
+    #endregion
 }

@@ -7,6 +7,8 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </summary>
 internal static class SecurityConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Registers the token service that reads the caller from the request, and the secret protector.
     /// </summary>
@@ -18,4 +20,6 @@ internal static class SecurityConfiguration
 
         return services;
     }
+
+    #endregion
 }

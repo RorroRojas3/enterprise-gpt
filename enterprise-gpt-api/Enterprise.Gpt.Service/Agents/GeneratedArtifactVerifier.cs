@@ -33,7 +33,7 @@ public interface IGeneratedArtifactVerifier
 }
 
 /// <inheritdoc />
-public sealed class GeneratedArtifactVerifier(ILogger<GeneratedArtifactVerifier> logger) : IGeneratedArtifactVerifier
+public sealed partial class GeneratedArtifactVerifier(ILogger<GeneratedArtifactVerifier> logger) : IGeneratedArtifactVerifier
 {
     // Permissive on purpose: a ragged row is a shape observation, not a parse failure, and refusing one
     // here would discard a spreadsheet the user can open perfectly well.
@@ -76,11 +76,13 @@ public sealed class GeneratedArtifactVerifier(ILogger<GeneratedArtifactVerifier>
         {
             // Logged and never relayed: a parser's own message can quote the bytes it choked on, and
             // those bytes are the document's content.
-            _logger.LogWarning(exception, "A generated {Extension} artifact could not be re-opened", extension);
+            LogArtifactReopenFailed(_logger, exception, extension);
 
             return ArtifactVerification.Fail($"it could not be re-opened as {extension.TrimStart('.')}");
         }
     }
+
+    #region Private methods
 
     private static ArtifactVerification VerifyWord(byte[] content)
     {
@@ -198,4 +200,13 @@ public sealed class GeneratedArtifactVerifier(ILogger<GeneratedArtifactVerifier>
 
     private static string Count(int value, string noun) =>
         string.Create(CultureInfo.InvariantCulture, $"{value} {noun}{(value == 1 ? string.Empty : "s")}");
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "A generated {Extension} artifact could not be re-opened")]
+    private static partial void LogArtifactReopenFailed(ILogger logger, Exception exception, string extension);
+
+    #endregion
 }

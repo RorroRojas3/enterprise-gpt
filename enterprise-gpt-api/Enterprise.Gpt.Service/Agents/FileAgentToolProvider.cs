@@ -98,7 +98,7 @@ public interface IFileAgentToolProvider
 // The hosted-file client is still marked experimental in Microsoft.Extensions.AI 10.9.0. Suppressed
 // on this one file, as in FileAgentSandbox, rather than project-wide.
 #pragma warning disable MEAI001
-public sealed class FileAgentToolProvider(
+public sealed partial class FileAgentToolProvider(
     ILoggerFactory loggerFactory,
     IFileAgentModelResolver modelResolver,
     IFileAgentDocumentReader documentReader,
@@ -289,7 +289,7 @@ public sealed class FileAgentToolProvider(
     /// The middleware around one agent run: refuses what cannot be served, mounts the files its
     /// instruction names, checks what it produced, and stores what survived.
     /// </summary>
-    private sealed class FileAgentRun(
+    private sealed partial class FileAgentRun(
         FileAgentToolLease lease,
         RunInstruction instruction,
         IFileAgentDocumentReader documentReader,
@@ -371,9 +371,7 @@ public sealed class FileAgentToolProvider(
                 var failure = FileAgentFailures.TimedOut(_options.ToolTimeoutSeconds);
                 outcome = Fail(failure);
 
-                _logger.LogWarning(
-                    "The File Agent run on conversation {ConversationId} exceeded its {Timeout}s bound",
-                    _conversationId, _options.ToolTimeoutSeconds);
+                LogFileAgentRunTimedOut(_logger, _conversationId, _options.ToolTimeoutSeconds);
 
                 throw new InvalidOperationException(failure.Message);
             }
@@ -390,8 +388,7 @@ public sealed class FileAgentToolProvider(
                 var failure = FileAgentFailures.Unexpected();
                 outcome = Fail(failure);
 
-                _logger.LogError(
-                    exception, "The File Agent run on conversation {ConversationId} failed", _conversationId);
+                LogFileAgentRunFailed(_logger, exception, _conversationId);
 
                 throw new InvalidOperationException(failure.Message);
             }
@@ -431,6 +428,8 @@ public sealed class FileAgentToolProvider(
 
             return $"{text}\n\n[Saved and attached to your answer: {names}.{refusals}]";
         }
+
+        #region Private methods
 
         private async Task<(AgentResponse Response, string Outcome)> ExecuteAsync(
             List<ChatMessage> conversation,
@@ -685,8 +684,7 @@ public sealed class FileAgentToolProvider(
                 // Per artifact rather than per run: a file already stored is already on its way
                 // to the answer's chips, so failing the whole call here would tell the model
                 // nothing was saved while the user is looking at one that was.
-                _logger.LogError(
-                    exception, "Could not store an artifact from the File Agent run on conversation {ConversationId}", _conversationId);
+                LogCouldNotStoreArtifact(_logger, exception, _conversationId);
                 _refusals.Add($"'{name}' could not be saved.");
                 scope.Fail();
 
@@ -712,6 +710,7 @@ public sealed class FileAgentToolProvider(
             + "Do not answer until it opens cleanly.";
 
         /// <summary>Classifies a run that stored nothing, which is always a failure by this point.</summary>
+        /// <param name="reachedSandbox">Whether any attempt opened a code interpreter session rather than answering in prose alone; logged, so a run that never ran code can be told from one whose code wrote nothing.</param>
         /// <param name="anyRejected">Whether any attempt produced an artifact that failed its check.</param>
         /// <param name="rejection">
         /// What that check said, carried past the retry loop's own clear — the final attempt may have
@@ -727,9 +726,7 @@ public sealed class FileAgentToolProvider(
                     FileAgentFailures.VerificationFailed(detail.Length > 0 ? detail : rejection));
             }
 
-            _logger.LogWarning(
-                "The File Agent run on conversation {ConversationId} produced no file (reached the sandbox: {ReachedSandbox})",
-                _conversationId, reachedSandbox);
+            LogFileAgentRunProducedNoFile(_logger, _conversationId, reachedSandbox);
 
             return new FileAgentRunFailure(FileAgentFailures.NoFileProduced(detail));
         }
@@ -748,6 +745,25 @@ public sealed class FileAgentToolProvider(
             response.Messages
                 .SelectMany(message => message.Contents)
                 .Any(content => content is CodeInterpreterToolCallContent or CodeInterpreterToolResultContent);
+
+        #endregion
+
+        #region Logging
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "The File Agent run on conversation {ConversationId} exceeded its {Timeout}s bound")]
+        private static partial void LogFileAgentRunTimedOut(ILogger logger, Guid conversationId, int timeout);
+
+        [LoggerMessage(Level = LogLevel.Error, Message = "The File Agent run on conversation {ConversationId} failed")]
+        private static partial void LogFileAgentRunFailed(ILogger logger, Exception exception, Guid conversationId);
+
+        [LoggerMessage(Level = LogLevel.Error, Message = "Could not store an artifact from the File Agent run on conversation {ConversationId}")]
+        private static partial void LogCouldNotStoreArtifact(ILogger logger, Exception exception, Guid conversationId);
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "The File Agent run on conversation {ConversationId} produced no file (reached the sandbox: {ReachedSandbox})")]
+        private static partial void LogFileAgentRunProducedNoFile(
+            ILogger logger, Guid conversationId, bool reachedSandbox);
+
+        #endregion
     }
 
     /// <summary>

@@ -22,7 +22,7 @@ public sealed class SandboxInventoryTests(SandboxSpikeFixture fixture)
     [Fact]
     public async Task SandboxImage_Inventoried_MatchesTheRecordedFixture()
     {
-        Assert.SkipUnless(_fixture.IsEnabled, SpikeConfiguration.SkipReason);
+        Assert.SkipUnless(SandboxSpikeFixture.IsEnabled, SpikeConfiguration.SkipReason);
 
         var live = await _fixture.InventoryAsync(TestContext.Current.CancellationToken);
 

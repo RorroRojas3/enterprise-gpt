@@ -14,6 +14,8 @@ namespace Enterprise.Gpt.Api.Configuration;
 /// </summary>
 internal static class ConversationsConfiguration
 {
+    #region Public static methods
+
     /// <summary>
     /// Registers the conversation services and the per-provider token estimators.
     /// </summary>
@@ -58,4 +60,6 @@ internal static class ConversationsConfiguration
 
         return services;
     }
+
+    #endregion
 }

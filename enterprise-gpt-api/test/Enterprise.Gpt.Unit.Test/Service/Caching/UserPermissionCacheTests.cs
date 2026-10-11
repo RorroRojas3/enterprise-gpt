@@ -292,7 +292,7 @@ public sealed class UserPermissionCacheTests
         var cache = CreateCache();
         var userId = Guid.NewGuid();
         var permissionId = Guid.NewGuid();
-        var mutable = new List<Guid> { permissionId };
+        List<Guid> mutable = [permissionId];
 
         var loaded = await cache.GetOrLoadAsync(
             userId, _ => Task.FromResult<IReadOnlyCollection<Guid>>(mutable), TestContext.Current.CancellationToken);

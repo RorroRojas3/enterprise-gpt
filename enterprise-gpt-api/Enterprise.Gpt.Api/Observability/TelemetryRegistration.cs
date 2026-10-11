@@ -48,6 +48,8 @@ internal static class TelemetryRegistration
     private static readonly string? BuildVersion = typeof(TelemetryRegistration).Assembly
         .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
 
+    #region Public static methods
+
     /// <summary>
     /// Registers the Azure Monitor exporter when a connection string is configured.
     /// </summary>
@@ -122,4 +124,6 @@ internal static class TelemetryRegistration
     /// <returns>The connection string, or <see langword="null"/> when neither source supplies one.</returns>
     internal static string? ResolveConnectionString(IConfiguration configuration, TelemetryOptions telemetry) =>
         configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"] ?? telemetry.ConnectionString;
+
+    #endregion
 }

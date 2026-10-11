@@ -87,23 +87,26 @@ public interface IJobStatusStore
 /// <see cref="ConcurrentDictionary{TKey, TValue}"/>-backed <see cref="IJobStatusStore"/>. A periodic timer
 /// evicts terminal snapshots older than the configured retention window so memory stays bounded.
 /// </summary>
-public sealed class JobStatusStore : IJobStatusStore, IDisposable
+public sealed partial class JobStatusStore : IJobStatusStore, IDisposable
 {
     private readonly ConcurrentDictionary<string, JobStatusSnapshot> _snapshots = new();
     private readonly TimeSpan _retention;
-    private readonly Timer _evictionTimer;
+    private readonly TimeProvider _timeProvider;
+    private readonly ITimer _evictionTimer;
     private readonly ILogger<JobStatusStore> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="JobStatusStore"/> class.
     /// </summary>
     /// <param name="options">Supplies <see cref="BackgroundJobOptions.RetentionMinutes"/>.</param>
+    /// <param name="timeProvider">Stamps snapshots and drives the eviction timer.</param>
     /// <param name="logger">Logger used for eviction telemetry.</param>
-    public JobStatusStore(IOptions<BackgroundJobOptions> options, ILogger<JobStatusStore> logger)
+    public JobStatusStore(IOptions<BackgroundJobOptions> options, TimeProvider timeProvider, ILogger<JobStatusStore> logger)
     {
         _logger = logger;
+        _timeProvider = timeProvider;
         _retention = TimeSpan.FromMinutes(options.Value.RetentionMinutes);
-        _evictionTimer = new Timer(_ => EvictExpired(), state: null, dueTime: _retention, period: _retention);
+        _evictionTimer = timeProvider.CreateTimer(_ => EvictExpired(), state: null, dueTime: _retention, period: _retention);
     }
 
     /// <inheritdoc />
@@ -111,7 +114,7 @@ public sealed class JobStatusStore : IJobStatusStore, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(jobId, nameof(jobId));
         ArgumentNullException.ThrowIfNull(target);
-        _snapshots[jobId] = new JobStatusSnapshot(jobId, userId, JobStatuses.Queued, 0, DateTimeOffset.UtcNow, "Waiting to start", Target: target);
+        _snapshots[jobId] = new JobStatusSnapshot(jobId, userId, JobStatuses.Queued, 0, _timeProvider.GetUtcNow(), "Waiting to start", Target: target);
     }
 
     /// <inheritdoc />
@@ -128,7 +131,7 @@ public sealed class JobStatusStore : IJobStatusStore, IDisposable
             jobId,
             // A report for a job that was never registered has no owner to attribute it to. Guid.Empty
             // matches no user, so the snapshot exists for diagnostics but is not readable by anyone.
-            _ => new JobStatusSnapshot(jobId, Guid.Empty, status, clamped, DateTimeOffset.UtcNow, message, completedUnits, totalUnits),
+            _ => new JobStatusSnapshot(jobId, Guid.Empty, status, clamped, _timeProvider.GetUtcNow(), message, completedUnits, totalUnits),
             (_, existing) => IsTerminal(existing.Status)
                 // A completed or failed job never moves again. Reviving it would also make it
                 // permanently un-evictable, since eviction only considers terminal snapshots.
@@ -137,7 +140,7 @@ public sealed class JobStatusStore : IJobStatusStore, IDisposable
                 {
                     Status = status,
                     Progress = Math.Max(existing.Progress, clamped),
-                    LastUpdated = DateTimeOffset.UtcNow,
+                    LastUpdated = _timeProvider.GetUtcNow(),
                     Message = message ?? existing.Message,
                     CompletedUnits = completedUnits ?? existing.CompletedUnits,
                     TotalUnits = totalUnits ?? existing.TotalUnits,
@@ -151,7 +154,7 @@ public sealed class JobStatusStore : IJobStatusStore, IDisposable
 
         var installed = _snapshots.AddOrUpdate(
             jobId,
-            _ => new JobStatusSnapshot(jobId, Guid.Empty, JobStatuses.Processed, 100, DateTimeOffset.UtcNow, message, DocumentId: documentId),
+            _ => new JobStatusSnapshot(jobId, Guid.Empty, JobStatuses.Processed, 100, _timeProvider.GetUtcNow(), message, DocumentId: documentId),
             // A cancel that got here first owns the outcome, and the document id is deliberately not
             // stamped on it: the caller reads this verdict to learn that it must undo what it wrote,
             // and publishing the id would invite a second party to delete the same rows.
@@ -161,7 +164,7 @@ public sealed class JobStatusStore : IJobStatusStore, IDisposable
                 {
                     Status = JobStatuses.Processed,
                     Progress = 100,
-                    LastUpdated = DateTimeOffset.UtcNow,
+                    LastUpdated = _timeProvider.GetUtcNow(),
                     Message = message,
                     DocumentId = documentId,
                 });
@@ -192,7 +195,7 @@ public sealed class JobStatusStore : IJobStatusStore, IDisposable
             var cancelled = existing with
             {
                 Status = JobStatuses.Cancelled,
-                LastUpdated = DateTimeOffset.UtcNow,
+                LastUpdated = _timeProvider.GetUtcNow(),
                 Message = message,
             };
 
@@ -216,7 +219,7 @@ public sealed class JobStatusStore : IJobStatusStore, IDisposable
         // completion, and where it stopped tells the user which stage broke.
         _snapshots.AddOrUpdate(
             jobId,
-            _ => new JobStatusSnapshot(jobId, Guid.Empty, JobStatuses.Failed, 0, DateTimeOffset.UtcNow, errorMessage, ErrorMessage: errorMessage),
+            _ => new JobStatusSnapshot(jobId, Guid.Empty, JobStatuses.Failed, 0, _timeProvider.GetUtcNow(), errorMessage, ErrorMessage: errorMessage),
             // Guarded like Report: a job cancelled while it was already unwinding must not have that
             // outcome overwritten by the failure its own cancellation produced.
             (_, existing) => IsTerminal(existing.Status)
@@ -224,7 +227,7 @@ public sealed class JobStatusStore : IJobStatusStore, IDisposable
                 : existing with
                 {
                     Status = JobStatuses.Failed,
-                    LastUpdated = DateTimeOffset.UtcNow,
+                    LastUpdated = _timeProvider.GetUtcNow(),
                     Message = errorMessage,
                     ErrorMessage = errorMessage,
                 });
@@ -236,9 +239,17 @@ public sealed class JobStatusStore : IJobStatusStore, IDisposable
         return _snapshots.TryGetValue(jobId, out var snapshot) ? snapshot : null;
     }
 
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        _evictionTimer.Dispose();
+    }
+
+    #region Private methods
+
     private void EvictExpired()
     {
-        var cutoff = DateTimeOffset.UtcNow - _retention;
+        var cutoff = _timeProvider.GetUtcNow() - _retention;
         var removed = 0;
 
         foreach (var (key, snapshot) in _snapshots)
@@ -251,16 +262,19 @@ public sealed class JobStatusStore : IJobStatusStore, IDisposable
 
         if (removed > 0)
         {
-            _logger.LogInformation("Evicted {Count} terminal job snapshot(s) older than {RetentionMinutes} minutes", removed, _retention.TotalMinutes);
+            LogEvictedTerminalSnapshots(_logger, removed, _retention.TotalMinutes);
         }
     }
 
     private static bool IsTerminal(JobStatuses status) =>
         status is JobStatuses.Processed or JobStatuses.Failed or JobStatuses.Cancelled;
 
-    /// <inheritdoc />
-    public void Dispose()
-    {
-        _evictionTimer.Dispose();
-    }
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Evicted {Count} terminal job snapshot(s) older than {RetentionMinutes} minutes")]
+    private static partial void LogEvictedTerminalSnapshots(ILogger logger, int count, double retentionMinutes);
+
+    #endregion
 }

@@ -42,7 +42,7 @@ public sealed class ExportFontResolver : IFontResolver
     /// The file names looked for in the configured directory, per role.
     /// </summary>
     /// <remarks>
-    /// Documented in <c>Export/Fonts/README.md</c>. Chosen over the upstream file names (<c>Inter-Regular.ttf</c>
+    /// Documented in <c>Service/Exports/Fonts/README.md</c>. Chosen over the upstream file names (<c>Inter-Regular.ttf</c>
     /// and friends) so the contract is a role rather than a particular typeface, and swapping the
     /// brand face is a file copy rather than a code change.
     /// </remarks>
@@ -64,7 +64,7 @@ public sealed class ExportFontResolver : IFontResolver
     /// instead: it resolves only what it knows about, under one operating system, and leaves this
     /// class with two resolution paths to keep in step.
     /// </remarks>
-    private static readonly IReadOnlyDictionary<string, string[]> PlatformNames = new Dictionary<string, string[]>(StringComparer.Ordinal)
+    private static readonly Dictionary<string, string[]> PlatformNames = new(StringComparer.Ordinal)
     {
         [FaceNames.SansRegular] = ["Inter-Regular", "segoeui", "DejaVuSans", "LiberationSans-Regular", "NotoSans-Regular", "arial", "Arial", "Helvetica"],
         [FaceNames.SansBold] = ["Inter-Bold", "segoeuib", "DejaVuSans-Bold", "LiberationSans-Bold", "NotoSans-Bold", "arialbd", "Arial Bold"],
@@ -102,36 +102,6 @@ public sealed class ExportFontResolver : IFontResolver
         }
 
         _faces = faces;
-    }
-
-    private static Dictionary<string, byte[]> Load(
-        List<string> directories, Func<string, IReadOnlyList<string>> stemsFor, bool recurse)
-    {
-        Dictionary<string, byte[]> faces = new(StringComparer.Ordinal);
-
-        foreach (var face in ConfiguredNames.Keys)
-        {
-            var path = FindFace(directories, stemsFor(face), recurse);
-
-            if (path is null)
-            {
-                continue;
-            }
-
-            try
-            {
-                // Read once, at construction: the resolver is a process-lifetime singleton and a PDF
-                // asks for the same face on every glyph run.
-                faces[face] = File.ReadAllBytes(path);
-            }
-            catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
-            {
-                // A face this process cannot read is a face it does not have. Anything else — and
-                // the regular face in particular — decides IsUsable, which is the honest answer.
-            }
-        }
-
-        return faces;
     }
 
     /// <summary>
@@ -182,6 +152,50 @@ public sealed class ExportFontResolver : IFontResolver
     /// <inheritdoc />
     public byte[]? GetFont(string faceName) =>
         _faces.TryGetValue(faceName, out var bytes) ? bytes : null;
+
+    /// <summary>
+    /// The face keys this resolver hands to PDFsharp and reads back in <see cref="GetFont"/>.
+    /// </summary>
+    internal static class FaceNames
+    {
+        public const string SansRegular = "export-sans-regular";
+        public const string SansBold = "export-sans-bold";
+        public const string SansItalic = "export-sans-italic";
+        public const string SansBoldItalic = "export-sans-bold-italic";
+        public const string MonoRegular = "export-mono-regular";
+    }
+
+    #region Private methods
+
+    private static Dictionary<string, byte[]> Load(
+        List<string> directories, Func<string, IReadOnlyList<string>> stemsFor, bool recurse)
+    {
+        Dictionary<string, byte[]> faces = new(StringComparer.Ordinal);
+
+        foreach (var face in ConfiguredNames.Keys)
+        {
+            var path = FindFace(directories, stemsFor(face), recurse);
+
+            if (path is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                // Read once, at construction: the resolver is a process-lifetime singleton and a PDF
+                // asks for the same face on every glyph run.
+                faces[face] = File.ReadAllBytes(path);
+            }
+            catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+            {
+                // A face this process cannot read is a face it does not have. Anything else — and
+                // the regular face in particular — decides IsUsable, which is the honest answer.
+            }
+        }
+
+        return faces;
+    }
 
     private static IEnumerable<string> FallbackChain(string preferred, bool mono)
     {
@@ -306,15 +320,5 @@ public sealed class ExportFontResolver : IFontResolver
         return null;
     }
 
-    /// <summary>
-    /// The face keys this resolver hands to PDFsharp and reads back in <see cref="GetFont"/>.
-    /// </summary>
-    internal static class FaceNames
-    {
-        public const string SansRegular = "export-sans-regular";
-        public const string SansBold = "export-sans-bold";
-        public const string SansItalic = "export-sans-italic";
-        public const string SansBoldItalic = "export-sans-bold-italic";
-        public const string MonoRegular = "export-mono-regular";
-    }
+    #endregion
 }

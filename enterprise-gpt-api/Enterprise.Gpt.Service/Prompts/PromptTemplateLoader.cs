@@ -11,6 +11,8 @@ namespace Enterprise.Gpt.Service.Prompts;
 /// </remarks>
 internal static class PromptTemplateLoader
 {
+    #region Public static methods
+
     /// <summary>
     /// Reads a template file's full text.
     /// </summary>
@@ -28,4 +30,6 @@ internal static class PromptTemplateLoader
 
         return File.ReadAllText(path);
     }
+
+    #endregion
 }

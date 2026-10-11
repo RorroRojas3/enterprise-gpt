@@ -8,6 +8,8 @@ namespace Enterprise.Gpt.Service.Extensions;
 /// </summary>
 internal static class DbContextConflictExtensions
 {
+    #region Public static methods
+
     /// <summary>
     /// Saves the context, translating a <see cref="DbUpdateConcurrencyException"/> into a 409.
     /// </summary>
@@ -27,4 +29,6 @@ internal static class DbContextConflictExtensions
             throw new ConflictException(conflictMessage, ex);
         }
     }
+
+    #endregion
 }

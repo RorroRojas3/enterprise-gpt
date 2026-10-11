@@ -99,6 +99,8 @@ public sealed class MarkdownBlockMapper : IMarkdownBlockMapper
         }
     }
 
+    #region Private methods
+
     private static List<ExportBlock> MapBlocks(ContainerBlock container, int depth)
     {
         List<ExportBlock> blocks = [];
@@ -158,7 +160,7 @@ public sealed class MarkdownBlockMapper : IMarkdownBlockMapper
         _ => null
     };
 
-    private static IReadOnlyList<ExportRun> FlattenText(ContainerBlock container)
+    private static List<ExportRun> FlattenText(ContainerBlock container)
     {
         List<ExportRun> runs = [];
 
@@ -170,7 +172,7 @@ public sealed class MarkdownBlockMapper : IMarkdownBlockMapper
         return Coalesce(runs);
     }
 
-    private static ExportBlock MapList(Md.ListBlock list, int depth)
+    private static ListBlock MapList(Md.ListBlock list, int depth)
     {
         List<ListItemBlock> items = [];
 
@@ -185,7 +187,7 @@ public sealed class MarkdownBlockMapper : IMarkdownBlockMapper
         return new ListBlock(list.IsOrdered, items);
     }
 
-    private static ExportBlock MapTable(Table table, int depth)
+    private static TableBlock MapTable(Table table, int depth)
     {
         TableRowBlock? header = null;
         List<TableRowBlock> rows = [];
@@ -222,7 +224,7 @@ public sealed class MarkdownBlockMapper : IMarkdownBlockMapper
 
     // A cell is a container of blocks, but every renderer here writes it as one line of runs: a table
     // whose cells hold their own lists or fences is not a table any of these formats can lay out.
-    private static IReadOnlyList<ExportRun> CellRuns(TableCell cell, int depth)
+    private static List<ExportRun> CellRuns(TableCell cell, int depth)
     {
         List<ExportRun> runs = [];
 
@@ -263,7 +265,7 @@ public sealed class MarkdownBlockMapper : IMarkdownBlockMapper
         return builder.ToString().TrimEnd('\r', '\n');
     }
 
-    private static IReadOnlyList<ExportRun> MapInlines(ContainerInline? container)
+    private static List<ExportRun> MapInlines(ContainerInline? container)
     {
         List<ExportRun> runs = [];
         AppendInlines(container, ExportRunStyles.None, null, runs, 0);
@@ -380,4 +382,6 @@ public sealed class MarkdownBlockMapper : IMarkdownBlockMapper
 
     private static string? NullIfEmpty(string? value) =>
         string.IsNullOrEmpty(value) ? null : value;
+
+    #endregion
 }

@@ -1053,6 +1053,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <param name="deactivated">Whether the document is soft-deleted.</param>
     /// <param name="chunksDeactivated">Whether the chunks are soft-deleted while the document stays active.</param>
     /// <param name="userId">The owner. Defaults to the regular test user.</param>
+    /// <param name="type">Whether the row records an uploaded or a generated file. Defaults to an upload.</param>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>The id of the inserted document.</returns>
     /// <remarks>

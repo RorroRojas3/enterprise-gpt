@@ -11,6 +11,8 @@ namespace Enterprise.Gpt.Api.Middleware;
 /// </summary>
 internal static class RequestLoggingRegistration
 {
+    #region Public static methods
+
     /// <summary>
     /// Binds and validates <see cref="RequestLoggingOptions"/> and registers the default body redactor.
     /// </summary>
@@ -55,4 +57,6 @@ internal static class RequestLoggingRegistration
 
         return options.Enabled ? app.UseMiddleware<RequestLoggingMiddleware>() : app;
     }
+
+    #endregion
 }

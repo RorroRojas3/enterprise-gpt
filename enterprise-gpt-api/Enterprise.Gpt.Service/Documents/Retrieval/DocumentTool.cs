@@ -21,7 +21,7 @@ namespace Enterprise.Gpt.Service.Documents.Retrieval;
 /// always returns nothing teaches the model to stop calling it.
 /// </para>
 /// </remarks>
-public static class DocumentTool
+public static partial class DocumentTool
 {
     /// <summary>
     /// The name the model calls this tool by, and the name it appears under in the activity feed and
@@ -41,29 +41,10 @@ public static class DocumentTool
         "attempt returns nothing useful. Every passage comes back with a citation to quote.";
 
     /// <summary>
-    /// Builds the retrieval function for one turn.
-    /// </summary>
-    /// <param name="scope">The corpus this turn may search, from <see cref="IDocumentRetrievalService.GetScopeAsync"/>.</param>
-    /// <param name="retrievalService">The retrieval service backing the tool.</param>
-    /// <param name="logger">Logger for failures that must not reach the model verbatim.</param>
-    /// <returns>The function to attach to <see cref="ChatOptions.Tools"/>.</returns>
-    /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
-    public static AIFunction Create(DocumentRetrievalScope scope, IDocumentRetrievalService retrievalService, ILogger logger)
-    {
-        ArgumentNullException.ThrowIfNull(scope);
-        ArgumentNullException.ThrowIfNull(retrievalService);
-        ArgumentNullException.ThrowIfNull(logger);
-
-        var invoker = new DocumentSearchInvoker(scope, retrievalService, logger);
-
-        return AIFunctionFactory.Create(invoker.SearchAsync, ToolName, ToolDescription);
-    }
-
-    /// <summary>
     /// Holds the per-turn state the function body needs, so the state is captured once rather than
     /// resolved on every call.
     /// </summary>
-    private sealed class DocumentSearchInvoker(
+    private sealed partial class DocumentSearchInvoker(
         DocumentRetrievalScope scope,
         IDocumentRetrievalService retrievalService,
         ILogger logger)
@@ -114,10 +95,40 @@ public static class DocumentTool
                 // Function invocation is configured with detailed errors, so whatever is thrown here is
                 // handed to the model verbatim. The real exception goes to the log; the model gets a
                 // sentence it can act on and nothing about the database behind it.
-                _logger.LogError(ex, "Document search failed for conversation {ConversationId}.", _scope.ConversationId);
+                LogSearchFailed(_logger, ex, _scope.ConversationId);
 
                 throw new InvalidOperationException("The document search could not be completed. Answer from the conversation so far, and tell the user their documents could not be searched.");
             }
         }
+
+        #region Logging
+
+        [LoggerMessage(Level = LogLevel.Error, Message = "Document search failed for conversation {ConversationId}.")]
+        private static partial void LogSearchFailed(ILogger logger, Exception exception, Guid conversationId);
+
+        #endregion
     }
+
+    #region Public static methods
+
+    /// <summary>
+    /// Builds the retrieval function for one turn.
+    /// </summary>
+    /// <param name="scope">The corpus this turn may search, from <see cref="IDocumentRetrievalService.GetScopeAsync"/>.</param>
+    /// <param name="retrievalService">The retrieval service backing the tool.</param>
+    /// <param name="logger">Logger for failures that must not reach the model verbatim.</param>
+    /// <returns>The function to attach to <see cref="ChatOptions.Tools"/>.</returns>
+    /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
+    public static AIFunction Create(DocumentRetrievalScope scope, IDocumentRetrievalService retrievalService, ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(retrievalService);
+        ArgumentNullException.ThrowIfNull(logger);
+
+        var invoker = new DocumentSearchInvoker(scope, retrievalService, logger);
+
+        return AIFunctionFactory.Create(invoker.SearchAsync, ToolName, ToolDescription);
+    }
+
+    #endregion
 }

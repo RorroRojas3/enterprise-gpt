@@ -58,6 +58,8 @@ public static class UsageGroupKeyNames
     /// </remarks>
     public const UsageGroupKeys Default = UsageGroupKeys.Model;
 
+    #region Public static methods
+
     /// <summary>
     /// Resolves the <c>?groupBy=</c> value a caller sent.
     /// </summary>
@@ -99,4 +101,6 @@ public static class UsageGroupKeyNames
     /// it received.
     /// </remarks>
     public static string ToToken(UsageGroupKeys key) => NamesByKey[key];
+
+    #endregion
 }

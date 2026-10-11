@@ -32,6 +32,8 @@ public static class PartitionKeys
     /// </summary>
     public const string Path = "/pk";
 
+    #region Public static methods
+
     /// <summary>
     /// Builds the partition key value for a conversation's documents.
     /// </summary>
@@ -48,4 +50,6 @@ public static class PartitionKeys
     {
         return $"{userId}:{conversationId}";
     }
+
+    #endregion
 }

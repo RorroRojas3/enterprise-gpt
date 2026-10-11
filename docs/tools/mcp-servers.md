@@ -125,13 +125,13 @@ Per-server URL, auth type and headers are catalog data, not configuration.
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/McpServerService.cs` | Registry CRUD, permission linkage, credential discard rules |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/McpToolProvider.cs` | Per-turn acquisition, renaming, failure classification |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/McpServers/McpServerService.cs` | Registry CRUD, permission linkage, credential discard rules |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/McpServers/McpToolProvider.cs` | Per-turn acquisition, renaming, failure classification |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Caching/McpClientCache.cs` | Live connections, single-flight |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/UserMcpCredentialService.cs` | Per-user key storage |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/McpServers/UserMcpCredentialService.cs` | Per-user key storage |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Security/UserSecretProtector.cs` | Data Protection wrapper |
 | `enterprise-gpt-ui/src/app/core/catalog/mcp-credential-store.ts` | The key dialog's state |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/` | Discard rules and failure classification |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Service/McpServers/` | Discard rules and failure classification |
 
 ## Related
 
