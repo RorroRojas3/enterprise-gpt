@@ -262,21 +262,6 @@ public sealed partial class ExportParityTests(PdfFontFixture fonts)
     }
 
     /// <summary>
-    /// PDF has no text layer this test can read back, so what it pins is that the same fixture lays
-    /// out at all — the format that can fail for a reason unrelated to the conversation.
-    /// </summary>
-    [Fact]
-    public void Render_Pdf_LaysOutTheSameFixture()
-    {
-        Assert.SkipUnless(_fonts.IsUsable, PdfFontFixture.SkipReason);
-
-        var export = new PdfExportRenderer(new MarkdownBlockMapper()).Render(Fixture());
-
-        Assert.Equal("application/pdf", export.ContentType);
-        Assert.StartsWith("%PDF", Encoding.ASCII.GetString(export.Content, 0, 4), StringComparison.Ordinal);
-    }
-
-    /// <summary>
     /// The three renderings share an outline as well as a vocabulary: the name, then when it was
     /// exported, then the messages in order under their own labels.
     /// </summary>

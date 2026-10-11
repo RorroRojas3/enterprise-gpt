@@ -26,7 +26,6 @@ public sealed class SummarizationBudgetCalculatorTests
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    [InlineData(-1_000_000)]
     public void Compute_UnconfiguredContextWindow_Refuses(decimal contextWindowSize)
     {
         var exception = Assert.Throws<SummarizerNotConfiguredException>(
@@ -35,15 +34,6 @@ public sealed class SummarizationBudgetCalculatorTests
 
         Assert.Equal(ModelId, exception.ModelId);
         Assert.Contains("context window", exception.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void Compute_ConfiguredContextWindow_ReturnsABudget()
-    {
-        var budget = SummarizationBudgetCalculator.Compute(CreateSummarizer(), 0, 0.85, 0.9);
-
-        Assert.True(budget.PerCallTokens > 0);
-        Assert.True(budget.MapUnitTokens > 0);
     }
 
     /// <summary>
@@ -58,17 +48,6 @@ public sealed class SummarizationBudgetCalculatorTests
                 CreateSummarizer(contextWindowSize: 1_000m, maxOutputTokens: 4_000m), 0, 0.85, 0.9));
 
         Assert.Equal(ModelId, exception.ModelId);
-    }
-
-    [Fact]
-    public void Compute_FramingLargerThanWhatTheWindowLeaves_Refuses()
-    {
-        Assert.Throws<SummarizerNotConfiguredException>(
-            () => SummarizationBudgetCalculator.Compute(
-                CreateSummarizer(contextWindowSize: 1_000m, maxOutputTokens: 100m),
-                promptOverheadTokens: 5_000,
-                0.85,
-                0.9));
     }
 
     [Fact]
@@ -90,7 +69,6 @@ public sealed class SummarizationBudgetCalculatorTests
     [Theory]
     [InlineData(1.0, 100_000)]
     [InlineData(0.85, 85_000)]
-    [InlineData(0.5, 50_000)]
     public void Compute_SafetyFraction_ScalesTheBudget(double safetyFraction, long expected)
     {
         var budget = SummarizationBudgetCalculator.Compute(

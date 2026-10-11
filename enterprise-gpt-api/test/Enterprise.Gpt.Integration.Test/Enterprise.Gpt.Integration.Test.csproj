@@ -10,12 +10,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
-    <!-- The EP-0 capability spike reads the API project's own user-secrets store, which is the only
-         place on a developer machine that already holds a working Azure OpenAI endpoint, key and
-         deployment. Nothing else in this project reads configuration from outside the test host. -->
-    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
     <!-- Security pin over the version Testcontainers brings; see Directory.Packages.props. -->
     <PackageReference Include="SSH.NET" />
     <!-- Real SQL Server 2025 in Docker: SqlPersistenceConfiguration pins UseCompatibilityLevel(170),
@@ -26,19 +20,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Enterprise.Gpt.Api\Enterprise.Gpt.Api.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- The EP-0 probe programs and the evidence they diff against, laid down beside the assembly so
-         a probe can be edited in place and re-run against a live sandbox without a rebuild. Always,
-         not PreserveNewest: a recording run rewrites the evidence in the source tree, and a stale
-         output copy would have the next run diff against the wrong thing. -->
-    <None Update="TestInfrastructure\FileAgentSpike\Scripts\*.py"
-          Link="FileAgentSpike\Scripts\%(Filename)%(Extension)"
-          CopyToOutputDirectory="Always" />
-    <None Update="TestInfrastructure\FileAgentSpike\Evidence\*.json"
-          Link="FileAgentSpike\Evidence\%(Filename)%(Extension)"
-          CopyToOutputDirectory="Always" />
   </ItemGroup>
 
 </Project>

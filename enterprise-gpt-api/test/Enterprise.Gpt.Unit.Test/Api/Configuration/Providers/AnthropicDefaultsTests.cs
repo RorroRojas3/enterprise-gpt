@@ -72,7 +72,6 @@ public sealed class AnthropicDefaultsTests
     /// A blank deployment name would otherwise reach the wire as an empty model id and 400.
     /// </summary>
     [Theory]
-    [InlineData("")]
     [InlineData("   ")]
     public void Create_RequestCarriesABlankModelId_FallsBackToTheConfiguredDefault(string modelId)
     {

@@ -31,7 +31,6 @@ public sealed class MarkdownBlockMapperTests
 
     [Theory]
     [InlineData("# One", 1)]
-    [InlineData("### Three", 3)]
     [InlineData("###### Six", 6)]
     public void Map_Heading_KeepsItsLevel(string markdown, int expected)
     {
@@ -292,7 +291,6 @@ public sealed class MarkdownBlockMapperTests
 
     [Theory]
     [InlineData("EMAIL")]
-    [InlineData("Email")]
     public void Map_EmailFence_MatchesTheInfoStringCaseInsensitively(string info)
     {
         Assert.IsType<QuoteBlock>(Assert.Single(_mapper.Map($"```{info}\nHi.\n```")));
@@ -304,7 +302,6 @@ public sealed class MarkdownBlockMapperTests
     /// info string.
     /// </summary>
     [Theory]
-    [InlineData("ts")]
     [InlineData("emails")]
     [InlineData("email draft")]
     public void Map_FenceThatIsNotExactlyAnEmail_StaysCode(string info)

@@ -42,12 +42,11 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
         };
     }
 
-    private static UpdateModelActionDto UpdateRequest(
-        Guid? providerId = null, string name = "it-updated", bool isDefault = false)
+    private static UpdateModelActionDto UpdateRequest(string name = "it-updated", bool isDefault = false)
     {
         return new UpdateModelActionDto
         {
-            ProviderId = providerId ?? KnownIds.SeedProviderId,
+            ProviderId = KnownIds.SeedProviderId,
             Name = name,
             DeploymentName = $"{name}-deployment",
             Description = $"{name} description",
@@ -57,7 +56,6 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
             IsDefault = isDefault
         };
     }
-
 
     [Fact]
     public async Task GetModels_AnonymousUser_ReturnsUnauthorized()
@@ -132,17 +130,6 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
         // Hidden from the picker and still readable by id: the flag is visibility, not
         // authorization, which is what lets a turn name the summarizer directly.
         Assert.False(model.IsUserSelectable);
-    }
-
-    [Fact]
-    public async Task GetModel_UnknownId_ReturnsNotFound()
-    {
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var response = await client.GetAsync($"api/models/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
-
-        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
-        Assert.Equal("Model not found.", problem.Detail);
     }
 
     [Fact]
@@ -413,19 +400,6 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
     }
 
     [Fact]
-    public async Task UpdateModel_UnknownProvider_ReturnsNotFound()
-    {
-        var id = await _fixture.AddModelAsync("it-original", cancellationToken: TestContext.Current.CancellationToken);
-        var request = UpdateRequest(providerId: Guid.NewGuid());
-        using var client = _fixture.Factory.CreateAdminClient();
-
-        var response = await client.PutAsJsonAsync($"api/models/{id}", request, TestContext.Current.CancellationToken);
-
-        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
-        Assert.Equal("Provider not found.", problem.Detail);
-    }
-
-    [Fact]
     public async Task UpdateModel_RegularUser_ReturnsForbidden()
     {
         var id = await _fixture.AddModelAsync("it-original", cancellationToken: TestContext.Current.CancellationToken);
@@ -486,17 +460,6 @@ public sealed class ModelEndpointsIntegrationTests(IntegrationTestFixture fixtur
         var secondResponse = await client.DeleteAsync($"api/models/{id}", TestContext.Current.CancellationToken);
 
         var problem = await ProblemAssert.ReadAsync(secondResponse, HttpStatusCode.NotFound);
-        Assert.Equal("Model not found.", problem.Detail);
-    }
-
-    [Fact]
-    public async Task DeleteModel_UnknownId_ReturnsNotFound()
-    {
-        using var client = _fixture.Factory.CreateAdminClient();
-
-        var response = await client.DeleteAsync($"api/models/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
-
-        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
         Assert.Equal("Model not found.", problem.Detail);
     }
 

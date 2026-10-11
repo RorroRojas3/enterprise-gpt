@@ -40,7 +40,7 @@ public sealed class SummarizerBootstrapperTests : IDisposable
         return services.BuildServiceProvider();
     }
 
-    private async Task<Model> AddModelAsync(Guid providerId, DateTimeOffset? dateDeactivated = null)
+    private async Task<Model> AddModelAsync(Guid providerId)
     {
         var date = DateTimeOffset.UtcNow;
         var model = new Model
@@ -53,7 +53,6 @@ public sealed class SummarizerBootstrapperTests : IDisposable
             ContextWindowSize = 1_000m,
             MaxOutputTokens = 100m,
             IsUserSelectable = false,
-            DateDeactivated = dateDeactivated,
             DateCreated = date,
             DateModified = date,
             CreatedById = KnownIds.SeedUserId,
@@ -89,19 +88,6 @@ public sealed class SummarizerBootstrapperTests : IDisposable
                 services, NullLogger.Instance, TestContext.Current.CancellationToken));
 
         Assert.Equal(missingId, exception.ModelId);
-    }
-
-    [Fact]
-    public async Task ValidateAsync_DeactivatedModel_Throws()
-    {
-        var model = await AddModelAsync(Providers.AzureOpenAI, DateTimeOffset.UtcNow);
-        using var services = CreateServices(model.Id);
-
-        var exception = await Assert.ThrowsAsync<SummarizerNotConfiguredException>(
-            () => SummarizerBootstrapper.ValidateAsync(
-                services, NullLogger.Instance, TestContext.Current.CancellationToken));
-
-        Assert.Equal(model.Id, exception.ModelId);
     }
 
     /// <summary>

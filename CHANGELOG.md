@@ -72,6 +72,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `JobStatusStore`, `McpClientCache` and `BlobDocumentStore` take an injected `TimeProvider`, and
   `ReadinessProbe` is disposable. No other runtime behaviour changes.
 
+### Removed
+
+- The `CosmosDb:UsePartitionKeyDelete` setting. It only steered a transcript-partition purge that
+  nothing in the application ever called, so it had no effect; remove it from any environment that
+  sets it. The purge itself is gone with it.
+- The opt-in File Agent live-model suites (code-interpreter reachability, sandbox inventory,
+  conversion matrix and the generation benchmark) and their test harness. They needed a live
+  Azure OpenAI sandbox and user-secrets, and CI only ever reported them as skipped. The committed
+  `conversion-matrix.json` and its unit checks stay, so the matrix is now maintained by hand.
+- About 200 redundant backend tests: duplicates, cases already covered by a stronger test, and
+  theory rows that hit the same branch. Production line coverage across the two suites is unchanged.
+  Unused or never-read private members (IDE0051, IDE0052) now fail the build.
+
 ### Fixed
 
 - The composer's attachment chips no longer show a `×` and a Stop control at once while a file

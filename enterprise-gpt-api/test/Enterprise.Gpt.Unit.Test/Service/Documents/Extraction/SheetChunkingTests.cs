@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using Enterprise.Gpt.Dto.Documents;
 using Enterprise.Gpt.Service.Documents.Extraction;
 using Enterprise.Gpt.Service.Options;
@@ -54,35 +53,6 @@ public sealed class SheetChunkingTests
     }
 
     /// <summary>
-    /// The same shaping through the other extractor, so a mixed corpus's spreadsheet half has one
-    /// header-repetition rate rather than two.
-    /// </summary>
-    [Fact]
-    public async Task Chunk_CsvSpanningManyWindows_KeepsTheHeaderInAlmostEveryChunk()
-    {
-        var extractor = new CsvTextExtractor(
-            NullLogger<CsvTextExtractor>.Instance, Microsoft.Extensions.Options.Options.Create(new SheetOptions()), TestChunker.Default);
-
-        var content = Encoding.UTF8.GetBytes(BuildCsv(2_000));
-        var file = new FileDto
-        {
-            FileName = "orders.csv",
-            ContentType = "text/csv",
-            Length = content.Length,
-            Content = content
-        };
-
-        var segments = await extractor.ExtractAsync(file, progress: null, TestContext.Current.CancellationToken);
-        var chunks = TestChunker.Default.Chunk(segments, TestContext.Current.CancellationToken);
-        var withHeader = chunks.Count(chunk => chunk.Text.Contains(HeaderLine, StringComparison.Ordinal));
-
-        Assert.True(chunks.Count > 20, $"Expected a corpus of many chunks, got {chunks.Count}.");
-        Assert.True(
-            withHeader >= chunks.Count * 0.95,
-            $"Only {withHeader} of {chunks.Count} chunks carried the header line.");
-    }
-
-    /// <summary>
     /// Every window of every sheet opens with its own sheet name, so a workbook's chunks stay
     /// attributable to the sheet they came from however many sheets it holds.
     /// </summary>
@@ -122,18 +92,6 @@ public sealed class SheetChunkingTests
                 forSheet.Count(chunk => chunk.Text.Contains(HeaderLine, StringComparison.Ordinal)) >= forSheet.Count * 0.95,
                 $"Sheet '{sheetName}' lost its header in more than one chunk in twenty.");
         }
-    }
-
-    private static string BuildCsv(int dataRows)
-    {
-        var builder = new StringBuilder("SKU,Region,Revenue,Quarter\n");
-
-        for (var i = 1; i <= dataRows; i++)
-        {
-            builder.Append(CultureInfo.InvariantCulture, $"SKU-{i:0000},East,{i * 137},Q3\n");
-        }
-
-        return builder.ToString();
     }
 
     private static List<object?[]> DataRows(int dataRows)

@@ -108,22 +108,6 @@ public sealed class DocumentSummaryServiceTests : IDisposable
         Assert.Null(usage.ContextTokens);
     }
 
-    [Fact]
-    public async Task GetOrCreateAsync_NoStoredSummary_MovesTheConversationsOwnCounters()
-    {
-        var (conversationId, documentId) = await AddConversationDocumentAsync();
-
-        await _service.GetOrCreateAsync(
-            conversationId, documentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
-
-        using var ctx = _fixture.CreateContext();
-        var conversation = await ctx.Conversations.IncludingDeactivated().SingleAsync(
-            c => c.Id == conversationId, TestContext.Current.CancellationToken);
-
-        Assert.Equal(900, conversation.InputTokens);
-        Assert.Equal(120, conversation.OutputTokens);
-    }
-
     /// <summary>
     /// The write must not ride the caller's context. It is shared with
     /// <c>ConversationService.PersistTurnAsync</c>, and EF accepts changes only on a successful

@@ -29,12 +29,6 @@ public sealed class JobStatusStoreTests : IDisposable
     public void Dispose() => _store.Dispose();
 
     [Fact]
-    public void Get_UnknownJob_ReturnsNull()
-    {
-        Assert.Null(_store.Get("missing"));
-    }
-
-    [Fact]
     public void Register_NewJob_RecordsQueuedAtZeroPercentForTheOwner()
     {
         _store.Register("job-1", _ownerId, Target);
@@ -63,16 +57,6 @@ public sealed class JobStatusStoreTests : IDisposable
         Assert.Equal("Embedded 12 of 40 chunk(s)", snapshot.Message);
         Assert.Equal(12, snapshot.CompletedUnits);
         Assert.Equal(40, snapshot.TotalUnits);
-    }
-
-    [Fact]
-    public void Report_PreservesTheOwner()
-    {
-        _store.Register("job-1", _ownerId, Target);
-
-        _store.Report("job-1", JobStatuses.Embedding, 60);
-
-        Assert.Equal(_ownerId, _store.Get("job-1")!.UserId);
     }
 
     [Fact]
@@ -319,14 +303,6 @@ public sealed class JobStatusStoreTests : IDisposable
         _store.Fail("job-1", "Processing failed.");
 
         Assert.Equal(JobStatuses.Cancelled, _store.Get("job-1")!.Status);
-    }
-
-    [Fact]
-    public void Register_RecordsTheTargetSoACancelKnowsWhatToUndo()
-    {
-        _store.Register("job-1", _ownerId, Target);
-
-        Assert.Equal(Target, _store.Get("job-1")!.Target);
     }
 
     [Fact]

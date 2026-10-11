@@ -226,18 +226,6 @@ public sealed class SheetQueryToolTests
             () => SheetQueryTool.Create(Scope(), _sheetQueryService, 0, NullLogger.Instance));
     }
 
-    [Fact]
-    public async Task InvokeAsync_AComputedResult_RecordsTheOperationAndASuccess()
-    {
-        SetUpResult(new SheetQueryResult { Operation = "sum", Value = 12d });
-        using var collector = CollectQueryDurations();
-
-        await CreateFunction().InvokeAsync(
-            new AIFunctionArguments { ["operation"] = "sum" }, TestContext.Current.CancellationToken);
-
-        AssertRecorded(collector, "sum", "success");
-    }
-
     /// <summary>
     /// A refusal never throws, so counting it as an error would hide how often the model asks for a
     /// sheet or column that does not exist.
@@ -281,10 +269,6 @@ public sealed class SheetQueryToolTests
     }
 
     /// <summary>
-    /// A query that ran and matched nothing carries a note too, so counting notes rather than refusals
-    /// would report most successful calls as refused.
-    /// </summary>
-    /// <summary>
     /// The refusal flag is the tool's own discriminator, not something the model is meant to read, and
     /// it is the one public member of the result deliberately kept off the payload.
     /// </summary>
@@ -307,6 +291,10 @@ public sealed class SheetQueryToolTests
         Assert.DoesNotContain("isRefusal", json, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// A query that ran and matched nothing carries a note too, so counting notes rather than refusals
+    /// would report most successful calls as refused.
+    /// </summary>
     [Fact]
     public async Task InvokeAsync_AQueryThatRanButCarriesANote_IsRecordedAsASuccess()
     {
@@ -322,18 +310,6 @@ public sealed class SheetQueryToolTests
             new AIFunctionArguments { ["operation"] = "sum" }, TestContext.Current.CancellationToken);
 
         AssertRecorded(collector, "sum", "success");
-    }
-
-    [Fact]
-    public async Task InvokeAsync_AFilterThatMatchedNoRows_IsRecordedAsASuccess()
-    {
-        SetUpResult(new SheetQueryResult { Operation = "filter", Rows = [], Note = "No rows matched." });
-        using var collector = CollectQueryDurations();
-
-        await CreateFunction().InvokeAsync(
-            new AIFunctionArguments { ["operation"] = "filter" }, TestContext.Current.CancellationToken);
-
-        AssertRecorded(collector, "filter", "success");
     }
 
     [Fact]

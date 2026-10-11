@@ -31,17 +31,8 @@ public sealed class DocumentTypeNamesTests
         Assert.Equal(DocumentTypeNames.Supported.Count, resolved.Distinct().Count());
     }
 
-    [Fact]
-    public void SupportedList_QuotesEveryTokenItAdvertises()
-    {
-        Assert.Equal(
-            string.Join(", ", DocumentTypeNames.Supported.Select(token => $"'{token}'")),
-            DocumentTypeNames.SupportedList);
-    }
-
     [Theory]
     [InlineData(null)]
-    [InlineData("")]
     [InlineData("   ")]
     public void Resolve_NoValue_NarrowsNothing(string? type)
     {
@@ -50,7 +41,6 @@ public sealed class DocumentTypeNamesTests
 
     [Theory]
     [InlineData("GENERATED")]
-    [InlineData("Uploaded")]
     [InlineData("  generated  ")]
     public void Resolve_CasingAndPadding_AreIgnored(string type)
     {

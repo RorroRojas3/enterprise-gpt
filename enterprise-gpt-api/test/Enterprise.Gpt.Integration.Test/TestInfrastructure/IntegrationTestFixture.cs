@@ -909,8 +909,8 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// <param name="role">Who produced it. Only an assistant message is ratable.</param>
     /// <param name="userId">The owner, whose id composes half the partition key.</param>
     /// <param name="rating">
-    /// A rating to seed onto the document. Needed because <see cref="FakeTranscriptStore"/> records
-    /// patch operations rather than applying them, so a test that rates through the API and then
+    /// A rating to seed onto the document. Needed because <see cref="FakeTranscriptStore"/> ignores
+    /// patch operations, so a test that rates through the API and then
     /// withdraws would find the document exactly as it was seeded — and the withdrawal would
     /// correctly conclude there was nothing to withdraw.
     /// </param>
@@ -1165,14 +1165,12 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     /// </summary>
     /// <param name="documentId">The document the sheet belongs to.</param>
     /// <param name="sheet">The sheet, its columns and its rows.</param>
-    /// <param name="deactivated">Whether the sheet is soft-deleted.</param>
     /// <param name="rowsDeactivated">Whether every row is soft-deleted while the sheet is not.</param>
     /// <param name="cancellationToken">A token that propagates cancellation.</param>
     /// <returns>The id of the inserted sheet.</returns>
     public async Task<Guid> AddConversationDocumentSheetAsync(
         Guid documentId,
         SeedSheet sheet,
-        bool deactivated = false,
         bool rowsDeactivated = false,
         CancellationToken cancellationToken = default)
     {
@@ -1190,7 +1188,6 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
             ColumnCount = sheet.Columns.Count,
             DateCreated = date,
             DateModified = date,
-            DateDeactivated = deactivated ? date : null,
             Columns =
             [
                 .. sheet.Columns.Select((c, i) => new ConversationDocumentSheetColumn
@@ -1200,8 +1197,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
                     ColumnName = c.Name,
                     InferredType = c.Type,
                     DateCreated = date,
-                    DateModified = date,
-                    DateDeactivated = deactivated ? date : null
+                    DateModified = date
                 })
             ],
             Rows =
@@ -1213,7 +1209,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
                     Cells = SeedSheetCells(cells),
                     DateCreated = date,
                     DateModified = date,
-                    DateDeactivated = deactivated || rowsDeactivated ? date : null
+                    DateDeactivated = rowsDeactivated ? date : null
                 })
             ]
         };

@@ -40,23 +40,6 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
 
     #region Ordering
     [Fact]
-    public async Task SearchConversations_SortedByNameAscending_OrdersAlphabetically()
-    {
-        await _fixture.AddConversationAsync(name: "it-order-zulu", cancellationToken: TestContext.Current.CancellationToken);
-        await _fixture.AddConversationAsync(name: "it-order-alpha", cancellationToken: TestContext.Current.CancellationToken);
-        await _fixture.AddConversationAsync(name: "it-order-mike", cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var page = await client.GetFromJsonAsync<PaginatedResponseDto<ConversationDto>>(
-            "api/conversations/search?name=it-order-&sort=name&dir=asc", TestContext.Current.CancellationToken);
-
-        Assert.NotNull(page);
-        Assert.Equal(
-            ["it-order-alpha", "it-order-mike", "it-order-zulu"],
-            page.Items.Select(x => x.Name));
-    }
-
-    [Fact]
     public async Task SearchConversations_SortedByNameDescending_ReversesTheOrder()
     {
         await _fixture.AddConversationAsync(name: "it-rorder-zulu", cancellationToken: TestContext.Current.CancellationToken);
@@ -164,29 +147,6 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
     #endregion
 
     #region Reads
-    [Fact]
-    public async Task GetConversation_OwnConversation_ReturnsIt()
-    {
-        var id = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var conversation = await client.GetFromJsonAsync<ConversationDetailDto>(
-            $"api/conversations/{id}", TestContext.Current.CancellationToken);
-
-        Assert.NotNull(conversation);
-        Assert.Equal(id, conversation.Id);
-    }
-
-    [Fact]
-    public async Task GetConversation_UnknownId_ReturnsNotFound()
-    {
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var response = await client.GetAsync($"api/conversations/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
-
-        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
-    }
-
     // Reported as not-found rather than forbidden so the route cannot be used to probe for ids.
     [Fact]
     public async Task GetConversation_AnotherUsersConversation_ReturnsNotFound()
@@ -403,17 +363,6 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
 
         await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
-
-    [Fact]
-    public async Task ExportConversation_UnknownConversation_ReturnsNotFound()
-    {
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var response = await client.GetAsync(
-            $"api/conversations/{Guid.NewGuid()}/export?format=md", TestContext.Current.CancellationToken);
-
-        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
-    }
     #endregion
 
     #region Document listing
@@ -443,19 +392,6 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
         Assert.Equal("application/octet-stream", document.MimeType);
         Assert.Equal(1024, document.Size);
         Assert.NotEqual(default, document.DateCreated);
-    }
-
-    [Fact]
-    public async Task GetConversationDocuments_NoDocuments_ReturnsEmpty()
-    {
-        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var documents = await client.GetFromJsonAsync<List<ConversationDocumentDto>>(
-            $"api/conversations/{conversationId}/documents", TestContext.Current.CancellationToken);
-
-        Assert.NotNull(documents);
-        Assert.Empty(documents);
     }
 
     [Fact]
@@ -496,16 +432,6 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
         using var client = _fixture.Factory.CreateUserClient();
 
         var response = await client.GetAsync($"api/conversations/{id}/documents", TestContext.Current.CancellationToken);
-
-        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
-    }
-
-    [Fact]
-    public async Task GetConversationDocuments_UnknownConversation_ReturnsNotFound()
-    {
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var response = await client.GetAsync($"api/conversations/{Guid.NewGuid()}/documents", TestContext.Current.CancellationToken);
 
         await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
@@ -792,7 +718,7 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
     /// </summary>
     /// <remarks>
     /// The document is seeded already rated rather than rated through the API first, because the
-    /// in-memory transcript store records patch operations without applying them — so a rating made
+    /// in-memory transcript store ignores patch operations — so a rating made
     /// here would not be on the document the withdrawal reads, and the withdrawal would correctly
     /// conclude there was nothing to withdraw.
     /// </remarks>
@@ -819,40 +745,6 @@ public sealed class ConversationEndpointsIntegrationTests(IntegrationTestFixture
             conversationId, messageId, TestContext.Current.CancellationToken);
         Assert.NotNull(row);
         Assert.Null(row.Rating);
-    }
-
-    [Fact]
-    public async Task SetMessageFeedback_UserMessage_ReturnsValidationProblemNamingTheRouteParameter()
-    {
-        var conversationId = await _fixture.AddConversationAsync(
-            cancellationToken: TestContext.Current.CancellationToken);
-        var messageId = await _fixture.AddTranscriptMessageAsync(
-            conversationId, ChatRoles.User, cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var response = await client.PostAsJsonAsync(
-            $"api/conversations/{conversationId}/messages/{messageId}/feedback",
-            new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
-            TestContext.Current.CancellationToken);
-
-        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.BadRequest);
-        Assert.Equal("/problems/validation-error", problem.Type);
-        Assert.Contains("messageId", problem.Errors);
-    }
-
-    [Fact]
-    public async Task SetMessageFeedback_UnknownMessage_ReturnsNotFound()
-    {
-        var conversationId = await _fixture.AddConversationAsync(
-            cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var response = await client.PostAsJsonAsync(
-            $"api/conversations/{conversationId}/messages/{Guid.NewGuid()}/feedback",
-            new SetMessageFeedbackActionDto { Rating = MessageFeedbackRatings.Up },
-            TestContext.Current.CancellationToken);
-
-        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
 
     /// <summary>

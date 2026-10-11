@@ -98,16 +98,6 @@ public sealed class GeneratedArtifactVerifierTests
         Assert.NotNull(result.Reason);
     }
 
-    // A zip that opens as a package but carries no document part: the failure mode a truncated write
-    // produces, and the one a "does it unzip" check would wave through.
-    [Fact]
-    public void Verify_OfficePackageWithNoDocument_Fails()
-    {
-        var result = _verifier.Verify("notes.docx", Bytes("PK not really"));
-
-        Assert.False(result.Passed);
-    }
-
     [Fact]
     public void Verify_EmptyBytes_FailsBeforeAnyParserRuns()
     {

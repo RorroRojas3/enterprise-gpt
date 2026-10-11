@@ -165,7 +165,7 @@ Six projects plus two test projects under `test/`. `global.json` pins the SDK an
 - **Cosmos DB:** holds the conversation transcript, one document per message plus a `type`-discriminated header.
   - Partition key: the synthetic `/pk`, holding `{userId}:{conversationId}`.
   - Accessed through the **raw `CosmosClient` SDK** with the System.Text.Json serializer, not an EF Core provider. Dates are fixed-width UTC because `ORDER BY dateCreated` is a lexicographic string compare.
-  - Access goes through `ITranscriptStore` (`Repository/Cosmos/CosmosTranscriptStore.cs`): transactional batches, continuation-token paging, partition purge. **Every member requires a partition key.**
+  - Access goes through `ITranscriptStore` (`Repository/Cosmos/CosmosTranscriptStore.cs`): transactional batches, continuation-token paging, field patches. **Every member requires a partition key.**
   - The container id key is `CosmosDb:TranscriptContainerId`. The old `CosmosDb:ContainerId` fails startup by design.
   - Read `docs/conversations/transcripts.md`, and `docs/operations/runbooks.md` before deploying, because the cutover destroys every existing transcript.
 - **LLM access:** Microsoft.Extensions.AI keyed `IChatClient` (Azure AI Foundry), with function invocation and `UseOpenTelemetry()`.
@@ -309,7 +309,6 @@ Write for a senior engineer who knows the language and can read the code.
   - `Context` and the scoped contexts carry the production interceptors. `CreateContext()` is bare, so arrange and assert code writes and reads exactly what it states.
   - Each test class news up its own fixture rather than using `IClassFixture`.
 - **Integration tests:** `WebApplicationFactory<Program>` + Testcontainers **SQL Server 2025** (`CustomWebApplicationFactory` + `TestAuthHandler`, header `X-Test-User`). They need Docker and carry both `[Collection("Integration")]` and `[Trait("Category", "Integration")]`.
-- **Live-model tests:** `FileAgentSpike` / `ConversionMatrixTests` / `SandboxInventoryTests` drive a live model and a remote sandbox. Rerun them alone before calling a failure a regression.
 
 ### Angular / NgRx
 

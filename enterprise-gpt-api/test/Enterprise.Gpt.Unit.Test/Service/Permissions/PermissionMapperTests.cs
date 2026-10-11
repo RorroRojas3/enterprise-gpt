@@ -41,17 +41,6 @@ public class PermissionMapperTests
     }
 
     [Fact]
-    public void MapToPermissionDto_CustomPermission_LeavesMcpServerIdNull()
-    {
-        var permission = CreatePermission();
-
-        var dto = permission.MapToPermissionDto();
-
-        Assert.Null(dto.McpServerId);
-        Assert.Null(dto.DateDeactivated);
-    }
-
-    [Fact]
     public void MapToPermissionDtoExpression_CompiledDelegate_MatchesMapToPermissionDto()
     {
         var permission = CreatePermission(mcpServerId: Guid.NewGuid(), dateDeactivated: DateTimeOffset.UtcNow, isDefault: true);

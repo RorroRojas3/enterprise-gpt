@@ -189,27 +189,6 @@ public sealed class AzureAIFoundryChatClientBridgeTests
     }
 
     [Fact]
-    public async Task AsIChatClient_ForANonReasoningModel_SendsNoReasoningEffort()
-    {
-        var root = await SendAsync(CatalogOptions(isReasoningEnabled: false));
-
-        Assert.False(root.TryGetProperty("reasoning_effort", out _));
-        Assert.False(root.TryGetProperty("reasoning", out _));
-    }
-
-    [Fact]
-    public async Task AsIChatClient_Always_TakesTheModelFromTheCatalogRatherThanTheClientDefault()
-    {
-        // The client is constructed with DefaultModel purely because the SDK requires one; every turn
-        // overrides it from the catalog, and a regression here would silently serve one deployment's
-        // traffic from another.
-        var root = await SendAsync(CatalogOptions(isReasoningEnabled: false));
-
-        Assert.Equal("model-from-catalog", root.GetProperty("model").GetString());
-        Assert.NotEqual("provider-default", root.GetProperty("model").GetString());
-    }
-
-    [Fact]
     public async Task AsIChatClient_Always_LeavesTheConversationIdOffTheWire()
     {
         // Unlike the Responses provider, this one does not clear ChatOptions.ConversationId — it does

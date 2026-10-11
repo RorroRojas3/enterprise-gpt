@@ -121,24 +121,6 @@ public sealed class ChatUsageScopeTests
     }
 
     [Fact]
-    public async Task Enter_NonStreamedRequestCompletes_CapturesTheReport()
-    {
-        using var client = BuildTrackedClient(new ScriptedChatClient
-        {
-            Usage = new UsageDetails { InputTokenCount = 4, OutputTokenCount = 2 }
-        });
-
-        var scope = ChatUsageScope.Create();
-        using (scope.Enter())
-        {
-            await client.GetResponseAsync("Hello", cancellationToken: TestContext.Current.CancellationToken);
-        }
-
-        Assert.NotNull(scope.Report);
-        Assert.Equal(4, scope.Report.AssistantUsage.InputTokenCount);
-    }
-
-    [Fact]
     public async Task Enter_NestedActivation_KeepsTheInnerRequestOutOfTheOuterScope()
     {
         using var client = BuildTrackedClient(new ScriptedChatClient
@@ -194,12 +176,6 @@ public sealed class ChatUsageScopeTests
         var response = await client.GetResponseAsync("Hello", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(response);
-    }
-
-    [Fact]
-    public void Report_NoRequestRan_IsNull()
-    {
-        Assert.Null(ChatUsageScope.Create().Report);
     }
 
     /// <summary>

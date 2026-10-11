@@ -9,8 +9,5 @@ public enum TranscriptBatchOperationKinds
     Create = 1,
 
     /// <summary>Applies partial-update operations to an existing document.</summary>
-    Patch = 2,
-
-    /// <summary>Deletes a document.</summary>
-    Delete = 3
+    Patch = 2
 }

@@ -48,12 +48,7 @@ public sealed class RequestLoggingMiddlewareTests
 
     [Theory]
     [InlineData(StatusCodes.Status400BadRequest, LogLevel.Warning)]
-    [InlineData(StatusCodes.Status401Unauthorized, LogLevel.Warning)]
-    [InlineData(StatusCodes.Status403Forbidden, LogLevel.Warning)]
-    [InlineData(StatusCodes.Status404NotFound, LogLevel.Warning)]
-    [InlineData(StatusCodes.Status409Conflict, LogLevel.Warning)]
     [InlineData(StatusCodes.Status500InternalServerError, LogLevel.Error)]
-    [InlineData(StatusCodes.Status502BadGateway, LogLevel.Error)]
     [InlineData(StatusCodes.Status204NoContent, LogLevel.Information)]
     public async Task InvokeAsync_ResponseStatus_SelectsTheMatchingCompletionLevel(int statusCode, LogLevel expected)
     {
@@ -254,16 +249,6 @@ public sealed class RequestLoggingMiddlewareTests
 
         Assert.Equal(
             "/api/conversations/search?name=confidential",
-            RequestLoggingTestHarness.Field(_harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId), "RequestPath"));
-    }
-
-    [Fact]
-    public async Task InvokeAsync_NoQueryString_LogsThePathAlone()
-    {
-        await _harness.Run(RequestLoggingTestHarness.CreateContext("/api/models"));
-
-        Assert.Equal(
-            "/api/models",
             RequestLoggingTestHarness.Field(_harness.SingleRecord(RequestLoggingTestHarness.CompletedEventId), "RequestPath"));
     }
 

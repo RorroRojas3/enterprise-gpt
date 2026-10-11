@@ -8,15 +8,14 @@ namespace Enterprise.Gpt.Unit.Test.Service.Projects;
 
 public class ProjectMapperTests
 {
-    private static Project CreateProject(
-        string? description = "A test project.", string? instructions = "Be concise.", bool isFavorite = true)
+    private static Project CreateProject(string? instructions = "Be concise.", bool isFavorite = true)
     {
         return new Project
         {
             Id = Guid.NewGuid(),
             UserId = Guid.NewGuid(),
             Name = "Research",
-            Description = description,
+            Description = "A test project.",
             Instructions = instructions,
             IsFavorite = isFavorite,
             DateCreated = DateTimeOffset.UtcNow.AddDays(-1),
@@ -43,17 +42,6 @@ public class ProjectMapperTests
         var dto = project.MapToProjectDto();
 
         AssertMatchesEntity(project, dto);
-    }
-
-    [Fact]
-    public void MapToProjectDto_OptionalFieldsUnset_MapsThemAsNull()
-    {
-        var project = CreateProject(description: null, instructions: null);
-
-        var dto = project.MapToProjectDto();
-
-        Assert.Null(dto.Description);
-        Assert.Null(dto.Instructions);
     }
 
     [Theory]

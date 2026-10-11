@@ -150,9 +150,6 @@ read with an empty list.
 | The migration history is initialized | `Database.Migrate()` needs `__EFMigrationsHistory` — see below |
 | A window in which chatting can stop | The old and new builds cannot share a container |
 
-Leave `CosmosDb:UsePartitionKeyDelete` at `false` until you have confirmed the
-`DeleteAllItemsByPartitionKey` capability is enabled on the account.
-
 ## Steps
 
 1. **Apply the SQL migrations.** `Database.Migrate()` runs at startup, skipped only in the `Testing`

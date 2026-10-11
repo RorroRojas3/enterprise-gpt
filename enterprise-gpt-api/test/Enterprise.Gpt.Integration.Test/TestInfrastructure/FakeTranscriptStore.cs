@@ -13,10 +13,10 @@ namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Documents are stored whole, keyed by partition key and id. Batches are applied for creates and
-/// deletes — which is what makes a header readable after the turn that wrote it — but patch
-/// operations are recorded rather than interpreted, because the JSON-patch semantics Cosmos
-/// applies are exactly what a fake gets subtly wrong, and no test here reads a patched value back.
+/// Documents are stored whole, keyed by partition key and id. A batch's creates are applied — which
+/// is what makes a header readable after the turn that wrote it — but patch operations are ignored,
+/// because the JSON-patch semantics Cosmos applies are exactly what a fake gets subtly wrong, and no
+/// test here reads a patched value back.
 /// </para>
 /// <para>
 /// <see cref="QueryAsync"/> throws on purpose. Ordered, filtered, multi-document queries are the
@@ -27,26 +27,13 @@ namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 public sealed class FakeTranscriptStore : ITranscriptStore
 {
     private readonly ConcurrentDictionary<string, object> _items = new();
-    private readonly ConcurrentQueue<(string Id, IReadOnlyList<PatchOperation> Operations)> _patches = new();
 
     /// <summary>
-    /// Gets the patch calls made since the last reset, in order, whether issued directly or inside
-    /// a batch.
-    /// </summary>
-    public IReadOnlyCollection<(string Id, IReadOnlyList<PatchOperation> Operations)> Patches => [.. _patches];
-
-    /// <summary>
-    /// Gets the documents stored since the last reset.
-    /// </summary>
-    public IReadOnlyCollection<object> Documents => [.. _items.Values];
-
-    /// <summary>
-    /// Clears every stored document and the recorded patch calls.
+    /// Clears every stored document.
     /// </summary>
     public void Reset()
     {
         _items.Clear();
-        _patches.Clear();
     }
 
     /// <inheritdoc />
@@ -77,8 +64,6 @@ public sealed class FakeTranscriptStore : ITranscriptStore
         // Mirrors the real store's guard so an over-long patch fails here rather than only in
         // production, where Cosmos rejects the request outright.
         ArgumentOutOfRangeException.ThrowIfGreaterThan(operations.Count, CosmosTranscriptStore.MaxPatchOperations);
-
-        _patches.Enqueue((id, operations));
 
         return Task.FromResult(_items.ContainsKey(Key(id, partitionKey)));
     }
@@ -113,34 +98,13 @@ public sealed class FakeTranscriptStore : ITranscriptStore
 
         foreach (var operation in batch.Operations)
         {
-            switch (operation.Kind)
+            if (operation.Kind == TranscriptBatchOperationKinds.Create)
             {
-                case TranscriptBatchOperationKinds.Create:
-                    _items[Key(operation.Id, partitionKey)] = operation.Item!;
-                    break;
-                case TranscriptBatchOperationKinds.Patch:
-                    _patches.Enqueue((operation.Id, operation.PatchOperations!));
-                    break;
-                case TranscriptBatchOperationKinds.Delete:
-                    _items.TryRemove(Key(operation.Id, partitionKey), out _);
-                    break;
+                _items[Key(operation.Id, partitionKey)] = operation.Item!;
             }
         }
 
         return Task.FromResult(new TranscriptBatchResult(true, HttpStatusCode.OK, null, null));
-    }
-
-    /// <inheritdoc />
-    public Task DeletePartitionAsync(PartitionKey partitionKey, CancellationToken cancellationToken)
-    {
-        var prefix = $"{partitionKey}/";
-
-        foreach (var key in _items.Keys.Where(x => x.StartsWith(prefix, StringComparison.Ordinal)))
-        {
-            _items.TryRemove(key, out _);
-        }
-
-        return Task.CompletedTask;
     }
 
     private static string Key(string id, PartitionKey partitionKey) => $"{partitionKey}/{id}";

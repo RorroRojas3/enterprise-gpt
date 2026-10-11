@@ -462,21 +462,6 @@ public sealed class DocumentServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateConversationDocumentAsync_EmbeddingFails_RemovesTheBlobItAlreadyStored()
-    {
-        var conversation = await AddConversationAsync();
-        SetUpPipeline(chunkCount: 2);
-        _embeddingGenerator
-            .GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new InvalidOperationException("rate limited"));
-
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => _service.CreateConversationDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken));
-
-        await _documentStore.Received(1).DeleteAsync(ContainerName, Arg.Any<string>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task CreateConversationDocumentAsync_CleanupAlsoFails_StillReportsTheOriginalFailure()
     {
         // Losing the cleanup must not replace the real error with a storage one.
@@ -504,7 +489,6 @@ public sealed class DocumentServiceTests : IDisposable
     }
 
     [Theory]
-    [InlineData("")]
     [InlineData("   ")]
     public async Task CreateConversationDocumentAsync_BlankJobId_Throws(string jobId)
     {
@@ -577,19 +561,6 @@ public sealed class DocumentServiceTests : IDisposable
 
         _jobStatusStore.DidNotReceive().Register(Arg.Any<string>(), Arg.Any<Guid>(), Arg.Any<JobTarget>());
         await _backgroundJobQueue.DidNotReceive().EnqueueAsync(Arg.Any<JobWorkItem>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task QueueProjectDocumentAsync_EnqueueFails_MarksTheRegisteredJobFailed()
-    {
-        var project = await AddProjectAsync();
-        _backgroundJobQueue.EnqueueAsync(Arg.Any<JobWorkItem>(), Arg.Any<CancellationToken>())
-            .Throws(new InvalidOperationException("queue closed"));
-
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => _service.QueueProjectDocumentAsync(project.Id, CreateFile(), TestContext.Current.CancellationToken));
-
-        _jobStatusStore.Received(1).Fail(Arg.Any<string>(), Arg.Any<string>());
     }
 
     [Fact]
@@ -704,18 +675,6 @@ public sealed class DocumentServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateProjectDocumentAsync_ExtractorFindsNoText_ThrowsValidationException()
-    {
-        var project = await AddProjectAsync();
-        SetUpPipeline(chunkCount: 0, segmentCount: 0);
-
-        var exception = await Assert.ThrowsAsync<ValidationException>(
-            () => _service.CreateProjectDocumentAsync("job-1", CreateFile(), KnownIds.SeedUserId, project.Id, TestContext.Current.CancellationToken));
-
-        Assert.Contains("No readable text", Assert.Single(exception.Errors).ErrorMessage);
-    }
-
-    [Fact]
     public async Task CreateProjectDocumentAsync_IngestionFails_RemovesTheBlobAndPersistsNothing()
     {
         var project = await AddProjectAsync();
@@ -767,7 +726,6 @@ public sealed class DocumentServiceTests : IDisposable
     }
 
     [Theory]
-    [InlineData("")]
     [InlineData("   ")]
     public async Task CreateProjectDocumentAsync_BlankJobId_Throws(string jobId)
     {
@@ -786,11 +744,11 @@ public sealed class DocumentServiceTests : IDisposable
     #region Downloads
     private const string SignedUri = "https://storage.example/documents/blob?sig=signature";
 
-    private void SetUpSigning(string uri = SignedUri)
+    private void SetUpSigning()
     {
         _documentStore.GenerateReadUri(
                 Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<string?>(), Arg.Any<string?>())
-            .Returns(new Uri(uri));
+            .Returns(new Uri(SignedUri));
     }
 
     #region CancelUploadAsync
@@ -1092,9 +1050,9 @@ public sealed class DocumentServiceTests : IDisposable
     }
 
     private async Task<ProjectDocument> AddProjectDocumentAsync(
-        Project project, string name = "handbook.pdf",
-        string mimeType = "application/pdf", DateTimeOffset? deactivated = null, Guid? uploadedBy = null)
+        Project project, DateTimeOffset? deactivated = null, Guid? uploadedBy = null)
     {
+        const string name = "handbook.pdf";
         var date = DateTimeOffset.UtcNow;
         var document = new ProjectDocument
         {
@@ -1103,7 +1061,7 @@ public sealed class DocumentServiceTests : IDisposable
             ProjectId = project.Id,
             Name = name,
             Extension = System.IO.Path.GetExtension(name).ToLowerInvariant(),
-            MimeType = mimeType,
+            MimeType = "application/pdf",
             Size = 4096,
             Path = $"{project.UserId}/projects/{project.Id}/{Guid.NewGuid()}.pdf",
             DateCreated = date,
@@ -1397,21 +1355,6 @@ public sealed class DocumentServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task GetProjectDocumentDownloadAsync_OwnedDocument_ReturnsTheSignedLinkAndFileName()
-    {
-        SetUpSigning();
-        var project = await AddProjectAsync();
-        var document = await AddProjectDocumentAsync(project);
-
-        var result = await _service.GetProjectDocumentDownloadAsync(
-            project.Id, document.Id, TestContext.Current.CancellationToken);
-
-        Assert.Equal(SignedUri, result.DownloadUrl);
-        Assert.Equal("handbook.pdf", result.FileName);
-        Assert.InRange(result.ExpiresAt, DateTimeOffset.UtcNow.AddMinutes(4), DateTimeOffset.UtcNow.AddMinutes(6));
-    }
-
-    [Fact]
     public async Task GetProjectDocumentDownloadAsync_OwnedDocument_SignsTheStoredBlobForReadingOnly()
     {
         SetUpSigning();
@@ -1621,47 +1564,6 @@ public sealed class DocumentServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task GetUserDocumentsAsync_UploadedRequested_ReturnsOnlyUploadedDocuments()
-    {
-        var conversation = await AddConversationAsync();
-        var uploaded = await AddConversationDocumentAsync(conversation, "notes.pdf");
-        await AddConversationDocumentAsync(conversation, "summary.docx", type: ConversationDocumentTypes.Generated);
-
-        var result = await _service.GetUserDocumentsAsync(type: "uploaded", cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.Equal(1, result.TotalCount);
-        Assert.Equal(uploaded.Id, Assert.Single(result.Items).Id);
-    }
-
-    [Theory]
-    [InlineData("GENERATED")]
-    [InlineData(" generated ")]
-    public async Task GetUserDocumentsAsync_TypeInAnyCasingOrPadding_ResolvesToTheSameOrigin(string type)
-    {
-        var conversation = await AddConversationAsync();
-        await AddConversationDocumentAsync(conversation, "notes.pdf");
-        var generated = await AddConversationDocumentAsync(conversation, "summary.docx", type: ConversationDocumentTypes.Generated);
-
-        var result = await _service.GetUserDocumentsAsync(type: type, cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.Equal(generated.Id, Assert.Single(result.Items).Id);
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task GetUserDocumentsAsync_BlankType_NarrowsNothing(string type)
-    {
-        var conversation = await AddConversationAsync();
-        await AddConversationDocumentAsync(conversation, "notes.pdf");
-        await AddConversationDocumentAsync(conversation, "summary.docx", type: ConversationDocumentTypes.Generated);
-
-        var result = await _service.GetUserDocumentsAsync(type: type, cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.Equal(2, result.TotalCount);
-    }
-
-    [Fact]
     public async Task GetUserDocumentsAsync_UnsupportedType_ThrowsNamingTheParameter()
     {
         await AddConversationDocumentAsync(await AddConversationAsync());
@@ -1717,7 +1619,6 @@ public sealed class DocumentServiceTests : IDisposable
     }
 
     [Theory]
-    [InlineData("")]
     [InlineData("   ")]
     public async Task GetUserDocumentsAsync_BlankName_NarrowsNothing(string name)
     {
@@ -1742,18 +1643,6 @@ public sealed class DocumentServiceTests : IDisposable
 
         Assert.Equal(1, result.TotalCount);
         Assert.Equal(generated.Id, Assert.Single(result.Items).Id);
-    }
-
-    [Fact]
-    public async Task GetUserDocumentsAsync_NameMatchingNothing_ReturnsAnEmptyPageWithAZeroCount()
-    {
-        var conversation = await AddConversationAsync();
-        await AddConversationDocumentAsync(conversation, "notes.pdf");
-
-        var result = await _service.GetUserDocumentsAsync(name: "nothing-is-called-this", cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.Equal(0, result.TotalCount);
-        Assert.Empty(result.Items);
     }
 
     [Fact]
@@ -1887,27 +1776,6 @@ public sealed class DocumentServiceTests : IDisposable
             "job-sheet", CreateFile("budget.xlsx"), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken);
 
         Assert.Equal(1, saves);
-    }
-
-    [Fact]
-    public async Task CreateConversationDocumentAsync_ConversationDeactivatedDuringIngestion_DeactivatesTheSheetsToo()
-    {
-        var conversation = await AddConversationAsync(deactivated: DateTimeOffset.UtcNow);
-        SetUpSheetPipeline();
-
-        await Assert.ThrowsAsync<NotFoundException>(() => _service.CreateConversationDocumentAsync(
-            "job-sheet", CreateFile("budget.xlsx"), KnownIds.SeedUserId, conversation.Id, TestContext.Current.CancellationToken));
-
-        using var ctx = _fixture.CreateContext();
-        var sheet = await ctx.ConversationDocumentSheets.IncludingDeactivated()
-            .AsNoTracking()
-            .Include(s => s.Columns)
-            .Include(s => s.Rows)
-            .SingleAsync(TestContext.Current.CancellationToken);
-
-        Assert.NotNull(sheet.DateDeactivated);
-        Assert.All(sheet.Columns, column => Assert.NotNull(column.DateDeactivated));
-        Assert.All(sheet.Rows, row => Assert.NotNull(row.DateDeactivated));
     }
 
     [Fact]

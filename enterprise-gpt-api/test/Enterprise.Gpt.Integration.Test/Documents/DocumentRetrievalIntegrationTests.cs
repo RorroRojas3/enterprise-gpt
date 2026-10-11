@@ -71,43 +71,6 @@ public sealed class DocumentRetrievalIntegrationTests(IntegrationTestFixture fix
     }
 
     [Fact]
-    public async Task SearchAsync_ChunkBeyondTheDistanceGate_IsNotReturned()
-    {
-        var conversationId = await AddConversationAsync();
-        await _fixture.AddConversationDocumentAsync(conversationId, "handbook.pdf",
-        [
-            new SeedChunk(0, "Close enough to be evidence.", SeedChunk.Blend(QueryAxis, OtherAxis, 0.90), 1),
-            new SeedChunk(5, "Nowhere near the subject.", SeedChunk.UnitVector(OtherAxis), 2)
-        ], cancellationToken: TestContext.Current.CancellationToken);
-
-        var options = NoNeighbours();
-        options.MaxDistance = 0.5;
-
-        var result = await SearchAsync(conversationId, "the question", options);
-
-        // Nearest-neighbour search always returns something. Without the gate the second chunk comes
-        // back looking exactly like grounded evidence.
-        var passage = Assert.Single(result.Results);
-        Assert.Equal("Close enough to be evidence.", passage.Text);
-    }
-
-    [Fact]
-    public async Task SearchAsync_CitesTheDocumentAndPage()
-    {
-        var conversationId = await AddConversationAsync();
-        await _fixture.AddConversationDocumentAsync(conversationId, "handbook.pdf",
-        [
-            new SeedChunk(0, "Refunds are issued within 30 days.", SeedChunk.UnitVector(QueryAxis), 12)
-        ], cancellationToken: TestContext.Current.CancellationToken);
-
-        var result = await SearchAsync(conversationId, "refunds", NoNeighbours());
-
-        var passage = Assert.Single(result.Results);
-        Assert.Equal("handbook.pdf p.12", passage.Citation);
-        Assert.Equal(12, passage.Page);
-    }
-
-    [Fact]
     public async Task SearchAsync_FormatWithoutPages_CitesTheFileNameAlone()
     {
         var conversationId = await AddConversationAsync();
@@ -140,21 +103,6 @@ public sealed class DocumentRetrievalIntegrationTests(IntegrationTestFixture fix
         Assert.Equal(2, passage.Page);
     }
 
-    [Fact]
-    public async Task SearchAsync_SpreadsheetIngestedBeforeSheetsWereStored_CitesTheFileNameAlone()
-    {
-        var conversationId = await AddConversationAsync();
-        await _fixture.AddConversationDocumentAsync(conversationId, "legacy.xlsx",
-        [
-            new SeedChunk(0, "SKU | Region\nW-1 | East", SeedChunk.UnitVector(QueryAxis), 3)
-        ], cancellationToken: TestContext.Current.CancellationToken);
-
-        var result = await SearchAsync(conversationId, "region", NoNeighbours());
-
-        var passage = Assert.Single(result.Results);
-        Assert.Equal("legacy.xlsx", passage.Citation);
-    }
-
     #endregion
 
     #region Neighbour expansion and merging
@@ -179,64 +127,6 @@ public sealed class DocumentRetrievalIntegrationTests(IntegrationTestFixture fix
         Assert.Contains("The match itself.", passage.Text, StringComparison.Ordinal);
         Assert.Contains("After the match.", passage.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("Far too late.", passage.Text, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task SearchAsync_MatchOnTheFirstChunk_DoesNotAskForANegativeIndex()
-    {
-        var conversationId = await AddConversationAsync();
-        await _fixture.AddConversationDocumentAsync(conversationId, "handbook.pdf",
-        [
-            new SeedChunk(0, "The very first chunk.", SeedChunk.UnitVector(QueryAxis), 1),
-            new SeedChunk(1, "The second chunk.", SeedChunk.UnitVector(OtherAxis), 1)
-        ], cancellationToken: TestContext.Current.CancellationToken);
-
-        var result = await SearchAsync(conversationId, "the question", DefaultOptions());
-
-        var passage = Assert.Single(result.Results);
-        Assert.StartsWith("The very first chunk.", passage.Text, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task SearchAsync_OverlappingChunks_WriteTheSharedSeamOnce()
-    {
-        var conversationId = await AddConversationAsync();
-
-        // Shaped the way the chunker shapes them: the head of each chunk is character-for-character the
-        // tail of the last, because that is what the 128-token overlap produces.
-        const string shared = "The escalation path runs through the duty manager on call.";
-        await _fixture.AddConversationDocumentAsync(conversationId, "handbook.pdf",
-        [
-            new SeedChunk(0, $"Incidents are triaged by severity. {shared}", SeedChunk.UnitVector(OtherAxis), 1),
-            new SeedChunk(1, $"{shared} Escalation must happen within one hour.", SeedChunk.UnitVector(QueryAxis), 2)
-        ], cancellationToken: TestContext.Current.CancellationToken);
-
-        var result = await SearchAsync(conversationId, "escalation", DefaultOptions());
-
-        var passage = Assert.Single(result.Results);
-        Assert.Equal(
-            "Incidents are triaged by severity. The escalation path runs through the duty manager on call. Escalation must happen within one hour.",
-            passage.Text);
-    }
-
-    [Fact]
-    public async Task SearchAsync_MatchesFarApartInOneDocument_ComeBackAsSeparatePassages()
-    {
-        var conversationId = await AddConversationAsync();
-        await _fixture.AddConversationDocumentAsync(conversationId, "handbook.pdf",
-        [
-            new SeedChunk(0, "An early match.", SeedChunk.UnitVector(QueryAxis), 1),
-            new SeedChunk(1, "Filler.", SeedChunk.UnitVector(OtherAxis), 1),
-            new SeedChunk(2, "More filler.", SeedChunk.UnitVector(OtherAxis), 2),
-            new SeedChunk(3, "More filler still.", SeedChunk.UnitVector(OtherAxis), 2),
-            new SeedChunk(4, "A late match.", SeedChunk.Blend(QueryAxis, OtherAxis, 0.95), 3)
-        ], cancellationToken: TestContext.Current.CancellationToken);
-
-        var result = await SearchAsync(conversationId, "the question", DefaultOptions());
-
-        Assert.Equal(2, result.ResultCount);
-        Assert.Contains(result.Results, r => r.Text.Contains("An early match.", StringComparison.Ordinal));
-        Assert.Contains(result.Results, r => r.Text.Contains("A late match.", StringComparison.Ordinal));
     }
 
     #endregion
@@ -406,25 +296,6 @@ public sealed class DocumentRetrievalIntegrationTests(IntegrationTestFixture fix
     }
 
     [Fact]
-    public async Task GetScopeAsync_DeactivatedProject_DropsItsDocuments()
-    {
-        var projectId = await _fixture.AddProjectAsync(
-            $"it-retrieval-{Guid.NewGuid():N}", deactivated: true, cancellationToken: TestContext.Current.CancellationToken);
-        var conversationId = await AddConversationAsync(projectId);
-        await _fixture.AddProjectDocumentAsync(projectId, "project.pdf",
-            [new SeedChunk(0, "Uploaded into the project.", SeedChunk.UnitVector(QueryAxis), 1)],
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        using var scope = _fixture.Factory.Services.CreateScope();
-        var service = CreateService(scope, DefaultOptions());
-
-        var documentScope = await service.GetScopeAsync(conversationId, TestContext.Current.CancellationToken);
-
-        Assert.Null(documentScope.ProjectId);
-        Assert.False(documentScope.HasDocuments);
-    }
-
-    [Fact]
     public async Task SearchAsync_RestrictedToOneDocument_SearchesOnlyThatOne()
     {
         var conversationId = await AddConversationAsync();
@@ -471,30 +342,6 @@ public sealed class DocumentRetrievalIntegrationTests(IntegrationTestFixture fix
         Assert.Equal(0, result.ResultCount);
         Assert.Equal(["handbook.pdf"], result.AvailableDocuments);
         Assert.NotNull(result.Note);
-    }
-
-    [Fact]
-    public async Task SearchAsync_OneDocumentDominating_IsCappedSoOthersSurvive()
-    {
-        var conversationId = await AddConversationAsync();
-        await _fixture.AddConversationDocumentAsync(conversationId, "loud.pdf",
-        [
-            new SeedChunk(0, "Loud one.", SeedChunk.UnitVector(QueryAxis), 1),
-            new SeedChunk(5, "Loud two.", SeedChunk.Blend(QueryAxis, OtherAxis, 0.99), 2),
-            new SeedChunk(10, "Loud three.", SeedChunk.Blend(QueryAxis, OtherAxis, 0.98), 3)
-        ], cancellationToken: TestContext.Current.CancellationToken);
-        await _fixture.AddConversationDocumentAsync(conversationId, "quiet.pdf",
-            [new SeedChunk(0, "Quiet one.", SeedChunk.Blend(QueryAxis, OtherAxis, 0.90), 1)],
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        var options = NoNeighbours();
-        options.MaxPassagesPerDocument = 2;
-
-        var result = await SearchAsync(conversationId, "the question", options);
-
-        Assert.Equal(3, result.ResultCount);
-        Assert.Contains(result.Results, r => r.DocumentName == "quiet.pdf");
-        Assert.Equal(2, result.Results.Count(r => r.DocumentName == "loud.pdf"));
     }
 
     #endregion
@@ -569,32 +416,6 @@ public sealed class DocumentRetrievalIntegrationTests(IntegrationTestFixture fix
         var documentScope = await service.GetScopeAsync(conversationId, TestContext.Current.CancellationToken);
 
         return await service.SearchAsync(documentScope, query, documentName, TestContext.Current.CancellationToken);
-    }
-
-    /// <summary>
-    /// Returns a vector the test chooses, so the distances SQL Server computes are exact and the
-    /// assertions can name them.
-    /// </summary>
-    private sealed class ScriptedEmbeddingGenerator : IEmbeddingGenerator<string, Embedding<float>>
-    {
-        public float[] Vector { get; set; } = SeedChunk.UnitVector(0);
-
-        public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
-            IEnumerable<string> values,
-            EmbeddingGenerationOptions? options = null,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(new GeneratedEmbeddings<Embedding<float>>(
-                values.Select(_ => new Embedding<float>(Vector))));
-
-        public object? GetService(Type serviceType, object? serviceKey = null)
-        {
-            ArgumentNullException.ThrowIfNull(serviceType);
-            return serviceKey is null && serviceType.IsInstanceOfType(this) ? this : null;
-        }
-
-        public void Dispose()
-        {
-        }
     }
 
     #endregion

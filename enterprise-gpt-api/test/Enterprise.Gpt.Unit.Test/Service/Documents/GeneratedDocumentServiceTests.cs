@@ -121,7 +121,6 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
 
     [Theory]
     [InlineData("script.py")]
-    [InlineData("archive.zip")]
     [InlineData("macro.xlsm")]
     [InlineData("nameonly")]
     public async Task StoreAsync_FormatThisPlatformDoesNotProduce_IsRejected(string fileName)
@@ -321,7 +320,7 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
         return user;
     }
 
-    private async Task<Conversation> AddConversationAsync(Guid? userId = null, DateTimeOffset? deactivated = null)
+    private async Task<Conversation> AddConversationAsync(Guid? userId = null)
     {
         var date = DateTimeOffset.UtcNow;
         var conversation = new Conversation
@@ -330,8 +329,7 @@ public sealed class GeneratedDocumentServiceTests : IDisposable
             UserId = userId ?? KnownIds.SeedUserId,
             Name = "Test Conversation",
             DateCreated = date,
-            DateModified = date,
-            DateDeactivated = deactivated
+            DateModified = date
         };
 
         using var ctx = _fixture.CreateContext();

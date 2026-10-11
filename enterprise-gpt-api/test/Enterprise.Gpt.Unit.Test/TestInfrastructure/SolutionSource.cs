@@ -8,8 +8,8 @@ namespace Enterprise.Gpt.Unit.Test.TestInfrastructure;
 /// </summary>
 /// <remarks>
 /// Located through <see cref="CallerFilePathAttribute"/> rather than the working directory, which a
-/// runner does not have to set — the same technique the File Agent spike uses to find its evidence
-/// files. Meaningless off the machine that compiled the assembly, hence the existence check.
+/// runner does not have to set. Meaningless off the machine that compiled the assembly, hence the
+/// existence check.
 /// </remarks>
 internal static class SolutionSource
 {

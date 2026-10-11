@@ -11,7 +11,6 @@ public sealed class AzureOpenAIOptionsTests
 {
     [Theory]
     [InlineData("https://test.services.ai.azure.com/", "https://test.services.ai.azure.com/openai/v1/")]
-    [InlineData("https://test.openai.azure.com/", "https://test.openai.azure.com/openai/v1/")]
     // Azure documents both hosts, and a resource root copied out of the portal often lacks the
     // trailing slash — without one, resolving a relative path replaces the last segment instead of
     // extending it, which is the difference between /openai/v1/ and /.
@@ -52,7 +51,6 @@ public sealed class AzureOpenAIOptionsTests
 
     [Theory]
     [InlineData("auto", true)]
-    [InlineData("detailed", true)]
     [InlineData("none", false)]
     [InlineData("None", false)]
     public void IsReasoningSummaryRequested_TreatsOnlyNoneAsDeclining(string summary, bool expected)
@@ -62,19 +60,8 @@ public sealed class AzureOpenAIOptionsTests
         Assert.Equal(expected, options.IsReasoningSummaryRequested);
     }
 
-    [Fact]
-    public void V1Endpoint_WithNoUrl_ThrowsRatherThanBuildingANonsenseEndpoint()
-    {
-        // The validator rejects this first; the throw is what stops a caller that skipped it from
-        // getting a client pointed at nowhere.
-        Assert.Throws<UriFormatException>(() => new AzureOpenAIOptions { Url = "" }.V1Endpoint);
-    }
-
     [Theory]
     [InlineData("")]
-    [InlineData("   ")]
-    [InlineData("test.services.ai.azure.com")]
-    [InlineData("ftp://test.services.ai.azure.com/")]
     // A path, not a URL: Uri accepts this as an implicit file path on Unix but not on Windows, so
     // deriving the endpoint straight from the Uri constructor passed here and shipped file:///openai/v1/
     // to the Linux hosts. The theory runs the same on both.

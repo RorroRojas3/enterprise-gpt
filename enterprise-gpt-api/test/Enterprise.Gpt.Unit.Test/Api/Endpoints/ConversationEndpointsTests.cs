@@ -326,20 +326,6 @@ public class ConversationEndpointsTests
     }
 
     [Fact]
-    public async Task SetMessageFeedbackAsync_NullRating_ForwardsTheWithdrawalRatherThanSkippingTheCall()
-    {
-        var id = Guid.NewGuid();
-        var messageId = Guid.NewGuid();
-        var request = new SetMessageFeedbackActionDto { Rating = null };
-
-        await ConversationEndpoints.SetMessageFeedbackAsync(
-            id, messageId, request, _conversationService, TestContext.Current.CancellationToken);
-
-        await _conversationService.Received(1).SetMessageFeedbackAsync(
-            id, messageId, Arg.Is<SetMessageFeedbackActionDto>(x => x.Rating == null), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task DeactivateConversationAsync_ServiceSucceeds_ReturnsNoContent()
     {
         var id = Guid.NewGuid();

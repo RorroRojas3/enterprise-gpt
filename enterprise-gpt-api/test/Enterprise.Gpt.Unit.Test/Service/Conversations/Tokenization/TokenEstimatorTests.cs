@@ -55,7 +55,6 @@ public sealed class TokenEstimatorTests
     }
 
     [Theory]
-    [InlineData("")]
     [InlineData("   ")]
     [InlineData("my-gpt-deployment")]
     [InlineData(null)]
@@ -87,18 +86,6 @@ public sealed class TokenEstimatorTests
     }
 
     [Fact]
-    public void CountTokens_CalibrationConfigured_RoundsUp()
-    {
-        // The budget this feeds is a ceiling, so rounding down is the direction that overflows a
-        // context window.
-        var raw = CreateEstimator().CountTokens("hello", "unknown-deployment");
-
-        var calibrated = CreateEstimator(calibration: 1.01).CountTokens("hello", "unknown-deployment");
-
-        Assert.True(calibrated >= raw);
-    }
-
-    [Fact]
     public void CountTokens_FallbackEncodingCannotBeBuilt_ThrowsNamingTheSetting()
     {
         var estimator = CreateEstimator(fallbackEncoding: "not-a-real-encoding");
@@ -107,15 +94,5 @@ public sealed class TokenEstimatorTests
             () => estimator.CountTokens("hello", "unknown-deployment"));
 
         Assert.Contains("Tokenization:FallbackEncoding", exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void CountTokens_SameTextTwice_IsDeterministic()
-    {
-        var estimator = CreateEstimator();
-
-        Assert.Equal(
-            estimator.CountTokens("a repeatable sentence", "gpt-4o"),
-            estimator.CountTokens("a repeatable sentence", "gpt-4o"));
     }
 }

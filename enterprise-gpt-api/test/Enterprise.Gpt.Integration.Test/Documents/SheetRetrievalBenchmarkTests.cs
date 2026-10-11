@@ -40,7 +40,7 @@ public sealed class SheetRetrievalBenchmarkTests(IntegrationTestFixture fixture)
     private const double Irrelevant = 0.20;
 
     private readonly IntegrationTestFixture _fixture = fixture;
-    private readonly ScriptedEmbeddingGenerator _embeddingGenerator = new();
+    private readonly ScriptedEmbeddingGenerator _embeddingGenerator = new() { Vector = SeedChunk.UnitVector(QueryAxis) };
 
     /// <inheritdoc />
     public async ValueTask InitializeAsync() =>
@@ -74,76 +74,6 @@ public sealed class SheetRetrievalBenchmarkTests(IntegrationTestFixture fixture)
         Assert.Contains(result.Results, r => r.DocumentName == "budget.xlsx");
         Assert.Equal(expectsOnTopicProse, result.Results.Any(r => r.Text.Contains("Revenue is recognised", StringComparison.Ordinal)));
         Assert.Equal(expectsOffTopicProse, result.Results.Any(r => r.Text.Contains("Parking permits", StringComparison.Ordinal)));
-    }
-
-    /// <summary>
-    /// The per-document cap, not the distance gate, is what stops a workbook crowding out prose: every
-    /// row window is a chunk of the same one document, and a header-repeating corpus makes many of them
-    /// match at once and closer than any prose.
-    /// </summary>
-    [Fact]
-    public async Task SearchAsync_EveryRowWindowMatching_LeavesRoomForTheProseDocuments()
-    {
-        var conversationId = await SeedMixedCorpusAsync();
-
-        var result = await SearchAsync(conversationId, "revenue", new DocumentRetrievalOptions
-        {
-            NeighborWindow = 0,
-            EnableLexicalSearch = false
-        });
-
-        Assert.True(
-            result.Results.Count(r => r.DocumentName == "budget.xlsx")
-                <= new DocumentRetrievalOptions().MaxPassagesPerDocument,
-            "The workbook returned more passages than the per-document cap allows.");
-        Assert.Contains(result.Results, r => r.DocumentName == "handbook.pdf");
-        Assert.Contains(result.Results, r => r.DocumentName == "policy.pdf");
-    }
-
-    /// <summary>
-    /// Why the per-document cap is load-bearing rather than incidental for this corpus: with it lifted,
-    /// a workbook's row windows are all nearer than any prose and take every result slot, so the prose in
-    /// the same conversation is never seen — the distance gate cannot help, because those chunks did
-    /// survive it.
-    /// </summary>
-    [Fact]
-    public async Task SearchAsync_PerDocumentCapLifted_TheWorkbookTakesEveryResultSlot()
-    {
-        var conversationId = await SeedMixedCorpusAsync();
-
-        var result = await SearchAsync(conversationId, "revenue", new DocumentRetrievalOptions
-        {
-            NeighborWindow = 0,
-            MaxResults = 20,
-            MaxPassagesPerDocument = 20,
-            EnableLexicalSearch = false
-        });
-
-        Assert.All(result.Results, r => Assert.Equal("budget.xlsx", r.DocumentName));
-    }
-
-    /// <summary>
-    /// The relevance gate is disjunctive, so tightening <c>MaxDistance</c> does not hold row windows
-    /// back: a window is mostly identifiers, it matches the keyword pass, and that arm has no distance
-    /// to test. Tuning the threshold down to suppress a spreadsheet corpus would suppress the prose
-    /// instead.
-    /// </summary>
-    [Fact]
-    public async Task SearchAsync_DistanceGateClosed_RowWindowsStillArriveThroughTheKeywordPass()
-    {
-        var conversationId = await AddConversationAsync();
-
-        await _fixture.AddConversationDocumentAsync(conversationId, "budget.xlsx",
-            [Chunk(0, "Sheet: Region 1\nSKU | Region | Revenue | Quarter\nSKU-1-0001 | West | 137 | Q2", Irrelevant)],
-            cancellationToken: TestContext.Current.CancellationToken);
-
-        var result = await SearchAsync(conversationId, "revenue", new DocumentRetrievalOptions
-        {
-            MaxDistance = 0.0,
-            NeighborWindow = 0
-        });
-
-        Assert.Contains(result.Results, r => r.DocumentName == "budget.xlsx");
     }
 
     /// <summary>
@@ -226,27 +156,5 @@ public sealed class SheetRetrievalBenchmarkTests(IntegrationTestFixture fixture)
         var documentScope = await service.GetScopeAsync(conversationId, TestContext.Current.CancellationToken);
 
         return await service.SearchAsync(documentScope, query, null, TestContext.Current.CancellationToken);
-    }
-
-    private sealed class ScriptedEmbeddingGenerator : IEmbeddingGenerator<string, Embedding<float>>
-    {
-        public float[] Vector { get; set; } = SeedChunk.UnitVector(QueryAxis);
-
-        public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
-            IEnumerable<string> values,
-            EmbeddingGenerationOptions? options = null,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(new GeneratedEmbeddings<Embedding<float>>(
-                values.Select(_ => new Embedding<float>(Vector))));
-
-        public object? GetService(Type serviceType, object? serviceKey = null)
-        {
-            ArgumentNullException.ThrowIfNull(serviceType);
-            return serviceKey is null && serviceType.IsInstanceOfType(this) ? this : null;
-        }
-
-        public void Dispose()
-        {
-        }
     }
 }

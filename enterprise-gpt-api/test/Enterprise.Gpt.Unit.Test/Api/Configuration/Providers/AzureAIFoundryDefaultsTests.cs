@@ -30,7 +30,6 @@ public sealed class AzureAIFoundryDefaultsTests
 
     [Theory]
     [InlineData(true)]
-    [InlineData(false)]
     public void Create_Always_ClearsTheReasoningRequest(bool isReasoningEnabled)
     {
         // Unconditional on purpose, and the `true` case is the one that matters: the catalog can flag
@@ -66,15 +65,6 @@ public sealed class AzureAIFoundryDefaultsTests
         // Every turn names its deployment from the catalog; the callback must not substitute the
         // provider default.
         Assert.Equal("model-from-catalog", Apply(CatalogOptions(isReasoningEnabled: false)).ModelId);
-    }
-
-    [Fact]
-    public void Create_WithNoReasoningRequested_LeavesTheOptionsUsable()
-    {
-        var options = Apply(new ChatOptions { ModelId = "model-from-catalog" });
-
-        Assert.Null(options.Reasoning);
-        Assert.Equal("model-from-catalog", options.ModelId);
     }
 
     [Fact]

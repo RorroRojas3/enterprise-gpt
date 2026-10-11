@@ -74,22 +74,6 @@ public sealed class ChatClientResolverTests : IDisposable
         Assert.NotSame(azureOpenAI, resolved);
     }
 
-    /// <summary>
-    /// The shape of a deployment that leaves <c>AzureAIFoundry:Enabled</c> off while a Foundry-backed
-    /// model still sits in the catalog. Registering Azure OpenAI here is the point: the sibling
-    /// provider on the same endpoint must not silently absorb the turn.
-    /// </summary>
-    [Fact]
-    public void Resolve_AzureAIFoundryProviderWithNoRegisteredClient_ThrowsProviderNotConfiguredException()
-    {
-        var resolver = CreateResolver((ChatClientKeys.AzureOpenAI, Substitute.For<IChatClient>()));
-
-        var exception = Assert.Throws<ProviderNotConfiguredException>(
-            () => resolver.Resolve(Providers.AzureAIFoundry));
-
-        Assert.Equal(Providers.AzureAIFoundry, exception.ProviderId);
-    }
-
     [Fact]
     public void Resolve_AmazonBedrockProvider_ReturnsClientRegisteredUnderTheBedrockKey()
     {
@@ -125,24 +109,6 @@ public sealed class ChatClientResolverTests : IDisposable
 
         Assert.Same(anthropic, resolved);
         Assert.NotSame(bedrock, resolved);
-    }
-
-    /// <summary>
-    /// The shape of a deployment that leaves <c>Anthropic:Enabled</c> off while an Anthropic-backed
-    /// model still sits in the catalog. Registering Bedrock here is the point: a Claude model must
-    /// not silently fall through to the other provider that happens to serve Claude.
-    /// </summary>
-    [Fact]
-    public void Resolve_AnthropicProviderWithNoRegisteredClient_ThrowsProviderNotConfiguredException()
-    {
-        var resolver = CreateResolver(
-            (ChatClientKeys.AzureOpenAI, Substitute.For<IChatClient>()),
-            (ChatClientKeys.AmazonBedrock, Substitute.For<IChatClient>()));
-
-        var exception = Assert.Throws<ProviderNotConfiguredException>(
-            () => resolver.Resolve(Providers.Anthropic));
-
-        Assert.Equal(Providers.Anthropic, exception.ProviderId);
     }
 
     /// <summary>

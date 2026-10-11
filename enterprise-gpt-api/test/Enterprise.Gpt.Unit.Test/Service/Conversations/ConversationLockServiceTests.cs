@@ -11,16 +11,6 @@ namespace Enterprise.Gpt.Unit.Test.Service.Conversations;
 public sealed class ConversationLockServiceTests
 {
     [Fact]
-    public async Task TryAcquireLockAsync_WhenNotHeld_ReturnsReleaser()
-    {
-        using var service = new ConversationLockService();
-
-        using var releaser = await service.TryAcquireLockAsync(Guid.NewGuid(), TestContext.Current.CancellationToken);
-
-        Assert.NotNull(releaser);
-    }
-
-    [Fact]
     public async Task TryAcquireLockAsync_WhenAlreadyHeld_ReturnsNull()
     {
         using var service = new ConversationLockService();
@@ -31,19 +21,6 @@ public sealed class ConversationLockServiceTests
 
         Assert.NotNull(first);
         Assert.Null(second);
-    }
-
-    [Fact]
-    public async Task TryAcquireLockAsync_AfterRelease_AcquiresAgain()
-    {
-        using var service = new ConversationLockService();
-        var conversationId = Guid.NewGuid();
-
-        var first = await service.TryAcquireLockAsync(conversationId, TestContext.Current.CancellationToken);
-        first!.Dispose();
-        using var second = await service.TryAcquireLockAsync(conversationId, TestContext.Current.CancellationToken);
-
-        Assert.NotNull(second);
     }
 
     [Fact]

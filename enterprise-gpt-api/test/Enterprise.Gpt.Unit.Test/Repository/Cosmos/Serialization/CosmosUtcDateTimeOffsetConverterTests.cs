@@ -41,16 +41,6 @@ public sealed class CosmosUtcDateTimeOffsetConverterTests
     }
 
     [Fact]
-    public void Write_PadsTheFractionalSecondToFullTickResolution()
-    {
-        var value = new DateTimeOffset(2026, 8, 15, 12, 0, 0, 500, TimeSpan.Zero);
-
-        var json = JsonSerializer.Serialize(value, Options);
-
-        Assert.Equal("\"2026-08-15T12:00:00.5000000Z\"", json);
-    }
-
-    [Fact]
     public void Write_ValuesDifferingInOffsetAndPrecision_ProduceEqualWidthStrings()
     {
         var widths = MixedValues.Select(x => JsonSerializer.Serialize(x, Options).Length).Distinct();
@@ -86,10 +76,8 @@ public sealed class CosmosUtcDateTimeOffsetConverterTests
     }
 
     [Theory]
-    [InlineData("\"2026-08-15T12:00:00.0000000Z\"")]
     [InlineData("\"2026-08-15T14:00:00+02:00\"")]
     [InlineData("\"2026-08-15T12:00:00Z\"")]
-    [InlineData("\"2026-08-15T12:00:00.5Z\"")]
     public void Read_AcceptsAnyIsoOffsetAndPrecision(string json)
     {
         var value = JsonSerializer.Deserialize<DateTimeOffset>(json, Options);

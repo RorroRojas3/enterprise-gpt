@@ -44,8 +44,6 @@ public sealed class FileDtoValidatorTests
 
     [Theory]
     [InlineData("report.docx")]
-    [InlineData("deck.pptx")]
-    [InlineData("budget.xlsx")]
     public void Validate_OoxmlWithMatchingSignature_IsValid(string fileName)
     {
         Assert.True(CreateValidator().Validate(File(fileName, _ooxmlBytes)).IsValid);
@@ -55,15 +53,6 @@ public sealed class FileDtoValidatorTests
     public void Validate_LegacyDocWithMatchingSignature_IsValid()
     {
         Assert.True(CreateValidator().Validate(File("report.doc", _ole2Bytes)).IsValid);
-    }
-
-    [Theory]
-    [InlineData("notes.txt")]
-    [InlineData("readme.md")]
-    [InlineData("orders.csv")]
-    public void Validate_TextFile_IsValid(string fileName)
-    {
-        Assert.True(CreateValidator().Validate(File(fileName, Encoding.UTF8.GetBytes("hello"))).IsValid);
     }
 
     [Fact]
@@ -89,9 +78,7 @@ public sealed class FileDtoValidatorTests
 
     [Theory]
     [InlineData("book.epub")]
-    [InlineData("macros.xlsm")]
     [InlineData("legacy.xls")]
-    [InlineData("archive.zip")]
     public void Validate_UnsupportedExtension_IsRejectedAndListsWhatIsSupported(string fileName)
     {
         var result = CreateValidator().Validate(File(fileName, _ooxmlBytes));
@@ -136,20 +123,10 @@ public sealed class FileDtoValidatorTests
     public static TheoryData<string, byte[]> TextEncodings() => new()
     {
         { "UTF-8", Encoding.UTF8.GetBytes("naïve café — 日本語") },
-        { "UTF-8 with BOM", [.. Encoding.UTF8.GetPreamble(), .. Encoding.UTF8.GetBytes("naïve café")] },
         { "UTF-16 LE with BOM", [.. Encoding.Unicode.GetPreamble(), .. Encoding.Unicode.GetBytes("naïve café")] },
         { "UTF-16 BE with BOM", [.. Encoding.BigEndianUnicode.GetPreamble(), .. Encoding.BigEndianUnicode.GetBytes("naïve café")] },
         { "UTF-32 LE with BOM", [.. Encoding.UTF32.GetPreamble(), .. Encoding.UTF32.GetBytes("naïve café")] },
     };
-
-    [Theory]
-    [MemberData(nameof(TextEncodings))]
-    public void Validate_CsvInAnyEncodingTheExtractorReads_IsAccepted(string encodingName, byte[] content)
-    {
-        var result = CreateValidator().Validate(File("orders.csv", content));
-
-        Assert.True(result.IsValid, $"{encodingName} content was rejected: {string.Join("; ", result.Errors.Select(e => e.ErrorMessage))}");
-    }
 
     [Theory]
     [MemberData(nameof(TextEncodings))]

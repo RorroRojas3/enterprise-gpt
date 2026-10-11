@@ -144,7 +144,7 @@ public sealed record TranscriptMessageDocument
     /// <returns>The message, with its partition key already composed.</returns>
     /// <remarks>
     /// The only production construction site, so the partition key format cannot drift between the
-    /// write path, the read path and the purge path.
+    /// write path and the read path.
     /// </remarks>
     public static TranscriptMessageDocument Create(
         Guid userId,

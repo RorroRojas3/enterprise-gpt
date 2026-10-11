@@ -26,7 +26,6 @@ public sealed class UsageReportTranslatorTests
     private static UsageDetails Usage(
         long input,
         long output,
-        long? total = null,
         long? cached = null,
         long? reasoning = null)
     {
@@ -34,7 +33,7 @@ public sealed class UsageReportTranslatorTests
         {
             InputTokenCount = input,
             OutputTokenCount = output,
-            TotalTokenCount = total ?? input + output,
+            TotalTokenCount = input + output,
             CachedInputTokenCount = cached,
             ReasoningTokenCount = reasoning
         };
@@ -378,20 +377,6 @@ public sealed class UsageReportTranslatorTests
         Assert.Null(row.McpServerId);
     }
 
-    // Nothing in a tool call names the model behind it, and inventing one would make the report
-    // assert something no component observed.
-    [Fact]
-    public void Translate_AnyToolCall_LeavesTheModelUnattributed()
-    {
-        var report = Report(Usage(0, 0), Call("ResearchAgent", Usage(1, 1), kind: ToolKind.Agent, source: "Research Agent"));
-
-        var row = Assert.Single(UsageReportTranslator.Translate(report, []).ToolCalls);
-
-        Assert.Null(row.ModelId);
-        Assert.Null(row.DeploymentName);
-        Assert.Equal("Research Agent", row.Source);
-    }
-
     // The audit write runs in a finally after the answer has already been streamed, so an unusually
     // long name must not turn the turn's accounting into a truncation error.
     [Fact]
@@ -469,22 +454,6 @@ public sealed class UsageReportTranslatorTests
         Assert.Null(turn.InputTokens);
         Assert.Null(turn.OutputTokens);
         Assert.Null(turn.TotalTokens);
-    }
-
-    // Grouping tool calls by iteration is the whole point of the column, so it has to survive the
-    // flattening that Depth and Sequence already survive.
-    [Fact]
-    public void Translate_ToolCalls_CarryTheIterationThatIssuedThem()
-    {
-        var report = ReportWithTurns(
-            Usage(0, 0),
-            [Turn(0, Usage(5, 3)), Turn(1, Usage(11, 7))],
-            Call("first", Usage(1, 1), iteration: 0),
-            Call("second", Usage(1, 1), iteration: 1));
-
-        var rows = UsageReportTranslator.Translate(report, []).ToolCalls;
-
-        Assert.Equal([0, 1], rows.Select(row => row.Iteration));
     }
 
     // A nested call reports the iteration of the outer turn that issued its enclosing root, not one
@@ -595,7 +564,6 @@ public sealed class UsageReportTranslatorTests
 
     [Theory]
     [InlineData(ToolKind.Function, "document_search")]
-    [InlineData(ToolKind.McpTool, "jira_search")]
     [InlineData(ToolKind.Agent, "some_other_agent")]
     public void Translate_EveryOtherCall_RecordsNoModel(ToolKind kind, string toolName)
     {

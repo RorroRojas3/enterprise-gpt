@@ -202,10 +202,10 @@ Status: confirmed. Recorded: 2026-08-28. Deployment: rr-gpt-5.6-luna. Office con
 | txt | ✓ | n/a | n/a | ✓ | n/a | ✓ | — |
 <!-- conversion-matrix:end -->
 
-Each cell in the JSON carries the engine that serves it, the note the answer must include, the
-proposed tier, and — once recorded — the evidence of the attempt that settled it. A pair proposed as
-`refused` is still attempted; the recorded attempt is what makes the refusal evidence rather than an
-assumption.
+Each cell in the JSON carries the engine that serves it, the note the answer must include, its tier,
+and the evidence recorded when it was last confirmed against a sandbox. The matrix is maintained by
+hand: change a tier in `conversion-matrix.json` and in this table together, because
+`ConversionMatrixDocumentTests` fails until they agree.
 
 ## Key files
 

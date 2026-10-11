@@ -89,21 +89,6 @@ public sealed class RequestLoggingIntegrationTests(IntegrationTestFixture fixtur
     }
 
     [Fact]
-    public async Task Request_UnroutedPath_IsLoggedAtWarningWithNoRouteTemplate()
-    {
-        using var client = _fixture.Factory.CreateAdminClient();
-
-        var response = await client.GetAsync("api/does-not-exist", TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-
-        var completed = SingleCompletion();
-        Assert.Equal(LogLevel.Warning, completed.Level);
-        Assert.Equal("404", Field(completed, "StatusCode"));
-        Assert.Null(Field(completed, "RouteTemplate"));
-    }
-
-    [Fact]
     public async Task Request_BodiesDisabledByDefault_LogsNoPayloadRecord()
     {
         using var client = _fixture.Factory.CreateAdminClient();

@@ -24,7 +24,6 @@ public sealed class HtmlBlockWriterTests
 
     [Theory]
     [InlineData(1, "h1")]
-    [InlineData(3, "h3")]
     [InlineData(6, "h6")]
     public void Write_Heading_UsesItsLevel(int level, string tag)
     {

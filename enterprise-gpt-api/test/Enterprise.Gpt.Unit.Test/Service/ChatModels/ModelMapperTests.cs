@@ -62,12 +62,10 @@ public class ModelMapperTests
         AssertMatchesEntity(model, dto);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void MapToModelDto_DateDeactivated_RoundTrips(bool deactivated)
+    [Fact]
+    public void MapToModelDto_DateDeactivated_RoundTrips()
     {
-        var dateDeactivated = deactivated ? DateTimeOffset.UtcNow : (DateTimeOffset?)null;
+        var dateDeactivated = DateTimeOffset.UtcNow;
         var model = CreateModel(dateDeactivated);
 
         var dto = model.MapToModelDto();

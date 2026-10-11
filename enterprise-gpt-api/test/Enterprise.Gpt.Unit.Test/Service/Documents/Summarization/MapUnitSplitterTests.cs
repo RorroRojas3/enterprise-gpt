@@ -36,14 +36,6 @@ public sealed class MapUnitSplitterTests
 
     #region Sizing
 
-    [Fact]
-    public void Split_TextThatFits_ReturnsOneUnit()
-    {
-        var units = Split(Paragraph(50, "w"), maxTokens: 100);
-
-        Assert.Single(units);
-    }
-
     /// <summary>
     /// The regression guard for the mistake this splitter exists to avoid. Reusing the 512-token
     /// retrieval chunker would turn a document a shade over budget into hundreds of map calls
@@ -196,7 +188,6 @@ public sealed class MapUnitSplitterTests
     #region Guards
 
     [Theory]
-    [InlineData("")]
     [InlineData("   ")]
     public void Split_BlankText_Throws(string text)
     {

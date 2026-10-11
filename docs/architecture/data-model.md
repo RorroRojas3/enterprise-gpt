@@ -122,7 +122,7 @@ the cutover and destroys every existing transcript.
 | `enterprise-gpt-api/Enterprise.Gpt.Repository/Sql/Constants/QueryFilterNames.cs` | The `SoftDelete` filter name |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Extensions/DbContextConflictExtensions.cs` | `SaveChangesOrConflictAsync`, a lost race as 409 |
 | `enterprise-gpt-api/Enterprise.Gpt.Entity/Transcripts/Models/` | Cosmos document shapes and the type discriminator |
-| `enterprise-gpt-api/Enterprise.Gpt.Repository/Cosmos/CosmosTranscriptStore.cs` | Batches, paging, partition purge |
+| `enterprise-gpt-api/Enterprise.Gpt.Repository/Cosmos/CosmosTranscriptStore.cs` | Batches, paging, patches |
 | `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/TestInfrastructure/SqliteDbContextFixture.cs` | The SQLite fixture and its rowversion customizer |
 
 ## Related

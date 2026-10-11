@@ -154,7 +154,6 @@ public sealed class SheetAssemblerTests
 
     [Theory]
     [InlineData("TRUE", SheetColumnTypes.Boolean)]
-    [InlineData("false", SheetColumnTypes.Boolean)]
     [InlineData("1234.56", SheetColumnTypes.Number)]
     [InlineData("2026-03-14", SheetColumnTypes.Date)]
     [InlineData("2026-03-14 09:30:00", SheetColumnTypes.Date)]

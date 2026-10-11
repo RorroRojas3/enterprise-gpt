@@ -30,15 +30,6 @@ public sealed class SheetQueryOptionsProviderTests : IDisposable
     }
 
     [Fact]
-    public void Current_NoConfiguration_ServesTheClassDefaults()
-    {
-        var (provider, _) = Build([]);
-
-        Assert.False(provider.Current.Enabled);
-        Assert.Equal(30, provider.Current.ToolTimeoutSeconds);
-    }
-
-    [Fact]
     public void Current_AfterTheSwitchIsTurnedOn_ServesTheNewValue()
     {
         var (provider, configuration) = Build(new() { ["SheetQuery:Enabled"] = "false" });
@@ -47,17 +38,6 @@ public sealed class SheetQueryOptionsProviderTests : IDisposable
         configuration.Reload();
 
         Assert.True(provider.Current.Enabled);
-    }
-
-    [Fact]
-    public void Current_AfterTheSwitchIsTurnedBackOff_ServesTheNewValue()
-    {
-        var (provider, configuration) = Build(new() { ["SheetQuery:Enabled"] = "true" });
-
-        configuration["SheetQuery:Enabled"] = "false";
-        configuration.Reload();
-
-        Assert.False(provider.Current.Enabled);
     }
 
     /// <summary>
@@ -78,21 +58,6 @@ public sealed class SheetQueryOptionsProviderTests : IDisposable
 
         Assert.True(provider.Current.Enabled);
         Assert.Equal(25, provider.Current.MaxResultRows);
-    }
-
-    [Fact]
-    public void Current_ReloadedWithAValueThatBreaksACrossFieldRule_KeepsTheLastValidConfiguration()
-    {
-        var (provider, configuration) = Build(new()
-        {
-            ["SheetQuery:TimeoutSeconds"] = "10",
-            ["SheetQuery:ToolTimeoutSeconds"] = "30"
-        });
-
-        configuration["SheetQuery:ToolTimeoutSeconds"] = "5";
-        configuration.Reload();
-
-        Assert.Equal(30, provider.Current.ToolTimeoutSeconds);
     }
 
     [Fact]

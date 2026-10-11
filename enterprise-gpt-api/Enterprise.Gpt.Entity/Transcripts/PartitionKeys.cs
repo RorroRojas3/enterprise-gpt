@@ -5,10 +5,10 @@ namespace Enterprise.Gpt.Entity.Transcripts;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The only place in the solution that composes this value. The write path, the read path and the
-/// purge path must all address the same partition, and a format assembled at three call sites is a
-/// format that drifts at one of them — which would strand a conversation's documents in a partition
-/// nothing queries, silently and without an error.
+/// The only place in the solution that composes this value. The write path and the read path must
+/// address the same partition, and a format assembled at several call sites is a format that drifts
+/// at one of them — which would strand a conversation's documents in a partition nothing queries,
+/// silently and without an error.
 /// </para>
 /// <para>
 /// Composing both identifiers into one key rather than partitioning on the user is what keeps the

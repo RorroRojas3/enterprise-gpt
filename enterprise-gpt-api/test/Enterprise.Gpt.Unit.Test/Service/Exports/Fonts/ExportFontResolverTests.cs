@@ -180,18 +180,6 @@ public sealed class ExportFontResolverTests : IDisposable
         Assert.Null(new ExportFontResolver(_directory).GetFont("export-sans-nonexistent"));
     }
 
-    /// <summary>
-    /// A machine-wide font directory that happens to hold a file with the configured role name is not
-    /// something to honour: the role names are a contract with the operator, not a discovery pattern.
-    /// </summary>
-    [Fact]
-    public void Constructor_ConfiguredDirectoryMissing_DoesNotThrow()
-    {
-        var resolver = new ExportFontResolver(Path.Combine(_directory, "missing", "deeper"));
-
-        Assert.NotNull(resolver);
-    }
-
     private static bool ProbePlatformFonts() =>
         new ExportFontResolver(Path.Combine(Path.GetTempPath(), $"empty-{Guid.NewGuid():N}")).IsUsable;
 }

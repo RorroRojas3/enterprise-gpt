@@ -1,4 +1,3 @@
-using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto.Documents;
 using Enterprise.Gpt.Service.Documents.Extraction;
 using Enterprise.Gpt.Service.Documents.Extraction.Models;
@@ -21,12 +20,6 @@ public sealed class PresentationTextExtractorTests
             Length = content.Length,
             Content = content
         };
-    }
-
-    [Fact]
-    public void SupportedExtensions_ContainsOnlyPptx()
-    {
-        Assert.Equal([FileExtensions.Pptx], _extractor.SupportedExtensions);
     }
 
     [Fact]

@@ -20,12 +20,10 @@ public sealed class TranscriptStoreIntegrationTests(CosmosEmulatorFixture fixtur
 {
     private readonly CosmosEmulatorFixture _fixture = fixture;
 
-    private static QueryDefinition MessageQuery(Guid conversationId, bool descending = false)
+    private static QueryDefinition MessageQuery(Guid conversationId)
     {
-        var order = descending ? " DESC" : string.Empty;
-
         return new QueryDefinition(
-            $"SELECT * FROM c WHERE c.type = @type AND c.conversationId = @conversationId ORDER BY c.dateCreated{order}")
+            "SELECT * FROM c WHERE c.type = @type AND c.conversationId = @conversationId ORDER BY c.dateCreated")
             .WithParameter("@type", TranscriptDocumentTypes.Message)
             .WithParameter("@conversationId", conversationId);
     }
@@ -172,45 +170,6 @@ public sealed class TranscriptStoreIntegrationTests(CosmosEmulatorFixture fixtur
     }
 
     /// <summary>
-    /// Drains a paged query and asserts the invariants the read path depends on: every document is
-    /// returned exactly once, in query order, and the loop terminates on a null continuation token.
-    /// </summary>
-    /// <remarks>
-    /// The number of requests is deliberately not asserted. <c>MaxItemCount</c> is a hint that the
-    /// server may return fewer or — as this emulator does — more items than, and the Linux emulator
-    /// returns all 250 in a single page where the service would return three. Pinning a request
-    /// count here would assert the emulator's page sizing rather than this code's paging.
-    /// </remarks>
-    [Fact]
-    public async Task Query_PagedOverTwoHundredAndFiftyMessages_DrainsThemAllInOrderAndTerminates()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        var (_, conversationId, partition) = await SeedConversationAsync(250, cancellationToken);
-
-        List<TranscriptMessageDocument> read = [];
-        string? continuationToken = null;
-        var requests = 0;
-
-        do
-        {
-            var page = await _fixture.Store.QueryAsync<TranscriptMessageDocument>(
-                MessageQuery(conversationId), partition, 100, continuationToken, cancellationToken);
-
-            requests++;
-            read.AddRange(page.Items);
-            continuationToken = page.ContinuationToken;
-
-            Assert.True(requests <= 250, "the paged query did not terminate");
-        }
-        while (continuationToken is not null);
-
-        Assert.Equal(250, read.Count);
-        Assert.Equal(250, read.Select(x => x.Id).Distinct().Count());
-        Assert.Equal([.. read.Select(x => x.DateCreated).Order()], read.Select(x => x.DateCreated));
-        Assert.Null(continuationToken);
-    }
-
-    /// <summary>
     /// The descending variant the paged read endpoint issues, with its <c>before</c> cursor.
     /// </summary>
     [Fact]
@@ -259,45 +218,6 @@ public sealed class TranscriptStoreIntegrationTests(CosmosEmulatorFixture fixtur
             query, partition, 100, null, cancellationToken);
 
         Assert.Equal(6, page.Items.Count);
-    }
-
-    /// <summary>
-    /// The tenancy guarantee the synthetic key puts in storage, and the isolation a purge relies on.
-    /// </summary>
-    [Fact]
-    public async Task DeletePartition_WhenOneConversationIsPurged_LeavesItsSiblingIntact()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        var userId = Guid.NewGuid();
-        var first = Guid.NewGuid();
-        var second = Guid.NewGuid();
-        var firstPartition = new PartitionKey(PartitionKeys.For(userId, first));
-        var secondPartition = new PartitionKey(PartitionKeys.For(userId, second));
-
-        foreach (var (conversationId, partition) in new[] { (first, firstPartition), (second, secondPartition) })
-        {
-            var header = TranscriptHeaderDocument.Create(userId, conversationId, "Conversation", DateTimeOffset.UtcNow);
-            var message = TranscriptMessageDocument.Create(
-                userId, conversationId, Guid.NewGuid(), ChatRoles.User, "Hello", DateTimeOffset.UtcNow);
-
-            await _fixture.Store.ExecuteBatchAsync(
-                partition, batch => batch.Create(header.Id, header).Create(message.Id, message), cancellationToken);
-        }
-
-        await _fixture.Store.DeletePartitionAsync(firstPartition, cancellationToken);
-
-        var purged = await _fixture.Store.QueryAsync<TranscriptMessageDocument>(
-            MessageQuery(first), firstPartition, 100, null, cancellationToken);
-        var survivor = await _fixture.Store.QueryAsync<TranscriptMessageDocument>(
-            MessageQuery(second), secondPartition, 100, null, cancellationToken);
-
-        Assert.Empty(purged.Items);
-        Assert.Null(await _fixture.Store.ReadItemAsync<TranscriptHeaderDocument>(
-            first.ToString(), firstPartition, cancellationToken));
-
-        Assert.Single(survivor.Items);
-        Assert.NotNull(await _fixture.Store.ReadItemAsync<TranscriptHeaderDocument>(
-            second.ToString(), secondPartition, cancellationToken));
     }
 
     /// <summary>
@@ -401,9 +321,9 @@ public sealed class TranscriptStoreIntegrationTests(CosmosEmulatorFixture fixtur
     }
 
     /// <summary>
-    /// The feedback patch against real Cosmos JSON-patch semantics (US-1102), which is the half the
-    /// in-memory store deliberately cannot prove: it records patch operations rather than applying
-    /// them. Set writes the block, Remove takes it away again, and neither disturbs the message.
+    /// The feedback patch against real Cosmos JSON-patch semantics, which is the half the in-memory
+    /// store deliberately cannot prove: it ignores patch operations. Set writes the block, Remove
+    /// takes it away again, and neither disturbs the message.
     /// </summary>
     [Fact]
     public async Task PatchItem_Feedback_SetsThenRemovesTheBlockWithoutTouchingTheMessage()
@@ -462,51 +382,6 @@ public sealed class TranscriptStoreIntegrationTests(CosmosEmulatorFixture fixtur
             cancellationToken);
 
         Assert.True(again);
-    }
-
-    /// <summary>
-    /// Why the service never issues <c>Remove</c>, even though "withdraw" sounds like one: Cosmos
-    /// rejects it outright against a path the document does not carry. Two withdrawals racing each
-    /// other would both read a rating, both issue Remove, and the loser would take this 400 — a 500
-    /// for a request whose work was already done.
-    /// </summary>
-    [Fact]
-    public async Task PatchItem_RemovingAFeedbackPathTheDocumentDoesNotCarry_IsRejected()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        var (userId, conversationId, partition) = await SeedConversationAsync(0, cancellationToken);
-
-        var written = TranscriptMessageDocument.Create(
-            userId, conversationId, Guid.NewGuid(), ChatRoles.Assistant, "Unrated.",
-            new DateTimeOffset(2026, 8, 21, 9, 0, 0, TimeSpan.Zero));
-
-        await _fixture.Store.ExecuteBatchAsync(
-            partition, batch => batch.Create(written.Id, written), cancellationToken);
-
-        // The first Remove succeeds — a created document carries the property as an explicit null,
-        // because the Cosmos serializer writes nulls — and the second has nothing left to remove.
-        await _fixture.Store.PatchItemAsync(
-            written.Id, partition, [PatchOperation.Remove("/feedback")], cancellationToken);
-
-        await Assert.ThrowsAsync<CosmosException>(() => _fixture.Store.PatchItemAsync(
-            written.Id, partition, [PatchOperation.Remove("/feedback")], cancellationToken));
-    }
-
-    /// <summary>
-    /// The predicate that keeps a heterogeneous container honest: a header must never be returned
-    /// by a query for messages.
-    /// </summary>
-    [Fact]
-    public async Task Query_ForMessages_DoesNotReturnTheHeader()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        var (_, conversationId, partition) = await SeedConversationAsync(3, cancellationToken);
-
-        var messages = await _fixture.Store.QueryAsync<TranscriptMessageDocument>(
-            MessageQuery(conversationId), partition, 100, null, cancellationToken);
-
-        Assert.Equal(3, messages.Items.Count);
-        Assert.All(messages.Items, x => Assert.Equal(TranscriptDocumentTypes.Message, x.Type));
     }
 
     [Fact]

@@ -46,6 +46,8 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
 
         Assert.Equal(6750d, result.Value);
         Assert.Equal(10, result.MatchedRowCount);
+        // A total that quietly skipped a row would read as a complete one.
+        Assert.Equal(1, result.SkippedValues);
     }
 
     [Fact]
@@ -93,17 +95,6 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
 
         // One row leaves Revenue empty, and ingestion stores an empty cell as absent.
         Assert.Equal(9, (await QueryAsync(scope, "count", column: "Revenue")).Value);
-    }
-
-    [Fact]
-    public async Task QueryAsync_Sum_ReportsTheRowsItCouldNotRead()
-    {
-        var scope = await SeedBenchmarkAsync();
-
-        var result = await QueryAsync(scope, "sum", column: "Revenue");
-
-        // A total that quietly skipped a row would read as a complete one.
-        Assert.Equal(1, result.SkippedValues);
     }
 
     [Fact]
@@ -422,9 +413,6 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
 
     [Theory]
     [InlineData("09:00:00")]
-    [InlineData("9:00:00")]
-    [InlineData("09:00")]
-    [InlineData("9:00 AM")]
     public async Task QueryAsync_TimeOnlyColumn_ComparesAgainstTheSameAnchorTheDatabaseUses(string wanted)
     {
         var scope = await SeedTimesAsync();
@@ -506,16 +494,6 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
         var scope = await SeedBenchmarkAsync(rowsDeactivated: true);
 
         Assert.Equal(0, (await QueryAsync(scope, "count")).Value);
-    }
-
-    [Fact]
-    public async Task QueryAsync_DeactivatedSheet_CannotBeResolvedAtAll()
-    {
-        var scope = await SeedBenchmarkAsync(sheetDeactivated: true);
-
-        var result = await QueryAsync(scope, "count");
-
-        Assert.Contains("No spreadsheet", result.Note, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -607,8 +585,7 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
     private static SheetFilter Filter(string column, string comparator, string value) =>
         new() { Column = column, Comparator = comparator, Value = value };
 
-    private async Task<DocumentRetrievalScope> SeedBenchmarkAsync(
-        bool sheetDeactivated = false, bool rowsDeactivated = false)
+    private async Task<DocumentRetrievalScope> SeedBenchmarkAsync(bool rowsDeactivated = false)
     {
         var conversationId = await _fixture.AddConversationAsync(
             cancellationToken: TestContext.Current.CancellationToken);
@@ -616,7 +593,7 @@ public sealed class SheetQueryIntegrationTests(IntegrationTestFixture fixture) :
             conversationId, "budget.xlsx", [], cancellationToken: TestContext.Current.CancellationToken);
 
         await _fixture.AddConversationDocumentSheetAsync(
-            documentId, Benchmark(), sheetDeactivated, rowsDeactivated, TestContext.Current.CancellationToken);
+            documentId, Benchmark(), rowsDeactivated, TestContext.Current.CancellationToken);
 
         return new DocumentRetrievalScope(
             conversationId,

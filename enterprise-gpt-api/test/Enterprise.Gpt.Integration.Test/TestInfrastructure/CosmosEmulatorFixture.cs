@@ -103,7 +103,7 @@ public sealed class CosmosEmulatorFixture : IAsyncLifetime
             .EnsureProvisionedAsync(CancellationToken.None);
 
         Container = _client.GetContainer(options.DatabaseId, options.TranscriptContainerId);
-        Store = new CosmosTranscriptStore(_client, Options.Create(options), NullLogger<CosmosTranscriptStore>.Instance);
+        Store = new CosmosTranscriptStore(_client, Options.Create(options));
     }
 
     /// <inheritdoc />

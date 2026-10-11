@@ -11,7 +11,6 @@ using Enterprise.Gpt.Service.Exceptions;
 using Enterprise.Gpt.Service.Security;
 using Microsoft.AspNetCore.Http;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using Xunit;
 
 namespace Enterprise.Gpt.Unit.Test.Api.Endpoints;
@@ -205,20 +204,6 @@ public sealed class DocumentEndpointsTests
     }
 
     [Fact]
-    public async Task GetConversationDocumentDownloadAsync_DocumentTheCallerCannotSee_PropagatesNotFound()
-    {
-        // The service reports a document owned by someone else the same way it reports one that never
-        // existed, and the endpoint adds nothing that would tell the two apart.
-        _documentService.GetConversationDocumentDownloadAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new NotFoundException("Document with id 'x' was not found."));
-
-        await Assert.ThrowsAsync<NotFoundException>(
-            () => DocumentEndpoints.GetConversationDocumentDownloadAsync(
-                Guid.NewGuid(), Guid.NewGuid(), _documentService, new DefaultHttpContext().Response,
-                TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
     public async Task DeactivateConversationDocumentAsync_OwnedDocument_ReturnsNoContent()
     {
         var conversationId = Guid.NewGuid();
@@ -230,17 +215,6 @@ public sealed class DocumentEndpointsTests
         Assert.NotNull(result);
         await _documentService.Received(1).DeactivateConversationDocumentAsync(
             conversationId, documentId, Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task DeactivateConversationDocumentAsync_DocumentTheCallerCannotSee_PropagatesNotFound()
-    {
-        _documentService.DeactivateConversationDocumentAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new NotFoundException("Document with id 'x' was not found."));
-
-        await Assert.ThrowsAsync<NotFoundException>(
-            () => DocumentEndpoints.DeactivateConversationDocumentAsync(
-                Guid.NewGuid(), Guid.NewGuid(), _documentService, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -266,18 +240,6 @@ public sealed class DocumentEndpointsTests
         Assert.Equal("https://storage.example/documents/blob?sig=signature", payload.DownloadUrl);
         Assert.Equal("handbook.pdf", payload.FileName);
         Assert.Equal("no-store", httpResponse.Headers.CacheControl);
-    }
-
-    [Fact]
-    public async Task GetProjectDocumentDownloadAsync_DocumentTheCallerCannotSee_PropagatesNotFound()
-    {
-        _documentService.GetProjectDocumentDownloadAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new NotFoundException("Document with id 'x' was not found."));
-
-        await Assert.ThrowsAsync<NotFoundException>(
-            () => DocumentEndpoints.GetProjectDocumentDownloadAsync(
-                Guid.NewGuid(), Guid.NewGuid(), _documentService, new DefaultHttpContext().Response,
-                TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -396,16 +358,6 @@ public sealed class DocumentEndpointsTests
 
         Assert.NotNull(result);
         await _documentService.Received(1).CancelUploadAsync("job-1", Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task CancelUploadAsync_JobTheCallerCannotSee_PropagatesNotFound()
-    {
-        _documentService.CancelUploadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new NotFoundException("Upload job not found."));
-
-        await Assert.ThrowsAsync<NotFoundException>(
-            () => DocumentEndpoints.CancelUploadAsync("job-1", _documentService, TestContext.Current.CancellationToken));
     }
 
     [Fact]

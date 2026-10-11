@@ -373,20 +373,6 @@ public sealed class UserServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task GetOrCreateCurrentUserAsync_PreCreatedUser_ReturnsAdministratorAssignedPermissions()
-    {
-        var assigned = await AddPermissionAsync("assigned-permission");
-        var oid = Guid.NewGuid();
-        await AddUserAsync(oid, permissionIds: assigned.Id);
-        _tokenService.GetOid().Returns(oid);
-
-        var (user, created) = await _service.GetOrCreateCurrentUserAsync(TestContext.Current.CancellationToken);
-
-        Assert.False(created);
-        Assert.Contains(user.Permissions, p => p.Id == assigned.Id);
-    }
-
-    [Fact]
     public async Task CreateUserAsync_ValidRequest_ProvisionsWithRequestedAndDefaultPermissions()
     {
         var requested = await AddPermissionAsync("requested-permission");

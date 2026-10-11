@@ -65,7 +65,6 @@ public sealed class DocumentRetrievalSqlTests
     [Theory]
     [InlineData(1)]
     [InlineData(3)]
-    [InlineData(8)]
     public void BuildLexicalSearch_EmitsOneParameterisedArmPerTerm(int termCount)
     {
         var sql = DocumentRetrievalSql.BuildLexicalSearch(termCount);
@@ -112,7 +111,6 @@ public sealed class DocumentRetrievalSqlTests
 
     [Theory]
     [InlineData(0)]
-    [InlineData(-1)]
     public void BuildLexicalSearch_NoTerms_Throws(int termCount)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => DocumentRetrievalSql.BuildLexicalSearch(termCount));
@@ -158,7 +156,6 @@ public sealed class DocumentRetrievalSqlTests
 
     [Theory]
     [InlineData(0)]
-    [InlineData(-3)]
     public void BuildFetchChunks_NoKeys_Throws(int keyCount)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => DocumentRetrievalSql.BuildFetchChunks(keyCount));

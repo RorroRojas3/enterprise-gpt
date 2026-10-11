@@ -47,7 +47,6 @@ partition key `/pk` of `{userId}:{conversationId}`. Shapes are in
 | `QueryAsync<T>` | Runs **one page** against one partition | Takes page size and continuation token |
 | `PatchItemAsync` | Partial update | Capped at 10 operations; returns `false` when absent |
 | `ExecuteBatchAsync` | One transaction on one partition | Capped at 100 operations; reports which operation failed |
-| `DeletePartitionAsync` | Empties a partition | Server-side delete, with a batched fallback |
 
 **Every member takes a partition key and none accepts a cross-partition query.** A transcript read
 that fanned out would be both a cost surprise and a tenancy hole, so it is unreachable through this

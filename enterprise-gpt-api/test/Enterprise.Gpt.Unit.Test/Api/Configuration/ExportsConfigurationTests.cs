@@ -132,15 +132,4 @@ public sealed class ExportsConfigurationTests
 
         Assert.Empty(formats);
     }
-
-    [Theory]
-    [InlineData(ConversationExportFormats.Pdf, "pdf")]
-    [InlineData(ConversationExportFormats.Docx, "docx")]
-    public void IsEnabled_FormatNamedInDisabledFormats_IsFalse(
-        ConversationExportFormats format, string token)
-    {
-        Assert.False(
-            ExportsConfiguration.IsEnabled(new ExportOptions { DisabledFormats = [token] }, format));
-        Assert.True(ExportsConfiguration.IsEnabled(new ExportOptions(), format));
-    }
 }

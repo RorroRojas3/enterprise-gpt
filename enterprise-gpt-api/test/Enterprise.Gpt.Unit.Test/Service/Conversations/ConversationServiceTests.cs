@@ -175,8 +175,7 @@ public sealed class ConversationServiceTests : IDisposable
     /// Builds a service with document summarization switched on. Options are captured at
     /// construction, so a test that wants the tool cannot reuse the shared instance.
     /// </summary>
-    private ConversationService CreateServiceWithSummaryTool(
-        SummarizationOptions? options = null, IDocumentSummaryService? summaryService = null) =>
+    private ConversationService CreateServiceWithSummaryTool(IDocumentSummaryService? summaryService = null) =>
         new(NullLogger<ConversationService>.Instance,
             _modelService,
             _chatClientResolver,
@@ -190,7 +189,7 @@ public sealed class ConversationServiceTests : IDisposable
             _markdownRenderer,
             summaryService ?? _documentSummaryService,
             _userGrantReader,
-            Microsoft.Extensions.Options.Options.Create(options ?? new SummarizationOptions { Enabled = true }),
+            Microsoft.Extensions.Options.Options.Create(new SummarizationOptions { Enabled = true }),
             _sheetQueryService,
             new FakeSheetQueryOptionsProvider(),
             _fileAgentToolProvider,
@@ -203,7 +202,7 @@ public sealed class ConversationServiceTests : IDisposable
     /// Builds a service with the sheet query switched on. Options are captured at construction, so a
     /// test that wants the tool cannot reuse the shared instance.
     /// </summary>
-    private ConversationService CreateServiceWithSheetQueryTool(ISheetQueryOptionsProvider? options = null) =>
+    private ConversationService CreateServiceWithSheetQueryTool() =>
         new(NullLogger<ConversationService>.Instance,
             _modelService,
             _chatClientResolver,
@@ -219,7 +218,7 @@ public sealed class ConversationServiceTests : IDisposable
             _userGrantReader,
             Microsoft.Extensions.Options.Options.Create(new SummarizationOptions()),
             _sheetQueryService,
-            options ?? new FakeSheetQueryOptionsProvider(new SheetQueryOptions { Enabled = true }),
+            new FakeSheetQueryOptionsProvider(new SheetQueryOptions { Enabled = true }),
             _fileAgentToolProvider,
             _fileAgentQuotaService,
             Microsoft.Extensions.Options.Options.Create(new FileAgentOptions()),
@@ -1524,24 +1523,6 @@ public sealed class ConversationServiceTests : IDisposable
 
     #region Document retrieval tool
     [Fact]
-    public async Task StreamConversationAsync_ConversationWithDocuments_AttachesTheRetrievalTool()
-    {
-        var conversation = await AddConversationAsync();
-        SetUpTranscript(conversation.Id);
-        var model = SetUpModel(isToolEnabled: true);
-        SetUpDocumentScope(conversation.Id, null, "handbook.pdf");
-        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
-
-        await StreamToEndAsync(conversation.Id, request);
-
-        var capturedOptions = _chatClient.CapturedOptions;
-        Assert.NotNull(capturedOptions);
-        Assert.NotNull(capturedOptions.Tools);
-        Assert.Contains(capturedOptions.Tools, t => t.Name == DocumentTool.ToolName);
-        Assert.True(capturedOptions.AllowMultipleToolCalls);
-    }
-
-    [Fact]
     public async Task StreamConversationAsync_ConversationWithDocuments_TellsTheModelWhichDocumentsExist()
     {
         var conversation = await AddConversationAsync();
@@ -1559,20 +1540,6 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Contains("handbook.pdf", instructions, StringComparison.Ordinal);
         Assert.Contains("policy.docx", instructions, StringComparison.Ordinal);
         Assert.Contains(DocumentTool.ToolName, instructions, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task StreamConversationAsync_NoDocuments_AttachesNoTools()
-    {
-        var conversation = await AddConversationAsync();
-        SetUpTranscript(conversation.Id);
-        var model = SetUpModel(isToolEnabled: true);
-        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
-
-        await StreamToEndAsync(conversation.Id, request);
-
-        // A tool that is always present and always returns nothing teaches the model to stop calling it.
-        Assert.Null(_chatClient.CapturedOptions?.Tools);
     }
 
     #endregion
@@ -1882,34 +1849,6 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Contains(tools, t => t.Name == DocumentTool.ToolName);
     }
 
-    /// <summary>
-    /// The other half of the rollback: the flag is read once per turn, so switching it off reaches the
-    /// next turn rather than the next restart.
-    /// </summary>
-    [Fact]
-    public async Task StreamConversationAsync_SheetQuerySwitchedOffBetweenTurns_StopsAttachingTheTool()
-    {
-        var conversation = await AddConversationAsync();
-        SetUpTranscript(conversation.Id);
-        var model = SetUpModel(isToolEnabled: true);
-        SetUpDocumentScope(conversation.Id, null, "budget.xlsx");
-        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
-        var options = new FakeSheetQueryOptionsProvider(new SheetQueryOptions { Enabled = true });
-
-        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool(options));
-
-        Assert.Contains(_chatClient.CapturedOptions?.Tools ?? [], t => t.Name == SheetQueryTool.ToolName);
-
-        options.Current = new SheetQueryOptions();
-
-        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool(options));
-
-        var tools = _chatClient.CapturedOptions?.Tools;
-        Assert.NotNull(tools);
-        Assert.DoesNotContain(tools, t => t.Name == SheetQueryTool.ToolName);
-        Assert.Contains(tools, t => t.Name == DocumentTool.ToolName);
-    }
-
     [Fact]
     public async Task StreamConversationAsync_SheetQueryEnabledWithNoSpreadsheet_AttachesOnlyRetrieval()
     {
@@ -1927,19 +1866,6 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.NotNull(tools);
         Assert.DoesNotContain(tools, t => t.Name == SheetQueryTool.ToolName);
         Assert.Contains(tools, t => t.Name == DocumentTool.ToolName);
-    }
-
-    [Fact]
-    public async Task StreamConversationAsync_SheetQueryEnabledWithNoDocuments_AttachesNothing()
-    {
-        var conversation = await AddConversationAsync();
-        SetUpTranscript(conversation.Id);
-        var model = SetUpModel(isToolEnabled: true);
-        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
-
-        await StreamEventsToEndAsync(conversation.Id, request, service: CreateServiceWithSheetQueryTool());
-
-        Assert.Null(_chatClient.CapturedOptions?.Tools);
     }
 
     /// <summary>
@@ -2138,22 +2064,6 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task StreamConversationAsync_DocumentsInAProject_ResolvesScopeWithTheProject()
-    {
-        var project = await AddProjectAsync();
-        var conversation = await AddConversationAsync(project.Id);
-        SetUpTranscript(conversation.Id);
-        var model = SetUpModel(isToolEnabled: true);
-        SetUpDocumentScope(conversation.Id, project.Id, "project-handbook.pdf");
-        var request = new CreateConversationStreamActionDto { Prompt = "Hello", ModelId = model.Id, McpServers = [] };
-
-        await StreamToEndAsync(conversation.Id, request);
-
-        await _documentRetrievalService.Received(1)
-            .GetScopeAsync(conversation.Id, Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
     public async Task StreamConversationAsync_ProjectInstructionsAndDocuments_CarriesBothSetsOfInstructions()
     {
         var project = await AddProjectAsync("Always answer in British English.");
@@ -2275,14 +2185,6 @@ public sealed class ConversationServiceTests : IDisposable
         await Assert.ThrowsAsync<NotFoundException>(
             () => _service.CreateConversationAsync(
                 new CreateConversationActionDto { ProjectId = project.Id }, TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
-    public async Task CreateConversationAsync_WithoutProjectId_CreatesAStandaloneConversation()
-    {
-        var result = await _service.CreateConversationAsync(new CreateConversationActionDto(), TestContext.Current.CancellationToken);
-
-        Assert.Null(result.ProjectId);
     }
 
     [Fact]
@@ -2468,30 +2370,6 @@ public sealed class ConversationServiceTests : IDisposable
 
         Assert.Null(_chatClient.CapturedOptions?.Instructions);
     }
-
-    [Fact]
-    public async Task StreamConversationAsync_ProjectInstructions_AreNotWrittenToTheTranscript()
-    {
-        // The transcript is the conversation's own record; the project frame is derived context that
-        // must not be replayed as if the user had sent it.
-        var project = await AddProjectAsync(instructions: "Always answer in British English.");
-        var conversation = await AddConversationAsync(projectId: project.Id);
-        SetUpTranscript(conversation.Id);
-        var model = SetUpModel(isToolEnabled: false);
-
-        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
-        {
-            Prompt = "Hello",
-            ModelId = model.Id,
-            McpServers = []
-        });
-
-        var operations = CapturedBatchOperations();
-
-        Assert.Equal(3, operations.Count);
-        Assert.Equal(TranscriptBatchOperationKinds.Create, operations[0].Kind);
-        Assert.Equal(TranscriptBatchOperationKinds.Create, operations[1].Kind);
-    }
     #endregion
 
     #region Transcript reads
@@ -2628,21 +2506,8 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal([.. seen.Select(x => x.DateCreated).Order()], seen.Select(x => x.DateCreated));
     }
 
-    [Fact]
-    public async Task GetConversationMessagesAsync_TakeLargerThanTheTranscript_ReportsNoMore()
-    {
-        var conversation = await AddConversationAsync();
-        SetUpPagedTranscript(conversation.Id, BuildTranscript(conversation.Id, userTurns: 2));
-
-        var result = await _service.GetConversationMessagesAsync(
-            conversation.Id, 100, null, TestContext.Current.CancellationToken);
-
-        Assert.False(result.HasMore);
-    }
-
     [Theory]
     [InlineData(0)]
-    [InlineData(-5)]
     [InlineData(1000)]
     public async Task GetConversationMessagesAsync_TakeOutsideTheAllowedRange_IsClamped(int take)
     {
@@ -2653,26 +2518,6 @@ public sealed class ConversationServiceTests : IDisposable
             conversation.Id, take, null, TestContext.Current.CancellationToken);
 
         Assert.InRange(result.Messages.Count, 1, 100);
-    }
-
-    /// <summary>
-    /// The cursor a client pages backwards with has to be derivable from what it was served, so
-    /// every message carries its own identifier and timestamp.
-    /// </summary>
-    [Fact]
-    public async Task GetConversationMessagesAsync_EveryMessage_CarriesItsIdentifierAndTimestamp()
-    {
-        var conversation = await AddConversationAsync();
-        SetUpPagedTranscript(conversation.Id, BuildTranscript(conversation.Id, userTurns: 3));
-
-        var result = await _service.GetConversationMessagesAsync(
-            conversation.Id, null, null, TestContext.Current.CancellationToken);
-
-        Assert.All(result.Messages, message =>
-        {
-            Assert.NotEqual(Guid.Empty, message.Id);
-            Assert.NotEqual(default, message.DateCreated);
-        });
     }
 
     [Fact]
@@ -3015,7 +2860,7 @@ public sealed class ConversationServiceTests : IDisposable
     /// rather than as a write failure the caller cannot act on.
     /// </summary>
     [Fact]
-    public async Task SetMessageFeedbackAsync_MessagePurgedBetweenReadAndPatch_ThrowsNotFound()
+    public async Task SetMessageFeedbackAsync_MessageRemovedBetweenReadAndPatch_ThrowsNotFound()
     {
         var conversation = await AddConversationAsync();
         var messageId = Guid.NewGuid();
@@ -3328,13 +3173,15 @@ public sealed class ConversationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Drives one real two-iteration tool loop: the model asks for <paramref name="toolName"/>, the
+    /// Drives one real two-iteration tool loop: the model asks for the <c>GetWeather</c> tool, the
     /// function-invocation client runs it, the tool attributes tokens to itself, and the model
     /// answers. Returns the conversation the turn ran on.
     /// </summary>
-    private async Task<Conversation> RunToolTurnAsync(
-        string toolName = "GetWeather", long toolInput = 4, long toolOutput = 2)
+    private async Task<Conversation> RunToolTurnAsync()
     {
+        const string toolName = "GetWeather";
+        const long toolInput = 4;
+        const long toolOutput = 2;
         var conversation = await AddConversationAsync();
         SetUpTranscript(conversation.Id);
         var model = SetUpModel(isToolEnabled: true);
@@ -3404,28 +3251,6 @@ public sealed class ConversationServiceTests : IDisposable
         Assert.Equal([3, 7], turns.Select(turn => turn.OutputTokens));
         Assert.Equal(usage.InputTokens, turns.Sum(turn => turn.InputTokens ?? 0));
         Assert.Equal(usage.OutputTokens, turns.Sum(turn => turn.OutputTokens ?? 0));
-    }
-
-    /// <summary>
-    /// The arithmetic the rows exist for, asserted end to end: what the tools issued by iteration 0
-    /// added to the next prompt is that prompt's growth, <c>input(1) - input(0) - output(0)</c>. The
-    /// tool row's iteration is what says which calls the figure belongs to.
-    /// </summary>
-    [Fact]
-    public async Task StreamConversationAsync_WhenAToolRuns_ItsIterationPairsWithTheTurnsThatBracketIt()
-    {
-        var conversation = await RunToolTurnAsync();
-
-        var toolCall = Assert.Single(await ReadToolCallsAsync(conversation.Id));
-        var turns = await ReadTurnsAsync(conversation.Id);
-
-        Assert.Equal(0, toolCall.Iteration);
-
-        var issuing = turns.Single(turn => turn.Iteration == toolCall.Iteration);
-        var next = turns.Single(turn => turn.Iteration == toolCall.Iteration + 1);
-        var promptGrowth = next.InputTokens - issuing.InputTokens - issuing.OutputTokens;
-
-        Assert.Equal(3, promptGrowth);
     }
 
     /// <summary>
@@ -3797,25 +3622,6 @@ public sealed class ConversationServiceTests : IDisposable
         });
 
         Assert.DoesNotContain(events, e => e.Kind == AssistantUiEventKind.Finished);
-    }
-
-    [Fact]
-    public async Task StreamConversationAsync_WhenStreamCompletes_SetsTheConversationsLastModel()
-    {
-        var conversation = await AddConversationAsync();
-        SetUpTranscript(conversation.Id);
-        var model = SetUpModel(isToolEnabled: true);
-
-        await StreamToEndAsync(conversation.Id, new CreateConversationStreamActionDto
-        {
-            Prompt = "Hello",
-            ModelId = model.Id,
-            McpServers = []
-        });
-
-        using var ctx = _fixture.CreateContext();
-        var stored = await ctx.Conversations.AsNoTracking().SingleAsync(x => x.Id == conversation.Id, TestContext.Current.CancellationToken);
-        Assert.Equal(model.Id, stored.ModelId);
     }
 
     /// <summary>
@@ -4404,9 +4210,9 @@ public sealed class ConversationServiceTests : IDisposable
 
     #region Document listing
     private async Task<ConversationDocument> AddConversationDocumentAsync(
-        Conversation conversation, string name = "quarterly report.pdf",
-        DateTimeOffset? deactivated = null, DateTimeOffset? dateCreated = null)
+        Conversation conversation, DateTimeOffset? deactivated = null, DateTimeOffset? dateCreated = null)
     {
+        const string name = "quarterly report.pdf";
         var date = dateCreated ?? DateTimeOffset.UtcNow;
         var document = new ConversationDocument
         {

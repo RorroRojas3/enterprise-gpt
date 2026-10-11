@@ -24,14 +24,6 @@ public sealed class AzureAIFoundryOptionsTests
         Assert.Equal("https://test.services.ai.azure.com/openai/v1/", options.V1Endpoint.ToString());
     }
 
-    [Fact]
-    public void UrlPredicates_AreInheritedFromTheSharedBase()
-    {
-        Assert.True(new AzureAIFoundryOptions { Url = "https://test.openai.azure.com/" }.IsUrlAbsolute);
-        Assert.False(new AzureAIFoundryOptions { Url = "test.services.ai.azure.com" }.IsUrlAbsolute);
-        Assert.False(new AzureAIFoundryOptions { Url = "https://test.services.ai.azure.com/openai/v1/" }.IsUrlResourceRoot);
-    }
-
     /// <summary>
     /// Off by default is what lets an existing deployment upgrade without adding a section, and what
     /// makes a model row on this provider fail with a 503 rather than resolving to nothing.

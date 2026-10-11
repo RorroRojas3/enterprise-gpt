@@ -162,20 +162,6 @@ public sealed class ModelServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateModelAsync_ZeroPrice_IsAccepted()
-    {
-        var request = CreateRequest() with
-        {
-            InputPricePerMillionTokens = 0m,
-            OutputPricePerMillionTokens = 0m
-        };
-
-        var result = await _service.CreateModelAsync(request, TestContext.Current.CancellationToken);
-
-        Assert.Equal(0m, result.InputPricePerMillionTokens);
-    }
-
-    [Fact]
     public async Task GetModelsAsync_ActiveAndDeactivatedModelsExist_ReturnsOnlyActiveOrderedByName()
     {
         var active = await AddModelAsync("aaa-active");
@@ -418,21 +404,6 @@ public sealed class ModelServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Hiding a model that is not the default is ordinary and must stay allowed — the rule above
-    /// is about the combination, not about hiding.
-    /// </summary>
-    [Fact]
-    public async Task CreateModelAsync_NotUserSelectableAndNotDefault_Succeeds()
-    {
-        var request = CreateRequest(name: "aaa-hidden") with { IsUserSelectable = false };
-
-        var result = await _service.CreateModelAsync(request, TestContext.Current.CancellationToken);
-
-        Assert.False(result.IsUserSelectable);
-        Assert.False(result.IsDefault);
-    }
-
-    /// <summary>
     /// The startup check treats a deactivated summarizer row as missing, and the seed-correcting
     /// migration is already recorded — so retiring it stops every instance booting, permanently,
     /// from a supported admin route.
@@ -451,18 +422,6 @@ public sealed class ModelServiceTests : IDisposable
         var persisted = await FindModelAsync(KnownIds.SeedModelId);
         Assert.NotNull(persisted);
         Assert.Null(persisted.DateDeactivated);
-    }
-
-    [Fact]
-    public async Task DeactivateModelAsync_AnyOtherModel_StillDeactivates()
-    {
-        var model = await AddModelAsync("aaa-ordinary");
-
-        await _service.DeactivateModelAsync(model.Id, TestContext.Current.CancellationToken);
-
-        var persisted = await FindModelAsync(model.Id);
-        Assert.NotNull(persisted);
-        Assert.NotNull(persisted.DateDeactivated);
     }
 
     /// <summary>

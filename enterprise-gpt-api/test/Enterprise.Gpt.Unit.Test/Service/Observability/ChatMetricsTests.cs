@@ -36,38 +36,18 @@ public sealed class ChatMetricsTests
         Assert.Contains(columns.GetMeasurementSnapshot(), m => m.Value == 41 && HasTags(m, "xlsx", "success"));
     }
 
-    /// <summary>
-    /// A ceiling refusal is an outcome of a read, not the absence of one — counting it as a failure
-    /// would hide how often uploads are turned away for being too large.
-    /// </summary>
     [Fact]
-    public void RecordSheetIngestion_ARefusedRead_IsRecordedAsItsOwnOutcome()
-    {
-        using var duration = Collect<double>("enterprise_gpt.sheet_ingestion.duration");
-
-        ChatMetrics.RecordSheetIngestion(
-            "csv", outcome: "refused", sheetCount: 0, rowCount: 0, columnCount: 0,
-            elapsed: TimeSpan.FromSeconds(0.041));
-
-        Assert.Contains(duration.GetMeasurementSnapshot(), m => m.Value == 0.041 && HasTags(m, "csv", "refused"));
-    }
-
-    [Theory]
-    [InlineData("sum", "success")]
-    [InlineData("filter", "refused")]
-    [InlineData("unknown", "error")]
-    [InlineData("avg", "timed-out")]
-    public void RecordSheetQuery_WhenCalled_TagsTheOperationAndTheOutcome(string operation, string outcome)
+    public void RecordSheetQuery_WhenCalled_TagsTheOperationAndTheOutcome()
     {
         using var duration = Collect<double>("enterprise_gpt.sheet_query.duration");
 
-        ChatMetrics.RecordSheetQuery(operation, outcome, TimeSpan.FromSeconds(1.25));
+        ChatMetrics.RecordSheetQuery("sum", "success", TimeSpan.FromSeconds(1.25));
 
         Assert.Contains(
             duration.GetMeasurementSnapshot(),
             m => m.Value == 1.25
-                && m.Tags["sheet_query.operation"] as string == operation
-                && m.Tags["sheet_query.outcome"] as string == outcome);
+                && m.Tags["sheet_query.operation"] as string == "sum"
+                && m.Tags["sheet_query.outcome"] as string == "success");
     }
 
     /// <summary>

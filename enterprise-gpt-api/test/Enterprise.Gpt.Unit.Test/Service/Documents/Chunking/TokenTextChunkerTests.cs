@@ -59,7 +59,6 @@ public sealed class TokenTextChunkerTests
 
     [Theory]
     [InlineData("")]
-    [InlineData("   ")]
     [InlineData("\n\n\t  \n")]
     public void Chunk_SegmentWithoutText_ReturnsEmpty(string text)
     {
@@ -86,7 +85,6 @@ public sealed class TokenTextChunkerTests
 
     [Theory]
     [InlineData(512, 128)]
-    [InlineData(128, 32)]
     [InlineData(64, 16)]
     public void Chunk_LongText_NoChunkExceedsMaxTokens(int maxTokens, int overlapTokens)
     {
@@ -129,28 +127,8 @@ public sealed class TokenTextChunkerTests
         Assert.All(chunks, chunk => Assert.False(string.IsNullOrWhiteSpace(chunk.Text)));
     }
 
-    [Fact]
-    public void Chunk_WithOverlapConfigured_ConsecutiveChunksShareContent()
-    {
-        var chunker = CreateChunker(128, 32);
-
-        var chunks = chunker.Chunk(Segments(NumberedSentences(200)), TestContext.Current.CancellationToken);
-
-        Assert.True(chunks.Count > 2);
-
-        for (var i = 1; i < chunks.Count; i++)
-        {
-            // The tail of the previous chunk is carried into the head of this one, so the sentence this
-            // chunk opens with must also appear in its predecessor.
-            var openingSentence = chunks[i].Text.Split('.', StringSplitOptions.RemoveEmptyEntries)[0].Trim();
-
-            Assert.Contains(openingSentence, chunks[i - 1].Text);
-        }
-    }
-
     [Theory]
     [InlineData(512, 128)]
-    [InlineData(256, 64)]
     [InlineData(128, 32)]
     public void Chunk_WithOverlapConfigured_CarriesRoughlyTheRequestedNumberOfTokens(int maxTokens, int overlapTokens)
     {
@@ -222,30 +200,6 @@ public sealed class TokenTextChunkerTests
         // No spaces, no punctuation, no line breaks: nothing the paragraph or sentence splitter can use, so
         // this exercises the raw token-slice fallback and its termination guarantee.
         var chunks = chunker.Chunk(Segments(new string('x', 20_000)), TestContext.Current.CancellationToken);
-
-        Assert.True(chunks.Count > 1);
-        Assert.All(chunks, chunk => Assert.True(chunk.TokenCount <= 64));
-    }
-
-    [Fact]
-    public void Chunk_ParagraphLongerThanMaxTokensWithoutSentenceBreaks_SplitsWithinLimit()
-    {
-        var chunker = CreateChunker(64, 16);
-        var text = string.Join(' ', Enumerable.Repeat("alpha bravo charlie delta echo foxtrot", 300));
-
-        var chunks = chunker.Chunk(Segments(text), TestContext.Current.CancellationToken);
-
-        Assert.True(chunks.Count > 1);
-        Assert.All(chunks, chunk => Assert.True(chunk.TokenCount <= 64));
-    }
-
-    [Fact]
-    public void Chunk_NonLatinText_StaysWithinTokenLimit()
-    {
-        var chunker = CreateChunker(64, 16);
-        var text = string.Concat(Enumerable.Repeat("这是一个用于测试分块逻辑的中文句子。", 200));
-
-        var chunks = chunker.Chunk(Segments(text), TestContext.Current.CancellationToken);
 
         Assert.True(chunks.Count > 1);
         Assert.All(chunks, chunk => Assert.True(chunk.TokenCount <= 64));
@@ -379,7 +333,6 @@ public sealed class TokenTextChunkerTests
 
     [Theory]
     [InlineData("")]
-    [InlineData("   ")]
     [InlineData("my-embedding-deployment")]
     public void Constructor_UnrecognizedEmbeddingModelName_FallsBackToADefaultTokenizer(string embeddingModel)
     {

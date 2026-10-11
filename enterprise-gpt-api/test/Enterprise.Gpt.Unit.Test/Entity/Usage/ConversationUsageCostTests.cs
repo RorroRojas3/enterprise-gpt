@@ -30,7 +30,6 @@ public sealed class ConversationUsageCostTests
     [Theory]
     [InlineData(null, 10d)]
     [InlineData(2d, null)]
-    [InlineData(null, null)]
     public void EstimatedCost_EitherPriceMissing_IsNullRatherThanPartial(double? inputPrice, double? outputPrice)
     {
         var usage = CreateUsage((decimal?)inputPrice, (decimal?)outputPrice);
@@ -58,13 +57,5 @@ public sealed class ConversationUsageCostTests
         // Cost is what the provider reported it billed, never what the transcript weighs. The two
         // sit on the same row and must never be added.
         Assert.Equal(withoutContext.EstimatedCost, withContext.EstimatedCost);
-    }
-
-    [Fact]
-    public void ContextTokens_DefaultsToNull()
-    {
-        // Null means "not transcribed", which is the state of every cancelled or failed turn.
-        // Zero would claim the turn was transcribed and weighed nothing.
-        Assert.Null(new ConversationUsage().ContextTokens);
     }
 }

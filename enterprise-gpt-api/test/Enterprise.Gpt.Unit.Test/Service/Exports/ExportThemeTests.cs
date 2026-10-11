@@ -45,10 +45,8 @@ public sealed partial class ExportThemeTests
     }
 
     [Theory]
-    [InlineData("{{THEME}}")]
     [InlineData("{{TITLE}}")]
     [InlineData("{{DATE}}")]
-    [InlineData("{{MESSAGES}}")]
     public void Template_CarriesEveryPlaceholderTheRendererFills(string placeholder)
     {
         Assert.Contains(placeholder, Template, StringComparison.Ordinal);

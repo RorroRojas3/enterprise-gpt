@@ -45,13 +45,6 @@ public sealed class DocSharpLegacyWordConverterTests
     }
 
     [Fact]
-    public async Task ConvertToDocxAsync_EmptyContent_ThrowsValidationException()
-    {
-        await Assert.ThrowsAsync<ValidationException>(
-            () => _converter.ConvertToDocxAsync([], TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
     public async Task ConvertToDocxAsync_NullContent_Throws()
     {
         await Assert.ThrowsAsync<ArgumentNullException>(

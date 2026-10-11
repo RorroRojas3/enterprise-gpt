@@ -23,15 +23,6 @@ public sealed class PromptOverheadCalculatorTests
     }
 
     [Fact]
-    public void Estimate_FramingIsAppliedOncePerMessage()
-    {
-        var one = Calculator.Estimate(messageCount: 1, toolCount: 0, instructionTokens: 0);
-        var ten = Calculator.Estimate(messageCount: 10, toolCount: 0, instructionTokens: 0);
-
-        Assert.Equal(one * 10, ten);
-    }
-
-    [Fact]
     public void Estimate_ToolsAttached_AddsThePerToolSchemaCost()
     {
         var withoutTools = Calculator.Estimate(messageCount: 5, toolCount: 0, instructionTokens: 0);

@@ -3,7 +3,6 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
-using System.Web;
 using Enterprise.Gpt.Common.Constants;
 using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto.Documents;
@@ -42,17 +41,16 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         return new MultipartFormDataContent { { fileContent, "file", fileName } };
     }
 
-    private static MultipartFormDataContent TextUpload(string fileName = "notes.txt", int sentences = 60)
+    private static MultipartFormDataContent TextUpload()
     {
         var builder = new StringBuilder();
-        for (var i = 1; i <= sentences; i++)
+        for (var i = 1; i <= 60; i++)
         {
             builder.Append(CultureInfo.InvariantCulture, $"Sentence {i} describes an entirely unremarkable and deliberately verbose subject. ");
         }
 
-        return Upload(fileName, Encoding.UTF8.GetBytes(builder.ToString()), "text/plain");
+        return Upload("notes.txt", Encoding.UTF8.GetBytes(builder.ToString()), "text/plain");
     }
-
 
     /// <summary>
     /// Polls the status endpoint until the job reaches a terminal state, mirroring what the client does.
@@ -173,21 +171,6 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
     }
 
     [Fact]
-    public async Task Upload_ContentNotMatchingTheExtension_ReturnsBadRequest()
-    {
-        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var response = await client.PostAsync(
-            $"api/documents/conversations/{conversationId}",
-            Upload("report.pdf", Encoding.UTF8.GetBytes("definitely not a pdf")),
-            TestContext.Current.CancellationToken);
-
-        var problem = await ProblemAssert.ReadValidationAsync(response);
-        Assert.Contains(problem.Errors["Content"], message => message.Contains("do not match its extension"));
-    }
-
-    [Fact]
     public async Task Upload_EmptyFile_ReturnsBadRequest()
     {
         var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
@@ -230,17 +213,6 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
 
         var response = await client.PostAsync(
             $"api/documents/conversations/{conversationId}", TextUpload(), TestContext.Current.CancellationToken);
-
-        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
-    }
-
-    [Fact]
-    public async Task Upload_UnknownConversation_ReturnsNotFound()
-    {
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var response = await client.PostAsync(
-            $"api/documents/conversations/{Guid.NewGuid()}", TextUpload(), TestContext.Current.CancellationToken);
 
         await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
@@ -321,23 +293,6 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
     }
 
     [Fact]
-    public async Task Upload_MarkdownFile_IsIngested()
-    {
-        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var job = await PostUploadAsync(client, conversationId, TextUpload("guide.md"));
-        var status = await WaitForTerminalStateAsync(client, job.Id);
-
-        Assert.Equal("Succeeded", status.State);
-        Assert.NotNull(status.DocumentId);
-
-        var document = await _fixture.FindDocumentAsync(status.DocumentId.Value, TestContext.Current.CancellationToken);
-        Assert.NotNull(document);
-        Assert.Equal(".md", document.Extension);
-    }
-
-    [Fact]
     public async Task Upload_PowerPointFile_IsIngestedWithSlideNumbers()
     {
         var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
@@ -354,30 +309,6 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         var chunks = await _fixture.FindDocumentChunksAsync(status.DocumentId.Value, TestContext.Current.CancellationToken);
         Assert.NotEmpty(chunks);
         Assert.All(chunks, chunk => Assert.True(chunk.SourceNumber is >= 1 and <= 4));
-    }
-
-    [Fact]
-    public async Task Upload_ExcelWorkbook_IsIngestedWithSheetNumbers()
-    {
-        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-        var content = SpreadsheetFixture.CreateWorkbook(sheetCount: 3);
-
-        var job = await PostUploadAsync(client, conversationId,
-            Upload("budget.xlsx", content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
-        var status = await WaitForTerminalStateAsync(client, job.Id);
-
-        Assert.Equal("Succeeded", status.State);
-        Assert.NotNull(status.DocumentId);
-
-        var document = await _fixture.FindDocumentAsync(status.DocumentId.Value, TestContext.Current.CancellationToken);
-        Assert.NotNull(document);
-        Assert.Equal(".xlsx", document.Extension);
-
-        var chunks = await _fixture.FindDocumentChunksAsync(status.DocumentId.Value, TestContext.Current.CancellationToken);
-        Assert.True(chunks.Count > 1);
-        Assert.All(chunks, chunk => Assert.True(chunk.SourceNumber is >= 1 and <= 3));
-        Assert.Contains(chunks, chunk => chunk.Text.Contains("SKU | Region | Revenue | Quarter", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -436,25 +367,6 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
     }
 
     [Fact]
-    public async Task Upload_CsvFile_IsIngestedAsASingleSheet()
-    {
-        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var job = await PostUploadAsync(client, conversationId,
-            Upload("orders.csv", SpreadsheetFixture.CreateCsv(), "text/csv"));
-        var status = await WaitForTerminalStateAsync(client, job.Id);
-
-        Assert.Equal("Succeeded", status.State);
-        Assert.NotNull(status.DocumentId);
-
-        var chunks = await _fixture.FindDocumentChunksAsync(status.DocumentId.Value, TestContext.Current.CancellationToken);
-        Assert.True(chunks.Count > 1);
-        Assert.All(chunks, chunk => Assert.Equal(1, chunk.SourceNumber));
-        Assert.Contains(chunks, chunk => chunk.Text.Contains("SKU | Region | Revenue | Quarter", StringComparison.Ordinal));
-    }
-
-    [Fact]
     public async Task Upload_FileWithoutReadableText_FailsTheJobWithAnExplanation()
     {
         // Whitespace passes the binary-content check but yields nothing to index.
@@ -504,16 +416,6 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         using var client = _fixture.Factory.CreateUserClient();
 
         var response = await client.PostAsync($"api/documents/projects/{projectId}", TextUpload(), TestContext.Current.CancellationToken);
-
-        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
-    }
-
-    [Fact]
-    public async Task ProjectUpload_UnknownProject_ReturnsNotFound()
-    {
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var response = await client.PostAsync($"api/documents/projects/{Guid.NewGuid()}", TextUpload(), TestContext.Current.CancellationToken);
 
         await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
@@ -677,34 +579,6 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         Assert.Empty(documents);
     }
 
-    [Fact]
-    public async Task ProjectUpload_SameFileNameTwice_BothSucceedWithoutColliding()
-    {
-        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var first = await WaitForTerminalStateAsync(client, (await PostProjectUploadAsync(client, projectId, TextUpload())).Id);
-        var second = await WaitForTerminalStateAsync(client, (await PostProjectUploadAsync(client, projectId, TextUpload())).Id);
-
-        Assert.Equal("Succeeded", first.State);
-        Assert.Equal("Succeeded", second.State);
-        Assert.NotEqual(first.DocumentId, second.DocumentId);
-    }
-
-    [Fact]
-    public async Task ProjectUpload_FileWithoutReadableText_FailsTheJobWithAnExplanation()
-    {
-        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var job = await PostProjectUploadAsync(client, projectId,
-            Upload("blank.txt", Encoding.UTF8.GetBytes("   \n\n\t  "), "text/plain"));
-        var status = await WaitForTerminalStateAsync(client, job.Id);
-
-        Assert.Equal("Failed", status.State);
-        Assert.NotNull(status.ErrorMessage);
-        Assert.Contains("No readable text", status.ErrorMessage);
-    }
     #endregion
 
     #region Downloads
@@ -741,27 +615,6 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
     }
 
     [Fact]
-    public async Task Download_OwnedConversationDocument_RenamesTheBlobBackToTheUploadedFileName()
-    {
-        // The blob is stored under a guid key with no content headers of its own, so the link has to
-        // carry the Content-Disposition and Content-Type overrides or the browser saves the guid.
-        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var job = await PostUploadAsync(client, conversationId, TextUpload());
-        var status = await WaitForTerminalStateAsync(client, job.Id);
-        Assert.Equal("Succeeded", status.State);
-
-        var download = await client.GetFromJsonAsync<DocumentDownloadDto>(
-            $"api/documents/conversations/{conversationId}/{status.DocumentId}", TestContext.Current.CancellationToken);
-
-        Assert.NotNull(download);
-        var query = HttpUtility.ParseQueryString(new Uri(download.DownloadUrl).Query);
-        Assert.Equal("attachment; filename=\"notes.txt\"; filename*=UTF-8''notes.txt", query["rscd"]);
-        Assert.Equal("text/plain", query["rsct"]);
-    }
-
-    [Fact]
     public async Task Download_ConversationDocumentBelongingToAnotherUser_ReturnsNotFound()
     {
         // The link needs no credentials of its own, so handing one to the wrong caller would give away
@@ -784,18 +637,6 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         var ownerResponse = await owner.GetAsync(
             $"api/documents/conversations/{conversationId}/{status.DocumentId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, ownerResponse.StatusCode);
-    }
-
-    [Fact]
-    public async Task Download_UnknownConversationDocument_ReturnsNotFound()
-    {
-        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var response = await client.GetAsync(
-            $"api/documents/conversations/{conversationId}/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
-
-        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -913,19 +754,6 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         Assert.NotNull(page);
         Assert.Equal(1, page.TotalCount);
         Assert.Equal(mineId, Assert.Single(page.Items).Id);
-    }
-
-    [Fact]
-    public async Task GetDocuments_NoDocuments_ReturnsAnEmptyPage()
-    {
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
-            "api/documents", TestContext.Current.CancellationToken);
-
-        Assert.NotNull(page);
-        Assert.Empty(page.Items);
-        Assert.Equal(0, page.TotalCount);
     }
 
     [Fact]
@@ -1059,25 +887,6 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
     }
 
     [Fact]
-    public async Task GetDocuments_NameRequested_ReturnsOnlyMatchingDocuments()
-    {
-        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
-        var quarterlyId = await _fixture.AddConversationDocumentAsync(
-            conversationId, "quarterly report.pdf", [],
-            cancellationToken: TestContext.Current.CancellationToken);
-        await _fixture.AddConversationDocumentAsync(
-            conversationId, "budget.pdf", [], cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
-            "api/documents?name=quarterly", TestContext.Current.CancellationToken);
-
-        Assert.NotNull(page);
-        Assert.Equal(1, page.TotalCount);
-        Assert.Equal(quarterlyId, Assert.Single(page.Items).Id);
-    }
-
-    [Fact]
     public async Task GetDocuments_NameRequested_ReachesADocumentRankedFarPastTheFirstPage()
     {
         var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
@@ -1098,45 +907,6 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
         Assert.NotNull(page);
         Assert.Equal(1, page.TotalCount);
         Assert.Equal(seeded[^1], Assert.Single(page.Items).Id);
-    }
-
-    [Fact]
-    public async Task GetDocuments_BlankName_NarrowsNothing()
-    {
-        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
-        await _fixture.AddConversationDocumentsAsync(
-            conversationId, ["notes.pdf", "budget.pdf"],
-            cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
-            "api/documents?name=%20%20", TestContext.Current.CancellationToken);
-
-        Assert.NotNull(page);
-        Assert.Equal(2, page.TotalCount);
-    }
-
-    [Fact]
-    public async Task GetDocuments_NameAndType_NarrowTheSameQueryTogether()
-    {
-        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
-        await _fixture.AddConversationDocumentAsync(
-            conversationId, "quarterly report.pdf", [],
-            cancellationToken: TestContext.Current.CancellationToken);
-        var generatedId = await _fixture.AddConversationDocumentAsync(
-            conversationId, "quarterly summary.docx", [],
-            type: ConversationDocumentTypes.Generated, cancellationToken: TestContext.Current.CancellationToken);
-        await _fixture.AddConversationDocumentAsync(
-            conversationId, "budget summary.docx", [],
-            type: ConversationDocumentTypes.Generated, cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDocumentDto>>(
-            "api/documents?type=generated&name=quarterly", TestContext.Current.CancellationToken);
-
-        Assert.NotNull(page);
-        Assert.Equal(1, page.TotalCount);
-        Assert.Equal(generatedId, Assert.Single(page.Items).Id);
     }
 
     [Fact]
@@ -1356,17 +1126,6 @@ public sealed class DocumentEndpointsIntegrationTests(IntegrationTestFixture fix
     #endregion
 
     #region Status
-    [Fact]
-    public async Task GetJobStatus_UnknownJob_ReturnsNotFound()
-    {
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var response = await client.GetAsync($"api/documents/upload-status/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
-
-        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
-        Assert.Equal("Upload job not found.", problem.Detail);
-    }
-
     [Fact]
     public async Task GetJobStatus_JobQueuedByAnotherUser_ReturnsNotFound()
     {

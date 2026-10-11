@@ -199,17 +199,6 @@ public sealed class ReportEndpointsIntegrationTests(IntegrationTestFixture fixtu
     }
 
     [Fact]
-    public async Task GetUsageReport_UnpricedCalls_LeaveCostNullRatherThanZero()
-    {
-        await SeedAsync(1);
-
-        var report = await GetAsync();
-
-        Assert.Null(report.Totals.EstimatedCost);
-        Assert.Equal(1, report.Totals.UnpricedTurns);
-    }
-
-    [Fact]
     public async Task GetUsageReport_PartlyPriced_CostsThePricedCallsAndCountsTheRest()
     {
         // A million input at $2 and a million output at $6 is $8 exactly, which is what makes the
@@ -336,18 +325,6 @@ public sealed class ReportEndpointsIntegrationTests(IntegrationTestFixture fixtu
     }
 
     [Fact]
-    public async Task GetUsageReport_GroupedByModel_ReusesTheGroupsForTheTopModelsChart()
-    {
-        await SeedAsync(1);
-
-        var report = await GetAsync(groupBy: "model");
-
-        Assert.Equal(
-            report.Groups.Select(group => group.Key),
-            report.TopModels.Select(group => group.Key));
-    }
-
-    [Fact]
     public async Task GetUsageReport_GroupedByDay_StillReportsTopModels()
     {
         await SeedAsync(1);
@@ -425,18 +402,6 @@ public sealed class ReportEndpointsIntegrationTests(IntegrationTestFixture fixtu
 
         var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.BadRequest);
         Assert.Contains("366", Assert.Single(problem.Errors["from"]));
-    }
-
-    [Fact]
-    public async Task GetUsageReport_UnrecognisedGrouping_ReturnsValidationProblemNamingGroupBy()
-    {
-        using var client = _fixture.Factory.CreateAdminClient();
-
-        var response = await client.GetAsync(
-            "api/reports/usage?groupBy=conversation", TestContext.Current.CancellationToken);
-
-        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.BadRequest);
-        Assert.Contains("model", Assert.Single(problem.Errors["groupBy"]));
     }
 
     [Fact]

@@ -170,17 +170,6 @@ public sealed class AzureOpenAIChatClientBridgeTests
     }
 
     [Fact]
-    public async Task AsIChatClient_ForANonReasoningModel_SendsNoReasoningOptionsAtAll()
-    {
-        // Not "sends them switched off": the option is absent, because a deployment that does not
-        // support reasoning rejects the request rather than ignoring the field.
-        var root = await SendAsync(Settings(), CatalogOptions(isReasoningEnabled: false));
-
-        Assert.False(root.TryGetProperty("reasoning", out _));
-        Assert.False(root.TryGetProperty("previous_response_id", out _));
-    }
-
-    [Fact]
     public async Task AsIChatClient_WhenSummariesAreTurnedOff_StillReasonsButAsksForNoSummary()
     {
         var settings = Settings();

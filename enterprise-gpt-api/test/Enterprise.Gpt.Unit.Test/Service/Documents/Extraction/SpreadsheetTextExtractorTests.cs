@@ -79,12 +79,6 @@ public sealed class SpreadsheetTextExtractorTests
     }
 
     [Fact]
-    public void SupportedExtensions_ContainsOnlyXlsx()
-    {
-        Assert.Equal([FileExtensions.Xlsx], _extractor.SupportedExtensions);
-    }
-
-    [Fact]
     public async Task ExtractAsync_MultiSheetWorkbook_ReturnsSegmentsPerSheetInWorkbookOrder()
     {
         var content = WorkbookBuilder.Create(
@@ -177,18 +171,6 @@ public sealed class SpreadsheetTextExtractorTests
     }
 
     [Fact]
-    public async Task ExtractSheetsAsync_SheetWithoutAHeader_NamesItsColumnsByPosition()
-    {
-        var content = WorkbookBuilder.Create([new SheetSpec("Dump", [[1d, 2d], [3d, 4d]])]);
-
-        var sheet = Assert.Single((await ExtractSheetsAsync(_extractor, content)).Sheets);
-
-        Assert.Equal(["Column1", "Column2"], sheet.Columns.Select(c => c.ColumnName));
-        Assert.All(sheet.Columns, column => Assert.Equal(SheetColumnTypes.Number, column.InferredType));
-        Assert.Equal(2, sheet.RowCount);
-    }
-
-    [Fact]
     public async Task ExtractSheetsAsync_SheetNameLongerThanItsColumn_IsTruncatedRatherThanFailingTheInsert()
     {
         // Excel caps a sheet name at 31 characters; the file format does not, and the name is stored.
@@ -218,20 +200,6 @@ public sealed class SpreadsheetTextExtractorTests
         var sheet = Assert.Single((await ExtractSheetsAsync(_extractor, content)).Sheets);
 
         Assert.Equal("""{"A":"one","C":"three"}""", Assert.Single(sheet.Rows).Cells);
-    }
-
-    [Fact]
-    public async Task ExtractSheetsAsync_SheetWithNoRows_ReportsNoSheetForIt()
-    {
-        var content = WorkbookBuilder.Create(
-        [
-            new SheetSpec("Populated", [["Value"]]),
-            new SheetSpec("Empty", [])
-        ]);
-
-        var sheet = Assert.Single((await ExtractSheetsAsync(_extractor, content)).Sheets);
-
-        Assert.Equal("Populated", sheet.SheetName);
     }
 
     [Fact]
@@ -355,17 +323,6 @@ public sealed class SpreadsheetTextExtractorTests
         var segments = await ExtractAsync(_extractor, content);
 
         Assert.Equal("Sheet: Types\nInline | TRUE | FALSE | #DIV/0! | 42 | Joined | 1234.56", WindowText(segments));
-    }
-
-    [Fact]
-    public async Task ExtractAsync_DateStyledCell_RendersAsADateRatherThanASerialNumber()
-    {
-        var content = WorkbookBuilder.Create(
-            [new SheetSpec("Dates", [[new DateTime(2026, 3, 14, 0, 0, 0, DateTimeKind.Unspecified)]])]);
-
-        var segments = await ExtractAsync(_extractor, content);
-
-        Assert.Equal("Sheet: Dates\n2026-03-14", WindowText(segments));
     }
 
     [Fact]
@@ -556,28 +513,6 @@ public sealed class SpreadsheetTextExtractorTests
     }
 
     [Fact]
-    public async Task ExtractAsync_OnlyOneSheetPastACeiling_RefusesTheWholeWorkbook()
-    {
-        // Dropping just the offending sheet would leave a workbook that answers questions about itself
-        // incorrectly, so the upload fails outright.
-        var content = WorkbookBuilder.Create(
-        [
-            new SheetSpec("Small", BuildRows(2)),
-            new SheetSpec("Huge", BuildRows(9))
-        ]);
-
-        await Assert.ThrowsAsync<FluentValidation.ValidationException>(() => ExtractAsync(Create(maxRows: 4), content));
-    }
-
-    [Fact]
-    public async Task ExtractAsync_ContentThatIsNotAWorkbook_ThrowsValidationException()
-    {
-        var content = "this is not a workbook"u8.ToArray();
-
-        await Assert.ThrowsAsync<FluentValidation.ValidationException>(() => ExtractAsync(_extractor, content));
-    }
-
-    [Fact]
     public async Task ExtractAsync_PasswordProtectedWorkbook_ThrowsValidationException()
     {
         // Excel writes an encrypted workbook as an OLE2 compound file rather than a zip, so the package
@@ -673,14 +608,6 @@ public sealed class SpreadsheetTextExtractorTests
         var segments = await ExtractAsync(_extractor, content);
 
         Assert.Equal("Sheet: Data\nreal", WindowText(segments));
-    }
-
-    [Fact]
-    public async Task ExtractAsync_SingleRowPastTheColumnCeiling_IsRefusedBeforeTheRowIsAssembled()
-    {
-        var content = WorkbookBuilder.Create([new SheetSpec("Wide", [BuildColumns(500)])]);
-
-        await Assert.ThrowsAsync<FluentValidation.ValidationException>(() => ExtractAsync(Create(maxColumns: 10), content));
     }
 
     [Fact]

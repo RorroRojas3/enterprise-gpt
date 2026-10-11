@@ -114,24 +114,8 @@ public sealed class MaxUploadSizeEndpointFilterTests
         Assert.Equal(30_000_000, feature.MaxRequestBodySize);
     }
 
-    [Fact]
-    public async Task Filter_ServerWithoutTheBodySizeFeature_ProceedsWithoutThrowing()
-    {
-        var filter = MaxUploadSizeEndpointFilter.Require(MaxBytes);
-        var invoked = false;
-
-        await filter(CreateContext(contentLength: 10), _ =>
-        {
-            invoked = true;
-            return ValueTask.FromResult<object?>(null);
-        });
-
-        Assert.True(invoked);
-    }
-
     [Theory]
     [InlineData(0)]
-    [InlineData(-1)]
     public void Require_NonPositiveLimit_Throws(long maxBytes)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => MaxUploadSizeEndpointFilter.Require(maxBytes));

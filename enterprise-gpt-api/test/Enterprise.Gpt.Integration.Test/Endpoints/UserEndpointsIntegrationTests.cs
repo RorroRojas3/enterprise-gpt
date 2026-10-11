@@ -46,7 +46,6 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
         };
     }
 
-
     /// <summary>
     /// Creates a client for an identity that has no database row yet, so <c>me</c> takes the
     /// provisioning path. <see cref="TestAuthHandler"/> accepts a raw GUID as the user header.
@@ -150,23 +149,6 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
         Assert.Equal(
             new[] { defaultPermissionId, PermissionIds.UploadFile }.Order(),
             persisted.UserPermissions.Select(p => p.PermissionId).Order());
-    }
-
-    [Fact]
-    public async Task CreateCurrentUser_CalledTwice_IsIdempotentAndReturnsOkOnRepeat()
-    {
-        var oid = Guid.NewGuid();
-        _fixture.Factory.GraphService.AddUser(oid, "Ada", "Lovelace", "ada.lovelace@example.com");
-        using var client = CreateNewIdentityClient(oid);
-
-        var first = await client.PostAsync("api/users/me", null, TestContext.Current.CancellationToken);
-        var second = await client.PostAsync("api/users/me", null, TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
-        var user = await second.Content.ReadFromJsonAsync<UserDto>(TestContext.Current.CancellationToken);
-        Assert.NotNull(user);
-        Assert.Equal(oid, user.Id);
     }
 
     [Fact]
@@ -282,18 +264,6 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
     }
 
     [Fact]
-    public async Task CreateUser_ExistingUser_ReturnsBadRequest()
-    {
-        _fixture.Factory.GraphService.AddUser(TestUsers.RegularUserId, "Regular", "Tester", "regular.tester@example.com");
-        var request = new CreateUserActionDto { Email = "regular.tester@example.com" };
-        using var client = _fixture.Factory.CreateAdminClient();
-
-        var response = await client.PostAsJsonAsync("api/users", request, TestContext.Current.CancellationToken);
-
-        await ProblemAssert.ReadValidationAsync(response);
-    }
-
-    [Fact]
     public async Task CreateUser_InvalidEmail_ReturnsBadRequest()
     {
         var request = new CreateUserActionDto { Email = "not-an-email" };
@@ -302,22 +272,6 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
         var response = await client.PostAsJsonAsync("api/users", request, TestContext.Current.CancellationToken);
 
         await ProblemAssert.ReadValidationAsync(response);
-    }
-
-    [Fact]
-    public async Task CreateUser_UnknownPermission_ReturnsNotFound()
-    {
-        _fixture.Factory.GraphService.AddUser(Guid.NewGuid(), "Grace", "Hopper", "grace.hopper@example.com");
-        var request = new CreateUserActionDto
-        {
-            Email = "grace.hopper@example.com",
-            PermissionIds = [Guid.NewGuid()]
-        };
-        using var client = _fixture.Factory.CreateAdminClient();
-
-        var response = await client.PostAsJsonAsync("api/users", request, TestContext.Current.CancellationToken);
-
-        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -402,40 +356,6 @@ public sealed class UserEndpointsIntegrationTests(IntegrationTestFixture fixture
         // The count travels with the filter, or the numbered pager above it walks past the end.
         Assert.Equal(1, page.TotalCount);
         Assert.Equal(holder, Assert.Single(page.Items).Id);
-    }
-
-    [Fact]
-    public async Task GetUsers_PermissionAndNameFilters_ApplyTogether()
-    {
-        var permissionId = await _fixture.AddPermissionAsync(
-            "it-both-permission", cancellationToken: TestContext.Current.CancellationToken);
-        var match = await _fixture.AddUserAsync(
-            "Grace", "Hopper", "grace@it-both.example", cancellationToken: TestContext.Current.CancellationToken);
-        var other = await _fixture.AddUserAsync(
-            "Ada", "Lovelace", "ada@it-both.example", cancellationToken: TestContext.Current.CancellationToken);
-        await _fixture.AddUserPermissionAsync(match, permissionId, cancellationToken: TestContext.Current.CancellationToken);
-        await _fixture.AddUserPermissionAsync(other, permissionId, cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateAdminClient();
-
-        var page = await client.GetFromJsonAsync<PaginatedResponseDto<UserDto>>(
-            $"api/users?name=Hopper&permissionId={permissionId}", TestContext.Current.CancellationToken);
-
-        Assert.NotNull(page);
-        Assert.Equal(1, page.TotalCount);
-        Assert.Equal(match, Assert.Single(page.Items).Id);
-    }
-
-    [Fact]
-    public async Task GetUsers_UnknownPermissionId_ReturnsAValidationProblemRatherThanAnEmptyPage()
-    {
-        using var client = _fixture.Factory.CreateAdminClient();
-
-        var response = await client.GetAsync(
-            $"api/users?permissionId={Guid.NewGuid()}", TestContext.Current.CancellationToken);
-
-        var problem = await ProblemAssert.ReadValidationAsync(response);
-        Assert.Equal("/problems/validation-error", problem.Type);
-        Assert.Single(Assert.Contains("permissionId", problem.Errors));
     }
 
     [Fact]

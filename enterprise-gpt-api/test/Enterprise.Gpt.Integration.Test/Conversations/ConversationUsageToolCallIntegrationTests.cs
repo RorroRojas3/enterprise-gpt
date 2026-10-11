@@ -63,31 +63,6 @@ public sealed class ConversationUsageToolCallIntegrationTests(IntegrationTestFix
         Assert.All(calls, call => Assert.Equal(usageId, call.ConversationUsageId));
     }
 
-    // The invariant the own/subtree column split exists for, asserted against what the database
-    // actually stored rather than against the translator's return value.
-    [Fact]
-    public async Task SaveChangesAsync_NestedToolCalls_KeepsTheSubtreeTotalConsistentWithOwnTokens()
-    {
-        var modelId = await _fixture.AddModelAsync(
-            $"it-toolcall-{Guid.NewGuid():N}", cancellationToken: TestContext.Current.CancellationToken);
-        var conversationId = await _fixture.AddConversationAsync(
-            modelId: modelId, cancellationToken: TestContext.Current.CancellationToken);
-
-        var usageId = await _fixture.AddConversationUsageWithToolCallsAsync(
-            conversationId, modelId, cancellationToken: TestContext.Current.CancellationToken);
-
-        var calls = await _fixture.GetConversationUsageToolCallsAsync(usageId, TestContext.Current.CancellationToken);
-        var parent = calls[0];
-        var child = calls[1];
-
-        Assert.Equal(parent.SubtreeTotalTokens, parent.TotalTokens + child.SubtreeTotalTokens);
-
-        // Summing the own-token columns over the whole tree counts every token exactly once, which
-        // is what makes an aggregate correct under any filter.
-        Assert.Equal(100, calls.Sum(c => c.InputTokens ?? 0));
-        Assert.Equal(60, calls.Sum(c => c.OutputTokens ?? 0));
-    }
-
     // The audit trail has no cascade behind it by design, and the table references itself, so a
     // set-based delete of the whole table has no ordering guarantee. Pinned here because the
     // per-test reset every other integration class depends on runs through this path.

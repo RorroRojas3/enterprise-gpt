@@ -78,19 +78,4 @@ public sealed class TranscriptBatch
 
         return this;
     }
-
-    /// <summary>
-    /// Adds a document deletion to the batch.
-    /// </summary>
-    /// <param name="id">The identifier of the document to delete.</param>
-    /// <returns>The same batch, so operations can be chained.</returns>
-    public TranscriptBatch Delete(string id)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(id);
-
-        _operations.Add(new TranscriptBatchOperation(
-            TranscriptBatchOperationKinds.Delete, id, null, null, batch => batch.DeleteItem(id)));
-
-        return this;
-    }
 }

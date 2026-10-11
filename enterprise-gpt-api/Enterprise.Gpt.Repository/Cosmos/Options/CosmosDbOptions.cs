@@ -73,21 +73,6 @@ public sealed class CosmosDbOptions
     /// hard limit above it.
     /// </remarks>
     public int PageSize { get; set; } = 100;
-
-    /// <summary>
-    /// Gets or sets a value indicating whether a purge uses the server-side delete-by-partition-key
-    /// operation instead of querying ids and deleting them in batches. Default:
-    /// <see langword="false"/>.
-    /// </summary>
-    /// <remarks>
-    /// Off by default because delete-by-partition-key is an Azure public-preview feature: it
-    /// requires the <c>DeleteAllItemsByPartitionKey</c> capability to be enabled on the account
-    /// with the Azure CLI — it cannot be set through ARM or Bicep — and it is absent from the
-    /// Linux emulator, so no test can prove it. The batched fallback is provable and correct
-    /// everywhere. Turn this on only once the capability is confirmed on the target account, where
-    /// it is both cheaper and a single round trip.
-    /// </remarks>
-    public bool UsePartitionKeyDelete { get; set; }
 }
 
 internal sealed class CosmosDbOptionsValidator : AbstractValidator<CosmosDbOptions>

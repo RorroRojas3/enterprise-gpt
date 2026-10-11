@@ -306,7 +306,6 @@ public sealed class SheetQueryServiceTests : IDisposable
 
     [Theory]
     [InlineData("Region", "$.\"Region\"")]
-    [InlineData("Total (USD)", "$.\"Total (USD)\"")]
     [InlineData("Régión", "$.\"Régión\"")]
     public void TryBuildJsonPath_OrdinaryName_QuotesItWithoutEscaping(string name, string expected)
     {

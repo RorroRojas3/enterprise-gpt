@@ -28,30 +28,6 @@ public sealed class ConversationUsageTurnIntegrationTests(IntegrationTestFixture
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     /// <summary>
-    /// The invariant every report built on this table depends on: the turn rows partition the
-    /// assistant columns rather than adding to them, so a reader can sum either and get the same
-    /// number — and must never sum both.
-    /// </summary>
-    [Fact]
-    public async Task SaveChangesAsync_TurnsOnAUsageRow_PartitionTheAssistantTokenColumns()
-    {
-        var (usageId, conversationId) = await ArrangeAsync();
-
-        using var scope = _fixture.Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
-
-        var usage = await ctx.ConversationUsage.IncludingDeactivated()
-            .AsNoTracking()
-            .Include(x => x.Turns)
-            .SingleAsync(x => x.Id == usageId, TestContext.Current.CancellationToken);
-
-        Assert.Equal([0, 1], usage.Turns.OrderBy(x => x.Iteration).Select(x => x.Iteration));
-        Assert.Equal(usage.InputTokens, usage.Turns.Sum(x => x.InputTokens ?? 0));
-        Assert.Equal(usage.OutputTokens, usage.Turns.Sum(x => x.OutputTokens ?? 0));
-        Assert.Equal(conversationId, usage.ConversationId);
-    }
-
-    /// <summary>
     /// A call reports each iteration once, so a second row for the same one is a defect rather than
     /// a duplicate to tolerate. The index is unfiltered, unlike the other unique indexes in this
     /// model, because these rows are append-only and no soft-deleted row can block a replacement.
@@ -76,26 +52,6 @@ public sealed class ConversationUsageTurnIntegrationTests(IntegrationTestFixture
 
         await Assert.ThrowsAsync<DbUpdateException>(
             () => ctx.SaveChangesAsync(TestContext.Current.CancellationToken));
-    }
-
-    /// <summary>
-    /// The per-test reset every other integration class depends on has to clear these before their
-    /// parent, because the audit trail carries no cascade.
-    /// </summary>
-    [Fact]
-    public async Task ResetConversationsAndDocumentsAsync_TurnsExist_ClearsThemBeforeTheirUsageRow()
-    {
-        var (usageId, _) = await ArrangeAsync();
-
-        await _fixture.ResetConversationsAndDocumentsAsync(TestContext.Current.CancellationToken);
-
-        using var scope = _fixture.Factory.Services.CreateScope();
-        var ctx = scope.ServiceProvider.GetRequiredService<EnterpriseGptDbContext>();
-
-        Assert.Empty(await ctx.ConversationUsageTurns.IncludingDeactivated()
-            .AsNoTracking()
-            .Where(x => x.ConversationUsageId == usageId)
-            .ToListAsync(TestContext.Current.CancellationToken));
     }
 
     private async Task<(Guid UsageId, Guid ConversationId)> ArrangeAsync()

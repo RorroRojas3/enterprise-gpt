@@ -661,9 +661,8 @@ public sealed class McpServerServiceTests : IDisposable
             },
             TestContext.Current.CancellationToken);
 
-        // The PUT is a full representation, so an omitted set clears rather than preserves —
-        // the shape `UpdateMcpServer_OmittedIconKey_ClearsIt` already pins for the icon. It is
-        // load-bearing here: silently restoring a read-only server's write tools is the risk.
+        // The PUT is a full representation, so an omitted set clears rather than preserves.
+        // Load-bearing here: silently restoring a read-only server's write tools is the risk.
         await _service.UpdateMcpServerAsync(
             created.Id, UpdateRequest("aaa-hdr-clear"), TestContext.Current.CancellationToken);
 

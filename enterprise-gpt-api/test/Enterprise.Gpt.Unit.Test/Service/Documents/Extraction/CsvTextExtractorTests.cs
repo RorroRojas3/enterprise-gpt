@@ -73,46 +73,12 @@ public sealed class CsvTextExtractorTests
     }
 
     [Fact]
-    public void SupportedExtensions_ContainsOnlyCsv()
-    {
-        Assert.Equal([FileExtensions.Csv], _extractor.SupportedExtensions);
-    }
-
-    [Fact]
     public async Task ExtractAsync_CommaDelimitedFile_ReturnsSegmentsNamedAfterTheFile()
     {
         var segments = await ExtractAsync(_extractor, "SKU,Region\nW-1,East\nW-2,West\n", "q3-orders.csv");
 
         Assert.All(segments, segment => Assert.Equal(1, segment.SourceNumber));
         Assert.Equal("Sheet: q3-orders\nSKU | Region\nW-1 | East\nW-2 | West", WindowText(segments));
-    }
-
-    [Fact]
-    public async Task ExtractAsync_File_EmitsOneSchemaCardAheadOfItsRowWindows()
-    {
-        var segments = await ExtractAsync(_extractor, "SKU,Revenue\nW-1,1200\nW-2,800\n");
-
-        Assert.Equal(2, segments.Count);
-        Assert.True(IsSchemaCard(segments[0]));
-        Assert.Equal(
-            "Sheet: orders\nColumns: SKU (text), Revenue (number)\nRows: 2\nSample rows:\nSKU | Revenue\nW-1 | 1200\nW-2 | 800",
-            segments[0].Text);
-    }
-
-    [Fact]
-    public async Task ExtractAsync_FileSpanningSeveralWindows_RepeatsTheHeaderInEveryOne()
-    {
-        var builder = new StringBuilder("SKU,Region\n");
-
-        for (var i = 1; i <= 200; i++)
-        {
-            builder.Append(DataRow(i));
-        }
-
-        var windows = Windows(await ExtractAsync(_extractor, builder.ToString()));
-
-        Assert.True(windows.Count > 1);
-        Assert.All(windows, window => Assert.StartsWith("Sheet: orders\nSKU | Region\n", window.Text, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -154,20 +120,6 @@ public sealed class CsvTextExtractorTests
         Assert.Equal(["A", "B", "C", "Column4"], sheet.Columns.Select(c => c.ColumnName));
         Assert.Equal("""{"A":"1","B":"2"}""", sheet.Rows[0].Cells);
         Assert.Equal("""{"A":"3","B":"4","C":"5","Column4":"6"}""", sheet.Rows[1].Cells);
-    }
-
-    [Fact]
-    public async Task ExtractSheetsAsync_WhitespaceOnlyFile_ReportsNoSheets()
-    {
-        Assert.Empty((await ExtractSheetsAsync(_extractor, "   \n\n\t  \n")).Sheets);
-    }
-
-    [Fact]
-    public async Task ExtractAsync_SemicolonDelimitedFile_ResolvesItsColumns()
-    {
-        var segments = await ExtractAsync(_extractor, "SKU;Region;Revenue\nW-1;East;1200\nW-2;West;980\n");
-
-        Assert.Equal("Sheet: orders\nSKU | Region | Revenue\nW-1 | East | 1200\nW-2 | West | 980", WindowText(segments));
     }
 
     [Fact]

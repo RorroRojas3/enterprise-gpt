@@ -2128,8 +2128,8 @@ public partial class ConversationService(ILogger<ConversationService> logger,
 
         if (!patched)
         {
-            // The document was there for the read and gone for the patch: a purge landed in
-            // between. Reported as the 404 it now is, rather than as a write failure.
+            // The document was there for the read and gone for the patch: it was removed out of band
+            // in between. Reported as the 404 it now is, rather than as a write failure.
             LogMessageDisappearedBeforePatch(_logger, messageId, conversationId);
 
             throw new NotFoundException($"Message with id {messageId} not found");

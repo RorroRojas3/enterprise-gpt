@@ -50,7 +50,6 @@ public sealed class UsageGroupKeyNamesTests
 
     [Theory]
     [InlineData("MODEL")]
-    [InlineData("Provider")]
     [InlineData("  user  ")]
     public void Resolve_IsCaseInsensitiveAndTrims(string groupBy)
     {

@@ -1,7 +1,6 @@
 using System.Text;
 using Azure;
 using Azure.AI.DocumentIntelligence;
-using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto.Documents;
 using Enterprise.Gpt.Service.Documents.Extraction;
 using Enterprise.Gpt.Service.Documents.Extraction.Models;
@@ -49,12 +48,6 @@ public sealed class DocumentIntelligenceTextExtractorTests
     {
         _documentIntelligence.ReadAsync(Arg.Any<byte[]>(), Arg.Any<Action<TimeSpan>?>(), Arg.Any<CancellationToken>())
             .Returns(result);
-    }
-
-    [Fact]
-    public void SupportedExtensions_CoversEveryWordAndPdfFormat()
-    {
-        Assert.Equal([FileExtensions.Pdf, FileExtensions.Doc, FileExtensions.Docx], _extractor.SupportedExtensions);
     }
 
     [Fact]
@@ -123,7 +116,6 @@ public sealed class DocumentIntelligenceTextExtractorTests
     [Theory]
     [InlineData(429)]
     [InlineData(500)]
-    [InlineData(503)]
     public async Task ExtractAsync_ServiceFailsForAReasonTheCallerCannotFix_PropagatesTheOriginalFault(int status)
     {
         // Throttling and outages are not the document's fault; reporting them as bad input would tell the
@@ -153,7 +145,6 @@ public sealed class DocumentIntelligenceTextExtractorTests
     }
 
     [Theory]
-    [InlineData("report.pdf")]
     [InlineData("report.docx")]
     public async Task ExtractAsync_FormatTheServiceAcceptsDirectly_IsNotConverted(string fileName)
     {

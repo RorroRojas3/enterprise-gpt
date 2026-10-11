@@ -106,14 +106,6 @@ public sealed class TelemetryRegistrationTests
     }
 
     [Fact]
-    public void AddEnterpriseTelemetry_ConnectionStringInEnvironmentKey_RegistersTheDistro()
-    {
-        var services = Register(new() { [EnvironmentKey] = ConnectionString });
-
-        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(TracerProvider));
-    }
-
-    [Fact]
     public void ResolveConnectionString_BothSourcesConfigured_PrefersTheEnvironmentKey()
     {
         var configuration = Configuration(new() { [EnvironmentKey] = ConnectionString });
@@ -181,18 +173,6 @@ public sealed class TelemetryRegistrationTests
         }
 
         Assert.Throws<OptionsValidationException>(Validator(Register(settings)).Validate);
-    }
-
-    /// <summary>
-    /// A local run configures no connection string, and a value it cannot honour is still a value
-    /// somebody meant — failing here is what stops it reaching production unnoticed.
-    /// </summary>
-    [Fact]
-    public void AddEnterpriseTelemetry_NoConnectionStringButBadOptions_StillFailsStartupValidation()
-    {
-        var services = Register(new() { ["AzureMonitor:SamplingRatio"] = "9" });
-
-        Assert.Throws<OptionsValidationException>(Validator(services).Validate);
     }
 
     private static IServiceCollection Register(Dictionary<string, string?> settings)

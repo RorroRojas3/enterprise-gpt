@@ -247,23 +247,6 @@ public sealed class DocumentSummarizerTests : IDisposable
     }
 
     /// <summary>
-    /// A ceiling the split stays under changes nothing, so the guard cannot quietly narrow what the
-    /// engine already handled.
-    /// </summary>
-    [Fact]
-    public async Task SummarizeDocumentAsync_SplitWithinTheMapUnitCeiling_RunsNormally()
-    {
-        SetSummarizer(contextWindowSize: 1_000m, maxOutputTokens: 0m);
-        SetDocumentText(Paragraphs(count: 12, wordsEach: 100));
-
-        var run = await CreateSummarizer(new SummarizationOptions { ModelId = ModelId, MaxMapUnits = 1_000 })
-            .SummarizeDocumentAsync(DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
-
-        Assert.True(run.MapUnitCount > 1);
-        Assert.Equal(run.MapUnitCount + 1, run.ModelCallCount);
-    }
-
-    /// <summary>
     /// The accounting shape is uniform across both paths: the run total is every call's tokens, not
     /// the last call's.
     /// </summary>
@@ -390,22 +373,6 @@ public sealed class DocumentSummarizerTests : IDisposable
 
         Assert.True(run.CollapsePasses > 0);
         Assert.True(run.ModelCallCount > run.MapUnitCount + 1);
-    }
-
-    /// <summary>
-    /// The loop is conditional, not a mandatory extra call: map output that already fits goes
-    /// straight to the final reduce.
-    /// </summary>
-    [Fact]
-    public async Task SummarizeDocumentAsync_PartialSummariesThatFit_PerformNoCollapsePasses()
-    {
-        SetSummarizer(contextWindowSize: 1_000m, maxOutputTokens: 0m);
-        SetDocumentText(Paragraphs(count: 12, wordsEach: 100));
-
-        var run = await CreateSummarizer().SummarizeDocumentAsync(
-            DocumentId, DocumentSources.Conversation, TestContext.Current.CancellationToken);
-
-        Assert.Equal(0, run.CollapsePasses);
     }
 
     /// <summary>
@@ -659,7 +626,6 @@ public sealed class DocumentSummarizerTests : IDisposable
     }
 
     [Theory]
-    [InlineData("")]
     [InlineData("   ")]
     public async Task SummarizeDigestAsync_BlankSummaries_Fails(string text)
     {

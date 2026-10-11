@@ -1,7 +1,6 @@
 using Enterprise.Gpt.Service.Documents.Sheets;
 using Enterprise.Gpt.Service.Options;
 
-
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 
 /// <summary>
@@ -11,5 +10,5 @@ namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 public sealed class FakeSheetQueryOptionsProvider(SheetQueryOptions? options = null) : ISheetQueryOptionsProvider
 {
     /// <inheritdoc />
-    public SheetQueryOptions Current { get; set; } = options ?? new SheetQueryOptions();
+    public SheetQueryOptions Current { get; } = options ?? new SheetQueryOptions();
 }

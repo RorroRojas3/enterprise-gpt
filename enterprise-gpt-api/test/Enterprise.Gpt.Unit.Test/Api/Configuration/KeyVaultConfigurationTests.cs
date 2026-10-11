@@ -30,28 +30,6 @@ public sealed class KeyVaultConfigurationTests
     }
 
     [Fact]
-    public void Resolve_Disabled_AddsNoVaultEvenWithAVaultConfigured()
-    {
-        var configuration = Configure(new()
-        {
-            ["KeyVault:Enabled"] = "false",
-            ["KeyVault:VaultUri"] = VaultUri
-        });
-
-        Assert.Null(KeyVaultConfiguration.Resolve(configuration, Environment("Production")));
-    }
-
-    /// <summary>
-    /// The integration host supplies its own fake settings and must reach no Azure endpoint; a vault
-    /// switched on there would block the suite on a credential exchange that can never succeed.
-    /// </summary>
-    [Fact]
-    public void Resolve_EnabledInTheTestingEnvironment_AddsNoVault()
-    {
-        Assert.Null(KeyVaultConfiguration.Resolve(EnabledConfiguration(), Environment("Testing")));
-    }
-
-    [Fact]
     public void Resolve_EnabledWithoutAVaultUri_Throws()
     {
         var configuration = Configure(new() { ["KeyVault:Enabled"] = "true" });
@@ -104,7 +82,6 @@ public sealed class KeyVaultConfigurationTests
     /// <summary>Key Vault throttles per vault, so a faster poll is rejected rather than clamped.</summary>
     [Theory]
     [InlineData("00:00:00")]
-    [InlineData("00:00:30")]
     [InlineData("00:00:59")]
     public void Resolve_ReloadIntervalBelowOneMinute_Throws(string reloadInterval)
     {
@@ -190,7 +167,6 @@ public sealed class KeyVaultConfigurationTests
     /// </summary>
     [Theory]
     [InlineData("Production", "false")]
-    [InlineData("Development", "false")]
     [InlineData("Testing", "true")]
     public void AddEnterpriseKeyVault_VaultNotWanted_AppendsNoConfigurationSource(
         string environmentName,

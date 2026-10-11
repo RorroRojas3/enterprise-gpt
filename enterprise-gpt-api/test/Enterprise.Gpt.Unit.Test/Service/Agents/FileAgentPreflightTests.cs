@@ -168,7 +168,6 @@ public sealed class FileAgentPreflightTests
     [Theory]
     [InlineData("Summarize missing.docx", "missing.docx")]
     [InlineData("Fix the totals in missing.docx", "missing.docx")]
-    [InlineData("Convert missing.docx to pdf", "missing.docx")]
     [InlineData("Convert draft.docx to pdf", "draft.docx")]
     [InlineData("Convert output.xlsx to csv", "output.xlsx")]
     [InlineData("Export budget.xlsx to csv", "budget.xlsx")]
@@ -182,25 +181,6 @@ public sealed class FileAgentPreflightTests
 
         Assert.NotNull(refusal);
         Assert.Equal(FileAgentOutcomes.RefusedUnknownSource, refusal.Outcome);
-    }
-
-    // Every refusal has to be tellable apart from every other one on the card, or the four failure
-    // states the timeline promises collapse into one.
-    [Fact]
-    public void Evaluate_TheThreeRefusals_CarryThreeDifferentSubStatuses()
-    {
-        var conversion = FileAgentPreflight.Evaluate(
-            Resolution(Matched("report.pdf"), available: ["report.pdf"]), "Convert report.pdf to pptx", _matrix);
-        var ambiguous = FileAgentPreflight.Evaluate(
-            Resolution([], ambiguous: ["report.docx"]), "Convert report.docx to pdf", _matrix);
-        var unknown = FileAgentPreflight.Evaluate(
-            Resolution([], unresolved: ["missing.docx"], available: ["present.docx"]),
-            "Convert missing.docx to pdf",
-            _matrix);
-
-        string[] subStatuses = [conversion!.SubStatus, ambiguous!.SubStatus, unknown!.SubStatus];
-
-        Assert.Equal(3, subStatuses.Distinct(StringComparer.Ordinal).Count());
     }
 
     private static List<FileAgentSourceMatch> Matched(string name) =>

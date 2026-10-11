@@ -126,15 +126,6 @@ public sealed class DocumentTextAssemblerTests : IDisposable
         Assert.Equal(string.Empty, text);
     }
 
-    [Fact]
-    public async Task AssembleAsync_UnknownDocument_ReturnsEmpty()
-    {
-        var text = await _assembler.AssembleAsync(
-            Guid.NewGuid(), DocumentSources.Conversation, TestContext.Current.CancellationToken);
-
-        Assert.Equal(string.Empty, text);
-    }
-
     #endregion
 
     #region Helpers

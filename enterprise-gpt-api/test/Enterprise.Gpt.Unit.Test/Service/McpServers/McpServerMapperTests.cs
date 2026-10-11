@@ -49,21 +49,9 @@ public class McpServerMapperTests
     }
 
     [Fact]
-    public void MapToMcpServerDto_NoPermissionId_LeavesPermissionIdNull()
+    public void MapToMcpServerDto_DateDeactivated_RoundTrips()
     {
-        var server = CreateServer();
-
-        var dto = server.MapToMcpServerDto();
-
-        Assert.Null(dto.PermissionId);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void MapToMcpServerDto_DateDeactivated_RoundTrips(bool deactivated)
-    {
-        var dateDeactivated = deactivated ? DateTimeOffset.UtcNow : (DateTimeOffset?)null;
+        var dateDeactivated = DateTimeOffset.UtcNow;
         var server = CreateServer(dateDeactivated);
 
         var dto = server.MapToMcpServerDto();

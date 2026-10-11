@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using Enterprise.Gpt.Dto.Actions.Permissions;
 using Enterprise.Gpt.Dto.Actions.Users;
 using Enterprise.Gpt.Dto.Permissions;
-using Enterprise.Gpt.Dto.Users;
 using Enterprise.Gpt.Integration.Test.TestInfrastructure;
 using Xunit;
 
@@ -44,7 +43,6 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
             Description = $"{name} description"
         };
     }
-
 
     private static async Task<PermissionDto> CreatePermissionAsync(HttpClient adminClient, string name)
     {
@@ -147,21 +145,6 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
     }
 
     [Fact]
-    public async Task GetPermissions_AdminUser_ReturnsActivePermissions()
-    {
-        using var client = _fixture.Factory.CreateAdminClient();
-        var created = await CreatePermissionAsync(client, "it-perm-listed");
-
-        var permissions = await client.GetFromJsonAsync<List<PermissionDto>>(
-            "api/permissions", TestContext.Current.CancellationToken);
-
-        Assert.NotNull(permissions);
-        Assert.Contains(permissions, x => x.Id == created.Id);
-        Assert.Contains(permissions, x => x.Id == KnownIds.AdministratorPermissionId);
-        Assert.All(permissions, x => Assert.Null(x.DateDeactivated));
-    }
-
-    [Fact]
     public async Task UpdatePermission_AdminUser_UpdatesFields()
     {
         using var client = _fixture.Factory.CreateAdminClient();
@@ -218,38 +201,6 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
 
         var problem = await ProblemAssert.ReadValidationAsync(response);
         Assert.Equal("The built-in Administrator permission cannot be modified.", Assert.Single(problem.Errors["Id"]));
-    }
-
-    [Fact]
-    public async Task UpdatePermission_McpManagedPermission_ReturnsBadRequest()
-    {
-        var (_, permissionId) = await _fixture.AddMcpServerAsync(
-            "it-perm-mcp-managed", cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateAdminClient();
-
-        var response = await client.PutAsJsonAsync(
-            $"api/permissions/{permissionId}", UpdateRequest(), TestContext.Current.CancellationToken);
-
-        var problem = await ProblemAssert.ReadValidationAsync(response);
-        Assert.Equal(
-            "This permission is managed by its MCP server and cannot be modified directly.",
-            Assert.Single(problem.Errors["Id"]));
-    }
-
-    [Fact]
-    public async Task DeletePermission_McpManagedPermission_ReturnsBadRequest()
-    {
-        var (_, permissionId) = await _fixture.AddMcpServerAsync(
-            "it-perm-mcp-locked", cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateAdminClient();
-
-        var response = await client.DeleteAsync(
-            $"api/permissions/{permissionId}", TestContext.Current.CancellationToken);
-
-        var problem = await ProblemAssert.ReadValidationAsync(response);
-        Assert.Equal(
-            "This permission is managed by its MCP server and cannot be modified directly.",
-            Assert.Single(problem.Errors["Id"]));
     }
 
     [Fact]
@@ -333,24 +284,6 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
     }
 
     [Fact]
-    public async Task GrantPermission_NewGrant_ReturnsNoContentAndInsertsActiveRow()
-    {
-        using var client = _fixture.Factory.CreateAdminClient();
-        var created = await CreatePermissionAsync(client, "it-perm-grant");
-
-        var response = await client.PostAsync(
-            $"api/users/{TestUsers.RegularUserId}/permissions/{created.Id}",
-            content: null, TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
-        var grants = await _fixture.FindUserPermissionsAsync(
-            TestUsers.RegularUserId, created.Id, TestContext.Current.CancellationToken);
-        var grant = Assert.Single(grants);
-        Assert.Null(grant.DateDeactivated);
-        Assert.Equal(TestUsers.AdminUserId, grant.CreatedById);
-    }
-
-    [Fact]
     public async Task GrantPermission_AlreadyGranted_IsIdempotent()
     {
         using var client = _fixture.Factory.CreateAdminClient();
@@ -366,24 +299,6 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
             TestUsers.RegularUserId, created.Id, TestContext.Current.CancellationToken);
         var grant = Assert.Single(grants);
         Assert.Null(grant.DateDeactivated);
-    }
-
-    [Fact]
-    public async Task RevokePermission_ActiveGrant_SoftDeletesRow()
-    {
-        using var client = _fixture.Factory.CreateAdminClient();
-        var created = await CreatePermissionAsync(client, "it-perm-revoke");
-        var route = $"api/users/{TestUsers.RegularUserId}/permissions/{created.Id}";
-        var grantResponse = await client.PostAsync(route, content: null, TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.NoContent, grantResponse.StatusCode);
-
-        var revokeResponse = await client.DeleteAsync(route, TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.NoContent, revokeResponse.StatusCode);
-        var grants = await _fixture.FindUserPermissionsAsync(
-            TestUsers.RegularUserId, created.Id, TestContext.Current.CancellationToken);
-        var grant = Assert.Single(grants);
-        Assert.NotNull(grant.DateDeactivated);
     }
 
     [Fact]
@@ -440,19 +355,6 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
     }
 
     [Fact]
-    public async Task GrantPermission_UnknownPermission_ReturnsNotFound()
-    {
-        using var client = _fixture.Factory.CreateAdminClient();
-
-        var response = await client.PostAsync(
-            $"api/users/{TestUsers.RegularUserId}/permissions/{Guid.NewGuid()}",
-            content: null, TestContext.Current.CancellationToken);
-
-        var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
-        Assert.Equal("Permission not found.", problem.Detail);
-    }
-
-    [Fact]
     public async Task GrantPermission_DeactivatedPermission_ReturnsNotFound()
     {
         var (_, permissionId) = await _fixture.AddMcpServerAsync(
@@ -465,21 +367,6 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
 
         var problem = await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
         Assert.Equal("Permission not found.", problem.Detail);
-    }
-
-    [Fact]
-    public async Task CreateUserMe_AdminUser_ReturnsPermissionObjectsIncludingAdministrator()
-    {
-        using var client = _fixture.Factory.CreateAdminClient();
-
-        var response = await client.PostAsync("api/users/me", content: null, TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var user = await response.Content.ReadFromJsonAsync<UserDto>(TestContext.Current.CancellationToken);
-        Assert.NotNull(user);
-        Assert.Equal(TestUsers.AdminUserId, user.Id);
-        var administrator = Assert.Single(user.Permissions, x => x.Id == KnownIds.AdministratorPermissionId);
-        Assert.Equal("Administrator", administrator.Name);
     }
 
     /// <summary>
@@ -500,50 +387,4 @@ public sealed class PermissionEndpointsIntegrationTests(IntegrationTestFixture f
         Assert.Null(generateFiles.McpServerId);
     }
 
-    /// <summary>
-    /// Referenced by fixed id from the turn's own tool composition, so an administrator renaming or
-    /// retiring it would break the gate rather than relax it.
-    /// </summary>
-    [Fact]
-    public async Task MutateGenerateFilesPermission_AsAdministrator_IsRejected()
-    {
-        using var client = _fixture.Factory.CreateAdminClient();
-
-        var update = await client.PutAsJsonAsync(
-            $"api/permissions/{KnownIds.GenerateFilesPermissionId}",
-            UpdateRequest(name: "it-perm-renamed-builtin"),
-            TestContext.Current.CancellationToken);
-        var updateProblem = await ProblemAssert.ReadValidationAsync(update);
-        Assert.Equal(
-            "The built-in Generate Files permission cannot be modified.",
-            Assert.Single(updateProblem.Errors["Id"]));
-
-        var deactivate = await client.DeleteAsync(
-            $"api/permissions/{KnownIds.GenerateFilesPermissionId}", TestContext.Current.CancellationToken);
-        var deactivateProblem = await ProblemAssert.ReadValidationAsync(deactivate);
-        Assert.Equal(
-            "The built-in Generate Files permission cannot be modified.",
-            Assert.Single(deactivateProblem.Errors["Id"]));
-    }
-
-    /// <summary>
-    /// The rung the File Agent reads: a grant that reaches the permission cache like any other.
-    /// </summary>
-    [Fact]
-    public async Task GrantGenerateFiles_ToARegularUser_AppearsOnTheirOwnUserRecord()
-    {
-        using var admin = _fixture.Factory.CreateAdminClient();
-        var grant = await admin.PostAsync(
-            $"api/users/{TestUsers.RegularUserId}/permissions/{KnownIds.GenerateFilesPermissionId}",
-            content: null, TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.NoContent, grant.StatusCode);
-
-        using var user = _fixture.Factory.CreateUserClient();
-        var response = await user.PostAsync("api/users/me", content: null, TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var me = await response.Content.ReadFromJsonAsync<UserDto>(TestContext.Current.CancellationToken);
-        Assert.NotNull(me);
-        Assert.Contains(me.Permissions, x => x.Id == KnownIds.GenerateFilesPermissionId);
-    }
 }

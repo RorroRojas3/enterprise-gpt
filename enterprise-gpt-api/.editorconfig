@@ -398,6 +398,10 @@ dotnet_diagnostic.IDE0130.severity = error
 # Unused usings. A command-line build reports it only with GenerateDocumentationFile on (Directory.Build.props).
 dotnet_diagnostic.IDE0005.severity = warning
 
+# Dead private code: an unused member (IDE0051) or one written but never read (IDE0052).
+dotnet_diagnostic.IDE0051.severity = warning
+dotnet_diagnostic.IDE0052.severity = warning
+
 # Enums are named in the plural (OrderStatuses) so they never collide with an entity or enum reference table.
 dotnet_diagnostic.CA1717.severity = none
 

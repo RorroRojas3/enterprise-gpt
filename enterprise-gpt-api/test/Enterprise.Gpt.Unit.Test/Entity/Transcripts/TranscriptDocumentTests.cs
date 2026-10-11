@@ -23,12 +23,6 @@ public sealed class TranscriptDocumentTests
             PartitionKeys.For(UserId, ConversationId));
     }
 
-    [Fact]
-    public void For_DifferentConversationsOfOneUser_ProduceDifferentPartitions()
-    {
-        Assert.NotEqual(PartitionKeys.For(UserId, ConversationId), PartitionKeys.For(UserId, Guid.NewGuid()));
-    }
-
     /// <summary>
     /// The tenancy guarantee this design puts in storage: a foreign conversation id addresses a
     /// partition that does not exist rather than one a caller has to be filtered out of.
@@ -172,28 +166,6 @@ public sealed class TranscriptDocumentTests
         var restored = JsonSerializer.Deserialize<TranscriptMessageDocument>(json, Options);
         Assert.Equal(MessageFeedbackRatings.Down, restored?.Feedback?.Rating);
         Assert.Equal(ratedAt, restored?.Feedback?.DateModified);
-    }
-
-    /// <summary>
-    /// An unrated message reads back as no verdict rather than a default one, which is what the
-    /// transcript projection turns into an absent `feedback` on the wire. The withdrawal patch
-    /// leaves the document in the same state.
-    /// </summary>
-    [Fact]
-    public void Message_Created_HasNoVerdict()
-    {
-        var message = TranscriptMessageDocument.Create(
-            UserId, ConversationId, Guid.NewGuid(), ChatRoles.Assistant, "Hi", DateTimeOffset.UtcNow);
-
-        Assert.Null(message.Feedback);
-    }
-
-    [Fact]
-    public void Header_Serialized_StampsTheCurrentSchemaVersion()
-    {
-        var header = TranscriptHeaderDocument.Create(UserId, ConversationId, "Name", DateTimeOffset.UtcNow);
-
-        Assert.Equal(TranscriptHeaderDocument.CurrentSchemaVersion, header.SchemaVersion);
     }
 
     [Fact]

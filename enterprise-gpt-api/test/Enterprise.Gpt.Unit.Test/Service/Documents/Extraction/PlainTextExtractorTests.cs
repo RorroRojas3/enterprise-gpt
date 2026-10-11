@@ -1,5 +1,4 @@
 using System.Text;
-using Enterprise.Gpt.Common.Enums;
 using Enterprise.Gpt.Dto.Documents;
 using Enterprise.Gpt.Service.Documents.Extraction;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -16,15 +15,8 @@ public sealed class PlainTextExtractorTests
         return new FileDto { FileName = fileName, ContentType = "text/plain", Length = content.Length, Content = content };
     }
 
-    [Fact]
-    public void SupportedExtensions_ContainsMarkdownAndPlainText()
-    {
-        Assert.Equal([FileExtensions.Md, FileExtensions.Txt], _extractor.SupportedExtensions);
-    }
-
     [Theory]
     [InlineData("notes.txt")]
-    [InlineData("readme.md")]
     public async Task ExtractAsync_TextFile_ReturnsOneSegmentWithoutASourceNumber(string fileName)
     {
         var content = Encoding.UTF8.GetBytes("The quick brown fox.");

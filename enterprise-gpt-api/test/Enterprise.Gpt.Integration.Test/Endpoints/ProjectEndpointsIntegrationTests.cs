@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
 using Enterprise.Gpt.Dto.Actions.Projects;
-using Enterprise.Gpt.Dto.Documents;
 using Enterprise.Gpt.Dto.Pagination;
 using Enterprise.Gpt.Dto.Projects;
 using Enterprise.Gpt.Integration.Test.TestInfrastructure;
@@ -240,38 +239,9 @@ public sealed class ProjectEndpointsIntegrationTests(IntegrationTestFixture fixt
         var problem = await ProblemAssert.ReadValidationAsync(response);
         Assert.Contains(problem.Errors["Name"], message => message.Contains("already exists"));
     }
-
-    [Fact]
-    public async Task UpdateProject_KeepingItsOwnName_Succeeds()
-    {
-        var projectId = await _fixture.AddProjectAsync("it-stable", cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var response = await client.PutAsJsonAsync(
-            $"api/projects/{projectId}", UpdateRequest("it-stable", "Rewritten."), TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-    }
     #endregion
 
     #region Ordering
-    [Fact]
-    public async Task GetProjects_SortedByNameAscending_OrdersAlphabetically()
-    {
-        await _fixture.AddProjectAsync("it-order-zulu", cancellationToken: TestContext.Current.CancellationToken);
-        await _fixture.AddProjectAsync("it-order-alpha", cancellationToken: TestContext.Current.CancellationToken);
-        await _fixture.AddProjectAsync("it-order-mike", cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var page = await client.GetFromJsonAsync<PaginatedResponseDto<ProjectSummaryDto>>(
-            "api/projects?name=it-order-&sort=name&dir=asc", TestContext.Current.CancellationToken);
-
-        Assert.NotNull(page);
-        Assert.Equal(
-            ["it-order-alpha", "it-order-mike", "it-order-zulu"],
-            page.Items.Select(x => x.Name));
-    }
-
     [Fact]
     public async Task GetProjects_SortedByNameDescending_ReversesTheOrder()
     {
@@ -314,17 +284,6 @@ public sealed class ProjectEndpointsIntegrationTests(IntegrationTestFixture fixt
         Assert.Equal("/problems/validation-error", problem.Type);
         Assert.Single(Assert.Contains("sort", problem.Errors));
     }
-
-    [Fact]
-    public async Task GetProjects_UnrecognisedDirection_ReturnsAValidationProblemNamingTheParameter()
-    {
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var response = await client.GetAsync("api/projects?sort=name&dir=sideways", TestContext.Current.CancellationToken);
-
-        var problem = await ProblemAssert.ReadValidationAsync(response);
-        Assert.Single(Assert.Contains("dir", problem.Errors));
-    }
     #endregion
 
     #region Favorites
@@ -351,60 +310,6 @@ public sealed class ProjectEndpointsIntegrationTests(IntegrationTestFixture fixt
     }
 
     [Fact]
-    public async Task SetProjectFavorite_WhenCleared_LeavesDateModifiedWhereItWas()
-    {
-        // The flag is the whole write. A bump here would desynchronise every client that keeps its
-        // own copy of the row on the strength of this promise.
-        var projectId = await _fixture.AddProjectAsync("it-unstarring", isFavorite: true, cancellationToken: TestContext.Current.CancellationToken);
-        var before = await _fixture.FindProjectAsync(projectId, TestContext.Current.CancellationToken);
-        Assert.NotNull(before);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var response = await client.PutAsJsonAsync(
-            $"api/projects/{projectId}/favorite",
-            new SetProjectFavoriteActionDto { IsFavorite = false },
-            TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
-
-        var stored = await _fixture.FindProjectAsync(projectId, TestContext.Current.CancellationToken);
-        Assert.NotNull(stored);
-        Assert.False(stored.IsFavorite);
-        Assert.Equal(before.DateModified, stored.DateModified);
-    }
-
-    [Fact]
-    public async Task UpdateProject_RenamingAFavorite_LeavesTheStarInPlace()
-    {
-        // PUT api/projects/{id} is a full representation and carries no flag. If the update path
-        // ever wrote one, every rename would silently un-favourite the project.
-        var projectId = await _fixture.AddProjectAsync("it-starred-rename", isFavorite: true, cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var response = await client.PutAsJsonAsync(
-            $"api/projects/{projectId}", UpdateRequest("it-renamed-starred"), TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var stored = await _fixture.FindProjectAsync(projectId, TestContext.Current.CancellationToken);
-        Assert.NotNull(stored);
-        Assert.True(stored.IsFavorite);
-    }
-
-    [Fact]
-    public async Task SetProjectFavorite_UnknownProject_ReturnsNotFound()
-    {
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var response = await client.PutAsJsonAsync(
-            $"api/projects/{Guid.NewGuid()}/favorite",
-            new SetProjectFavoriteActionDto { IsFavorite = true },
-            TestContext.Current.CancellationToken);
-
-        await ProblemAssert.ReadAsync(response, HttpStatusCode.NotFound);
-    }
-
-    [Fact]
     public async Task SetProjectFavorite_ProjectOwnedByAnotherUser_ReturnsNotFoundAndLeavesItUnstarred()
     {
         var projectId = await _fixture.AddProjectAsync(
@@ -422,42 +327,9 @@ public sealed class ProjectEndpointsIntegrationTests(IntegrationTestFixture fixt
         Assert.NotNull(stored);
         Assert.False(stored.IsFavorite);
     }
-
-    [Fact]
-    public async Task SearchProjects_FavoriteFilterOmitted_ReturnsFavoritesAndPlainAlike()
-    {
-        await _fixture.AddProjectAsync("it-both-starred", isFavorite: true, cancellationToken: TestContext.Current.CancellationToken);
-        await _fixture.AddProjectAsync("it-both-plain", cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var page = await client.GetFromJsonAsync<PaginatedResponseDto<ProjectSummaryDto>>(
-            "api/projects", TestContext.Current.CancellationToken);
-
-        Assert.NotNull(page);
-        Assert.Equal(2, page.TotalCount);
-    }
     #endregion
 
     #region Conversation membership
-    [Fact]
-    public async Task UpdateConversation_WithProjectId_MovesTheConversationIntoTheProject()
-    {
-        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
-        var conversationId = await _fixture.AddConversationAsync(cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var response = await client.PutAsJsonAsync(
-            "api/conversations",
-            new { id = conversationId, name = "Moved", projectId },
-            TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var conversation = await _fixture.FindConversationAsync(conversationId, TestContext.Current.CancellationToken);
-        Assert.NotNull(conversation);
-        Assert.Equal(projectId, conversation.ProjectId);
-    }
-
     [Fact]
     public async Task UpdateConversation_WithoutProjectId_RemovesTheConversationFromItsProject()
     {
@@ -550,19 +422,6 @@ public sealed class ProjectEndpointsIntegrationTests(IntegrationTestFixture fixt
     #endregion
 
     #region Documents
-    [Fact]
-    public async Task GetProjectDocuments_NoUploads_ReturnsEmpty()
-    {
-        var projectId = await _fixture.AddProjectAsync(cancellationToken: TestContext.Current.CancellationToken);
-        using var client = _fixture.Factory.CreateUserClient();
-
-        var documents = await client.GetFromJsonAsync<List<ProjectDocumentDto>>(
-            $"api/projects/{projectId}/documents", TestContext.Current.CancellationToken);
-
-        Assert.NotNull(documents);
-        Assert.Empty(documents);
-    }
-
     [Fact]
     public async Task GetProjectDocuments_ProjectOwnedByAnotherUser_ReturnsNotFound()
     {

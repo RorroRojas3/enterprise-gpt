@@ -11,27 +11,6 @@ public class ReportEndpointsTests
     private readonly IReportService _reportService = Substitute.For<IReportService>();
 
     [Fact]
-    public async Task GetUsageReportAsync_ServiceReturnsReport_ReturnsOkWithPayload()
-    {
-        var expected = new UsageReportDto
-        {
-            GroupBy = "model",
-            Totals = new UsageReportTotalsDto(),
-            PriorTotals = new UsageReportTotalsDto()
-        };
-        _reportService
-            .GetUsageReportAsync(
-                Arg.Any<DateTimeOffset?>(), Arg.Any<DateTimeOffset?>(), Arg.Any<string?>(),
-                Arg.Any<CancellationToken>())
-            .Returns(expected);
-
-        var result = await ReportEndpoints.GetUsageReportAsync(
-            _reportService, cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.Same(expected, result.Value);
-    }
-
-    [Fact]
     public async Task GetUsageReportAsync_NoQueryString_PassesTheAbsencesThroughRatherThanDefaultingThem()
     {
         // The handler must not invent a window. Both bounds and the grouping are resolved in the

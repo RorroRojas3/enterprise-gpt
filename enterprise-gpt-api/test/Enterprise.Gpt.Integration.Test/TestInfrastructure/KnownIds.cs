@@ -1,6 +1,5 @@
 using Enterprise.Gpt.Common.Constants;
 
-
 namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
 
 /// <summary>
@@ -17,11 +16,6 @@ public static class KnownIds
     /// The Azure OpenAI provider seeded by <c>ProviderConfiguration</c>.
     /// </summary>
     public static readonly Guid SeedProviderId = Providers.AzureOpenAI;
-
-    /// <summary>
-    /// The Azure AI Foundry provider seeded by <c>ProviderConfiguration</c>.
-    /// </summary>
-    public static readonly Guid SeedFoundryProviderId = Providers.AzureAIFoundry;
 
     /// <summary>
     /// The "rr-gpt5.6-luna" model seeded by <c>ModelConfiguration</c> — the pinned document

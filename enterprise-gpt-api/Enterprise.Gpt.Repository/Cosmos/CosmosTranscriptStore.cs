@@ -1,9 +1,7 @@
 using System.Net;
-using System.Text.Json.Serialization;
 using Enterprise.Gpt.Repository.Cosmos.Models;
 using Enterprise.Gpt.Repository.Cosmos.Options;
 using Microsoft.Azure.Cosmos;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Repository.Cosmos;
@@ -93,19 +91,6 @@ public interface ITranscriptStore
         PartitionKey partitionKey,
         Action<TranscriptBatch> build,
         CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Deletes every document in a partition.
-    /// </summary>
-    /// <param name="partitionKey">The partition to empty.</param>
-    /// <param name="cancellationToken">A token to cancel the asynchronous operation.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
-    /// <remarks>
-    /// Uses the server-side delete-by-partition-key operation only when
-    /// <c>CosmosDb:UsePartitionKeyDelete</c> is set; otherwise it pages the identifiers and deletes
-    /// them in batches. See that setting for why the batched path is the default.
-    /// </remarks>
-    Task DeletePartitionAsync(PartitionKey partitionKey, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -119,11 +104,7 @@ public interface ITranscriptStore
 /// </remarks>
 /// <param name="cosmosClient">The account client.</param>
 /// <param name="options">The bound and validated Cosmos settings.</param>
-/// <param name="logger">The logger.</param>
-public sealed partial class CosmosTranscriptStore(
-    CosmosClient cosmosClient,
-    IOptions<CosmosDbOptions> options,
-    ILogger<CosmosTranscriptStore> logger) : ITranscriptStore
+public sealed class CosmosTranscriptStore(CosmosClient cosmosClient, IOptions<CosmosDbOptions> options) : ITranscriptStore
 {
     /// <summary>
     /// The maximum number of operations Cosmos DB accepts in a single patch request.
@@ -134,7 +115,6 @@ public sealed partial class CosmosTranscriptStore(
         options.Value.DatabaseId, options.Value.TranscriptContainerId);
 
     private readonly CosmosDbOptions _options = options.Value;
-    private readonly ILogger<CosmosTranscriptStore> _logger = logger;
 
     /// <inheritdoc />
     /// <exception cref="CosmosException">
@@ -262,101 +242,7 @@ public sealed partial class CosmosTranscriptStore(
         return new TranscriptBatchResult(false, response.StatusCode, null, null);
     }
 
-    /// <inheritdoc />
-    public async Task DeletePartitionAsync(PartitionKey partitionKey, CancellationToken cancellationToken)
-    {
-        EnsurePartitioned(partitionKey);
-
-        if (_options.UsePartitionKeyDelete)
-        {
-            using var response = await _container
-                .DeleteAllItemsByPartitionKeyStreamAsync(partitionKey, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-
-            if (response.IsSuccessStatusCode)
-            {
-                return;
-            }
-
-            // Falling through rather than throwing: the capability is enabled per account and the
-            // only way to discover it is missing is to be refused, so a deployment that turned the
-            // setting on optimistically still purges rather than leaving the documents behind.
-            LogPartitionDeleteFallback(_logger, (int)response.StatusCode);
-        }
-
-        await DeletePartitionInBatchesAsync(partitionKey, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Projection for queries that only need identifiers.
-    /// </summary>
-    private sealed record DocumentId
-    {
-        [JsonPropertyName("id")]
-        public string Id { get; init; } = null!;
-    }
-
     #region Private methods
-
-    private async Task DeletePartitionInBatchesAsync(PartitionKey partitionKey, CancellationToken cancellationToken)
-    {
-        var query = new QueryDefinition("SELECT c.id FROM c");
-
-        while (true)
-        {
-            // Drained rather than read once. A page size is a ceiling Cosmos may return fewer than,
-            // and a page can come back empty with more results behind it, so a single read proves
-            // neither that there is work nor that there is none.
-            var ids = await DrainIdsAsync(query, partitionKey, cancellationToken).ConfigureAwait(false);
-
-            if (ids.Count == 0)
-            {
-                return;
-            }
-
-            // Re-read from the start on the next pass rather than following a continuation token:
-            // the documents the token described no longer exist.
-            foreach (var chunk in ids.Chunk(TranscriptBatch.MaxOperations))
-            {
-                var result = await ExecuteBatchAsync(partitionKey, batch =>
-                {
-                    foreach (var id in chunk)
-                    {
-                        batch.Delete(id);
-                    }
-                }, cancellationToken).ConfigureAwait(false);
-
-                if (!result.IsSuccess)
-                {
-                    throw new InvalidOperationException(
-                        $"Purging a conversation's transcript failed: {result.Describe()}.");
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    /// Reads every document identifier in a partition, following continuation tokens to the end.
-    /// </summary>
-    private async Task<List<string>> DrainIdsAsync(
-        QueryDefinition query, PartitionKey partitionKey, CancellationToken cancellationToken)
-    {
-        List<string> ids = [];
-        string? continuationToken = null;
-
-        do
-        {
-            var page = await QueryAsync<DocumentId>(
-                query, partitionKey, _options.PageSize, continuationToken, cancellationToken)
-                .ConfigureAwait(false);
-
-            ids.AddRange(page.Items.Select(x => x.Id));
-            continuationToken = page.ContinuationToken;
-        }
-        while (continuationToken is not null);
-
-        return ids;
-    }
 
     private static bool IsSuccess(HttpStatusCode status)
     {
@@ -375,10 +261,4 @@ public sealed partial class CosmosTranscriptStore(
 
     #endregion
 
-    #region Logging
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Delete-by-partition-key returned {StatusCode}; falling back to batched deletes. Confirm the DeleteAllItemsByPartitionKey capability is enabled on the account, or clear CosmosDb:UsePartitionKeyDelete.")]
-    private static partial void LogPartitionDeleteFallback(ILogger logger, int statusCode);
-
-    #endregion
 }

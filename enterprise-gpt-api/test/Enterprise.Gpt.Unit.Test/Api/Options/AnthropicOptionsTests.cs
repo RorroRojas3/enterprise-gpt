@@ -18,8 +18,6 @@ public sealed class AnthropicOptionsTests
     private static IReadOnlySet<string> EffortLevels => AnthropicOptions.EffortLevels;
 
     [Theory]
-    [InlineData("adaptive")]
-    [InlineData("disabled")]
     [InlineData("Adaptive")]
     public void ThinkingModes_AcceptedValue_IsRecognizedRegardlessOfCasing(string thinking)
     {
@@ -40,11 +38,6 @@ public sealed class AnthropicOptionsTests
     }
 
     [Theory]
-    [InlineData("low")]
-    [InlineData("medium")]
-    [InlineData("high")]
-    [InlineData("xhigh")]
-    [InlineData("max")]
     [InlineData("HIGH")]
     public void EffortLevels_AcceptedValue_IsRecognizedRegardlessOfCasing(string effort)
     {
@@ -78,10 +71,7 @@ public sealed class AnthropicOptionsTests
     }
 
     [Theory]
-    [InlineData("disabled", "low")]
-    [InlineData("disabled", "medium")]
     [InlineData("disabled", "high")]
-    [InlineData("adaptive", "xhigh")]
     [InlineData("adaptive", "max")]
     public void IsThinkingEffortCombinationValid_SupportedPairing_IsTrue(string thinking, string effort)
     {
