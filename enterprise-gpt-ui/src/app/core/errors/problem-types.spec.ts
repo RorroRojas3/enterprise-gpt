@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PROBLEM_TYPE } from './problem-types';
 
 describe('PROBLEM_TYPE', () => {
-  // These strings are opaque identifiers the API's clients match verbatim; a typo
-  // here is indistinguishable from the server never emitting the problem at all.
+  // A typo here is indistinguishable from the server never emitting the problem.
   it('mirrors ProblemTypes.cs verbatim', () => {
     expect(PROBLEM_TYPE).toEqual({
       validationError: '/problems/validation-error',

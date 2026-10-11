@@ -9,10 +9,7 @@ import { Menu } from '@shared/overlay/menu/menu';
 import { MenuItem } from '@shared/overlay/menu/menu-item';
 import { MenuTriggerContent } from '@shared/overlay/menu/menu-trigger-content';
 
-/**
- * `400000 → '400k'`, `1500000 → '1.5M'` — the caption figure of frame `2b`.
- * Sub-thousand sizes render verbatim; non-integer thousands round.
- */
+/** `400000 → '400k'`, `1500000 → '1.5M'`; sub-thousand sizes render verbatim. */
 export function formatTokenCount(size: number): string {
   if (size >= 1_000_000) {
     const millions = size / 1_000_000;
@@ -27,12 +24,8 @@ export function formatTokenCount(size: number): string {
 }
 
 /**
- * The composer's model pill and its picker (US-402, frame `2b`).
- *
- * The pill is the menu's projected trigger face; the rows are
- * `menuitemradio` items over the catalog in server order. A failed catalog is
- * frame `2j`: the pill reads "Models unavailable" and the panel offers Retry —
- * kept open through the reload so the rows appear in place when it lands.
+ * On a failed catalog the pill reads "Models unavailable" and the panel offers Retry, staying open
+ * through the reload so the rows appear in place.
  */
 @Component({
   selector: 'app-model-menu',
@@ -51,9 +44,7 @@ export class ModelMenu {
       return model.name;
     }
 
-    // An error with a previously loaded catalog never lands here: the stale
-    // catalog still resolves a model, which stays usable (only a cold failure
-    // is frame 2j).
+    // A stale catalog still resolves a usable model, so only a cold failure lands here.
     if (this.models.error() !== null) {
       return 'Models unavailable';
     }

@@ -1,18 +1,14 @@
 // Tokens are read through `var(--…)` and never by `@use 'tokens'`, which emits `:root`
 // and would re-scope it to this component.
 
-// The host would otherwise be `display: inline` around an `inline-flex` child, which puts
-// the trigger on a line box and rides it down by the strut's descender — visible beside
-// the header star, which is not on one.
+// An inline host would put the trigger on a line box, dropping it by the strut's descender
+// beside the header star.
 :host {
   display: inline-flex;
 }
 
-// Bound on every row so the two states have one selector to share; the layout is
-// `menu__item`'s.
 .download-menu__item--dimmed {
-  // Dimming for the formats not being prepared. Opacity rather than a colour, so the glyph
-  // and the label fade together and neither has to know a token.
+  // Opacity rather than a colour, so the glyph and the label fade together.
   opacity: 0.45;
 }
 
@@ -41,9 +37,8 @@
   border: 2px solid var(--accent);
   border-top-color: transparent;
   border-radius: 50%;
-  // `spin` is the shared keyframe from `_motion.scss`; declaring a fifth one here is what
-  // the build's keyframe gate refuses, and reusing this one is what puts the
-  // reduced-motion block over this element without it opting in.
+  // The shared `spin` keyframe: the build's keyframe gate refuses new ones, and this one
+  // brings the reduced-motion block with it.
   animation: spin 0.9s linear infinite;
 }
 

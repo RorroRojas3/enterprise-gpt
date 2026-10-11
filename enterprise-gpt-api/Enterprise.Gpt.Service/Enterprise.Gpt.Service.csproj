@@ -1,63 +1,60 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Enterprise.Gpt.Service</RootNamespace>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Andes.Extensions.AI" Version="0.8.0" />
+    <PackageReference Include="Andes.Extensions.AI" />
+    <!-- Agent-as-tool tracking for the File Agent. -->
+    <PackageReference Include="Andes.Extensions.AI.Agent" />
     <!-- McpClientTool.WithTracking(string serverName) in McpToolProvider: without it a leased MCP
          tool classifies as an anonymous function and its usage lands with no server attribution. -->
-    <PackageReference Include="Andes.Extensions.AI.Mcp" Version="0.8.0" />
-    <!-- The streamed event contract ConversationService projects a turn into. Note the absence of
-         Andes.Extensions.AI.Agent: agent classification is configured in Program.cs, and nothing
-         here needs it, so its Microsoft.Agents.AI dependency stays out of this project. -->
-    <PackageReference Include="Andes.Extensions.AI.UI" Version="0.8.0" />
-    <PackageReference Include="Azure.AI.DocumentIntelligence" Version="1.0.0" />
-    <PackageReference Include="Azure.Storage.Blobs" Version="12.29.1" />
-    <!-- CSV (.csv) text extraction — see Extraction/CsvTextExtractor.cs. A correct RFC 4180 reader has to
+    <PackageReference Include="Andes.Extensions.AI.Mcp" />
+    <!-- The streamed event contract ConversationService projects a turn into. -->
+    <PackageReference Include="Andes.Extensions.AI.UI" />
+    <PackageReference Include="Azure.AI.DocumentIntelligence" />
+    <!-- CSV (.csv) text extraction — see Documents/Extraction/CsvTextExtractor.cs. A correct RFC 4180 reader has to
          handle quoted multi-line fields, escaped quotes and ragged rows, and getting any of those wrong
          corrupts cell data silently; MS-PL/Apache-2.0 and no dependencies of its own on net8.0+. -->
-    <PackageReference Include="CsvHelper" Version="33.1.0" />
-    <!-- Legacy Word (.doc) to .docx conversion — see Converters/DocSharpLegacyWordConverter.cs. Azure
+    <PackageReference Include="CsvHelper" />
+    <!-- Legacy Word (.doc) to .docx conversion — see Documents/Extraction/DocSharpLegacyWordConverter.cs. Azure
          Document Intelligence accepts .docx but not the binary .doc format, so .doc is converted first and
          then follows the same OCR path as every other Word document. -->
-    <PackageReference Include="DocSharp.Binary.Doc" Version="0.21.0" />
-    <!-- PowerPoint (.pptx) and Excel (.xlsx) text extraction — see Extraction/PresentationTextExtractor.cs
-         and Extraction/SpreadsheetTextExtractor.cs. -->
-    <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
-    <PackageReference Include="Markdig" Version="1.3.2" />
-    <PackageReference Include="Microsoft.Azure.Cosmos" Version="3.62.1" />
-    <!-- Direct pin: Microsoft.ML.Tokenizers 2.0.0 transitively brings 9.0.4, which has a known vulnerability (GHSA-73j8-2gch-69rq). -->
+    <PackageReference Include="DocSharp.Binary.Doc" />
+    <!-- PowerPoint (.pptx) and Excel (.xlsx) text extraction — see Documents/Extraction/PresentationTextExtractor.cs
+         and Documents/Extraction/SpreadsheetTextExtractor.cs. -->
+    <PackageReference Include="DocumentFormat.OpenXml" />
+    <PackageReference Include="Markdig" />
+    <!-- The File Agent runs as a Microsoft Agent Framework agent; see Agents/FileAgentToolProvider.cs. -->
+    <PackageReference Include="Microsoft.Agents.AI" />
+    <PackageReference Include="Microsoft.Azure.Cosmos" />
     <!-- Abstractions only: this project consumes IDataProtectionProvider, while the key ring
          and its Key Vault wrapping are configured in the host. -->
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="10.0.11" />
-    <PackageReference Include="Microsoft.Bcl.Memory" Version="10.0.11" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" />
+    <!-- Security pin over the version Microsoft.ML.Tokenizers brings; see Directory.Packages.props. -->
+    <PackageReference Include="Microsoft.Bcl.Memory" />
     <!-- Referenced directly, not left transitive through Enterprise.Gpt.Entity: document retrieval binds
-         SqlParameter and SqlVector<float> by hand — see Tool/DocumentRetrievalService.cs. Kept in step with
-         the version Enterprise.Gpt.Entity pins for the vector(1536) column. -->
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
-    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.9.0" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
-    <PackageReference Include="Microsoft.Graph" Version="6.5.0" />
-    <PackageReference Include="Microsoft.Identity.Web" Version="4.14.2" />
-    <!-- Token-accurate RAG chunking — see Chunking/TokenTextChunker.cs. The Data package carries the
+         SqlParameter and SqlVector<float> by hand — see Documents/Retrieval/DocumentRetrievalService.cs. -->
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Graph" />
+    <PackageReference Include="Microsoft.Identity.Web" />
+    <!-- Token-accurate RAG chunking — see Documents/Chunking/TokenTextChunker.cs. The Data package carries the
          cl100k_base vocabulary used by the text-embedding-3-* and ada-002 embedding models. -->
-    <PackageReference Include="Microsoft.ML.Tokenizers" Version="2.0.0" />
-    <PackageReference Include="Microsoft.ML.Tokenizers.Data.Cl100kBase" Version="2.0.0" />
-    <PackageReference Include="Microsoft.ML.Tokenizers.Data.O200kBase" Version="2.0.0" />
-    <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <!-- PDF conversation export — see Export/Renderers/PdfExportRenderer.cs. The cross-platform (Core)
-         build, so it carries no Windows dependency and resolves no font of its own; Export/Fonts/
+    <PackageReference Include="Microsoft.ML.Tokenizers" />
+    <PackageReference Include="Microsoft.ML.Tokenizers.Data.Cl100kBase" />
+    <PackageReference Include="Microsoft.ML.Tokenizers.Data.O200kBase" />
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="Newtonsoft.Json" />
+    <!-- PDF conversation export — see Exports/Renderers/PdfExportRenderer.cs. The cross-platform (Core)
+         build, so it carries no Windows dependency and resolves no font of its own; Exports/Fonts/
          ExportFontResolver.cs is what supplies faces. MIT, which is why this and not QuestPDF, whose
          Community tier is source-available rather than MIT and is gated on company revenue. -->
-    <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
-    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.11" />
+    <PackageReference Include="PDFsharp-MigraDoc" />
+    <PackageReference Include="System.Security.Cryptography.Xml" />
   </ItemGroup>
 
   <ItemGroup>
@@ -73,21 +70,21 @@
 
   <ItemGroup>
     <!-- ExportFontResolver probes {BaseDirectory}/Fonts, so the five role-named faces committed under
-         Export/Fonts have to land there; Link flattens the folder. A glob rather than five entries,
-         because Export/Fonts/README.md documents dropping a re-branded set in as a file copy. -->
-    <None Include="Export\Fonts\*.ttf;Export\Fonts\*.otf;Export\Fonts\*.ttc"
+         Exports/Fonts have to land there; Link flattens the folder. A glob rather than five entries,
+         because Exports/Fonts/README.md documents dropping a re-branded set in as a file copy. -->
+    <None Include="Exports\Fonts\*.ttf;Exports\Fonts\*.otf;Exports\Fonts\*.ttc"
           Link="Fonts\%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest" />
-    <!-- The confirmed conversion matrix (EP-0/US-003). Shipped rather than embedded for the reason
-         the prompt templates below are: it is a published deliverable an operator may need to read,
-         and EP-3's document-conversion skill and EP-4's FileAgentOptions both load this one file so
-         a pair cannot be refused in one place and offered in another. -->
+    <!-- Shipped rather than embedded so an operator can read it. The document-conversion skill and
+         FileAgentOptions both load this one file, so a pair cannot be refused in one place and offered
+         in another. -->
     <None Update="Agents\Documents\conversion-matrix.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Files\conversation-history.html">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
+    <!-- Read from {BaseDirectory}/Files; Link keeps that output path. -->
+    <None Update="Exports\Templates\conversation-history.html"
+          Link="Files\conversation-history.html"
+          CopyToOutputDirectory="Always" />
     <None Update="Prompts\conversation-default-system-prompt.md">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

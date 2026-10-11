@@ -1,11 +1,6 @@
 /**
- * Runtime configuration, fetched from `config.json` before the application
- * bootstraps.
- *
- * Nothing environment-specific is compiled into the bundle: one build artifact is
- * promoted across environments and `config.json` is overwritten per environment.
- * That is why there is no `environments/` directory and no `fileReplacements`
- * entry in `angular.json`.
+ * Runtime configuration fetched from `config.json` before bootstrap, so one build artifact is
+ * promoted across environments (hence no `environments/` or `fileReplacements`).
  */
 export interface AppConfig {
   /** Origin of the Enterprise GPT API, with no trailing slash. */
@@ -17,10 +12,8 @@ export interface AppConfig {
 }
 
 /**
- * The Entra ID values MSAL needs. Deliberately excludes `cacheLocation`,
- * `allowRedirectInIframe` and the logger options: those are a security posture rather
- * than an environment value, so they are fixed in `buildMsalConfig` where no
- * deployment can weaken them by editing one file.
+ * Excludes `cacheLocation`, `allowRedirectInIframe` and the logger options: they are security
+ * posture, fixed in `buildMsalConfig` so no deployment can weaken them by editing one file.
  */
 export interface AuthConfig {
   /** Application (client) id of the SPA's Entra ID app registration. */
@@ -38,11 +31,8 @@ export interface AuthConfig {
 /** Application Insights, for the browser half of a request's telemetry. */
 export interface TelemetryConfig {
   /**
-   * Connection string for the browser's Application Insights resource.
-   *
-   * It ships in `config.json` and is therefore public, and Entra-authenticated
-   * ingestion has no browser story — so this must name a resource whose ingestion
-   * you are willing to leave open, separate from the API's.
+   * Public once shipped, and browser ingestion cannot use Entra auth, so name a resource whose
+   * open ingestion is acceptable, separate from the API's.
    */
   readonly connectionString: string;
 }
@@ -53,10 +43,7 @@ export interface FeatureFlags {
   readonly diagrams: boolean;
   /** Load the math renderer chunk. */
   readonly math: boolean;
-  /**
-   * Read the chat stream as unframed text instead of SSE frames. The fallback for
-   * a deployment still running a server that predates the framed contract.
-   */
+  /** Read the stream as unframed text, for a server that predates the SSE-framed contract. */
   readonly rawStreamCodec: boolean;
 }
 
@@ -71,18 +58,10 @@ export class AppConfigError extends Error {
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Validates a parsed `config.json` body.
+ * Each failure names the field, since the fatal shell displays the message. Unknown keys pass so
+ * a newer `config.json` still boots an older bundle. A `function` because TypeScript honours
+ * `asserts` only on an explicitly declared call target.
  *
- * Every failure names the offending field, because that message is what the fatal
- * shell in `index.html` displays to whoever has to fix the deployment.
- *
- * Unknown extra keys are accepted on purpose: a `config.json` written for a newer
- * bundle must still boot an older one.
- *
- * Declared as a `function` rather than an arrow const because TypeScript only
- * honours an `asserts` return type on an explicitly declared call target.
- *
- * @param value The parsed JSON body.
  * @throws {AppConfigError} When any field is missing or malformed.
  */
 export function assertAppConfig(value: unknown): asserts value is AppConfig {
@@ -113,21 +92,15 @@ export function assertAppConfig(value: unknown): asserts value is AppConfig {
   assertBoolean(features['math'], 'features.math');
   assertBoolean(features['rawStreamCodec'], 'features.rawStreamCodec');
 
-  // Optional rather than required, so an environment that predates browser telemetry
-  // keeps booting on a newer bundle. Validated only once it is there: a block written
-  // by hand and left half-finished must fail here, not silently send nothing.
+  // Optional so older environments keep booting, but validated when present so a half-finished
+  // block fails here instead of silently sending nothing.
   if (root['telemetry'] !== undefined) {
     const telemetry = requireRecord(root['telemetry'], 'telemetry');
     assertNonEmptyString(telemetry['connectionString'], 'telemetry.connectionString');
   }
 }
 
-/**
- * Returns a frozen {@link AppConfig} with `apiBaseUrl` normalized to carry no
- * trailing slash, so callers can join paths without producing a double slash.
- *
- * @param config A value already validated by {@link assertAppConfig}.
- */
+/** Returns a frozen copy with no trailing slash on `apiBaseUrl`, so paths join without `//`. */
 export function normalizeAppConfig(config: AppConfig): AppConfig {
   return Object.freeze({
     ...config,

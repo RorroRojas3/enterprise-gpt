@@ -6,32 +6,15 @@ export interface DismissHandlers {
   /** An ancestor scrolled. Menus close rather than reposition. */
   readonly onScroll?: () => void;
   /**
-   * An element outside the overlay that still counts as *inside* it for the
-   * outside-press test.
-   *
-   * For a trigger nested in the overlay's own host — every `Menu` — this is not needed.
-   * It exists for a trigger that sits elsewhere and toggles the overlay itself, like
-   * US-307's composer pill: without it, the press closes the panel on `pointerdown` and
-   * the trigger's own `click` reopens it, so the control can never be used to dismiss.
-   *
-   * A callback rather than an element, because the trigger may not exist when the
-   * listener is registered.
+   * A trigger outside the overlay that toggles it, counted as inside so its press doesn't close
+   * the panel for its own `click` to reopen. A callback, as it may not exist at registration.
    */
   readonly insideAlso?: () => HTMLElement | null;
 }
 
 /**
- * Wires the three ways an overlay gets dismissed, with one place deciding how each
- * behaves.
- *
- * Escape is listened for on the overlay rather than on `document`, so a menu opened
- * inside a modal closes only the menu. Outside clicks use `pointerdown` and
- * `composedPath()` so a press that starts inside and ends outside does not dismiss,
- * and so a click inside a shadow tree still counts as inside.
- *
- * Every listener is registered against one `AbortSignal`; aborting it removes all of
- * them, which is why callers pass the signal from a controller aborted in
- * `DestroyRef.onDestroy`.
+ * Escape listens on the overlay, not `document`, so a menu inside a modal closes alone. Outside
+ * presses use `pointerdown` and `composedPath()`, so drags out and shadow-tree clicks don't count.
  */
 export function onDismiss(
   element: HTMLElement,

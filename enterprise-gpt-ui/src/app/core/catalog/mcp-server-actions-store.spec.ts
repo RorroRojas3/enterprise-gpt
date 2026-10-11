@@ -35,7 +35,7 @@ function validationProblem(errors: Record<string, string[]>): object {
   return { ...PROBLEM_FIXTURES.validationError, errors };
 }
 
-describe('McpServerActionsStore (US-1208)', () => {
+describe('McpServerActionsStore', () => {
   let store: InstanceType<typeof McpServerActionsStore>;
   let backend: HttpTestingController;
   let toasts: {
@@ -84,8 +84,7 @@ describe('McpServerActionsStore (US-1208)', () => {
 
     const request = backend.expectOne(MCPS_URL);
     expect(request.request.method).toBe('POST');
-    // All seven, and the auth type as the number the wire carries: the API registers no
-    // string enum converter, so `"EntraIdOnBehalfOf"` would fail `IsInEnum`.
+    // authType is numeric: the API has no string enum converter, so a name would fail `IsInEnum`.
     expect(request.request.body).toEqual({
       name: 'SAP Ledger',
       description: 'Cost-center and PO queries for finance',
@@ -110,10 +109,7 @@ describe('McpServerActionsStore (US-1208)', () => {
     settle();
     backend.expectOne(MCPS_URL);
 
-    // The `formBusy` guard is what this asserts — it short-circuits before the rxMethod,
-    // so `exhaustMap` is the belt behind it rather than the thing on trial here. A
-    // duplicate that slipped through either would take the "name already in use" 400 the
-    // first one had just made true.
+    // Asserts the `formBusy` guard, which short-circuits before `exhaustMap` is reached.
     store.submitForm(formValue());
     settle();
 
@@ -159,8 +155,7 @@ describe('McpServerActionsStore (US-1208)', () => {
 
   it('keeps a validation failure inline, with the dialog and every field intact', () => {
     store.beginCreate();
-    // Client-valid, and refused by the server anyway — the case that matters, since the
-    // client mirrors the validator but can never mirror all of it.
+    // Client-valid but refused by the server: the client can't mirror every server rule.
     const value = formValue({ url: 'https://mcp.example.test/sap' });
     store.submitForm(value);
     settle();
@@ -173,8 +168,6 @@ describe('McpServerActionsStore (US-1208)', () => {
       );
     settle();
 
-    // Nothing closes the dialog: five fields including a 1024-character description are
-    // behind it, and `retryInterceptor` retries neither a POST nor a PUT.
     expect(store.formMode()).toBe('create');
     expect(store.formError()?.kind).toBe('validation-error');
     expect(store.formRejectedValue()).toEqual(value);
@@ -211,8 +204,7 @@ describe('McpServerActionsStore (US-1208)', () => {
     backend.expectOne(MCPS_URL).flush(null, { status: 500, statusText: 'Server Error' });
     settle();
 
-    // The criterion asks for the panel on a 502 as well as on a 400, so a surface that is
-    // still on screen owns the message — reporting it twice is the defect this avoids.
+    // A surface still on screen owns the message, so it is not reported twice.
     expect(store.formMode()).toBe('create');
     expect(store.formFailure()?.serverName).toBe('SAP Ledger');
     expect(store.formFailure()?.traceLine).not.toBeNull();
@@ -226,21 +218,17 @@ describe('McpServerActionsStore (US-1208)', () => {
     settle();
     const save = backend.expectOne(`${MCPS_URL}/${target.id}`);
 
-    // The reader force-closes the dialog before the save lands — a second Escape is
-    // uncancelable in Chromium. Opening the *other* form in this window is no longer
-    // possible at all (`beginCreate` refuses while `formBusy`), which is a stronger
-    // guarantee than this test could make; what remains reachable is the closed surface.
+    // Force-closed before the save lands (Chromium can't cancel a second Escape); reopening is
+    // refused while `formBusy`, so the closed surface is the only one left to test.
     store.cancelForm();
 
     save.flush(validationProblem({ Name: ['Already in use.'] }), BAD_REQUEST);
     settle();
 
-    // Nothing inline, and no panel, because there is nothing on screen to render against.
     expect(store.formError()).toBeNull();
     expect(store.formFailure()).toBeNull();
     expect(store.formMode()).toBeNull();
-    // Raised by hand, because `fromError` silences validation problems on the assumption
-    // they render inline and there is no inline left to render on.
+    // By hand: `fromError` silences validation errors, assuming they render inline.
     expect(toasts.show).toHaveBeenCalledOnce();
     expect(toasts.fromError).not.toHaveBeenCalled();
   });
@@ -248,8 +236,7 @@ describe('McpServerActionsStore (US-1208)', () => {
   it('names the server the request was about, not the row opened after it', () => {
     const target = mcpServerFixture({ name: 'SAP Ledger' });
     store.beginEdit(target);
-    // A rename that fails still names the row the reader opened, not the new name they
-    // typed — that server does not exist yet, and naming it would be a fiction.
+    // A failed rename names the row opened: the typed name belongs to no server yet.
     store.submitForm(formValue({ name: 'SAP Ledger EU' }));
     settle();
 
@@ -268,7 +255,6 @@ describe('McpServerActionsStore (US-1208)', () => {
 
     store.confirmDeactivate();
     settle();
-    // The confirmation closes at once and the request settles behind it.
     expect(store.deactivateTarget()).toBeNull();
 
     const request = backend.expectOne(`${MCPS_URL}/${target.id}`);
@@ -291,7 +277,6 @@ describe('McpServerActionsStore (US-1208)', () => {
     store.confirmDeactivate();
     settle();
 
-    // mergeMap: independent rows, and exhaustMap would have silently dropped the second.
     const requests = backend.match((request) => request.method === 'DELETE');
     expect(requests).toHaveLength(2);
     requests.forEach((request) => request.flush(null, { status: 204, statusText: 'No Content' }));
@@ -323,8 +308,6 @@ describe('McpServerActionsStore (US-1208)', () => {
     settle();
     const request = backend.expectOne(MCPS_URL);
 
-    // `formBusy` is also `Modal`'s Escape and backdrop suppression, so a dialog opened
-    // now would hold no focusable field and no way out (WCAG 2.1.2).
     store.cancelForm();
     expect(store.formBusy()).toBe(true);
     store.beginCreate();
@@ -343,8 +326,7 @@ describe('McpServerActionsStore (US-1208)', () => {
 
     store.cancelForm();
 
-    // It tracks the request, not the surface: a flight still occupying `exhaustMap` has
-    // to stay visible or the next submit is swallowed silently.
+    // Tracks the request, not the surface, or a reopened form would swallow the next submit.
     expect(store.formMode()).toBeNull();
     expect(store.formBusy()).toBe(true);
 

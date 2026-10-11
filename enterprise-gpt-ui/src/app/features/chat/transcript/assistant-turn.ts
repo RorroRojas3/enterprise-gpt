@@ -24,8 +24,7 @@ import { ReasoningRegion } from './reasoning-region';
 import { formatTurnUsage } from './turn-usage';
 
 type RenderedNode =
-  // `start` is carried through only as a stable identity for the template's
-  // `track`: the offset a block begins at never changes once it exists.
+  // `start` is the template's `track` key: a block's start offset never changes.
   | {
       readonly kind: 'text';
       readonly text: string;
@@ -35,18 +34,8 @@ type RenderedNode =
   | { readonly kind: 'activity'; readonly activity: AssistantActivity };
 
 /**
- * One assistant turn: the avatar column and, in arrival order, the turn's text
- * blocks and activity cards (US-406, US-501, US-502).
- *
- * The order comes from the timeline index and every datum on a card comes from
- * the folded snapshot — the render-time join of the two structures the store
- * keeps separate.
- *
- * Text renders as markdown, sanitized at the parser and again at the DOM
- * boundary by the profile `provideChatMarkdown` installs (US-601). Each text
- * node is its own `<markdown>`: a node closed by an intervening activity never
- * changes again, and re-deriving its identical slice per flush leaves the input
- * value equal, so only the node still growing is ever re-parsed.
+ * Joins the timeline's order with the folded snapshot's data. Each text node is its own
+ * `<markdown>`, so only the node still growing is re-parsed.
  */
 @Component({
   selector: 'app-assistant-turn',
@@ -69,53 +58,24 @@ type RenderedNode =
 export class AssistantTurn {
   readonly snapshot = input.required<AssistantStatusSnapshot>();
   readonly timeline = input.required<TurnTimeline>();
-  /** Draws frame `1b`'s blinking caret at the end of the growing text. */
+  /** Draws the blinking caret at the end of the growing text. */
   readonly streaming = input<boolean>(false);
-  /**
-   * The model's own reasoning summary (US-503), which is *not* read off the
-   * snapshot: `snapshot.reasoningText` also carries the server's seeded first
-   * delta, and only the store knows how long that was.
-   */
+  /** Not read off the snapshot, whose `reasoningText` includes the server's seeded delta. */
   readonly reasoningText = input('');
-  /** The measured reasoning window for frame `1f`'s pill (US-503). */
   readonly reasoningSeconds = input<number | null>(null);
-  /**
-   * The persisted message this turn became (US-1101), or null when it never became one —
-   * a live turn, a cut-off, or a completed turn whose transcript write failed. Null is
-   * what withholds the feedback controls, and it withholds them by construction rather
-   * than by a flag anyone has to remember to set.
-   */
+  /** Null for a live, cut-off or unpersisted turn, which withholds the feedback controls. */
   readonly messageId = input<string | null>(null);
-  /** The rating already recorded against this answer (US-1103). */
   readonly rating = input<MessageFeedbackRating | null>(null);
-  /** Whether this answer's own rating request is in flight (US-1103). */
   readonly ratingPending = input<boolean>(false);
-  /** The files this turn produced, empty when it produced none. */
   readonly attachments = input<readonly MessageAttachmentDto[]>([]);
-  /** The conversation a chip's download is addressed to. */
   readonly conversationId = input<string | null>(null);
-  /** The thumb the reader pressed. What it means is the store's decision, not this one's. */
+  /** What the thumb means is the store's decision, not this component's. */
   readonly rated = output<MessageFeedbackRating>();
 
   /**
-   * The join, derived once per flush rather than per node in the template.
-   *
-   * An activity node opens a top-level card only when its scope is a **root**
-   * of the folded snapshot; anything else is nested work, which `ActivityCard`
-   * renders inside its parent (US-502). Root membership is the test, not
-   * `node.parentScopeId !== undefined`: the fold promotes a child whose parent
-   * scope it has never seen to a root, and that card has to stay visible —
-   * an unattached card is a rendering imperfection, a dropped one is a lost
-   * tool call. It is also what survives a parent that arrives after its child.
-   *
-   * Roots are **consumed** rather than looked up: each scope id owns a queue of
-   * the roots that arrived under it, and a node takes the next one. A plain
-   * lookup keyed on `scopeId` would render one activity twice if two roots
-   * arrived without a scope id, which the fold allows — it defaults a missing
-   * id to the empty string rather than dropping the event. A single pointer
-   * along `activities` would fix that too, but the invariant it rests on lives
-   * in the vendored contract, and one mismatch would stall it and drop every
-   * later card; a per-id queue costs one card instead.
+   * Tests root membership rather than `parentScopeId`, so an orphan the fold promoted stays
+   * visible. Roots are consumed from per-id queues: missing ids default to '', so a plain lookup
+   * could render one twice, and a single pointer would drop every card after a mismatch.
    */
   protected readonly renderedNodes = computed<readonly RenderedNode[]>(() => {
     const snapshot = this.snapshot();
@@ -135,10 +95,8 @@ export class AssistantTurn {
     for (const node of this.timeline().nodes) {
       if (node.kind === 'text') {
         const slice = text.slice(node.start, node.end);
-        // Split per node rather than over the whole answer: the slices are what
-        // the template renders, and an email interrupted by a tool call lands in
-        // neither half as a closed fence, so it stays markdown — the honest
-        // rendering of a block that was never completed in one piece.
+        // Per node: an email interrupted by a tool call is a closed fence in neither half,
+        // so it stays markdown.
         nodes.push({
           kind: 'text',
           text: slice,
@@ -156,36 +114,18 @@ export class AssistantTurn {
     return nodes;
   });
 
-  /**
-   * The turn's token counts for the message footer (US-504), or null when the
-   * turn claims none. Null is the honest answer for every turn that never
-   * folded a `Finished`: stopped, cut off, or replayed from the transcript,
-   * where the stream that carried the counts is long gone.
-   */
+  /** Null for any turn that never folded a `Finished`: stopped, cut off, or replayed. */
   protected readonly usageLine = computed(() => formatTurnUsage(this.snapshot().usage));
 
   /**
-   * What the footer's Copy control puts on the clipboard (US-607): the answer's
-   * original markdown, not the rendered HTML.
-   *
-   * Read off the snapshot rather than re-joined from {@link renderedNodes},
-   * whose slices exist to be interleaved with activity cards in arrival order.
-   * They happen to cover the whole text today, but that is the timeline's
-   * contract to change, and a copy that silently lost a block would look like a
-   * clipboard fault rather than a rendering one.
+   * The original markdown, read off the snapshot rather than re-joined from
+   * {@link renderedNodes}, whose slices are not guaranteed to cover the whole text.
    */
   protected readonly copySource = computed(() => this.snapshot().text ?? '');
 
   /**
-   * The footer's Open Email control, for an answer that is an email the model
-   * never marked as one — an older transcript, or a model that ignored the
-   * instruction.
-   *
-   * Null whenever a card already rendered: the card carries the same control,
-   * and offering it twice would ask the reader which of two identical buttons is
-   * the real one. Like the feedback guard beside it in the template, this is
-   * fixed for the life of a settled entry, so the `@if` it drives cannot toggle
-   * under the transcript's ResizeObserver.
+   * For an email the model never marked; null once a card carries its own control. Fixed for a
+   * settled entry, so its `@if` cannot toggle under the transcript's ResizeObserver.
    */
   protected readonly footerDraft = computed(() => {
     const hasCard = this.renderedNodes().some(
@@ -195,17 +135,7 @@ export class AssistantTurn {
     return hasCard ? null : detectEmailDraft(this.copySource());
   });
 
-  /**
-   * Whether the answer is still accumulating, for the live region's own
-   * `aria-busy` (US-1402).
-   *
-   * The region is polite for the whole of a streaming turn — that is the
-   * criterion — and `aria-busy` is what stops that meaning "read every delta":
-   * a busy live region accumulates its changes and exposes them once, when busy
-   * clears. It is set here as well as on the transcript because a region's own
-   * `aria-busy` is the better-honoured of the two, and it reads the folded
-   * `Finished` off the snapshot this component already receives.
-   */
+  /** The live region's own `aria-busy`, which is better honoured than the transcript's. */
   protected readonly liveAnswer = computed(
     () => this.streaming() && this.snapshot().phase !== 'Completed',
   );
@@ -218,14 +148,7 @@ export class AssistantTurn {
     return this.streaming() && last !== undefined && last.kind === 'text' ? nodes.length - 1 : -1;
   });
 
-  /**
-   * The growing node cut at its last block boundary (US-602).
-   *
-   * Only this node is ever re-parsed mid-turn, and splitting it means only the
-   * part after the boundary is: `head` is byte-identical between flushes until a
-   * new block closes, and an unchanged string never reaches the renderer as a
-   * changed input.
-   */
+  /** `head` stays byte-identical until a new block closes, so only the tail is re-parsed. */
   private readonly liveSplit = computed<StreamSplit>(() => {
     const index = this.caretIndex();
     const last = index === -1 ? undefined : this.renderedNodes()[index];
@@ -235,10 +158,6 @@ export class AssistantTurn {
 
   protected readonly liveHead = computed(() => this.liveSplit().head);
 
-  /**
-   * The tail renders without its fence info strings, so a code block that is
-   * still arriving is not highlighted against a grammar its half-written
-   * contents may not satisfy. The settled render uses the untouched source.
-   */
+  /** Without fence info, so a half-written code block is not highlighted against its grammar. */
   protected readonly liveTail = computed(() => stripFenceInfo(this.liveSplit().tail));
 }

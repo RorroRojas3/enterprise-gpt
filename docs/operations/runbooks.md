@@ -146,12 +146,9 @@ read with an empty list.
 | Prerequisite | Fails how |
 | --- | --- |
 | SQL Server 2025 or later | Startup throws on the first connection; the migration never runs |
-| A Cosmos account you can create a container in | Startup fails in `CosmosBootstrapper.EnsureProvisionedAsync` |
+| A Cosmos account you can create a container in | Startup fails in `CosmosResourceProvisioner.EnsureProvisionedAsync` |
 | The migration history is initialized | `Database.Migrate()` needs `__EFMigrationsHistory` — see below |
 | A window in which chatting can stop | The old and new builds cannot share a container |
-
-Leave `CosmosDb:UsePartitionKeyDelete` at `false` until you have confirmed the
-`DeleteAllItemsByPartitionKey` capability is enabled on the account.
 
 ## Steps
 

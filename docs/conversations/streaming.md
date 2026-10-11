@@ -125,7 +125,7 @@ downgraded into one the client can only read as truncated.
 
 | Status | `type` | When |
 | --- | --- | --- |
-| 400 | `validation-error` | Body failed validation |
+| 400 | `validation-error` | Body failed validation, or the `ModelId` names no model |
 | 403 | `forbidden` | The caller may not use something the turn needs |
 | 404 | `resource-not-found` | Conversation unknown, deactivated, or another user's |
 | 409 | `conversation-busy` | A turn is already in flight for this conversation |
@@ -134,7 +134,7 @@ downgraded into one the client can only read as truncated.
 | 502 | `mcp-server-unavailable` | A selected server was unreachable, or its on-behalf-of token could not be acquired |
 | 503 | `provider-not-configured` | The model exists but this deployment has no client for its provider |
 
-**After the first frame** — there is no error surface left. The exception handlers short-circuit on
+**After the first frame** — there is no error surface left. The exception handler short-circuits on
 `Response.HasStarted` rather than corrupting a stream that is already `200 OK` with half an answer
 in it, so a mid-stream failure reaches the client as **a body that simply stops**. A client cannot
 distinguish that from a network drop and should not try: treat an ended body with no `Finished` as
@@ -196,7 +196,7 @@ replayed and live answers render through one code path.
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs` | Yields the event sequence, holds back `Finished` |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Conversations/ConversationService.cs` | Yields the event sequence, holds back `Finished` |
 | `enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ConversationEndpoints.cs` | `StreamConversationAsync` and its lazy headers |
 | `enterprise-gpt-ui/src/app/domain/stream/sse-frame-codec.ts` | Frame decoding across chunk boundaries |
 | `enterprise-gpt-ui/src/app/domain/stream/turn-timeline.ts` | Arrival-ordered timeline |

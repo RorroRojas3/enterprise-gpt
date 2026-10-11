@@ -21,28 +21,9 @@ export type UploadEvent =
 const FILE_FIELD = 'file';
 
 /**
- * Posts one file to `POST api/documents/{conversations|projects}/{id}`.
- *
- * **Why this is not `HttpClient`.** `HttpEventType.UploadProgress` is emitted by
- * `HttpXhrBackend` only, and this application configures `provideHttpClient(withFetch())`
- * — Angular's fetch backend reports download progress and nothing else. Frame `4l`'s
- * percentage during byte transfer is therefore unobtainable through `HttpClient` here,
- * and a 50 MB file on a slow link would upload with no feedback at all. So the one
- * request that needs upload progress goes over `XMLHttpRequest` directly, exactly as
- * the chat stream goes over raw `fetch` for the same class of reason.
- *
- * Being off the `HttpClient` pipeline means two interceptor behaviours are restated
- * here rather than inherited, and only two:
- *
- * - The bearer token comes from {@link TokenService}, the one source both transports
- *   share, with a **single** forced-refresh replay gated by `authErrorDecision` — the
- *   same predicate `authInterceptor` consults, which is what structurally keeps a 403
- *   `permission-required` out of the refresh path.
- * - `retryInterceptor` is *not* restated, and must not be: it replays idempotent GETs
- *   only, and a replayed upload would queue the file twice.
- *
- * Unsubscribing aborts the request, so a `switchMap` consumer or the chip's remove
- * control cancels the transfer instead of orphaning it.
+ * Uses `XMLHttpRequest` because the fetch backend never reports upload progress. Restates the
+ * auth interceptor's single forced-refresh replay, but never the retry: a replayed upload would
+ * queue the file twice. Unsubscribing aborts the request.
  */
 @Injectable({ providedIn: 'root' })
 export class DocumentUploadClient {
@@ -50,12 +31,7 @@ export class DocumentUploadClient {
   private readonly _tokens = inject(TokenService);
   private readonly _newXhr = inject(UPLOAD_XHR);
 
-  /**
-   * Uploads one file and completes when the server has queued its job.
-   *
-   * @param target The conversation or project the document belongs to.
-   * @param file The file as the picker or the drop event produced it.
-   */
+  /** Completes once the server has queued the job. */
   upload(target: UploadTarget, file: File): Observable<UploadEvent> {
     return new Observable<UploadEvent>((subscriber) => {
       const state: RequestState = { active: null, cancelled: false };
@@ -101,9 +77,7 @@ export class DocumentUploadClient {
 
       const jobId = jobIdOf(response.body);
       if (jobId === null) {
-        // A 202 with no id means the file is queued and unobservable. Reporting it as
-        // a failure is the honest reading: nothing can poll it, so nothing can ever
-        // say the document is ready.
+        // A 202 with no id is unobservable: nothing can poll it, so it is a failure.
         subscriber.error(clientAppError(new Error('The upload was accepted without a job id.')));
 
         return;
@@ -146,17 +120,14 @@ export class DocumentUploadClient {
       state.active = xhr;
 
       const body = new FormData();
-      // The file name is passed explicitly: a `File` reconstructed from a drop event
-      // keeps its name, but `FormData.append(field, blob)` without one sends
-      // "blob", which the server's 256-character name rule accepts and the user
-      // never recognises in the documents list.
+      // Named explicitly: `FormData.append` without a name can send "blob", which the
+      // server accepts and the user never recognises.
       body.append(FILE_FIELD, file, file.name);
 
       xhr.open('POST', url);
       xhr.responseType = 'json';
       xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      // Content-Type is deliberately not set: the browser has to append the multipart
-      // boundary itself, and setting it by hand produces a body no parser can read.
+      // No Content-Type: the browser must append the multipart boundary itself.
 
       xhr.upload.addEventListener('progress', (event) => {
         if (event.lengthComputable && event.total > 0) {
@@ -173,9 +144,8 @@ export class DocumentUploadClient {
       });
       xhr.addEventListener('error', () => {
         state.active = null;
-        // A TypeError is what `fetch` reports a transport failure as, and it is what
-        // `toAppError` reads to select the network arm — so both transports classify a
-        // dropped connection identically.
+        // A TypeError, as `fetch` throws, so `toAppError` classifies a dropped connection the
+        // same way for both transports.
         reject(new TypeError('The upload could not reach the server.'));
       });
       xhr.addEventListener('abort', () => {
@@ -217,10 +187,7 @@ function jobIdOf(body: unknown): string | null {
   return typeof id === 'string' && id !== '' ? id : null;
 }
 
-/**
- * `toAppError` selects its aborted arm from the thrown value's `name`, which is how a
- * user's cancel is told apart from a failure without the caller having to say so.
- */
+/** `toAppError` reads the `AbortError` name to tell a cancel from a failure. */
 function abortSignalled(): DOMException {
   return new DOMException('The upload was cancelled.', 'AbortError');
 }

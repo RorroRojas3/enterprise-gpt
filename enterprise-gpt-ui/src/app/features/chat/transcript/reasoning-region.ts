@@ -5,18 +5,8 @@ import { formatDurationSeconds } from './turn-usage';
 let nextId = 0;
 
 /**
- * The model's reasoning summary, as frame `1f` draws it (US-503): a `--think-bg`
- * pill when collapsed, the same tint as a card when open.
- *
- * The text renders as **plain text**, not markdown. It is a summary the model
- * writes for a reader, not authored content, and putting a third `<markdown>`
- * instance on every turn to parse it would cost the streaming budget US-602
- * exists to protect. `pre-wrap` keeps the paragraph breaks the model streamed,
- * which are the only structure a reasoning summary has.
- *
- * Expansion is local state, which is exactly "persists for the duration of the
- * turn": the live turn's component instance is stable while it streams, and the
- * settled turn is a different instance whose default is collapsed again.
+ * Plain text, not markdown: another `<markdown>` per turn would cost the streaming budget.
+ * Expansion is local state, so it lasts the turn and resets on the settled instance.
  */
 @Component({
   selector: 'app-reasoning-region',
@@ -28,10 +18,7 @@ let nextId = 0;
 export class ReasoningRegion {
   readonly text = input.required<string>();
 
-  /**
-   * Measured while the turn streamed, and null when nothing measured it — a
-   * replayed turn, whose reasoning the transcript never stored.
-   */
+  /** Null when nothing measured it, as on a replayed turn. */
   readonly durationSeconds = input<number | null>(null);
 
   protected readonly expanded = signal(false);

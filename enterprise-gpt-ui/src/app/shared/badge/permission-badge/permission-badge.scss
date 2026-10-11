@@ -1,8 +1,6 @@
 @use 'breakpoints' as bp;
 
-// The name is administrator-authored and unbounded, so the pill has to be able to shrink:
-// a nowrap badge wider than its grid track is clipped by the cell, which is the horizontal
-// overflow the audit refuses.
+// The name is unbounded, so the pill must shrink rather than overflow its grid track.
 :host {
   display: inline-flex;
   min-width: 0;
@@ -30,8 +28,7 @@
   text-overflow: ellipsis;
 }
 
-// On a card the ellipsis has no hover to reopen it, and the row it sits in has the width
-// to spare — the same trade the deployment names and URLs beside it make.
+// On a card the ellipsis has no hover to reveal it, and the row has width to spare, so it wraps.
 @include bp.mobile {
   .permission-badge {
     white-space: normal;

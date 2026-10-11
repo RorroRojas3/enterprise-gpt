@@ -1,11 +1,7 @@
 #!/usr/bin/env node
-// Asserts that the colours duplicated into index.html's pre-paint shell still match
-// _tokens.scss, that the code surface stays legible in both themes, and that the two
-// copies of the breakpoint table agree.
-//
-// _tokens.scss is the token source of record. The contrast section measures what would
-// otherwise hold only by inspection, so a future palette edit is told which colour it
-// broke and by how much.
+// Asserts that index.html's pre-paint colours match _tokens.scss (the source of record), that
+// the code surface and focus ring clear WCAG contrast in both themes, and that the two copies
+// of the breakpoint table agree.
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,11 +18,7 @@ function die(...lines) {
   process.exit(1);
 }
 
-/**
- * Normalises so `#FFFFFF` equals `#ffffff`, and `rgba(33,168,216,.45)` equals the
- * spaced, leading-zero form Prettier writes. Only formatting is ignored — never a
- * value.
- */
+/** Ignores formatting only (case, spaces, Prettier's leading zeros), never a value. */
 const normalize = (value) =>
   value
     .trim()
@@ -37,7 +29,6 @@ const normalize = (value) =>
 
 const tokensScss = readFileSync(TOKENS, 'utf8');
 
-// _tokens.scss carries the values in two Sass maps, so the maps are what gets parsed.
 function mapEntries(source, name) {
   const start = source.indexOf(`$${name}: (`);
   if (start < 0) die(`Could not find the $${name} map.`, `file: ${TOKENS}`);
@@ -45,8 +36,7 @@ function mapEntries(source, name) {
   const body = source.slice(start, close);
 
   const pairs = new Map();
-  // The value runs to the comma that ends the entry, which is not the same as the
-  // first comma — `rgba(33, 168, 216, .45)` contains three of its own.
+  // An entry ends at its own comma, not the first: `rgba(33, 168, 216, .45)` holds three.
   for (const [, key, value] of body.matchAll(/'([\w-]+)'\s*:\s*((?:[^,(\n]|\([^)]*\))+)/g)) {
     pairs.set(key, normalize(value));
   }
@@ -57,7 +47,6 @@ const actual = { light: mapEntries(tokensScss, 'light'), dark: mapEntries(tokens
 
 const problems = [];
 
-// The one value the acceptance criterion names outright.
 if (actual.light.get('brand') !== '#14324f' || actual.dark.get('brand') !== '#21a8d8') {
   problems.push(
     `--brand must flip #14324F → #21A8D8; it is ` +
@@ -65,8 +54,7 @@ if (actual.light.get('brand') !== '#14324f' || actual.dark.get('brand') !== '#21
   );
 }
 
-// index.html duplicates two colours per theme because it paints before any
-// stylesheet exists. That duplication is only safe while it stays in step.
+// index.html duplicates two colours per theme because it paints before any stylesheet loads.
 const index = readFileSync(INDEX, 'utf8');
 const shell = {
   light: declarationsInline(index, /:root\s*\{/),
@@ -101,9 +89,8 @@ for (const theme of ['light', 'dark']) {
   }
 }
 
-// The storage key is duplicated between the pre-paint script and the application, and
-// a mismatch silently loses every user's stored preference exactly once. US-205 moved
-// ownership of it into the localStorage allowlist, which is where this now reads it.
+// The pre-paint script duplicates the theme storage key; a mismatch silently drops every
+// user's stored preference.
 const preferences = readFileSync(
   join(UI_ROOT, 'src', 'app', 'core', 'storage', 'local-preferences.ts'),
   'utf8',
@@ -117,15 +104,9 @@ if (!serviceKey || serviceKey !== scriptKey) {
   );
 }
 
-// US-604. The code surface is dark in *both* themes by design, so nothing about it
-// flips and no light variant exists to swap to — which means the whole of the story's
-// legibility criterion rests on this palette. Both surfaces are measured because
-// --code-bg and --code-head differ between the two maps even though the text on them
-// does not.
-//
-// `over` is the state the element is actually in when it matters: the head bar's
-// controls sit on a white 8% wash while hovered or confirming (_markdown.scss), and
-// measuring the unhovered case alone would report a margin the user never has.
+// The code surface is dark in both themes, so its legibility rests on this palette alone.
+// `over` measures head-bar controls on the 8% white wash they sit on while hovered or
+// confirming (_markdown.scss).
 const TEXT_MINIMUM = 4.5;
 const NON_TEXT_MINIMUM = 3;
 const HOVER_WASH = { colour: '#ffffff', alpha: 0.08 };
@@ -155,26 +136,15 @@ const CONTRAST_PAIRS = [
     foregrounds: ['code-head-fg', 'code-head-muted'],
     minimum: TEXT_MINIMUM,
   },
-  // SC 1.4.11: the focus ring on the Copy control and the streaming caret are both
-  // --accent on a code surface, and neither is text. The page's --focus-ring is the
-  // wrong token here, which _markdown.scss says in prose — this is that claim
-  // measured.
+  // SC 1.4.11: the Copy control's focus ring and the streaming caret are --accent on code.
   { background: 'code-head', foregrounds: ['accent'], minimum: NON_TEXT_MINIMUM },
-  // The Generated badge on a chip. Small bold text on --surface, so SC 1.4.3 applies at the
-  // text minimum — which is why it takes --brand rather than the --accent the board draws:
-  // that measures 2.74:1 here in the light theme, the same gate the usage chart's line hit.
+  // The Generated badge is small bold text on --surface, so it takes --brand: --accent
+  // measures 2.74:1 there in light.
   { background: 'surface', foregrounds: ['brand'], minimum: TEXT_MINIMUM },
   { background: 'code-bg', foregrounds: ['accent'], minimum: NON_TEXT_MINIMUM },
-  // US-1302. The usage dashboard's marks, measured as graphical objects (SC 1.4.11): the area
-  // chart's line and the donut's three arcs on the card surface, and the leading bar's fill on
-  // the bar track. The line takes --brand rather than the --accent frame `5j` draws precisely
-  // because of this gate — --accent is 2.74:1 on --surface in the light theme, and that line is
-  // the sole visual presentation of the daily series, so it has to clear the threshold.
-  //
-  // One mark is deliberately not measured: the --accent fill on bars two through ten. Every bar
-  // carries its own name and value as text beside it, so those fills are redundant presentation
-  // rather than something the reader depends on — which is just as well, because --accent could
-  // not clear 3:1 on --surface-2 either, and the board tints them with it.
+  // Usage dashboard marks (SC 1.4.11) on the card and the bar track. The line takes --brand
+  // because it is the daily series' only presentation; bars two to ten keep an unmeasured
+  // --accent fill because each carries its value as text.
   {
     background: 'surface',
     foregrounds: ['brand', 'ok', 'muted', 'warn'],
@@ -185,27 +155,10 @@ const CONTRAST_PAIRS = [
     foregrounds: ['brand', 'ok', 'muted', 'warn'],
     minimum: NON_TEXT_MINIMUM,
   },
-  // US-1401. `_tokens.scss` claims --focus-ring clears 3:1 "on every surface in
-  // the kit"; until now nothing measured it, which is how four controls came to
-  // draw their ring from --ring instead and fail SC 1.4.11 with every gate green.
-  //
-  // These five are the surfaces a ring is drawn *on*: the page, both card surfaces,
-  // the hovered/active row and the thinking panel. Everything else a stylesheet uses
-  // as a background is excluded on the record below, and the guard after
-  // CONTRAST_PAIRS is what makes that a decision rather than an oversight.
-  //
-  // The recurring reason for an exclusion is worth stating once: **a ring drawn with
-  // `outline-offset` is not on the control it belongs to.** It sits in the gap, on
-  // whatever is behind — so a filled control's own colour is not the adjacent one.
-  // That is why --btnP-bg is absent even though the ring measures **1.00:1** against
-  // it in dark, where the button fill *is* the focus token. The corollary is the
-  // trap: **an inset ring on a filled control would be invisible and this table would
-  // not catch it.** The two inset rings that exist (`menu.scss`,
-  // `project-picker.scss`) set `--surface-2` on the same `:focus-visible` rule, which
-  // is measured.
-  //
-  // --fail is measured too: `_kit.scss` draws the invalid field's ring from it, so it
-  // is a focus indicator whether or not it is named like one.
+  // --focus-ring on every surface a ring is drawn on; FOCUS_SURFACE_EXCLUSIONS records the rest.
+  // An offset ring sits behind its control, not on the fill, so an inset ring on a filled
+  // control would escape this table: the two that exist (menu.scss, project-picker.scss) set
+  // the measured --surface-2. --fail is the invalid field's ring (_kit.scss).
   { background: 'surface', foregrounds: ['fail'], minimum: NON_TEXT_MINIMUM },
   {
     background: 'surface',
@@ -232,38 +185,16 @@ const CONTRAST_PAIRS = [
     foregrounds: ['focus-ring'],
     minimum: NON_TEXT_MINIMUM,
   },
-  // `--warn` was `#A96A10` in light, which measured 4.41:1 on white, 4.21:1 on the page
-  // and 3.99:1 on its own tinted panel — all below AA for text under 18.66px — while
-  // being used as a `color` in eight stylesheets. These three pairs stop it drifting back.
-  //
-  // TEXT_MINIMUM rather than NON_TEXT: some of the eight are icons, which would only
-  // need 3:1, but several are running text and the same token serves both. Measuring
-  // the stricter of the two is the honest reading.
-  //
-  // `under` is what makes the third measurable in dark, where `--warn-bg` is an rgba
-  // over the card it sits on rather than an opaque colour.
+  // --warn is running text as well as icons, so it takes the text minimum. `under` resolves
+  // dark --warn-bg, an rgba, over the card it sits on.
   { background: 'surface', foregrounds: ['warn'], minimum: TEXT_MINIMUM },
   { background: 'bs-body-bg', foregrounds: ['warn'], minimum: TEXT_MINIMUM },
   { background: 'warn-bg', under: 'surface', foregrounds: ['warn'], minimum: TEXT_MINIMUM },
-  // The pair the axe run found rather than this table: the active entry in the
-  // administration rail, the sidebar's active navigation link and the paginator's current
-  // page all render `--brand` on `--active-bg`, which measured 4.29:1 in dark against a
-  // 4.5:1 minimum for 13.5px text. Dark `--active-bg` was corrected to `#16354D`.
-  //
-  // It went undetected for three stories because nothing measured it: the surfaces guard
-  // below checks every painted background against `--focus-ring`, not against the text
-  // drawn on it. This row is what makes the fix permanent.
+  // The active rail entry, sidebar link and paginator page draw --brand text on --active-bg.
+  // The surfaces guard below checks only the ring against each background, never its text.
   { background: 'active-bg', foregrounds: ['brand'], minimum: TEXT_MINIMUM },
-  // US-1103's selected thumb, and the several `color: var(--brand)` marks beside it — the
-  // starred conversation, the favourited project, the active document filter. All of them
-  // draw on a card or on the page, and none of them was measured until this row: the pair
-  // above went undetected for three stories for exactly that reason, and adding a third
-  // `--brand` site without adding its background here would repeat the omission.
-  //
-  // TEXT_MINIMUM even though the thumb is an icon, which SC 1.4.11 would meet at 3:1. The
-  // token serves running text at these two backgrounds as well, and both pairs clear the
-  // stricter figure with room to spare, so measuring the weaker one buys nothing but a
-  // guard that would not notice the value moving.
+  // --brand marks on card and page (selected thumb, starred conversation, active filter). Text
+  // minimum even for icons: the token is running text on these backgrounds too.
   { background: 'surface', foregrounds: ['brand'], minimum: TEXT_MINIMUM },
   { background: 'bs-body-bg', foregrounds: ['brand'], minimum: TEXT_MINIMUM },
 ];
@@ -321,10 +252,8 @@ for (const theme of ['light', 'dark']) {
     let backgroundValue = palette[theme].get(background);
     let backgroundName = `--${background}`;
 
-    // A token that is translucent in one theme and opaque in the other — `--warn-bg` is
-    // a hex in light and an rgba in dark — is still one surface, and the reader sees
-    // whatever it resolves to. `under` names what it is painted on so both themes can be
-    // measured, rather than the dark half being reported as unmeasurable.
+    // A token translucent in one theme only (--warn-bg) is measured as what it resolves to
+    // over `under`, rather than reported unmeasurable.
     const tint = asWash(backgroundValue);
     if (tint !== null && under !== undefined) {
       const beneath = palette[theme].get(under);
@@ -362,16 +291,9 @@ for (const theme of ['light', 'dark']) {
   }
 }
 
-// US-1401. The focus pairs above are hand-written too, and the way that list rots is
-// a *new* surface: a ring drawn on it would be measured by nothing, and every gate
-// would stay green.
-//
-// So the surfaces are read out of the stylesheets rather than guessed from token
-// names. A name heuristic looked tidier and was wrong — `--brand` and `--accent` are
-// both painted as backgrounds under focusable content (`.skip-link`, the recording
-// pill, the active sub-nav pill, the user footer, the attachment chip) and neither
-// name ends in `bg`. Every token any stylesheet sets as a background has to be either
-// measured against the ring or excluded on the record here.
+// A new surface would leave its ring measured by nothing, so surfaces are read from the
+// stylesheets, not token names (--brand and --accent sit under focusable content too). Each
+// must be measured against the ring or excluded here.
 const FOCUS_RING = 'focus-ring';
 
 /** Why a surface the ring could land on is not measured against it. */
@@ -392,9 +314,8 @@ const FOCUS_SURFACE_EXCLUSIONS = {
     'is ever focused on it, and the host it names is on the page surface',
   'surface-2': 'measured above',
   'code-head': 'the code block head draws its ring from --accent, measured above',
-  // Six fills that are shapes rather than surfaces: nothing is ever focused *on*
-  // one, so no ring is ever adjacent to one. A control focused beside them is on
-  // the surface underneath, which is measured.
+  // Shapes, not surfaces: nothing is focused on them, and a control beside one sits on the
+  // measured surface underneath.
   ok: 'a StatusDot fill — an 8px dot, not a surface',
   warn: 'a StatusDot fill, and a 10% wash on the two deactivate dialogs',
   muted:
@@ -415,18 +336,8 @@ const focusSurfaces = new Set(
 );
 
 /**
- * Every token a stylesheet paints as a background, which is every surface there is.
- *
- * Two forms, because the app fills a control both ways. The direct one is
- * `background: var(--x)`. The indirect one is `--anything-bg: var(--x)`, which is how
- * **every** Bootstrap component fill is set — `_bootstrap-overrides.scss` assigns
- * `--bs-btn-hover-bg: var(--btnP-hover)` and Bootstrap paints from there. Matching
- * only the direct form missed the hovered primary button entirely, and missed it
- * *silently*, which is the failure this whole guard replaced a name heuristic to
- * avoid.
- *
- * The value is captured before the tokens are read out of it, so a declaration
- * naming two — a gradient — records both rather than the last.
+ * Every token a stylesheet paints as a background. `--*-bg: var(--x)` counts too: Bootstrap
+ * fills are set that way (`--bs-btn-hover-bg: var(--btnP-hover)`).
  */
 const painted = new Set();
 for (const file of walk(join(UI_ROOT, 'src'))) {
@@ -449,9 +360,7 @@ for (const name of painted) {
   );
 }
 
-// And the record has to stay honest in the other direction too. An exclusion for a
-// token nothing paints any more is the same rot as a missing one — it reads as a
-// considered decision about a live surface, and the next reader trusts it.
+// A stale exclusion rots the same way: it reads as a decision about a live surface.
 for (const name of Object.keys(FOCUS_SURFACE_EXCLUSIONS)) {
   if (!painted.has(name)) {
     problems.push(
@@ -461,9 +370,8 @@ for (const name of Object.keys(FOCUS_SURFACE_EXCLUSIONS)) {
   }
 }
 
-// The list above is hand-written, so a stylesheet that repointed `.token.keyword` at
-// a different token would leave the gate measuring one nothing renders. Every
-// `--code-*` the two code stylesheets consume has to appear in it.
+// CONTRAST_PAIRS is hand-written, so a repointed `.token.keyword` would leave it measuring a
+// token nothing renders.
 const gated = new Set(
   CONTRAST_PAIRS.flatMap(({ background, foregrounds }) => [background, ...foregrounds]),
 );
@@ -478,19 +386,12 @@ for (const file of ['_prism.scss', '_markdown.scss']) {
   }
 }
 
-// ── Breakpoint parity (US-1403) ───────────────────────────────────────────────
-// The three application modes are stated twice by necessity — Sass cannot read a
-// TypeScript constant and `matchMedia` cannot read a Sass variable — so the two copies
-// are compared here rather than trusted. `check-forbidden-apis.mjs` stops a third copy
-// appearing; this stops the two that must exist from drifting.
-//
-// Both halves are checked: the whole-number minimum, and the fractional maximum in each
-// mixin. The fraction is the half that rots silently — a `767px` maximum beside a
-// `768px` minimum looks tidier and leaves a 0.98px band matching no mode at all.
+// ── Breakpoint parity ─────────────────────────────────────────────────────────
+// Sass cannot read a TS constant nor `matchMedia` a Sass variable, so both copies exist and are
+// compared. Each maximum must sit 0.02px below a minimum: `767px` beside `768px` leaves a band
+// matching no mode.
 {
-  // Comment-stripped, because both files *document* the fractional-maximum bug by
-  // quoting the wrong queries. Scanning the prose would fail the gate on its own
-  // explanation.
+  // Comment-stripped: the prose in both files may quote the wrong queries.
   const scss = stripComments(
     readFileSync(join(UI_ROOT, 'src', 'styles', '_breakpoints.scss'), 'utf8'),
   );
@@ -529,15 +430,13 @@ for (const file of ['_prism.scss', '_markdown.scss']) {
     }
   }
 
-  // Every maximum, in both files, is one hundredth below a minimum that exists.
   const minima = new Set(pairs.flatMap(([, value]) => (value === null ? [] : [Number(value)])));
   for (const [file, source] of [
     ['_breakpoints.scss', scss],
     ['breakpoints.ts', ts],
   ]) {
     for (const [, maximum] of source.matchAll(/max-width:\s*([\d.]+)px/g)) {
-      // Rounded rather than compared raw: `767.98 + 0.02` lands on exactly 768 at double
-      // precision by luck, and the next pair of numbers may not be as lucky.
+      // Rounded: `767.98 + 0.02` lands on exactly 768 in doubles only by luck.
       if (!minima.has(Math.round((Number(maximum) + 0.02) * 100) / 100)) {
         problems.push(
           `${file} carries a maximum of ${maximum}px, which is not 0.02px below any ` +

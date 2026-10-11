@@ -11,7 +11,7 @@ import { DeactivateModelDialog } from './deactivate-model-dialog';
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
 
-describe('DeactivateModelDialog (US-1207)', () => {
+describe('DeactivateModelDialog', () => {
   let backend: HttpTestingController;
   let fixture: ComponentFixture<DeactivateModelDialog>;
   let actions: InstanceType<typeof ModelActionsStore>;
@@ -75,8 +75,7 @@ describe('DeactivateModelDialog (US-1207)', () => {
   it('says what a soft delete does, and does not', async () => {
     await open();
 
-    // The transcripts keep the model; the picker loses it. Both are true, and a
-    // confirmation that implied otherwise would be the client inventing a guarantee.
+    // Transcripts keep the model and the picker loses it; the copy must not promise more.
     expect(text()).toContain('removed from every user’s model picker');
     expect(text()).toContain('stays on the conversations that already used it');
   });
@@ -84,8 +83,6 @@ describe('DeactivateModelDialog (US-1207)', () => {
   it('warns that retiring the default leaves the deployment with none', async () => {
     await open(modelFixture({ name: 'GPT-5', isDefault: true }));
 
-    // `DeactivateModelAsync` clears `IsDefault` in the same statement and promotes
-    // nothing, so this states what is about to be true rather than cautioning.
     expect(text()).toContain('leaves the deployment with no default');
   });
 
@@ -102,8 +99,6 @@ describe('DeactivateModelDialog (US-1207)', () => {
     confirmButton().click();
     await fixture.whenStable();
 
-    // Nothing is optimistic: the delete is soft, the row stays and turns muted on the
-    // refetch, so there is no undo for the screen to hand back.
     backend
       .expectOne(`${MODELS_URL}/${target.id}`)
       .flush(null, { status: 204, statusText: 'No Content' });

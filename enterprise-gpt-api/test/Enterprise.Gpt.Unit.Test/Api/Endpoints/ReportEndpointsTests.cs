@@ -1,0 +1,55 @@
+using Enterprise.Gpt.Api.Endpoints;
+using Enterprise.Gpt.Dto.Reports;
+using Enterprise.Gpt.Service.Reports;
+using NSubstitute;
+using Xunit;
+
+namespace Enterprise.Gpt.Unit.Test.Api.Endpoints;
+
+public class ReportEndpointsTests
+{
+    private readonly IReportService _reportService = Substitute.For<IReportService>();
+
+    [Fact]
+    public async Task GetUsageReportAsync_NoQueryString_PassesTheAbsencesThroughRatherThanDefaultingThem()
+    {
+        // The handler must not invent a window: bounds and grouping are resolved and validated in the
+        // service, and a second default here would drift from it.
+        _reportService
+            .GetUsageReportAsync(null, null, null, Arg.Any<CancellationToken>())
+            .Returns(new UsageReportDto
+            {
+                GroupBy = "model",
+                Totals = new UsageReportTotalsDto(),
+                PriorTotals = new UsageReportTotalsDto()
+            });
+
+        await ReportEndpoints.GetUsageReportAsync(
+            _reportService, cancellationToken: TestContext.Current.CancellationToken);
+
+        await _reportService.Received(1)
+            .GetUsageReportAsync(null, null, null, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetUsageReportAsync_QueryStringSupplied_FlowsEveryParameterToTheService()
+    {
+        var from = new DateTimeOffset(2026, 7, 9, 0, 0, 0, TimeSpan.Zero);
+        var to = new DateTimeOffset(2026, 8, 8, 0, 0, 0, TimeSpan.Zero);
+        _reportService
+            .GetUsageReportAsync(from, to, "user", Arg.Any<CancellationToken>())
+            .Returns(new UsageReportDto
+            {
+                GroupBy = "user",
+                Totals = new UsageReportTotalsDto(),
+                PriorTotals = new UsageReportTotalsDto()
+            });
+
+        var result = await ReportEndpoints.GetUsageReportAsync(
+            _reportService, from, to, "user", TestContext.Current.CancellationToken);
+
+        Assert.Equal("user", result.Value!.GroupBy);
+        await _reportService.Received(1)
+            .GetUsageReportAsync(from, to, "user", Arg.Any<CancellationToken>());
+    }
+}

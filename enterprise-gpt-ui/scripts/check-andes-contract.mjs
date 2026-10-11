@@ -1,8 +1,6 @@
 #!/usr/bin/env node
-// Verifies the vendored Andes streaming contract still matches the installed NuGet
-// package byte-for-byte, that the version it pins is the one the API actually
-// references, and that nobody has hand-written a duplicate of its public symbols.
-// US-107.
+// Checks the vendored Andes contract matches its NuGet package byte-for-byte, pins the version
+// the API references, and has no hand-written duplicates under src/.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -37,20 +35,11 @@ function die(...lines) {
   process.exit(1);
 }
 
-/**
- * Escapes every regular-expression metacharacter, backslash included.
- *
- * The character class has to carry `\\` and the replacement has to be `$&`, so the
- * escaping happens in one pass — escaping `.` alone, as this did, leaves a literal
- * backslash in the value to combine with the ones being inserted. The failure is
- * silent rather than loud: the pattern stops matching, the version cross-check below
- * finds no `PackageReference`, and the script reports OK having verified nothing.
- */
+/** Escapes every regex metacharacter in one pass, backslash included. */
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// 1. Read the vendored file and split it at the sentinel.
 if (!existsSync(VENDORED)) {
   die('The vendored contract is missing.', `expected: ${VENDORED}`);
 }
@@ -61,13 +50,12 @@ if (sentinelAt < 0) {
 }
 const lineEnd = text.indexOf('\n', sentinelAt);
 let body = text.slice(lineEnd + 1);
-// One blank line separates the header from the package content. Tolerate CRLF here
-// even though the comparison below is strict, so an EOL problem is reported as a
-// byte difference with a useful hint rather than as a missing sentinel.
+// Tolerates CRLF despite the strict comparison below, so an EOL problem reports as a byte
+// difference with a hint rather than as a missing sentinel.
 if (body.startsWith('\r\n')) body = body.slice(2);
 else if (body.startsWith('\n')) body = body.slice(1);
 
-// 2. The header is the only place the version is pinned.
+// The header is the only place the version is pinned.
 const header = text.slice(0, sentinelAt);
 const tag = (name) =>
   header.match(new RegExp(`@andes-contract-${escapeRegExp(name)}\\s+(\\S+)`))?.[1];
@@ -81,8 +69,6 @@ if (!packageId || !version || !sourcePath) {
   );
 }
 
-// 3. Resolve the NuGet global-packages folder. os.homedir() already yields
-//    %USERPROFILE% on Windows, so there is no third branch to write.
 const nugetRoot = process.env['NUGET_PACKAGES'] || join(homedir(), '.nuget', 'packages');
 const packageFile = join(
   nugetRoot,
@@ -102,7 +88,6 @@ if (!existsSync(packageFile)) {
   );
 }
 
-// 4. Byte-for-byte.
 const packageBytes = readFileSync(packageFile);
 const bodyBytes = Buffer.from(body, 'utf8');
 if (!bodyBytes.equals(packageBytes)) {
@@ -136,9 +121,7 @@ if (!bodyBytes.equals(packageBytes)) {
   );
 }
 
-// 5. Cross-check the pinned version against the API's PackageReferences. A byte
-//    comparison against the *old* package folder still passes after the API
-//    upgrades, which is the failure this catches and the AC does not.
+// A byte comparison against the old package folder still passes after the API upgrades.
 if (existsSync(API_ROOT)) {
   const projects = [];
   const walkProjects = (dir) => {
@@ -147,20 +130,33 @@ if (existsSync(API_ROOT)) {
         if (!/^(bin|obj|\.vs|node_modules|TestResults)$/i.test(entry.name)) {
           walkProjects(join(dir, entry.name));
         }
-      } else if (entry.name.endsWith('.csproj')) {
+      } else if (entry.name.endsWith('.csproj') || entry.name === 'Directory.Packages.props') {
         projects.push(join(dir, entry.name));
       }
     }
   };
   walkProjects(API_ROOT);
 
+  // Central package management moves the version from the csproj's PackageReference to a
+  // PackageVersion in Directory.Packages.props; either form declares it.
   const reference = new RegExp(
-    `PackageReference\\s+Include="${escapeRegExp(packageId)}"\\s+Version="([^"]+)"`,
+    `Package(?:Reference|Version)\\s+Include="${escapeRegExp(packageId)}"\\s+Version="([^"]+)"`,
     'i',
   );
-  const mismatched = projects
+  const declared = projects
     .map((file) => [file, readFileSync(file, 'utf8').match(reference)?.[1]])
-    .filter(([, referenced]) => referenced && referenced !== version);
+    .filter(([, referenced]) => referenced);
+
+  if (declared.length === 0) {
+    die(
+      `No csproj or Directory.Packages.props under the API declares a version for ${packageId}.`,
+      `searched: ${API_ROOT}`,
+      '',
+      'The version cross-check would otherwise pass having verified nothing.',
+    );
+  }
+
+  const mismatched = declared.filter(([, referenced]) => referenced !== version);
 
   if (mismatched.length > 0) {
     die(
@@ -173,7 +169,6 @@ if (existsSync(API_ROOT)) {
   }
 }
 
-// 6. No hand-written duplicate of the vendored symbols anywhere under src/.
 const declaration = (symbol) =>
   new RegExp(
     `^\\s*(export\\s+)?(declare\\s+)?(interface|type|class|enum|function|const|let|var)\\s+${escapeRegExp(symbol)}\\b`,

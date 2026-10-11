@@ -101,8 +101,8 @@ deleted document.
 **Conversations are released, not deleted.** They keep their own documents and transcripts and
 become standalone, losing access to the project's documents and instructions. Deleting a project is
 a filing decision, not a data-destruction one, and a user would not expect months of chat history to
-go with it. Already-deactivated conversations are cleared too — the filter has no `DateDeactivated`
-condition — so a future restore cannot resurrect a link to a deleted project.
+go with it. Already-deactivated conversations are cleared too — that statement lifts the `SoftDelete` query
+filter — so a future restore cannot resurrect a link to a deleted project.
 
 **Blobs are never removed.** The row is only soft-deleted; reclaiming storage belongs to a retention
 job that can also handle blobs orphaned by failed ingestions. A blob whose *ingestion* failed is
@@ -137,12 +137,12 @@ share one layout instance where the project dialogs mount.
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/ProjectService.cs` | CRUD and the transactional cascade |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/ConversationService.cs` | `EnsureProjectExistsAsync`, instruction injection |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Projects/ProjectService.cs` | CRUD and the transactional cascade |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Conversations/ConversationService.cs` | `EnsureProjectExistsAsync`, instruction injection |
 | `enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ProjectEndpoints.cs` | The routes |
 | `enterprise-gpt-ui/src/app/core/projects/project-lookup-store.ts` | The root project set |
 | `enterprise-gpt-ui/src/app/features/projects/detail/` | The detail route and its three stores |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/` | Cascade and ownership tests |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Integration.Test/` | Cascade and ownership tests |
 
 ## Related
 

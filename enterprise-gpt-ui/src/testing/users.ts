@@ -6,11 +6,8 @@ import { ADMINISTRATOR_GRANT, UPLOAD_FILE_GRANT } from './session';
 let sequence = 0;
 
 /**
- * A directory row exactly as `GET api/users` returns one.
- *
- * Distinct from `userFixture`, which is the *signed-in* user and has a fixed id: a list
- * needs as many unique ids as it has rows, because a repeated one collapses entities
- * silently and trips NG0955 once rendered.
+ * A directory row as `GET api/users` returns one. Unlike `userFixture`, ids are unique per call,
+ * since a repeated one collapses entities and trips NG0955.
  */
 export function directoryUserFixture(overrides: Partial<UserDto> = {}): UserDto {
   const index = sequence++;
@@ -41,11 +38,8 @@ export function permissionFixture(overrides: Partial<PermissionDto> = {}): Permi
 }
 
 /**
- * The catalog the users tab's permission filter and its edit panel both read (US-1206).
- *
- * Answered with rows rather than an empty array on purpose: `ensurePermissions()` treats
- * an empty catalog as "not loaded", so a spec that flushed `[]` and then opened a form
- * would issue a second request and fail `verify()` on it.
+ * Flushes the permission catalog with rows: `ensurePermissions()` reads `[]` as not loaded, so a
+ * later form would issue a second request and fail `verify()`.
  */
 export function flushPermissions(
   backend: HttpTestingController,
@@ -55,11 +49,8 @@ export function flushPermissions(
   ],
   { optional = false }: { optional?: boolean } = {},
 ): number {
-  // `match`, not `expectOne`: the catalog is cached in the root store, so a spec that
-  // mounts the tab twice issues one request across both mounts, and the second mount has
-  // none to answer. Those callers pass `optional`; everyone else gets the assertion,
-  // because a helper that silently passes on zero requests would keep every spec green if
-  // the screen stopped asking for the catalog at all.
+  // `match`, not `expectOne`: the root store caches the catalog, so a second mount sends none and
+  // passes `optional`. Otherwise zero requests throws, or a screen that stopped asking would pass.
   const requests = backend.match((request) => request.url.endsWith('/api/permissions'));
 
   if (!optional && requests.length === 0) {
@@ -74,12 +65,8 @@ export function flushPermissions(
 }
 
 /**
- * A `PaginatedResponseDto` envelope with the server's own arithmetic.
- *
- * `pageSize` echoes the clamped `take` and `currentPage` is `(skip / take) + 1`, both
- * computed server-side — a fixture that invents them would let a store pass against a
- * shape the API never sends. Pass the store's own page size: the default here is the
- * API's, not the screen's.
+ * A `PaginatedResponseDto` with the server's own arithmetic. Pass the store's page size: the
+ * default is the API's, not the screen's.
  */
 export function userPage(
   items: UserDto[],

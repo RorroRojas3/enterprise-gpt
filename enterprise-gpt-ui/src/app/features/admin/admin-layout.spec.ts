@@ -21,11 +21,11 @@ const MODELS_URL = `${TEST_API_BASE_URL}/api/models/all`;
 const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps/all`;
 const REPORTS_URL = `${TEST_API_BASE_URL}/api/reports/usage`;
 
-/** Stands in for the chat route an unmatched URL used to be ejected to. */
+/** Where an unmatched admin URL would land if the area did not absorb it. */
 @Component({ template: 'chat' })
 class ChatStub {}
 
-describe('AdminLayout (US-1201, completed by US-1209)', () => {
+describe('AdminLayout', () => {
   let backend: HttpTestingController;
   let harness: RouterTestingHarness;
 
@@ -39,11 +39,8 @@ describe('AdminLayout (US-1201, completed by US-1209)', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: SessionStore, useValue: { user: signal(null) } },
-        // The real child routes, so the redirect and the rail are exercised as shipped.
-        // The chat route and the trailing `**` mirror `app.routes.ts`, which is what an
-        // unmatched admin URL falls to when the area does not absorb it itself — without
-        // them that navigation would merely reject, and the test below could not tell
-        // "stayed in the admin area" apart from "went nowhere".
+        // The real child routes. The chat route and `**` mirror `app.routes.ts`, so a test can
+        // tell "stayed in the admin area" from "went nowhere".
         provideRouter(
           [
             { path: 'admin', children: adminRoutes },
@@ -81,7 +78,7 @@ describe('AdminLayout (US-1201, completed by US-1209)', () => {
     } else if (url.includes('/reports')) {
       backend.expectOne((request) => request.url === REPORTS_URL).flush(usageReportFixture());
     } else {
-      // The users tab also asks for the permission catalog, for its filter (US-1206).
+      // The users tab also asks for the permission catalog, for its filter.
       flushPermissions(backend, undefined, { optional: true });
       backend
         .expectOne((request) => request.url === USERS_URL)
@@ -102,7 +99,6 @@ describe('AdminLayout (US-1201, completed by US-1209)', () => {
 
     const active = element().querySelector('.admin-nav__link--active');
     expect(active?.textContent).toContain('Users');
-    // A styled link is not a navigation state: the rail has to say which one is current.
     expect(active?.getAttribute('aria-current')).toBe('page');
   });
 
@@ -112,9 +108,6 @@ describe('AdminLayout (US-1201, completed by US-1209)', () => {
     const labels = [...element().querySelectorAll('.admin-nav__link')].map((link) =>
       link.textContent?.trim(),
     );
-    // A rail entry leading nowhere is the shown-and-disabled affordance US-203 rejected,
-    // so each of these arrived in the same commit as its route — US-1208 the third,
-    // US-1209 the fourth. The board draws exactly these four, in this order.
     expect(labels).toEqual(['Users', 'Models', 'MCP servers', 'Reports']);
   });
 
@@ -130,9 +123,6 @@ describe('AdminLayout (US-1201, completed by US-1209)', () => {
     setMediaQuery(NARROW_VIEWPORT, true);
     await open('/admin/reports');
 
-    // `ADMIN_PILLS` is derived from `ADMIN_TABS`, so the fourth entry arrives here for
-    // free — but criterion 1 is about the rail marking the open tab, and below the
-    // breakpoint the rail *is* this strip.
     const active = element().querySelector('.pill-subnav__pill--active');
     expect(active?.textContent).toContain('Reports');
     expect(active?.getAttribute('aria-current')).toBe('page');
@@ -141,18 +131,14 @@ describe('AdminLayout (US-1201, completed by US-1209)', () => {
   it('renders the users tab inside the layout', async () => {
     await open('/admin/users');
 
-    // The store is provided on the child route, not on the layout: US-1209 requires that
-    // opening one tab instantiates that tab's store and no other.
     expect(element().querySelector('app-admin-users')).not.toBeNull();
   });
 
-  it('opens the models tab by URL, instantiating only its own store (US-1207)', async () => {
+  it('opens the models tab by URL, instantiating only its own store', async () => {
     await open('/admin/models');
 
     expect(element().querySelector('app-admin-models')).not.toBeNull();
-    // The users tab's store is provided on *its* route, so nothing here should have
-    // asked the directory for anything. `backend.verify()` in afterEach is the other
-    // half of this assertion.
+    // `backend.verify()` in afterEach asserts that no sibling tab's store issued a request.
     expect(element().querySelector('app-admin-users')).toBeNull();
 
     const active = element().querySelector('.admin-nav__link--active');
@@ -160,12 +146,11 @@ describe('AdminLayout (US-1201, completed by US-1209)', () => {
     expect(active?.getAttribute('aria-current')).toBe('page');
   });
 
-  it('opens the MCP servers tab by URL, instantiating only its own store (US-1208)', async () => {
+  it('opens the MCP servers tab by URL, instantiating only its own store', async () => {
     await open('/admin/mcps');
 
     expect(element().querySelector('app-admin-mcps')).not.toBeNull();
-    // Neither sibling tab's store is provided on the layout, so nothing here should have
-    // asked for users or models. `backend.verify()` in afterEach is the other half.
+    // `backend.verify()` in afterEach asserts that no sibling tab's store issued a request.
     expect(element().querySelector('app-admin-users')).toBeNull();
     expect(element().querySelector('app-admin-models')).toBeNull();
 
@@ -174,12 +159,10 @@ describe('AdminLayout (US-1201, completed by US-1209)', () => {
     expect(active?.getAttribute('aria-current')).toBe('page');
   });
 
-  it('opens the reports tab by URL, instantiating only its own store (US-1302)', async () => {
+  it('opens the reports tab by URL, instantiating only its own store', async () => {
     await open('/admin/reports');
 
-    // Its own request is answered in `open`; that no sibling asked for anything is what
-    // `backend.verify()` in afterEach asserts. Until US-1302 this tab had no store at all,
-    // because it had no endpoint to call.
+    // `open` answers its request; `backend.verify()` in afterEach asserts no sibling made one.
     expect(element().querySelector('app-admin-reports')).not.toBeNull();
     expect(element().querySelector('app-admin-users')).toBeNull();
     expect(element().querySelector('app-admin-models')).toBeNull();
@@ -191,15 +174,12 @@ describe('AdminLayout (US-1201, completed by US-1209)', () => {
   });
 
   it('keeps an unknown admin URL inside the admin area rather than ejecting it', async () => {
-    // Without the layout's own `**` child the router backtracks out of /admin and falls
-    // to the table's, which lands an administrator on /chat — the outcome the ChatStub
-    // route above exists to make visible rather than merely absent.
     await open('/admin/mistyped');
 
     expect(TestBed.inject(Router).url).toBe('/admin/users');
   });
 
-  it('restores the previous tab on back (US-1209)', async () => {
+  it('restores the previous tab on back', async () => {
     await open('/admin/users');
     await open('/admin/models');
 
@@ -214,8 +194,6 @@ describe('AdminLayout (US-1201, completed by US-1209)', () => {
       .flush(userPage([directoryUserFixture()]));
     await harness.fixture.whenStable();
 
-    // Tabs are routes, not local state, so this is the router's behaviour rather than
-    // anything the layout implements.
     expect(TestBed.inject(Router).url).toBe('/admin/users');
   });
 });

@@ -5,20 +5,14 @@
 />
 <span class="document-row__name">{{ document().name }}</span>
 
-<!--
-  `display: contents` at desktop widths, so these four land in their own grid tracks;
-  below 768px the wrapper becomes the row's second line, which is what lets the meta
-  re-flow without a template branch.
--->
+<!-- `display: contents` on desktop puts these in the row's grid tracks; on mobile the wrapper
+     becomes the row's second line, with no template branch. -->
 <span class="document-row__meta">
   <span class="document-row__size">{{ sizeLabel() }}</span>
   <span class="document-row__date">{{ dateLabel() }}</span>
 
   <app-source-badge [source]="source()" />
 
-  <!-- The flat view's link column (US-1002): every row names and links its owning
-       conversation. US-1003's grouped view moves the conversation into the group
-       header and withholds this cell instead. -->
   @if (showConversation()) {
     <a class="document-row__conversation" [routerLink]="[chatRoute, document().conversationId]">
       {{ document().conversationName }}
@@ -26,10 +20,6 @@
   }
 </span>
 
-<!--
-  A real button with an accessible name, not the prototype's clickable `<i>` — the
-  same correction the project files panel makes.
--->
 <button
   class="document-row__action"
   type="button"

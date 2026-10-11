@@ -44,9 +44,8 @@ describe('createSseFrameCodec', () => {
     const event = assistantEvent('TextDelta', { text: 'Hi 🌍!' });
     const text = frame(event);
     const bytes = encode(text);
-    // Everything before the emoji is ASCII, so its string index is its byte
-    // index. U+1F30D is four UTF-8 bytes; splitting two bytes into it makes a
-    // stateless decoder emit U+FFFD replacement characters.
+    // Everything before the emoji is ASCII, so string index is byte index. Splitting two bytes
+    // into U+1F30D makes a stateless decoder emit U+FFFD.
     const [first, second] = splitBytes(bytes, text.indexOf('🌍') + 2);
 
     const decoded = [...codec.decode(first), ...codec.decode(second)];

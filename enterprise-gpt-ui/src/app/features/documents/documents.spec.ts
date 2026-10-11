@@ -21,13 +21,12 @@ import { Documents } from './documents';
 const DOCUMENTS_URL = `${TEST_API_BASE_URL}/api/documents`;
 
 /**
- * `SearchInput`'s own 300 ms window, with room for the effect that follows it and
- * for a loaded CI runner — these are real timers, because faking the clock also
- * stalls the scheduler `whenStable()` awaits.
+ * `SearchInput`'s 300 ms window plus slack for a loaded CI runner. Real timers: faking the clock
+ * also stalls the scheduler `whenStable()` awaits.
  */
 const DEBOUNCE_MS = 450;
 
-describe('Documents (US-1002, US-1003)', () => {
+describe('Documents', () => {
   let backend: HttpTestingController;
   let harness: RouterTestingHarness;
   let clicks: HTMLAnchorElement[];
@@ -68,10 +67,7 @@ describe('Documents (US-1002, US-1003)', () => {
     return harness.routeNativeElement as HTMLElement;
   }
 
-  /**
-   * The unfiltered listing. It refuses a request carrying `type=`, so a regression that
-   * kept the origin filter after the URL dropped it fails here rather than passing.
-   */
+  /** The unfiltered listing; refuses a request carrying `type=`, so a stale origin filter fails. */
   function expectListing(): TestRequest {
     return backend.expectOne(
       (request) => request.url === DOCUMENTS_URL && !request.params.has('type'),
@@ -89,7 +85,7 @@ describe('Documents (US-1002, US-1003)', () => {
     return TestBed.inject(Router).url;
   }
 
-  /** Opens the screen and answers its drain's first — and only — page with `items`. */
+  /** Opens the screen and answers its first page with `items`. */
   async function open(
     route = '/documents',
     items: UserDocumentDto[] = [userDocumentFixture()],
@@ -99,11 +95,7 @@ describe('Documents (US-1002, US-1003)', () => {
     await harness.fixture.whenStable();
   }
 
-  /**
-   * Types into the field and waits the debounce out with **real** timers: it is a
-   * `setTimeout` inside an effect, and faking the clock also stalls the scheduler
-   * `whenStable` awaits.
-   */
+  /** Types into the field and waits out the debounce on real timers. */
   async function type(term: string): Promise<void> {
     const field = element().querySelector<HTMLInputElement>('.search__field');
     expect(field).not.toBeNull();
@@ -115,12 +107,7 @@ describe('Documents (US-1002, US-1003)', () => {
     await harness.fixture.whenStable();
   }
 
-  /**
-   * Presses back and lets the router finish.
-   *
-   * `Location.back()` raises a popstate the router handles asynchronously, so
-   * `whenStable()` alone would assert against the URL it had before the pop.
-   */
+  /** Presses back and waits a macrotask, since the router handles the popstate asynchronously. */
   async function goBack(): Promise<void> {
     TestBed.inject(Location).back();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -138,8 +125,7 @@ describe('Documents (US-1002, US-1003)', () => {
   it('issues exactly one request when opened', async () => {
     await open('/documents', twoConversations());
 
-    // `afterEach`'s `verify()` is what makes this "exactly one" — where the drain fired
-    // up to five before the reader had asked for anything.
+    // `afterEach`'s `verify()` is what makes this "exactly one".
     expect(element().querySelectorAll('app-document-row')).toHaveLength(2);
     expect(element().querySelector('h1')?.textContent?.trim()).toBe('Documents');
   });
@@ -174,7 +160,6 @@ describe('Documents (US-1002, US-1003)', () => {
       expect(row.querySelector('app-source-badge')?.textContent?.trim()).toBe('Uploaded');
     }
 
-    // The flat view's link column (US-1002's criterion).
     const link = first.querySelector<HTMLAnchorElement>('.document-row__conversation');
     expect(link?.textContent?.trim()).toBe('Quarterly review');
     expect(link?.getAttribute('href')).toBe(`/chat/${doc.conversationId}`);
@@ -184,8 +169,6 @@ describe('Documents (US-1002, US-1003)', () => {
     const doc = userDocumentFixture({ name: 'q3-report.pdf' });
     await open('/documents', [doc]);
 
-    // Zero requests at render (US-804): a listed row must not put a live credential
-    // in flight for a file the reader merely looked at.
     backend.expectNone((request) => request.url.includes('/api/documents/conversations/'));
 
     const button = element().querySelector<HTMLButtonElement>(
@@ -199,7 +182,6 @@ describe('Documents (US-1002, US-1003)', () => {
       `${TEST_API_BASE_URL}/api/documents/conversations/${doc.conversationId}/${doc.id}`,
     );
     expect(request.request.method).toBe('GET');
-    // Busy while the link is on the wire.
     expect(button!.disabled).toBe(true);
     expect(button!.querySelector('.kit-spinner')).not.toBeNull();
 
@@ -230,8 +212,6 @@ describe('Documents (US-1002, US-1003)', () => {
     );
     expect(panel?.querySelector('.error-panel__trace')?.textContent).toContain('Trace ID:');
     expect(element().querySelector('.documents__list')).toBeNull();
-    // Frame 4k draws the error card alone, so the toolbar goes with the listing —
-    // unlike the conversations library, whose field stays up beside its panel.
     expect(element().querySelector('app-search-input')).toBeNull();
     expect(element().querySelector('.documents__group-toggle')).toBeNull();
 
@@ -275,8 +255,6 @@ describe('Documents (US-1002, US-1003)', () => {
     it('places one page of rows in the DOM, from one request', async () => {
       await openPaged(600);
 
-      // The whole point: 25 rows and one round trip, where the drain put up to 500 there
-      // over five requests nobody asked for.
       expect(element().querySelectorAll('app-document-row')).toHaveLength(DOCUMENT_PAGE_SIZE);
       backend.verify();
     });
@@ -332,8 +310,6 @@ describe('Documents (US-1002, US-1003)', () => {
       loadMoreButton()!.click();
       await harness.fixture.whenStable();
 
-      // One region, not two: a second live region describing the same list would have a
-      // screen reader announce the change twice.
       expect(status?.textContent?.trim()).toBe('Showing 25 of 312 documents, loading more…');
 
       expectListing().flush(
@@ -374,8 +350,6 @@ describe('Documents (US-1002, US-1003)', () => {
       );
       await harness.fixture.whenStable();
 
-      // The button the reader pressed is gone; without this, focus falls to `<body>` and
-      // most screen readers reset to the top of the document.
       expect(loadMoreButton()).toBeNull();
       expect(document.activeElement?.getAttribute('aria-label')).toBe('Download last.pdf');
     });
@@ -397,8 +371,6 @@ describe('Documents (US-1002, US-1003)', () => {
       );
       await harness.fixture.whenStable();
 
-      // Moving focus off a control the reader is repeatedly pressing would be the worse
-      // defect of the two.
       expect(document.activeElement).toBe(loadMoreButton());
     });
 
@@ -409,8 +381,6 @@ describe('Documents (US-1002, US-1003)', () => {
       loadMoreButton()!.click();
       await harness.fixture.whenStable();
 
-      // The reader moved on mid-flight. Yanking them back out of the field they are
-      // typing in is worse than the focus loss the fallback exists to fix.
       const field = element().querySelector<HTMLInputElement>('.search__field')!;
       field.focus();
 
@@ -427,14 +397,12 @@ describe('Documents (US-1002, US-1003)', () => {
     });
   });
 
-  describe('filtering by name (US-1003)', () => {
+  describe('filtering by name', () => {
     it('asks the server, so a match past the loaded window still comes back', async () => {
       await open('/documents', twoConversations());
 
       await type('alpha');
 
-      // The reversal this screen exists for: the filter used to narrow rows already held,
-      // which put every document past the load ceiling out of reach.
       expect(url()).toBe('/documents?name=alpha');
       const request = expectListing();
       expect(request.request.params.get('name')).toBe('alpha');
@@ -464,8 +432,7 @@ describe('Documents (US-1002, US-1003)', () => {
       await harness.fixture.whenStable();
       expect(url()).toBe('/documents?name=alpha');
 
-      // One press, not two: refining replaced rather than pushed, so back lands on the
-      // unfiltered list.
+      // One press, not two: refining replaced rather than pushed.
       await goBack();
       expect(url()).toBe('/documents');
       expectListing().flush(documentPage(twoConversations(), { pageSize: DOCUMENT_PAGE_SIZE }));
@@ -488,8 +455,7 @@ describe('Documents (US-1002, US-1003)', () => {
     });
 
     it('filters a deep link on its one and only request', async () => {
-      // Handing `bindQuery` a computation is what makes that one request filtered:
-      // reading the values in the constructor would fire an unfiltered one first.
+      // One request because `bindQuery` gets a computation, not the constructor-time values.
       await harness.navigateByUrl('/documents?name=beta', Documents);
 
       const request = expectListing();
@@ -510,7 +476,7 @@ describe('Documents (US-1002, US-1003)', () => {
     });
   });
 
-  describe('the view toggle (US-1003)', () => {
+  describe('the view toggle', () => {
     function groupSwitch(): HTMLInputElement {
       const input = element().querySelector<HTMLInputElement>('.documents__group-toggle input');
       expect(input).not.toBeNull();
@@ -520,7 +486,6 @@ describe('Documents (US-1002, US-1003)', () => {
     it('defaults to grouped, records only the deviation, and always pushes', async () => {
       await open('/documents', twoConversations());
 
-      // Frame 4j draws the switch checked; the bare URL is the grouped view.
       expect(groupSwitch().checked).toBe(true);
       expect(groupSwitch().getAttribute('role')).toBe('switch');
       expect(element().querySelectorAll('.documents__group-header')).toHaveLength(2);
@@ -592,7 +557,6 @@ describe('Documents (US-1002, US-1003)', () => {
       );
       await harness.fixture.whenStable();
 
-      // "1 document" would describe the library rather than the set on screen.
       expect(element().querySelector('.documents__count')?.textContent?.trim()).toBe(
         'Showing 1 of 1 generated document',
       );
@@ -663,7 +627,7 @@ describe('Documents (US-1002, US-1003)', () => {
       empty?.querySelector<HTMLButtonElement>('button')?.click();
       await harness.fixture.whenStable();
 
-      // The button removed itself with its branch, so focus has to land somewhere real.
+      // The button went with its branch.
       expect(document.activeElement).toBe(sourceSwitch());
       expect(url()).toBe('/documents');
       expectListing().flush(documentPage(twoConversations(), { pageSize: DOCUMENT_PAGE_SIZE }));
@@ -676,8 +640,6 @@ describe('Documents (US-1002, US-1003)', () => {
       expectGeneratedListing().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
       await harness.fixture.whenStable();
 
-      // The term is why nothing came back, and the server said so — "No generated
-      // documents yet" would claim something about the whole origin from a search result.
       expect(element().querySelector('.empty-state__heading')?.textContent?.trim()).toBe(
         'No documents match “summary”',
       );
@@ -685,8 +647,6 @@ describe('Documents (US-1002, US-1003)', () => {
       element().querySelector<HTMLButtonElement>('app-empty-state button')?.click();
       await harness.fixture.whenStable();
 
-      // The origin switch stays where the reader left it: clearing a search is not a
-      // request to widen every other filter with it.
       expect(url()).toBe('/documents?source=generated');
       expectGeneratedListing().flush(
         documentPage([userDocumentFixture({ name: 'summary.docx', type: 'Generated' })], {
@@ -708,7 +668,6 @@ describe('Documents (US-1002, US-1003)', () => {
 
       await type('summary');
 
-      // One request for the pair, never one per parameter: both ride the same query.
       const request = expectGeneratedListing();
       expect(request.request.params.get('name')).toBe('summary');
       request.flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
@@ -738,7 +697,7 @@ describe('Documents (US-1002, US-1003)', () => {
     });
   });
 
-  describe('the grouped view (US-1003)', () => {
+  describe('the grouped view', () => {
     it('draws a linking header with a count, and rows without the conversation column', async () => {
       const alpha = userDocumentFixture({
         name: 'alpha-plan.pdf',
@@ -767,9 +726,7 @@ describe('Documents (US-1002, US-1003)', () => {
         '1 file',
       );
 
-      // The header names the conversation, so the rows do not repeat it.
       expect(element().querySelector('.document-row__conversation')).toBeNull();
-      // The badge stays on every row in both shapes.
       expect(element().querySelectorAll('app-source-badge')).toHaveLength(3);
     });
 
@@ -781,7 +738,6 @@ describe('Documents (US-1002, US-1003)', () => {
       });
       await open('/documents', [alpha]);
 
-      // "1 file" would claim the conversation holds one, which the server says it does not.
       expect(element().querySelector('.documents__group-count')?.textContent?.trim()).toBe(
         '1 of 8 files',
       );
@@ -868,9 +824,6 @@ describe('Documents (US-1002, US-1003)', () => {
       expectListing().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
       await harness.fixture.whenStable();
 
-      // "No documents match", not "Nothing uploaded yet": the server answered a question
-      // about the search, and claiming the library is empty from it would be a guess the
-      // response does not support.
       expect(element().querySelector('.empty-state__heading')?.textContent?.trim()).toBe(
         'No documents match “ghost”',
       );
@@ -887,8 +840,6 @@ describe('Documents (US-1002, US-1003)', () => {
       expect(empty?.querySelector('.empty-state__heading')?.textContent?.trim()).toBe(
         'No documents match “zzz”',
       );
-      // Unqualified, because the server searched the whole library rather than the rows
-      // this screen happens to hold.
       expect(empty?.querySelector('.empty-state__message')?.textContent?.trim()).toBe(
         'Filters cover file names only.',
       );
@@ -900,7 +851,7 @@ describe('Documents (US-1002, US-1003)', () => {
       expectListing().flush(documentPage(twoConversations(), { pageSize: DOCUMENT_PAGE_SIZE }));
       await harness.fixture.whenStable();
       expect(element().querySelectorAll('app-document-row')).toHaveLength(2);
-      // The button removed itself with the empty state, so focus lands in the field.
+      // The button went with the empty state.
       expect(document.activeElement?.classList.contains('search__field')).toBe(true);
     });
   });

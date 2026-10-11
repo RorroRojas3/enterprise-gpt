@@ -89,10 +89,11 @@ jobs:
           # payload instead goes stale the moment master advances and the merge ref is
           # regenerated, which silently widens the diff.
           #
-          # The allowlist is hand-maintained, so a root-level file that affects the build
-          # — a `global.json`, `Directory.Build.props`, `NuGet.config` — must be added
-          # here when it is introduced. None exists today; a missing entry would under-run
-          # these gates rather than over-run them, which is the dangerous direction.
+          # The allowlist is hand-maintained. `global.json`, `Directory.Build.props`,
+          # `Directory.Packages.props` and `.editorconfig` live inside `enterprise-gpt-api/`
+          # and are covered; a build-affecting file added at the repository root must be
+          # added here, because a missing entry under-runs these gates rather than
+          # over-running them, which is the dangerous direction.
           #
           # `docs/tools/file-agent.md` is in the list because it is not only documentation:
           # the unit test project links it in, and ConversionMatrixDocumentTests holds its
@@ -109,7 +110,7 @@ jobs:
             echo "api=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # 1152 tests, no Docker, ~10s of test time behind a restore and a build. First, because
+  # No Docker, well under a minute of test time behind a restore and a build. First, because
   # a compile error should be reported long before a container has finished booting.
   unit:
     name: Unit tests
@@ -144,24 +145,26 @@ jobs:
       # *other* job's test project.
       - name: Restore
         run: >
-          dotnet restore tests/Enterprise.Gpt.Unit.Test/Enterprise.Gpt.Unit.Test.csproj
+          dotnet restore test/Enterprise.Gpt.Unit.Test/Enterprise.Gpt.Unit.Test.csproj
 
       # Likewise. It references Api, Service, Repository, Dto and Entity, and Dto
       # references Common — so this already compiles all six product projects. Building
-      # the solution would add only the *integration* test assembly, 250 tests this job
-      # will never run and the job beside it compiles anyway.
+      # the solution would add only the *integration* test assembly, which this job
+      # never runs and the job beside it compiles anyway.
       - name: Build
         run: >
-          dotnet build tests/Enterprise.Gpt.Unit.Test/Enterprise.Gpt.Unit.Test.csproj
+          dotnet build test/Enterprise.Gpt.Unit.Test/Enterprise.Gpt.Unit.Test.csproj
           --no-restore -c Release
 
+      # Microsoft Testing Platform mode, selected by `enterprise-gpt-api/global.json`: the
+      # filter and the TRX report are xUnit's own options, not VSTest's `--filter`/`--logger`.
       - name: Test
         run: >
-          dotnet test tests/Enterprise.Gpt.Unit.Test/Enterprise.Gpt.Unit.Test.csproj
+          dotnet test --project test/Enterprise.Gpt.Unit.Test/Enterprise.Gpt.Unit.Test.csproj
           --no-build -c Release
-          --filter "Category!=Integration"
-          --logger "trx;LogFileName=unit.trx"
           --results-directory "${{ runner.temp }}/unit-results"
+          --filter-not-trait "Category=Integration"
+          --report-xunit-trx --report-xunit-trx-filename unit.trx
 
       # A red run is exactly when the .trx is worth reading. `!cancelled()` rather than
       # `always()`: a force-push cancels the run, and there is nothing to keep from one.
@@ -174,7 +177,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # 250 tests against real containers. Separate from `unit` so a compile error or a failing
+  # The suite against real containers. Separate from `unit` so a compile error or a failing
   # unit test is reported without waiting on an image pull, and so the two signals can be
   # required independently in branch protection.
   integration:
@@ -208,13 +211,13 @@ jobs:
       - name: Restore
         run: >
           dotnet restore
-          tests/Enterprise.Gpt.Integration.Test/Enterprise.Gpt.Integration.Test.csproj
+          test/Enterprise.Gpt.Integration.Test/Enterprise.Gpt.Integration.Test.csproj
 
       # As in `unit`: this project reaches every product project through its reference to
       # Api, so the solution build would add only the unit test assembly.
       - name: Build
         run: >
-          dotnet build tests/Enterprise.Gpt.Integration.Test/Enterprise.Gpt.Integration.Test.csproj
+          dotnet build test/Enterprise.Gpt.Integration.Test/Enterprise.Gpt.Integration.Test.csproj
           --no-restore -c Release
 
       # Docker is preinstalled on the runner, and Testcontainers starts the containers
@@ -224,15 +227,15 @@ jobs:
       # Graph, blob storage, embeddings and the transcript store for fakes.
       #
       # If the Cosmos emulator ever proves flaky here, split it into a fourth job with
-      # `--filter "Category=Integration&FullyQualifiedName!~TranscriptStore"` — not a retry
-      # loop, which would only hide which of the two containers was at fault.
+      # `--filter-trait "Category=Integration" --filter-not-class "*TranscriptStore*"` — not
+      # a retry loop, which would only hide which of the two containers was at fault.
       - name: Test
         run: >
-          dotnet test tests/Enterprise.Gpt.Integration.Test/Enterprise.Gpt.Integration.Test.csproj
+          dotnet test --project test/Enterprise.Gpt.Integration.Test/Enterprise.Gpt.Integration.Test.csproj
           --no-build -c Release
-          --filter "Category=Integration"
-          --logger "trx;LogFileName=integration.trx"
           --results-directory "${{ runner.temp }}/integration-results"
+          --filter-trait "Category=Integration"
+          --report-xunit-trx --report-xunit-trx-filename integration.trx
 
       - name: Upload results
         if: ${{ !cancelled() }}

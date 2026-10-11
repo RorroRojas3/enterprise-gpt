@@ -16,8 +16,7 @@
 .admin-reports__toolbar {
   display: flex;
   align-items: center;
-  // Wraps rather than overflowing: three controls with a combined intrinsic width well past a
-  // 360px viewport, and only the select can shrink (WCAG SC 1.4.10 Reflow).
+  // Wraps: the three controls overflow a 360px viewport and only the select can shrink (SC 1.4.10).
   flex-wrap: wrap;
   gap: 12px;
 }
@@ -41,8 +40,8 @@
 .admin-reports__group {
   width: 180px;
   height: 36px;
-  // Pushed to the trailing edge, as the board draws it — but only while the row has not wrapped,
-  // where an auto margin would leave the select stranded on a line of its own.
+  // Trailing edge only while the row has not wrapped, where an auto margin would strand the
+  // select on a line of its own.
   margin-inline-start: auto;
   border-radius: 10px;
   font-size: 13px;
@@ -53,10 +52,8 @@
   }
 }
 
-// The panels, apart from the controls above them, so a request in flight can dim the figures
-// without touching what the reader is operating. A transition on the shared duration scale rather
-// than a keyframe: `check:forbidden` allows exactly four of those, and the reduced-motion block
-// already suppresses transitions.
+// Only the panels, so a request in flight dims the figures, not the controls. A transition, not a
+// keyframe: `check:forbidden` allows exactly four keyframes.
 .admin-reports__dashboard {
   display: flex;
   flex: 1;
@@ -74,7 +71,6 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
 
-  // US-1403's criterion 5: the dashboard stacks into a single column below the desktop edge.
   @include bp.below-desktop {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -146,11 +142,8 @@
   gap: 14px;
 }
 
-// Wrapped, not clipped, and that is the deliberate half. `DataTable` gives every cell
-// `overflow: hidden`, so a name wider than its column would be truncated with no way to read the
-// rest — and below the desktop edge, where the column is narrowest, that is most of them. Wrapping
-// grows the row instead, which a table of six numeric columns has room for. `anywhere` covers the
-// unbroken cases the other two groupings produce: a deployment name and an email address.
+// Wrapped, not clipped: `DataTable` cells are `overflow: hidden`, so a long name would be
+// unreadable. `anywhere` covers unbroken deployment names and email addresses.
 .admin-reports__group-name {
   display: block;
   font-weight: 500;

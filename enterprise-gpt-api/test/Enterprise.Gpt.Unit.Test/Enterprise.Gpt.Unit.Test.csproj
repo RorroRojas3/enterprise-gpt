@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Enterprise.Gpt.Unit.Test</RootNamespace>
+    <!-- xUnit v3 test projects build as executables. -->
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" />
+    <!-- SQLite in-memory backs the service tests: unlike the EF InMemory provider it
+         supports the relational ExecuteUpdateAsync the services use. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <!-- Security pin over the transitive native bundle; see Directory.Packages.props. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="NSubstitute.Analyzers.CSharp">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Enterprise.Gpt.Api\Enterprise.Gpt.Api.csproj" />
+    <ProjectReference Include="..\..\Enterprise.Gpt.Common\Enterprise.Gpt.Common.csproj" />
+    <ProjectReference Include="..\..\Enterprise.Gpt.Service\Enterprise.Gpt.Service.csproj" />
+    <ProjectReference Include="..\..\Enterprise.Gpt.Repository\Enterprise.Gpt.Repository.csproj" />
+    <ProjectReference Include="..\..\Enterprise.Gpt.Dto\Enterprise.Gpt.Dto.csproj" />
+    <ProjectReference Include="..\..\Enterprise.Gpt.Entity\Enterprise.Gpt.Entity.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The real shipped configuration, so a test that checks the committed values binds the file
+         instead of a copy of it. A hand-maintained duplicate would pass while the host refused to
+         start, which is the exact failure the test exists to catch. Linked flat and renamed, so it
+         cannot be mistaken for this test project's own settings. -->
+    <None Include="..\..\Enterprise.Gpt.Api\appsettings.json"
+          Link="api-appsettings.json"
+          CopyToOutputDirectory="PreserveNewest" />
+    <!-- The published File Agent document, so ConversionMatrixDocumentTests can hold
+         its rendered table against the JSON it is rendered from. Linked rather than duplicated for
+         the same reason as the settings file above: a hand-maintained copy would pass while the
+         document a reader actually opens said something else. -->
+    <None Include="..\..\..\docs\tools\file-agent.md"
+          Link="file-agent.md"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

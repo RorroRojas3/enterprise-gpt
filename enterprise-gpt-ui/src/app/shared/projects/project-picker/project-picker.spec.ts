@@ -35,7 +35,7 @@ class PickerHost {
   readonly open = signal(true);
 }
 
-describe('ProjectPicker (US-307)', () => {
+describe('ProjectPicker', () => {
   let backend: HttpTestingController;
   let fixture: ComponentFixture<PickerHost>;
 
@@ -66,8 +66,7 @@ describe('ProjectPicker (US-307)', () => {
     fixture = TestBed.createComponent(PickerHost);
     fixture.componentInstance.conversation.set(conversation);
     await fixture.whenStable();
-    // The anchor exists only after the first render, which is exactly why the real
-    // call sites capture it at the gesture rather than binding it.
+    // The anchor exists only after the first render, hence call sites capture it at the gesture.
     fixture.componentInstance.anchorEl.set(fixture.componentInstance.anchor().nativeElement);
     await fixture.whenStable();
 
@@ -85,8 +84,6 @@ describe('ProjectPicker (US-307)', () => {
   }
 
   it('is a dialog holding a listbox, not a menu', async () => {
-    // role="menu" allows only menuitem children, and its keyboard handling swallows the
-    // arrows and closes on Tab — all three collide with the search field this panel has.
     const host = await render([projectFixture()]);
 
     const panel = host.querySelector('.picker');
@@ -118,8 +115,7 @@ describe('ProjectPicker (US-307)', () => {
     field!.dispatchEvent(new Event('input'));
     await fixture.whenStable();
 
-    // Client-side over the drained set, and case-insensitively — the same rule the
-    // server applies to `?name=`.
+    // Client-side and case-insensitive, matching the server's `?name=` rule.
     expect(options(host).map((row) => row.textContent?.trim())).toEqual(['RFP Responses']);
     backend.expectNone((request) => request.url === PROJECTS_URL);
   });
@@ -141,13 +137,12 @@ describe('ProjectPicker (US-307)', () => {
     request.flush({ ...conversation, projectId: project.id });
     await fixture.whenStable();
 
-    // The panel closes on the choice, and focus goes back to the control that opened it.
     expect(host.querySelector('.picker')).toBeNull();
     expect(document.activeElement).toBe(fixture.componentInstance.anchor().nativeElement);
   });
 
   it('offers Remove from project only for a conversation that is in one', async () => {
-    // Absent rather than inert: the repo's rule for an action with nothing to act on.
+    // Absent rather than inert.
     const project = projectFixture();
     const standalone = await render([project], conversationFixture({ projectId: null }));
     expect(rowNamed(standalone, 'Remove from project')).toBeUndefined();
@@ -176,8 +171,7 @@ describe('ProjectPicker (US-307)', () => {
   });
 
   it('hands a project created from the pinned action straight to the move', async () => {
-    // `beginCreate(afterCreate)` has existed unused since US-903 for exactly this: the
-    // criterion is that the reader ends up where they were, with the new project set.
+    // The reader should end up where they were, with the new project set.
     const conversation = conversationFixture({ projectId: null });
     const host = await render([], conversation);
 
@@ -204,8 +198,7 @@ describe('ProjectPicker (US-307)', () => {
   });
 
   it('states the ceiling when the drain stopped short', async () => {
-    // Frame 2e draws no such line, but a list that silently omits the project the
-    // reader is looking for is the failure the grid's own notice exists to prevent.
+    // Not in the design, but a list must never silently omit the project being looked for.
     const lookup = TestBed.inject(ProjectLookupStore);
     lookup.ensureLoaded();
     TestBed.tick();

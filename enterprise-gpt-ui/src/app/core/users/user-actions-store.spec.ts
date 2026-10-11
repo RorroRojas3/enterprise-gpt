@@ -23,7 +23,7 @@ import { UserActionsStore } from './user-actions-store';
 const USERS_URL = `${TEST_API_BASE_URL}/api/users`;
 const PERMISSIONS_URL = `${TEST_API_BASE_URL}/api/permissions`;
 
-describe('UserActionsStore (US-1202)', () => {
+describe('UserActionsStore', () => {
   let backend: HttpTestingController;
   let store: InstanceType<typeof UserActionsStore>;
   let sessionUser: ReturnType<typeof signal<UserDto | null>>;
@@ -78,8 +78,6 @@ describe('UserActionsStore (US-1202)', () => {
     store.beginCreate();
     await settle();
 
-    // No second request: `expectNone` is what `backend.verify()` would otherwise let
-    // through as an unrelated outstanding call.
     backend.expectNone(PERMISSIONS_URL);
   });
 
@@ -88,7 +86,6 @@ describe('UserActionsStore (US-1202)', () => {
     await settle();
 
     const request = expectPermissions();
-    // `permissions/all` would offer rows the server answers a grant of with a 404.
     expect(request.request.url).toBe(PERMISSIONS_URL);
     request.flush([]);
     await settle();
@@ -138,7 +135,6 @@ describe('UserActionsStore (US-1202)', () => {
     store.submitCreate('a@example.com', []);
     await settle();
 
-    // exhaustMap: a double-click is not a second user.
     backend.expectNone((request) => request.method === 'POST' && request !== first.request);
     first.flush(directoryUserFixture(), { status: 201, statusText: 'Created' });
     await settle();
@@ -177,8 +173,6 @@ describe('UserActionsStore (US-1202)', () => {
     store.submitCreate('nobody@example.com', []);
     await settle();
 
-    // Not a validation problem: `POST api/users` resolves the address through Microsoft
-    // Graph first, so this arrives with no `errors` dictionary at all.
     expectCreate().flush(
       {
         type: '/problems/resource-not-found',
@@ -216,8 +210,7 @@ describe('UserActionsStore (US-1202)', () => {
     );
     await settle();
 
-    // `fromError` deliberately silences validation problems on the assumption they render
-    // inline; with no form up there is no inline, so it is raised by hand instead.
+    // By hand: `fromError` silences validation errors, assuming they render inline.
     expect(toast).toHaveBeenCalled();
   });
 
@@ -225,8 +218,7 @@ describe('UserActionsStore (US-1202)', () => {
     const toast = vi.spyOn(TestBed.inject(ToastStore), 'show');
     const user = directoryUserFixture();
 
-    // A save goes out, the drawer is force-closed (a second Escape is uncancelable in
-    // Chromium), and the create modal is opened before the response lands.
+    // The drawer is force-closed mid-save and the create modal opened before the response lands.
     store.beginEdit(user);
     await settle();
     expectPermissions().flush([permissionFixture()]);
@@ -250,11 +242,9 @@ describe('UserActionsStore (US-1202)', () => {
     );
     await settle();
 
-    // Routed by the flow that failed, not by whatever surface is up: the save's 404 must
-    // not appear under the email field of a create form nobody has typed into.
     expect(store.formNotFound()).toBeNull();
     expect(store.formRejectedEmail()).toBeNull();
-    // And it must not close that form either — those are the reader's own keystrokes.
+    // Nor close that form: those are the reader's own keystrokes.
     expect(store.formMode()).toBe('create');
     expect(toast).not.toHaveBeenCalled();
   });
@@ -285,8 +275,7 @@ describe('UserActionsStore (US-1202)', () => {
     );
     await settle();
 
-    // `formSelfRevokedAdmin` is keyed to the row the *request* was about — a create is
-    // about no row at all — so the edit panel must not mark a checkbox nobody touched.
+    // Keyed to the request's row, and a create has none.
     expect(store.formSelfRevokedAdmin()).toBe(false);
     expect(store.formError()).toBeNull();
     expect(store.formMode()).toBe('edit');
@@ -303,8 +292,7 @@ describe('UserActionsStore (US-1202)', () => {
     await settle();
     const first = backend.expectOne((request) => request.method === 'PUT');
 
-    // The `formBusy` guard in `submitEdit` is what a double-click actually meets; the
-    // `exhaustMap` under it is the second line, closing the race the guard cannot see.
+    // The `formBusy` guard is what a double-click meets; `exhaustMap` closes the race beneath it.
     store.submitEdit([]);
     await settle();
     backend.expectNone((request) => request.method === 'PUT' && request !== first.request);
@@ -331,8 +319,6 @@ describe('UserActionsStore (US-1202)', () => {
     store.confirmDeactivate();
     await settle();
 
-    // mergeMap, not exhaustMap: two independent rows must both go, and exhaustMap would
-    // silently drop the second.
     const requests = backend.match((request) => request.method === 'DELETE');
     expect(requests).toHaveLength(2);
     expect(store.pendingIds().size).toBe(2);
@@ -379,8 +365,6 @@ describe('UserActionsStore (US-1202)', () => {
     await settle();
     expect(store.selfDeactivateRefusedId()).toBe(me.id);
 
-    // This store outlives the route, and `role="alert"` fires on insertion — so a refusal
-    // carried back to the tab would be announced as if it had just happened.
     store.clearSelfDeactivateRefusal();
     expect(store.selfDeactivateRefusedId()).toBeNull();
   });
@@ -404,8 +388,7 @@ describe('UserActionsStore (US-1202)', () => {
     TestBed.inject(Dispatcher).dispatch(sessionEvents.signedOut());
     await settle();
 
-    // `withResetOnSignOut` empties the state; `takeUntil` is what stops these landing in
-    // it a moment later.
+    // `withResetOnSignOut` empties state; `takeUntil` stops these landing a moment later.
     expect(update.cancelled).toBe(true);
     expect(remove.cancelled).toBe(true);
   });

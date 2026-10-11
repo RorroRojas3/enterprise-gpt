@@ -2,16 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
 import { Icon } from '@shared/icon/icon';
 import { PAGE_GAP, pageWindow } from './page-window';
 
-/**
- * The numbered pager of frame `5a`, for the server-paged screens.
- *
- * Every page is a real `<button>` and the ends are genuinely `disabled` — the board
- * draws them as dimmed `<span>`s, which are neither focusable nor announced as
- * unavailable. That is one of the accessibility gaps the PRD says to correct.
- *
- * The "Load more" affordance of frame `4a` is not this component: a caller drops a
- * plain button into the table's footer slot for that.
- */
+/** Numbered pager for server-paged screens; "Load more" is a plain button in the table footer. */
 @Component({
   selector: 'app-paginator',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -29,21 +20,10 @@ export class Paginator {
   /** Pluralised by the caller: "users", "documents". */
   readonly itemLabel = input.required<string>();
 
-  /**
-   * The sizes the "N / page" select offers, or empty for no select at all.
-   *
-   * Frame `5a` draws 25/50/100; frame `4a` draws no select, which is why the default
-   * is empty rather than a set of numbers a caller has to opt out of.
-   */
+  /** Sizes the "N / page" select offers; empty, the default, renders no select. */
   readonly pageSizes = input<readonly number[]>([]);
 
-  /**
-   * Whether the visible summary announces itself when it changes.
-   *
-   * A caller whose table already hands the same sentence to `DataTable.summary` sets
-   * this false: that region is live too, and two live regions carrying one string make
-   * a screen reader read the count twice on every page.
-   */
+  /** False when the same sentence goes to `DataTable.summary`, or it is announced twice. */
   readonly liveSummary = input<boolean>(true);
 
   readonly pageChanged = output<number>();

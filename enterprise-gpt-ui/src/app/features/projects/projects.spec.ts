@@ -20,13 +20,12 @@ import { Projects } from './projects';
 const PROJECTS_URL = `${TEST_API_BASE_URL}/api/projects`;
 
 /**
- * `SearchInput`'s own 300 ms window, with room for the effect that follows it and for a
- * loaded runner — real timers, because faking the clock also stalls the scheduler
- * `whenStable()` awaits.
+ * `SearchInput`'s 300 ms debounce plus headroom for a loaded runner. Real timers: a fake clock
+ * also stalls the scheduler `whenStable()` awaits.
  */
 const DEBOUNCE_MS = 450;
 
-describe('Projects (US-901)', () => {
+describe('Projects', () => {
   let backend: HttpTestingController;
   let harness: RouterTestingHarness;
 
@@ -44,9 +43,8 @@ describe('Projects (US-901)', () => {
 
     backend = TestBed.inject(HttpTestingController);
     harness = await RouterTestingHarness.create();
-    // The harness navigates directly and never starts the router's popstate listener,
-    // so without this a back press moves `Location` and leaves the router — and the
-    // screen — on the URL it already had.
+    // The harness never starts the router's popstate listener, so Back would move only
+    // `Location`.
     TestBed.inject(Router).setUpLocationChangeListener();
   });
 
@@ -77,8 +75,7 @@ describe('Projects (US-901)', () => {
   it('issues exactly one request for a deep link that already carries a term', async () => {
     await open('/projects?name=helios');
 
-    // The whole reason `bindQuery` takes a computation: binding values would fire an
-    // unfiltered request first and a filtered one second.
+    // Why `bindQuery` takes a computation: values would fire unfiltered, then filtered.
     const request = expectRequest();
     expect(request.request.params.get('name')).toBe('helios');
     request.flush(projectPage([projectFixture()]));
@@ -158,8 +155,6 @@ describe('Projects (US-901)', () => {
 
     const cards = element().querySelectorAll('app-project-card');
     expect(cards.length).toBe(2);
-    // Live since US-909 put `isFavorite` on the listing shape; it was withheld before
-    // that rather than rendered inert.
     expect(element().querySelectorAll('.project-card__favorite').length).toBe(2);
     expect(element().querySelector('app-project-card app-menu')).not.toBeNull();
   });
@@ -230,8 +225,6 @@ describe('Projects (US-901)', () => {
     it('renders one page of cards from one request, not a drained set', async () => {
       await openPaged(1284);
 
-      // The whole point: 25 cards in the DOM and one round trip, where the drain put up
-      // to 500 there over five requests nobody asked for.
       expect(cards()).toHaveLength(PROJECT_LIST_PAGE_SIZE);
       backend.verify();
     });
@@ -284,9 +277,7 @@ describe('Projects (US-901)', () => {
       await openPaged();
 
       await type('helios');
-      // The cards and the button both stay up while the query runs, and `loadMore()`
-      // refuses while `isPending()`. A control that looks operable and silently does
-      // nothing is the failure `aria-disabled` exists to prevent.
+      // The cards and button stay up while the query runs, and `loadMore()` refuses meanwhile.
       expect(loadMoreButton()?.getAttribute('aria-disabled')).toBe('true');
 
       expectRequest().flush(projectPage([], { pageSize: PROJECT_LIST_PAGE_SIZE }));
@@ -327,8 +318,7 @@ describe('Projects (US-901)', () => {
       );
       await harness.fixture.whenStable();
 
-      // The button the reader pressed is gone; without this, focus falls to `<body>` and
-      // most screen readers reset to the top of the document.
+      // Otherwise focus falls to `<body>` and most screen readers reset to the top.
       expect(loadMoreButton()).toBeNull();
       expect(document.activeElement?.textContent?.trim()).toBe('Last');
     });
@@ -350,8 +340,7 @@ describe('Projects (US-901)', () => {
       );
       await harness.fixture.whenStable();
 
-      // Moving focus off a control the reader is repeatedly pressing would be the worse
-      // defect of the two.
+      // Moving focus off a control the reader keeps pressing would be the worse defect.
       expect(document.activeElement).toBe(loadMoreButton());
     });
 
@@ -362,8 +351,7 @@ describe('Projects (US-901)', () => {
       loadMoreButton()!.click();
       await harness.fixture.whenStable();
 
-      // The reader moved on mid-flight. Yanking them back out of the field they are
-      // typing in is worse than the focus loss the fallback exists to fix.
+      // Yanking the reader out of the field they moved to is worse than the focus loss.
       const field = element().querySelector<HTMLInputElement>('.search__field')!;
       field.focus();
 
@@ -388,7 +376,7 @@ describe('Projects (US-901)', () => {
     });
   });
 
-  describe('the sort control (US-902)', () => {
+  describe('the sort control', () => {
     function select(): HTMLSelectElement {
       const control = element().querySelector<HTMLSelectElement>('.projects__sort select');
 
@@ -418,8 +406,7 @@ describe('Projects (US-901)', () => {
         'name',
         'favorites',
       ]);
-      // "Favourites first", not the board's "Pinned": device-local pins were never built
-      // and every other surface in the app says favourite.
+      // "Favourites first", not "Pinned": every other surface in the app says favourite.
       expect(options.map((option) => option.textContent?.trim())).toEqual([
         'Last updated',
         'Recently created',
@@ -453,10 +440,8 @@ describe('Projects (US-901)', () => {
       reordered.flush(projectPage([projectFixture()]));
       await harness.fixture.whenStable();
 
-      // `[selected]` on the options is uncontrolled: the browser moves the value, and
-      // Angular writes it back only when the bound expression changes. Pinned so a path
-      // that moves the DOM without moving `sort()` cannot leave the control describing an
-      // order the grid is not in.
+      // `[selected]` is written back only when the binding changes, so this pins the DOM to
+      // `sort()`.
       expect(select().value).toBe('name');
     });
 
@@ -504,14 +489,12 @@ describe('Projects (US-901)', () => {
       expectRequest().flush(projectPage([projectFixture()]));
       await harness.fixture.whenStable();
 
-      // The control follows the URL back, or a reader who pressed Back would be looking
-      // at the default grid under a label that still said Alphabetical.
+      // The control follows the URL back rather than still saying Alphabetical.
       expect(select().value).toBe('updated');
     });
 
     it('replaces between two orders, so arrowing through the select does not stack history', async () => {
-      // A closed `<select>` fires `change` on every arrow key. Pushing each one would bury
-      // the unsorted grid three entries deep behind orders nobody chose.
+      // A closed `<select>` fires `change` on every arrow key.
       await open('/projects?sort=created');
       expectRequest().flush(projectPage([projectFixture()]));
       await harness.fixture.whenStable();
@@ -541,8 +524,7 @@ describe('Projects (US-901)', () => {
     });
 
     it('falls back to the default when the URL names an order that does not exist', async () => {
-      // The control can never display a value the URL contradicts, and the server never
-      // sees a `sort=` it would answer with a 400 the reader could not explain.
+      // The server never sees a `sort=` it would answer with a 400.
       await open('/projects?sort=zzz');
 
       const request = expectRequest();
@@ -563,9 +545,7 @@ describe('Projects (US-901)', () => {
       );
       await harness.fixture.whenStable();
 
-      // Frame `4d` disables it past a load ceiling. That state described a client-side
-      // sort over a partial set; the order is the server's, so every page is a
-      // continuation of the same run and there is nothing to disable.
+      // The order is the server's, so every page continues the same run.
       expect(select().disabled).toBe(false);
     });
   });

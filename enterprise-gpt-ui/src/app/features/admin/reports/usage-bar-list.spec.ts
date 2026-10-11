@@ -4,7 +4,7 @@ import { UsageGroupDto } from '@domain/api/usage-report';
 import { usageGroupFixture } from '@testing/reports';
 import { UsageBarList } from './usage-bar-list';
 
-describe('UsageBarList (US-1302)', () => {
+describe('UsageBarList', () => {
   beforeEach(() => {
     TestBed.resetTestingModule();
   });
@@ -48,8 +48,7 @@ describe('UsageBarList (US-1302)', () => {
     ]);
     const ranks = [...host.querySelectorAll('.bars__rank')].map((rank) => rank.textContent?.trim());
 
-    // `--brand` and `--accent` are the same colour in the dark theme, so the board's
-    // highlight-the-leader treatment has nothing left to say there.
+    // `--brand` and `--accent` match in the dark theme, so the leader tint says nothing there.
     expect(ranks).toEqual(['1', '2']);
     expect(host.querySelectorAll('.bars__fill--leader')).toHaveLength(1);
   });

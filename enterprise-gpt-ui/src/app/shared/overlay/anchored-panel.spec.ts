@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AnchorPlacement, anchoredPosition } from './anchored-panel';
 
-/**
- * The placement function is pure, so these run with no TestBed, no fixture and no DOM —
- * which is what makes them the right home for US-1403's horizontal rules. jsdom computes
- * no layout, so a rendered panel's position could not be asserted at all.
- */
+/** Pure, so no TestBed or DOM: jsdom computes no layout, so a rendered panel cannot be asserted. */
 
 /** A `DOMRect` is structural here; only the six read properties matter. */
 function rect(partial: Partial<DOMRect>): DOMRect {
@@ -38,9 +34,6 @@ describe('anchoredPosition', () => {
       expect(position.bottom).toBeNull();
     });
 
-    // A panel that swaps content while open — retry → loading → rows — must grow
-    // upward, away from the trigger it sits above. Bottom-anchoring is what does that
-    // without a re-measurement, and it is the reason these panels never needed Popper.
     it('anchors an upward panel by its bottom, so it grows away from the trigger', () => {
       const position = anchoredPosition(rect({ top: 700 }), 320, DESKTOP, up);
 
@@ -69,9 +62,6 @@ describe('anchoredPosition', () => {
       expect(position.left).toBe(344 - 204);
     });
 
-    // The defect this closes predates US-1403 and was not narrow-only: nothing clamped
-    // `left`, so a 360px picker opened from a pill near the right edge ran off screen at
-    // any width.
     it('clamps a panel that would run off the right edge', () => {
       const position = anchoredPosition(rect({ left: 1300, right: 1344 }), 360, DESKTOP, down);
 
@@ -119,9 +109,7 @@ describe('anchoredPosition', () => {
     });
   });
 
-  // The second half of the full-width condition, and the reason it is not simply a
-  // breakpoint check: a panel wider than the viewport cannot be rescued by clamping,
-  // whatever the viewport is called.
+  // A panel wider than the viewport cannot be rescued by clamping, whatever the breakpoint.
   it('spans the viewport for a panel too wide to fit its gutters, above the breakpoint', () => {
     const position = anchoredPosition(
       rect({ left: 10, right: 54 }),

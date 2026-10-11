@@ -1,5 +1,4 @@
-// Frame 2e. The panel is fixed for the reason `Menu`'s is: the sidebar's conversation
-// list is a scroll container, and an absolutely-positioned panel would be clipped by it.
+// Fixed, as `Menu`'s is: an absolute panel would be clipped by the sidebar's scroll container.
 .picker {
   position: fixed;
   z-index: 1070;
@@ -42,8 +41,7 @@
   }
 }
 
-// Capped so a long list scrolls inside the panel rather than off the viewport. The
-// lookup store drains to 500 projects, and every one of them can match an empty term.
+// Scrolls inside the panel: an empty term can match all 500 drained projects.
 .picker__list {
   max-height: 264px;
   overflow-y: auto;
@@ -66,8 +64,7 @@
   &:hover,
   &:focus-visible {
     background: var(--surface-2);
-    // The ring is inset below instead: a full-bleed row has no margin for an
-    // outline to sit in.
+    // The ring is inset below: a full-bleed row has no margin for an outline.
     // focus-check-ignore-next-line
     outline: none;
   }
@@ -91,7 +88,7 @@
     }
   }
 
-  // "Remove from project": the whole row on the muted tone, as the board draws it.
+  // "Remove from project".
   &--muted {
     color: var(--muted);
   }

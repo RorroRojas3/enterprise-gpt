@@ -4,13 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { createInitialSnapshot, foldAssistantEvents } from './assistant-ui.contract';
 
 /**
- * These specs guard the *vendoring*, not the fold semantics — those belong to
- * US-404's codec fixtures, and duplicating them here would create a second place
- * to update whenever the package changes.
- *
- * The byte-for-byte comparison against the NuGet copy lives in
- * `scripts/check-andes-contract.mjs`, because it needs a restored .NET package
- * and `npm test` has to stay runnable without one.
+ * Guards the vendoring, not the fold semantics. The byte-for-byte check against the NuGet copy is
+ * `scripts/check-andes-contract.mjs`, since it needs a restored .NET package.
  */
 
 const SRC_ROOT = resolve(import.meta.dirname, '../../../..');

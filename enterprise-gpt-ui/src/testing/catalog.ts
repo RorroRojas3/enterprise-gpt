@@ -9,7 +9,7 @@ export function modelFixture(overrides: Partial<ModelDto> = {}): ModelDto {
   const index = modelSequence++;
 
   return {
-    // No modulo — a repeating id collapses list joins silently. See conversations.ts.
+    // No modulo: a repeating id collapses list joins silently.
     id: `${String(index).padStart(8, '0')}-aaaa-4bbb-8ccc-dddddddddddd`,
     providerId: PROVIDER_ID.azureOpenAi,
     name: `Model ${index}`,
@@ -21,7 +21,7 @@ export function modelFixture(overrides: Partial<ModelDto> = {}): ModelDto {
     isReasoningEnabled: false,
     isUserSelectable: true,
     isDefault: false,
-    // Unpriced by default, which is what a model created before US-1207 looks like.
+    // Unpriced by default, like a model created before pricing existed.
     inputPricePerMillionTokens: null,
     outputPricePerMillionTokens: null,
     ...overrides,

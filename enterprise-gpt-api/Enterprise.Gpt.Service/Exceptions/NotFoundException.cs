@@ -1,10 +1,20 @@
-﻿namespace Enterprise.Gpt.Service.Exceptions
-{
-    public class NotFoundException : Exception
-    {
-        public NotFoundException(string message) : base(message) { }
+using System.Net;
+using Enterprise.Gpt.Common.Constants;
 
-        public NotFoundException(string message, Exception innerException)
-            : base(message, innerException) { }
+namespace Enterprise.Gpt.Service.Exceptions;
+
+/// <summary>
+/// Thrown when a resource does not exist, is deactivated, or does not belong to the caller; answered with 404.
+/// </summary>
+public class NotFoundException : ProblemException
+{
+    public NotFoundException(string message)
+        : base(HttpStatusCode.NotFound, ProblemCodes.ResourceNotFound, message)
+    {
+    }
+
+    public NotFoundException(string message, Exception innerException)
+        : base(HttpStatusCode.NotFound, ProblemCodes.ResourceNotFound, message, innerException)
+    {
     }
 }

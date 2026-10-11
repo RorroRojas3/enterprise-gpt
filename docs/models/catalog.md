@@ -55,7 +55,7 @@ File Agent without offering it in the chat menu.
 
 ## Validation
 
-Server validation returns 400 as `HttpValidationProblemDetails`, whose `errors` dictionary is keyed
+Body rules run in `ValidationEndpointFilter<T>` before the handler; rules that need the database throw `ValidationException` from the service. Either way the response is a 400 as `HttpValidationProblemDetails`, whose `errors` dictionary is keyed
 by the failing **property name**. The client maps those PascalCase keys onto camelCase form fields
 through `serverMessagesFor`, which reimplements .NET's own camel-casing algorithm — see
 [../frontend/errors.md](../frontend/errors.md).
@@ -75,12 +75,12 @@ admin screens it coordinates with stay lazy.
 | Path | Role |
 | --- | --- |
 | `enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ModelEndpoints.cs` | The reference endpoint module |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/ModelService.cs` | CRUD, the single-default invariant, soft delete |
-| `enterprise-gpt-api/Enterprise.Gpt.Entity/Model.cs` | The row |
-| `enterprise-gpt-api/Enterprise.Gpt.Repository/Configurations/ModelConfiguration.cs` | The store-default pairing |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/ChatModels/ModelService.cs` | CRUD, the single-default invariant, soft delete |
+| `enterprise-gpt-api/Enterprise.Gpt.Entity/ChatModels/Model.cs` | The row |
+| `enterprise-gpt-api/Enterprise.Gpt.Repository/Sql/Configurations/ChatModels/ModelConfiguration.cs` | The store-default pairing |
 | `enterprise-gpt-ui/src/app/core/catalog/model-catalog-store.ts` | User-facing catalog |
 | `enterprise-gpt-ui/src/app/features/admin/models/admin-models-store.ts` | The admin grid |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Services/ModelServiceTests.cs` | Default demotion and validation |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Service/ChatModels/ModelServiceTests.cs` | Default demotion and validation |
 
 ## Related
 

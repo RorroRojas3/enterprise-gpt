@@ -2,11 +2,8 @@ import { AssistantUiEvent } from './andes/assistant-ui.contract';
 import { StreamCodec, textDeltaEvent } from './stream-codec';
 
 /**
- * The `features.rawStreamCodec` fallback for a deployment still running a
- * server that predates the framed contract: the body is unframed answer text.
- * Each chunk becomes one synthesized `TextDelta`, so every consumer downstream
- * of the transport — the fold, the turn state, the transcript — is identical
- * for both codecs; only the byte-level decoding differs.
+ * The `features.rawStreamCodec` fallback for servers that predate the framed contract. Each chunk
+ * becomes one synthesized `TextDelta`, so everything downstream is identical for both codecs.
  */
 export function createRawTextCodec(): StreamCodec {
   const decoder = new TextDecoder('utf-8');

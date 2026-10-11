@@ -8,15 +8,8 @@ export const MCP_CREDENTIAL_LIMITS = {
 const API_KEY_PATTERN = /^[\x21-\x7E]+$/;
 
 /**
- * Validates a user-supplied API key, returning the reason it is unusable or null.
- *
- * The whole of `McpCredentialRules`, so a second caller reaching for this gets every rule
- * rather than the subset the dialog's schema does not already cover. An empty field is the
- * one thing left to the `required` rule, which owns the copy for it.
- *
- * Whitespace is called out on its own because it is the failure people actually hit: a
- * paste that caught a trailing newline or a surrounding quote looks correct in a masked
- * field, and "must be printable ASCII" would not tell them what to fix.
+ * All of `McpCredentialRules` except emptiness, which `required` owns. Whitespace gets its own
+ * message: a pasted newline is invisible in a masked field.
  */
 export function apiKeyError(raw: string): string | null {
   if (raw === '') {

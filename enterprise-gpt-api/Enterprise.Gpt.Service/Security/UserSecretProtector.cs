@@ -1,42 +1,27 @@
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging;
-using System.Security.Cryptography;
 
 namespace Enterprise.Gpt.Service.Security;
 
 public interface IUserSecretProtector
 {
-    /// <summary>
-    /// Encrypts a user's credential for one MCP server.
-    /// </summary>
-    /// <param name="userOid">The owning user's Entra object id.</param>
-    /// <param name="mcpServerId">The server the credential is for.</param>
-    /// <param name="plaintext">The credential as the user supplied it.</param>
-    /// <returns>The protected payload to store.</returns>
+    /// <summary>Encrypts a user's credential for one MCP server.</summary>
     string Protect(Guid userOid, Guid mcpServerId, string plaintext);
 
-    /// <summary>
-    /// Decrypts a stored credential, reporting failure rather than throwing.
-    /// </summary>
-    /// <param name="userOid">The user the stored row belongs to.</param>
-    /// <param name="mcpServerId">The server the stored row is for.</param>
-    /// <param name="ciphertext">The stored payload.</param>
-    /// <param name="plaintext">The recovered credential, or <see langword="null"/> on failure.</param>
-    /// <returns><see langword="false"/> when the payload cannot be opened.</returns>
+    /// <summary>Decrypts a stored credential, returning <see langword="false"/> rather than throwing.</summary>
     bool TryUnprotect(Guid userOid, Guid mcpServerId, string ciphertext, out string? plaintext);
 }
 
 /// <summary>
-/// Protects per-user credentials with ASP.NET Core Data Protection, binding each payload to the
-/// user and server it was saved for.
+/// Protects per-user credentials with Data Protection, binding each payload to the user and server it was saved
+/// for so a copied row fails to decrypt.
 /// </summary>
 /// <remarks>
-/// The ids are chained into the protector's purpose, so a row copied to another user or another
-/// server fails to decrypt instead of working. Changing the root purpose string, or losing the
-/// key ring, makes every stored credential unreadable — recoverably, since a payload that will
-/// not open is treated as "no credential", but every user is then asked to supply theirs again.
+/// Changing <c>RootPurpose</c> or losing the key ring makes every stored credential read as absent, so every user
+/// is asked to supply theirs again.
 /// </remarks>
-public sealed class UserSecretProtector(IDataProtectionProvider provider, ILogger<UserSecretProtector> logger)
+public sealed partial class UserSecretProtector(IDataProtectionProvider provider, ILogger<UserSecretProtector> logger)
     : IUserSecretProtector
 {
     private const string RootPurpose = "Enterprise.Gpt.McpUserCredential.v1";
@@ -60,31 +45,26 @@ public sealed class UserSecretProtector(IDataProtectionProvider provider, ILogge
             plaintext = CreateProtector(userOid, mcpServerId).Unprotect(ciphertext);
             return true;
         }
-        // A revoked key, a payload written under another application name and a row moved
-        // between users are one answer to the caller: ask for the credential again.
+        // A revoked key, another app name or a row moved between users all mean: ask again.
         catch (CryptographicException ex)
         {
-            // The string overload rewraps everything as CryptographicException, key-ring
-            // resolution included — so a vault outage arrives here looking like a bad payload
-            // and would otherwise be one warning per user per turn with nothing naming the
-            // cause. An inner exception is what tells the two apart.
+            // The string overload wraps key-ring failures as CryptographicException too; an inner
+            // exception is what separates a vault outage from a bad payload.
             if (ex.InnerException is not null)
             {
-                _logger.LogError(ex,
-                    "The Data Protection key ring could not open a stored MCP credential for server {McpServerId}; users will be asked to supply their keys again while this persists",
-                    mcpServerId);
+                LogKeyRingCannotDecrypt(_logger, ex, mcpServerId);
             }
             else
             {
-                _logger.LogWarning(ex,
-                    "Stored MCP credential for server {McpServerId} could not be decrypted and will be treated as absent",
-                    mcpServerId);
+                LogCredentialUndecryptable(_logger, ex, mcpServerId);
             }
 
             plaintext = null;
             return false;
         }
     }
+
+    #region Private methods
 
     private IDataProtector CreateProtector(Guid userOid, Guid mcpServerId)
     {
@@ -93,4 +73,16 @@ public sealed class UserSecretProtector(IDataProtectionProvider provider, ILogge
             .CreateProtector(userOid.ToString("N"))
             .CreateProtector(mcpServerId.ToString("N"));
     }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "The Data Protection key ring could not open a stored MCP credential for server {McpServerId}; users will be asked to supply their keys again while this persists")]
+    private static partial void LogKeyRingCannotDecrypt(ILogger logger, Exception exception, Guid mcpServerId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Stored MCP credential for server {McpServerId} could not be decrypted and will be treated as absent")]
+    private static partial void LogCredentialUndecryptable(ILogger logger, Exception exception, Guid mcpServerId);
+
+    #endregion
 }

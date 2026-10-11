@@ -9,7 +9,7 @@
   overflow: visible;
 }
 
-// The three widths the boards use: 3c's rename dialog, 4h's confirmation, 5f's form.
+// sm: a rename dialog, md: a confirmation, lg: a form.
 .modal-panel--sm {
   max-width: 420px;
 }

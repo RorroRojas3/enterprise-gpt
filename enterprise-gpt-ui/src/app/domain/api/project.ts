@@ -1,25 +1,14 @@
 /**
- * A project as `GET api/projects` returns one.
- *
- * Mirrors `Enterprise.Gpt.Dto.ProjectSummaryDto`. Asked for no order the listing route
- * returns **`dateCreated` descending** (with `id` breaking ties), not `dateModified` — so
- * "newest first" there means newest *created*. Since US-706 it also accepts `sort=` and
- * `dir=`, and both stores over it send one: the grid the reader's choice, the root lookup
- * a fixed favourites-first. Either way the client renders the server's order and never
- * re-sorts a page. `name` is unique among the owner's active projects,
- * which is the constraint behind the duplicate-name validation problem.
+ * A project from `GET api/projects`. With no `sort=`, newest created first. Render the
+ * server's order and never re-sort a page. `name` is unique among the owner's active projects.
  */
 export interface ProjectSummaryDto {
   readonly id: string;
   readonly name: string;
   readonly description: string | null;
   /**
-   * Whether the owner has starred the project (US-909).
-   *
-   * Set through `PUT api/projects/{id}/favorite`, never through {@link ProjectWriteBody}
-   * — that PUT is a full representation, so a rename carrying the flag would be one
-   * field away from clearing it. The server deliberately does **not** bump
-   * `dateModified` for it, which is what lets a client hold the row across a toggle.
+   * Set only through `PUT api/projects/{id}/favorite`, never {@link ProjectWriteBody}. Toggling
+   * it does not bump `dateModified`, so a client can hold the row across a toggle.
    */
   readonly isFavorite: boolean;
   /** ISO 8601 with offset. */
@@ -29,29 +18,16 @@ export interface ProjectSummaryDto {
 }
 
 /**
- * One project as `GET api/projects/{id}`, `POST api/projects` and
- * `PUT api/projects/{id}` return it.
- *
- * The only source of {@link instructions}: the listing projection omits the column
- * server-side, so on a `ProjectSummaryDto` the property is **absent from the JSON
- * entirely**, not null. Reading it off a listing row would therefore report "no
- * instructions" for a project that has them — the same trap `ConversationDetailDto`
- * documents for `mcpServerIds`, and the reason {@link toProjectSummary} exists.
+ * The only source of {@link instructions}: listing rows omit the property entirely, which
+ * would read as "no instructions".
  */
 export interface ProjectDto extends ProjectSummaryDto {
   readonly instructions: string | null;
 }
 
 /**
- * Narrows a full `ProjectDto` to the listing shape.
- *
- * A list store holds `ProjectSummaryDto` entities. Spreading a detail DTO into one
- * would carry `instructions` along, and the next reader of that row would have no way
- * to know whether the field is authoritative or a leftover from whichever row happened
- * to be opened. Explicit fields rather than destructured rest, so a field added to the
- * listing shape is a compile error here rather than a silent omission.
- *
- * @param project The full project, from any single-project route.
+ * Keeps `instructions` out of list-store rows, where nothing could tell it from a stale
+ * leftover. Explicit fields, so a new listing field is a compile error here.
  */
 export function toProjectSummary(project: ProjectDto): ProjectSummaryDto {
   return {
@@ -65,11 +41,8 @@ export function toProjectSummary(project: ProjectDto): ProjectSummaryDto {
 }
 
 /**
- * The server's `MaximumLength` rules, mirroring `Enterprise.Gpt.Dto.ProjectFieldLengths`.
- *
- * `name` and `description` match column lengths; `instructions` does not — its column
- * is `nvarchar(max)` and the cap exists because the text is sent to the model on every
- * turn, so an uncapped project could consume the context window on every message.
+ * Mirrors the server's `MaximumLength` rules. `instructions` is capped despite an
+ * `nvarchar(max)` column because it is sent to the model on every turn.
  */
 export const PROJECT_FIELD_LENGTHS = {
   name: 256,
@@ -78,15 +51,8 @@ export const PROJECT_FIELD_LENGTHS = {
 } as const;
 
 /**
- * The body of `POST api/projects` and `PUT api/projects/{id}`.
- *
- * **A full representation, on both verbs.** `UpdateProjectActionDto` assigns every
- * field unconditionally, so omitting `description` or `instructions` on an update
- * *clears* the stored value. There is no PATCH. Build it through `toProjectBody`
- * rather than by hand — that is the single place that cannot forget a field.
- *
- * Note the id is **not** in the body: `PUT api/projects/{id}` carries it in the route,
- * unlike `PUT api/conversations`, which carries it in the body.
+ * A full representation on both verbs: a field omitted on update is cleared, so build it with
+ * `toProjectBody`. The id travels in the route, unlike `PUT api/conversations`.
  */
 export interface ProjectWriteBody {
   readonly name: string;
@@ -95,13 +61,8 @@ export interface ProjectWriteBody {
 }
 
 /**
- * A document uploaded into a project, as `GET api/projects/{id}/documents` returns one.
- *
- * Mirrors `Enterprise.Gpt.Dto.ProjectDocumentDto`. Two things about that route are easy
- * to get wrong: it answers with a **bare array**, not a `PaginatedResponseDto`, and it
- * emits both `id` and a read-only `documentId` alias of the same value, so a client can
- * key it the same way it keys the upload-status response. Only {@link id} is modelled
- * here — a second name for one value in store state is a bug waiting to be written.
+ * The route returns a bare array, not a `PaginatedResponseDto`. Its duplicate `documentId`
+ * alias is deliberately not modelled.
  */
 export interface ProjectDocumentDto {
   readonly id: string;

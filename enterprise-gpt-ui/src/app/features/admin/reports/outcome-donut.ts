@@ -3,7 +3,7 @@ import { StatusDot, StatusTone } from '@shared/badge/status-dot/status-dot';
 import { UsageOutcomeDto } from '@domain/api/usage-report';
 import { formatCount, formatPercent, formatTokens } from './usage-format';
 
-/** The board's geometry: a 150px box, a radius-56 ring at stroke width 17. */
+/** A radius-56 ring at stroke width 17 in a 150px box, as the template draws it. */
 const RADIUS = 56;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
@@ -15,15 +15,8 @@ const OUTCOME_TONES: ReadonlyArray<{ status: string; label: string; tone: Status
 ];
 
 /**
- * Frame `5j`'s turn-outcome donut, with the combined cancelled-and-failed share at its centre.
- *
- * Four concentric `<circle>` elements with `stroke-dasharray`, exactly as the board draws them —
- * one track and one arc per outcome, each offset by the arcs before it.
- *
- * **The arcs are decorative and the legend is the data.** Three colours on a ring cannot be read
- * by anyone who does not see them as three colours (SC 1.4.1), and a donut has no accessible
- * geometry to expose, so every arc is also a legend row carrying its name, its count and its
- * share. The ring is `aria-hidden` and the panel is described by the figures beside it.
+ * The arcs are decorative and the legend is the data: colours on a ring fail SC 1.4.1 and expose
+ * no geometry, so the ring is `aria-hidden` and every arc is also a legend row.
  */
 @Component({
   selector: 'app-outcome-donut',
@@ -41,9 +34,8 @@ export class OutcomeDonut {
   private readonly _byStatus = computed(() => {
     const seen = new Map(this.outcomes().map((outcome) => [outcome.status, outcome]));
 
-    // Every outcome gets a legend row whether or not it occurred, because a missing row reads as a
-    // category this deployment does not have rather than one that stayed at zero this period. The
-    // *arcs* still skip a zero, since a zero-length arc is nothing to draw.
+    // Every outcome gets a legend row, since a missing one reads as a category this deployment
+    // lacks; only the arcs skip a zero.
     return OUTCOME_TONES.map(({ status, label, tone }) => ({
       status,
       label,
@@ -71,9 +63,7 @@ export class OutcomeDonut {
 
     return (
       this._byStatus()
-        // Filtered on the datum, before the geometry: a zero-length arc is nothing to draw, and
-        // deciding that from the formatted dash-array would couple it to how `round` happens to
-        // print. `consumed` is unaffected, because a zero-turn outcome advances it by zero.
+        // Filtered on the datum, not the formatted dash-array, which would couple it to `round`.
         .filter((outcome) => outcome.turns > 0)
         .map((outcome) => {
           const length = total <= 0 ? 0 : (outcome.turns / total) * CIRCUMFERENCE;
@@ -90,12 +80,7 @@ export class OutcomeDonut {
     );
   });
 
-  /**
-   * The centre figure: the share of turns that produced nothing anyone read.
-   *
-   * Cancelled and failed together rather than separately, because they are the same fact from the
-   * reader's side — the answer never arrived — and the split is one glance away in the legend.
-   */
+  /** Cancelled and failed together: from the reader's side both mean the answer never arrived. */
   protected readonly wastedPercent = computed(() => {
     const wasted = this._byStatus()
       .filter((outcome) => outcome.status !== 'Completed')

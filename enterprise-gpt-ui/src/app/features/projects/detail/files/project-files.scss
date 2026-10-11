@@ -1,4 +1,3 @@
-// Frame 4f's panel: drop zone, then the file list.
 :host {
   display: flex;
   flex-direction: column;
@@ -6,8 +5,7 @@
   max-width: 900px;
 }
 
-// The dashed border is the resting state; `--accent` dashed is the drag-over one, which
-// `DropOverlay` draws over the top.
+// The dashed border is the resting state; `DropOverlay` draws the drag-over one on top.
 .files__dropzone {
   position: relative;
   display: flex;
@@ -26,8 +24,7 @@
   color: var(--accent);
 }
 
-// Reads as the board's inline link but is a real button, so it is reachable by keyboard
-// and announced as a control.
+// Reads as an inline link but is a real button, so it is keyboard-reachable.
 .files__browse {
   padding: 0;
   border: 0;
@@ -67,7 +64,7 @@
   overflow: hidden;
 }
 
-// The board's grid: glyph, name, size, date, download, remove.
+// Glyph, name, size, date, download, remove.
 .files__row {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr) 90px 90px 32px 32px;
@@ -90,8 +87,8 @@
   }
 }
 
-// Below the board's width the two metadata columns are what has to give: the name and
-// both controls are the row's reason for existing.
+// On narrow screens the two metadata columns give way: the name and both controls are the
+// row's reason for existing.
 @media (max-width: 575px) {
   .files__row {
     grid-template-columns: 30px minmax(0, 1fr) 32px 32px;

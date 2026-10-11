@@ -1,28 +1,14 @@
-// Rendered model output in the transcript. US-601 / US-602 / US-603.
-//
-// These rules are global rather than scoped to `AssistantTurn` because the markup
-// they style never passes through a template: `ngx-markdown` writes it as
-// innerHTML, so it carries no `_ngcontent` attribute for a component stylesheet to
-// match. The `.assistant-turn__md` class on the host is what keeps the reach
-// narrow — nothing here applies outside a rendered answer.
-//
-// The code-block chrome at the foot of the file is the one exception, and
-// deliberately so: `.md-code` is emitted by `renderer.code`, so it exists
-// wherever this renderer does, and a second markdown surface would want the
-// same block styled the same way without inheriting the transcript's body type.
-//
-// Type comes from the Transcript board: 14.5px/1.55 body, tight paragraph
-// rhythm, and the mono face for code.
+// Global because ngx-markdown writes this markup as innerHTML, with no `_ngcontent` attribute to
+// match; `.assistant-turn__md` keeps the reach narrow. `.md-code` is deliberately unscoped, so
+// any markdown surface gets the same code block.
 .assistant-turn__md {
   display: block;
   font-size: 14.5px;
   line-height: 1.55;
   overflow-wrap: anywhere;
 
-  // Every block below carries its spacing as a top margin only, and none is
-  // reset at the edges on purpose: while a turn streams the growing node is two
-  // renderers (US-602), so an edge rule would space the head and the tail
-  // differently from the single render that replaces them at settle.
+  // Top margins only, never reset at the edges: a streaming turn is two renderers, and an edge
+  // rule would space them differently from the single render at settle.
   p {
     margin: 2px 0 0;
   }
@@ -43,14 +29,8 @@
     color: var(--muted);
   }
 
-  // The border and the radius live on US-603's wrapper now, not here: the head
-  // bar and the body share one rounded outline, which only the element around
-  // both of them can draw.
-  //
-  // No `overflow` here either. `_prism.scss` sets `overflow: auto` at the same
-  // specificity and is imported first, so anything set here would win and clip
-  // every code line wider than the column — unreachable by mouse, keyboard or
-  // touch. A rounded box clips its own scrolling content without help.
+  // No border or `overflow`: `.md-code` draws the outline, and an `overflow` here would beat
+  // `_prism.scss`'s `auto` and clip wide code lines.
   pre {
     margin: 0;
   }
@@ -82,19 +62,8 @@
   }
 }
 
-// Frame 1b's code block: one rounded, clipped box holding a `--code-head` bar
-// and the body beneath it (US-603; US-604 owns the highlighting inside).
-//
-// The wrapper carries the border and the radius so the bar and the body share
-// one outline, and it carries the block's top margin so the rhythm is unchanged
-// from when `pre` carried both.
-//
-// The surface is stated here rather than left to `_prism.scss`, which matches
-// only on `language-*`. The highlighter does eventually mark an unlabelled
-// block `language-none`, but it runs after the write — so a fence with no info
-// string, which is every fence in the streaming tail once `stripFenceInfo` has
-// been past it, would otherwise paint one frame on the page background with the
-// head bar floating above it.
+// One clipped box holding the head bar and the body. The `pre` surface is set here because
+// `_prism.scss` only matches `language-*`, which an unlabelled streaming fence lacks for a frame.
 .md-code {
   overflow: hidden;
   margin: 10px 0 0;
@@ -110,12 +79,8 @@
     font-size: 12.5px;
     line-height: 1.6;
 
-    // US-1401: the block is a tab stop, because `overflow: auto` makes it
-    // scrollable and the arrow keys are the only way to read past the column
-    // (WCAG 2.1.1). Inset, since the `<pre>` is flush inside the block's border
-    // and an outline would be clipped by it; `--accent` rather than
-    // `--focus-ring` for the reason the Copy control uses it — the code surface
-    // is dark in both themes, and `check-tokens.mjs` measures the pair.
+    // Inset, since the block's border would clip an outline; `--accent` because the code
+    // surface is dark in both themes.
     &:focus-visible {
       // focus-check-ignore-next-line
       outline: none;
@@ -158,22 +123,15 @@
     background: rgba(255, 255, 255, 0.08);
   }
 
-  // The code surface is dark in both themes, so the page's focus ring would be
-  // the wrong one here — the accent is legible against `--code-head` where it
-  // is not against `--surface`.
+  // The code surface is dark in both themes, so `--accent` replaces the page's focus ring.
   &:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
   }
 }
 
-// US-605's diagrams. A mermaid fence is an ordinary `.md-code` block until one is
-// drawn, which is what makes the flag-off path and the failed-to-parse path the
-// same path — there is no styling here for `.md-diagram` on its own.
-//
-// Once drawn, the source is *hidden rather than removed*: it is the fallback if the
-// theme flips and the diagram has to be drawn again, and it is what keeps US-603's
-// Copy control copying the source rather than nothing.
+// A mermaid fence stays a plain `.md-code` block until drawn. Then the source is hidden, not
+// removed: a theme flip redraws from it, and Copy still copies it.
 .md-diagram--rendered {
   border-color: var(--bs-border-color);
 
@@ -204,14 +162,8 @@
   }
 }
 
-// Frame 1h's warn treatment. It sits *under* the still-visible source, so the
-// reader has the diagram's text and the reason it is not a picture together.
-//
-// The border and the background carry the warning; the text does not, and it stays
-// that way. `--warn` as a `color` used to measure 3.99:1 on `--warn-bg` in light —
-// below AA — which is why this inherits `--bs-body-color`, as `TurnNoticeCard` does on
-// the same surface. `--warn` now measures 4.56:1 on this panel, so the constraint is
-// gone; the treatment is kept, and `check-tokens.mjs` measures the pair either way.
+// Sits under the still-visible source. Border and background carry the warning; the text keeps
+// `--bs-body-color`, as `TurnNoticeCard` does on the same surface.
 .md-diagram__notice {
   margin: 0;
   padding: 8px 14px;
@@ -220,10 +172,8 @@
   font-size: 12.5px;
 }
 
-// US-605's math. Until KaTeX has been past it a `.md-math` is the escaped source
-// the tokenizer captured, which is what the flag-off path renders — as text, and
-// as `code` for the inline form because that is the only phrasing element the
-// sanitizer profile allows. Typeset, it should read as the surrounding prose does.
+// `.md-math` is escaped source until KaTeX typesets it (inline as `code`, the only phrasing
+// element the sanitizer allows). Typeset, it should read as the surrounding prose does.
 .assistant-turn__md {
   .md-math {
     background: none;
@@ -236,9 +186,7 @@
     text-align: center;
   }
 
-  // KaTeX renders inline, so a wide display equation would otherwise push the
-  // transcript column sideways. Scrolling the equation is the alternative to
-  // scrolling the page.
+  // KaTeX renders inline, so a wide display equation scrolls itself instead of the column.
   .katex-display {
     overflow-x: auto;
     overflow-y: hidden;
@@ -246,12 +194,8 @@
   }
 }
 
-// Frame 1b's streaming caret: an 8×17px --accent bar trailing the last character.
-//
-// It rides the last rendered block as a pseudo-element because the text it
-// follows is innerHTML — there is no element boundary left to place a span at.
-// A list is the one shape where the last *block* and the last *character* differ
-// enough to matter, so the caret moves to the final item instead.
+// The streaming caret, a pseudo-element because innerHTML leaves no boundary for a span. In a
+// list it moves to the final item, where the last character is.
 .assistant-turn__md--caret {
   > :last-child::after,
   > ul:last-child > li:last-child::after,
@@ -268,10 +212,7 @@
     animation: blink 1s steps(1) infinite;
   }
 
-  // The list and code rules above are more specific than the generic one, which
-  // would otherwise draw a second caret after the block itself — below the code
-  // and inside the rounded box, on the wrapper's own background, which is where
-  // it landed for the whole of a streaming fence before this rule existed.
+  // Stops the generic rule drawing a second caret after a list or code block.
   > ul:last-child::after,
   > ol:last-child::after,
   > .md-code:last-child::after {

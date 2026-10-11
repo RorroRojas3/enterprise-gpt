@@ -190,9 +190,8 @@ describe('withResetOnSignOut', () => {
     patchState(unprotected(store), { selectedId: 'a' });
     fixture.destroy();
 
-    // The store outlives its injector here only because the spec holds a
-    // reference; the handler must already have been torn down, so the state it
-    // would have written is untouched and nothing throws.
+    // Only the spec's reference keeps the store alive past its injector; the torn-down
+    // handler must leave its state untouched and not throw.
     expect(() => signOut()).not.toThrow();
     expect(store.selectedId()).toBe('a');
   });

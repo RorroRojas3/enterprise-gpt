@@ -48,8 +48,6 @@ describe('showFatalShell', () => {
   });
 
   it('does not interpret markup in the reason', () => {
-    // The reason can carry a server-supplied status line, and this page renders
-    // before any sanitizer exists.
     showFatalShell('<img src=x onerror=alert(1)>');
 
     const detail = document.getElementById('app-shell-detail');
@@ -59,8 +57,7 @@ describe('showFatalShell', () => {
   });
 
   it('applies the alert role only after the content is final', () => {
-    // An alert region announces on content insertion. Setting the role first and
-    // mutating afterwards is how these end up announcing nothing.
+    // Every content mutation must see no role yet, or the alert announces nothing.
     const observed: (string | null)[] = [];
     const status = document.getElementById('app-shell-status') as Node;
     new MutationObserver(() =>
@@ -76,8 +73,7 @@ describe('showFatalShell', () => {
   });
 
   it('scopes the live region to the explanation, not the heading or the button', () => {
-    // The heading already has focus, so including it would have it read twice, and
-    // an interactive control does not belong inside a live region.
+    // The focused heading would be read twice, and a control does not belong in a live region.
     showFatalShell('config.json responded 503.');
 
     const region = document.getElementById('app-shell-status');

@@ -84,11 +84,9 @@ describe('Modal', () => {
     expect(document.activeElement).toBe(invoker);
   });
 
-  it('returns focus when the dialog is destroyed rather than closed (US-1401)', async () => {
-    // A route change while a dialog is open destroys it, and `dialog.close()`
-    // queues its event — so the `(close)` binding is torn down before the event
-    // fires and focus would drop to `<body>`. The destroy path is what a user
-    // hits by pressing browser Back with a dialog open, not an edge case.
+  it('returns focus when the dialog is destroyed rather than closed', async () => {
+    // Browser Back destroys an open dialog, and `dialog.close()` queues its event past the
+    // `(close)` binding's teardown.
     const { fixture, component, invoker } = await render();
     invoker.focus();
     component.open.set(true);

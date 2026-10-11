@@ -42,7 +42,7 @@ import {
 } from '@core/state/with-request-status';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 
-/** Frame `4g`'s panel is a plain list, so it pages at the library's size. */
+/** The panel is a plain list, so it pages at the library's size. */
 export const PROJECT_CONVERSATIONS_PAGE_SIZE = 25;
 
 interface ProjectConversationsState {
@@ -60,27 +60,9 @@ function shiftCountersDown(count: number): PartialStateUpdater<OffsetPaginationS
 }
 
 /**
- * A project's conversations, from `GET api/conversations/search?projectId=` (US-908).
- *
- * **It issues one filtered request.** US-908's first criterion describes an interim
- * client-side drain to a 500-item ceiling, with a visible notice; that criterion applied
- * only while US-907 was outstanding. The enabler landed with this story, so the panel
- * ships the second criterion instead — one request, no drain, and no ceiling notice.
- *
- * It copies `ConversationLibraryStore` minus the two things frame `4g` does not draw: a
- * search field and row selection. What it keeps is the paging shape, the
- * `_querySuperseded$` guard on a page that a project change overtook, `takeUntil` on the
- * request because `withResetOnSignOut` clears state and does not cancel work, and that
- * feature composed last.
- *
- * **Never root-provided.** The detail route provides one instance for the whole screen —
- * rather than the panel providing it — so the tab strip's count is readable from the
- * Instructions tab, the same reason `ProjectDocumentsStore` is. US-910's sidebar provides
- * one *per expanded project node*, so a node's rows arrive when it opens and go when it
- * closes; several instances coexisting is the intended shape, not an accident of it.
- *
- * It lives in `core/` for that second consumer: `features/shell` may not import
- * `features/projects`, and this store injects nothing above `core/`.
+ * Never root-provided: one per detail route, so the tab strip can read the count, and one per
+ * expanded sidebar project. Lives in `core/` because `features/shell` may not import
+ * `features/projects`.
  */
 export const ProjectConversationsStore = signalStore(
   withState<ProjectConversationsState>({ projectId: null, loadingMore: false }),
@@ -93,23 +75,15 @@ export const ProjectConversationsStore = signalStore(
     _url: inject(ApiUrl).build('conversations/search'),
     _signedOut$: injectSignedOut(),
     /**
-     * Cancels a page whose project no longer matches. `switchMap` cancels the one
-     * request in flight when the route changes, but a page is a separate request on a
-     * separate `rxMethod`: without this it would land after the new project's
-     * `setAllEntities` and append another project's rows.
+     * Cancels a page whose project no longer matches; it runs on its own `rxMethod`, out of
+     * `switchMap`'s reach, and would append another project's rows.
      */
     _querySuperseded$: new Subject<void>(),
   })),
   withComputed(({ entities, isFulfilled, isPending, totalCount }) => ({
     /** Nothing on screen yet, so skeletons are the honest thing to show. */
     isFirstLoad: computed(() => isPending() && entities().length === 0),
-    /**
-     * The tab strip's count, or null until the list has actually been read.
-     *
-     * "Conversations 0" on a project that has four is a worse answer than no count, and
-     * the strip renders before the panel it counts — exactly the call the files count
-     * makes.
-     */
+    /** Null until the list is read: "Conversations 0" on a project with four is worse than none. */
     count: computed(() => (isFulfilled() ? totalCount() : null)),
     countSummary: computed(() => {
       const total = totalCount();
@@ -169,9 +143,7 @@ export const ProjectConversationsStore = signalStore(
             takeUntil(merge(store._signedOut$, store._querySuperseded$)),
             tapResponse({
               next: (page) => patchState(store, addEntities(page.items), setPage(page)),
-              // A toast rather than `setError`: the rows already loaded are still valid,
-              // and swapping the list for an error panel would throw away a result set
-              // the reader can still use.
+              // A toast rather than `setError`: the rows already loaded are still usable.
               error: (cause: unknown) =>
                 void store._toasts.fromError(toAppError(cause, { url: store._url })),
               finalize: () => patchState(store, { loadingMore: false }),
@@ -182,37 +154,24 @@ export const ProjectConversationsStore = signalStore(
 
     return {
       /**
-       * Removes a row that has left this project, and keeps paging coherent.
-       *
-       * The cancellation is the subtle half, and it is the library's reasoning verbatim:
-       * a page already on the wire carries the pre-removal offset, so once `skip` moves
-       * down beneath it that response appends the *next* window and the row that slid
-       * into the gap is fetched by neither request.
+       * Also cancels an in-flight page: it carries the pre-removal offset, so once `skip` moves
+       * the row that slid into the gap would be fetched by neither request.
        */
       _dropRow(id: string): void {
         store._querySuperseded$.next();
         patchState(store, removeEntity(id), shiftCountersDown(1), { loadingMore: false });
       },
 
-      /**
-       * Binds the route's `:projectId`, once, from the detail screen's constructor.
-       *
-       * A computation rather than a value, so navigating between two projects re-runs it
-       * and `switchMap` cancels what the reader left behind.
-       */
+      /** A computation, so a project change re-runs it and `switchMap` cancels the old load. */
       bindProject: _load,
 
-      /** Re-runs the query the rows on screen belong to, after a failure. */
       retry(): void {
         _load(store.projectId());
       },
 
       /**
-       * Appends the next page in server order.
-       *
-       * `isPending()` is the load-bearing half of the guard: `_querySuperseded$` cancels
-       * a page a later query overtook, but not one started *after* a query was already
-       * on the wire, which would carry the old `skip` against the new result set.
+       * `isPending()` guards what `_querySuperseded$` can't: a page started while a new query is
+       * already in flight would carry the old `skip`.
        */
       loadMore(): void {
         if (!store.isPending() && !store.loadingMore() && store.hasMore()) {
@@ -225,16 +184,8 @@ export const ProjectConversationsStore = signalStore(
     events.on(conversationEvents.updated).pipe(
       tap(({ payload }) => {
         if (store.entityMap()[payload.id] === undefined) {
-          // Moved *into* this project from somewhere else — the sidebar row kebab opens
-          // the same picker while this screen is up, so it is reachable with both
-          // surfaces visible. This store's whole predicate is `projectId`, and the
-          // payload carries it, so unlike the library — where a rename cannot be known
-          // to match a `name=` filter without asking — the membership question is
-          // answerable here.
-          //
-          // A re-read rather than an insert: the row's slot in `dateCreated desc` is the
-          // server's to decide, and guessing one would put it where a refetch does not.
-          // `setPending` leaves the loaded rows on screen, so the panel does not blank.
+          // Moved into this project, e.g. from the sidebar kebab. Re-read rather than insert:
+          // the row's slot in `dateCreated desc` is the server's; `setPending` keeps rows shown.
           if (payload.projectId === store.projectId()) {
             store.retry();
           }
@@ -242,10 +193,7 @@ export const ProjectConversationsStore = signalStore(
           return;
         }
 
-        // Moved out of this project — which includes a move made from this very panel's
-        // own kebab. The row leaves rather than sitting in a list it no longer belongs
-        // to, the same rule US-703 applies to an unstarred conversation under the
-        // favourites filter.
+        // Moved out, possibly from this panel's own kebab: the row no longer belongs here.
         if (payload.projectId !== store.projectId()) {
           store._dropRow(payload.id);
           return;

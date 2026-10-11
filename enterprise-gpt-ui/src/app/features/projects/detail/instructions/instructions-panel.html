@@ -13,10 +13,8 @@
   <div class="instructions">
     <label class="visually-hidden" for="project-instructions">Standing instructions</label>
     <!--
-      A native `maxlength`, unlike the Signal Forms dialog next door: there is no schema
-      here to derive it from, one field with one rule does not earn a form, and the
-      attribute stops the over-long value from being typed rather than reporting it
-      afterwards. The counter carries the limit for anyone pasting.
+      A native `maxlength`: one field with one rule does not earn a form, and it stops over-long
+      input instead of reporting it. The counter carries the limit for anyone pasting.
     -->
     <textarea
       id="project-instructions"
@@ -44,11 +42,7 @@
       >
         Cancel
       </button>
-      <!--
-        The saved state renders only once the server confirms (US-904's second
-        criterion), so this stays busy for the whole round trip rather than clearing
-        the moment the request goes out.
-      -->
+      <!-- Busy for the whole round trip: the saved state renders only once the server confirms. -->
       <button class="btn btn-primary btn-sm" type="button" [disabled]="!canSave()" (click)="save()">
         @if (saving()) {
           <span class="kit-spinner" aria-hidden="true"></span>
@@ -61,11 +55,7 @@
   </div>
 }
 
-<!--
-  Not dismissible: this modal exists to force a decision, and Escape closing it would
-  answer the guard "keep editing" — which is defensible, and is exactly what (closed)
-  does, so dismissal stays available while the copy makes the two real options explicit.
--->
+<!-- Dismissal stays available: closing answers the guard "keep editing" through (closed). -->
 <app-modal
   heading="Discard unsaved instructions?"
   size="sm"

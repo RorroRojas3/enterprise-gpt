@@ -4,9 +4,8 @@ import { Icon } from '@shared/icon/icon';
 import { EmailOpenMenu } from './email-open-menu';
 
 /**
- * An email the assistant composed, rendered as a form rather than prose. The
- * recipient is always shown: answer text is shaped by whatever the turn read, so
- * the address is not necessarily one the user chose.
+ * The recipient is always shown: the answer is shaped by whatever the turn read, so the address
+ * is not necessarily one the user chose.
  */
 @Component({
   selector: 'app-email-card',

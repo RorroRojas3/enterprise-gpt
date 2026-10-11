@@ -30,17 +30,8 @@ import { ProjectPicker } from '@shared/projects/project-picker/project-picker';
 import { ProjectConversationsStore } from '@core/projects/project-conversations-store';
 
 /**
- * A project's conversations (US-908, frame `4g`).
- *
- * Four columns — name, updated, star, kebab — and deliberately none of the library's
- * toolbar: frame `4g` draws no search field, no favourites filter and no selection, so
- * none of them ship. The row actions are the five US-307 built, routed through
- * `ConversationActionsStore` exactly as the sidebar row and the library table are;
- * nothing here reimplements a flow.
- *
- * The store is **not** provided here. It is on the detail route, so the tab strip's
- * count survives a switch to another panel — the same placement, for the same reason, as
- * `ProjectDocumentsStore`.
+ * The store is provided on the detail route, not here, so the tab strip's count survives a switch
+ * to another panel. Row actions go through `ConversationActionsStore`, as everywhere else.
  */
 @Component({
   selector: 'app-project-conversations',
@@ -73,11 +64,7 @@ export class ProjectConversations {
 
   protected readonly chatRoute = CHAT_ROUTE;
 
-  /**
-   * Frame `4g`'s tracks: `1fr 110px 32px 36px`. Fields rather than template literals,
-   * because `provideCheckNoChangesConfig({ exhaustive: true })` compares bindings
-   * between passes and an array allocated in the template is new on every check.
-   */
+  /** A field, not a template literal: exhaustive `checkNoChanges` sees a template array as new. */
   protected readonly columns: readonly TableColumn<ConversationDto>[] = [
     { key: 'name', header: 'Name', width: 'minmax(0, 1fr)', mobile: 'title' },
     { key: 'updated', header: 'Updated', width: '110px', mobile: 'meta' },
@@ -103,14 +90,8 @@ export class ProjectConversations {
   protected readonly rowLabel = (conversation: ConversationDto): string => conversation.name;
 
   /**
-   * Computed once per result set into a map, exactly as the projects grid does.
-   *
-   * Two separate reasons, and both bite. A clock read from a template binding is a fresh
-   * value on every change-detection pass, which `provideCheckNoChangesConfig({ exhaustive:
-   * true })` compares between passes; and `formatRelativeTime` does calendar arithmetic
-   * and, in its date band, a `toLocaleDateString` — running that per visible row per pass,
-   * doubled by the exhaustive pass, is real work on a list that pages. A lookup is not.
-   * The labels are minute-granular at their finest, so nothing visible is lost.
+   * Computed into a map once per result set: a clock read in a binding changes between exhaustive
+   * check passes, and per-row date formatting is real work on a paging list.
    */
   private readonly _updatedLabels = computed(() => {
     const now = Date.now();
@@ -132,12 +113,8 @@ export class ProjectConversations {
     `${conversation.isFavorite ? 'Unfavourite' : 'Favourite'} ${conversation.name}`;
 
   /**
-   * One picker for the panel, mounted outside the table so a row re-render cannot
-   * destroy the panel the reader is using.
-   *
-   * The **id** is captured and the DTO derived, never the other way round:
-   * `toUpdateBody` echoes the target's name, and a frozen snapshot would send back a
-   * stale one, reverting a rename that landed while the panel was open.
+   * One picker, outside the table so a row re-render cannot destroy it. The row id is captured, not
+   * the DTO: `toUpdateBody` echoes the name, and a stale snapshot would revert a concurrent rename.
    */
   protected readonly pickerOpen = signal(false);
   private readonly _pickerRowId = signal<string | null>(null);
@@ -150,8 +127,7 @@ export class ProjectConversations {
   private readonly _focusAfterEviction = signal<string | null>(null);
 
   constructor() {
-    // Load more disappears when the last page lands, leaving the reader standing on a
-    // node that no longer exists. The same shape the conversations library uses.
+    // Load more disappears when the last page lands, taking focus with it.
     effect(() => {
       const settled = !this.conversations.loadingMore();
       const requested = untracked(this._focusAfterPage);
@@ -162,8 +138,7 @@ export class ProjectConversations {
 
       this._focusAfterPage.set(false);
 
-      // Still there and still focused: the reader is paging through, and moving focus
-      // off the control they are pressing would be the worse defect.
+      // Still there: the reader is paging through, so focus stays on the control.
       if (untracked(this.conversations.hasMore)) {
         return;
       }
@@ -171,9 +146,8 @@ export class ProjectConversations {
       afterNextRender(() => this._recoverFocus(), { injector: this._injector });
     });
 
-    // Remove-from-project and a completed move both evict their own row, destroying the
-    // kebab that `Menu.close()` and `ProjectPicker.close()` have already returned focus
-    // to — optimistically, before the server confirmed.
+    // Removal and a completed move evict their row optimistically, destroying the kebab that
+    // `Menu.close()` and `ProjectPicker.close()` just returned focus to.
     effect(() => {
       // Both tracked: the first is the write that removes the row, the second is how
       // this knows a request that removed nothing has settled.
@@ -186,8 +160,8 @@ export class ProjectConversations {
       }
 
       if (loaded[id] !== undefined) {
-        // Still there and settled — the request failed, or a guard refused it. Leaving
-        // the id armed would fire this against some unrelated later removal.
+        // Still there and settled: the request failed or was refused. Left armed, this would fire
+        // on an unrelated later removal.
         if (!pending.has(id)) {
           this._focusAfterEviction.set(null);
         }
@@ -214,9 +188,8 @@ export class ProjectConversations {
     this.pickerAnchor.set(trigger.triggerElement());
     this._pickerRowId.set(conversation.id);
     this.pickerOpen.set(true);
-    // Armed at the open, not at the choice: every row here is in this project, so any
-    // project the reader picks evicts it. A dismissed picker leaves the row in place,
-    // and the effect disarms itself on exactly that.
+    // Armed at the open: any project the reader picks evicts the row, and the effect disarms
+    // itself when a dismissed picker leaves it in place.
     this._focusAfterEviction.set(conversation.id);
   }
 
@@ -230,12 +203,8 @@ export class ProjectConversations {
   }
 
   /**
-   * Arms the focus fixup for the two actions on this panel that destroy the control
-   * being pressed: Remove from project, and a move to another project.
-   *
-   * Armed at the gesture rather than inferred from the list shrinking — by the time the
-   * row goes, nothing on screen says the reader caused it — and the id is what lets the
-   * effect below tell a confirmed eviction from a request that failed or was refused.
+   * Arms focus recovery at the gesture rather than inferring it when the list shrinks; the id lets
+   * the effect tell a confirmed eviction from a failed or refused request.
    */
   protected removeFromProject(conversation: ConversationDto): void {
     this._focusAfterEviction.set(conversation.id);
@@ -248,15 +217,8 @@ export class ProjectConversations {
   }
 
   /**
-   * Moves focus to the first surviving row, or to the shell's `#main-content` landmark.
-   *
-   * The first row rather than a neighbour of the one that left: the rows shift under an
-   * eviction, so "the next one" is not a place the reader chose. `#main-content` is the
-   * fallback because this panel — unlike the conversations library, which has a search
-   * field — has no control outside every branch of its own template.
-   *
-   * Only ever when focus **actually fell through**: a reader who clicked elsewhere while
-   * the request was on the wire must not be yanked back.
+   * Only when focus actually fell through. The first row, as rows shift under an eviction; else
+   * `#main-content`, since this panel has no control outside every branch of its template.
    */
   private _recoverFocus(): void {
     const active = this._document.activeElement;

@@ -5,11 +5,8 @@ import { Attachment, AttachmentRemoveAction } from '@domain/documents/attachment
 import { fileGlyph } from './attachment.model';
 
 /**
- * One attached file, in the composer or a project's files panel — frame `4l`.
- *
- * Every state renders distinctly, and the differences are load-bearing rather than
- * decorative: an expired status (a 404 after the retention window) must not read as a
- * failure, because nothing failed and there is nothing to retry.
+ * Every state renders distinctly: an expired status (a 404 after the retention window) must not
+ * read as a failure, because nothing failed and there is nothing to retry.
  */
 @Component({
   selector: 'app-attachment-chip',
@@ -23,7 +20,7 @@ export class AttachmentChip {
   readonly removable = input<boolean>(true);
   /** Whether the `×` still cancels something. See {@link AttachmentRemoveAction}. */
   readonly removeAction = input<AttachmentRemoveAction>('cancel');
-  /** Whether the original file can be fetched back (US-804). */
+  /** Whether the original file can be fetched back. */
   readonly downloadable = input<boolean>(false);
   /** Whether a download request for this file is already in flight. */
   readonly downloading = input<boolean>(false);
@@ -50,9 +47,8 @@ export class AttachmentChip {
   protected readonly retryLabel = computed(() => `Retry uploading ${this.attachment().fileName}`);
   protected readonly progressLabel = computed(() => `Uploading ${this.attachment().fileName}`);
   /**
-   * Carries both the in-flight state — the spinner is `aria-hidden`, so nothing else announces it —
-   * and, for a generated file, that the assistant made it: this is the element that takes focus, and
-   * the wrapper's `role="group"` name is announced on entry by some readers and not others.
+   * Carries the in-flight state, since the spinner is `aria-hidden`, and a generated file's origin,
+   * since this takes focus and not every reader announces the group's name on entry.
    */
   protected readonly downloadLabel = computed(() => {
     const target = this.generated()
@@ -62,7 +58,7 @@ export class AttachmentChip {
     return this.downloading() ? `Downloading ${target}` : `Download ${target}`;
   });
 
-  /** Guards what `disabled` used to; see the template for why the attribute cannot be used here. */
+  /** The guard `disabled` would give; the template says why the attribute cannot be used. */
   protected download(): void {
     if (!this.downloading()) {
       this.downloaded.emit(this.attachment().id);

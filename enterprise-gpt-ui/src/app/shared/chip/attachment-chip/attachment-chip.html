@@ -59,9 +59,8 @@
           </p>
         }
         @case ('failed') {
-          <!-- No `role="status"`: a live region created together with its content is
-             not reliably announced, so the surrounding surface owns the summary
-             region instead — see the composer's. -->
+          <!-- No `role="status"`: a region created with its content is not reliably
+             announced, so the surrounding surface owns the summary region. -->
           <p class="chip__meta chip__meta--fail">{{ state.reason }}</p>
           <!-- Retry belongs to this arm alone: the same file through the same pipeline
              can succeed on a second attempt, where an unsupported extension cannot. -->
@@ -78,8 +77,7 @@
           <p class="chip__meta chip__meta--fail">{{ state.reason }}</p>
         }
         @case ('unknown') {
-          <!-- Deliberately not the word "failed": nothing failed, the status simply is
-             no longer kept. -->
+          <!-- Not "failed": nothing failed, the status is simply no longer kept. -->
           <p class="chip__meta">Status is only kept for a limited time.</p>
         }
       }
@@ -87,10 +85,8 @@
   </div>
 
   @if (downloadable()) {
-    <!-- `aria-disabled`, never `disabled`: disabling the element the user just activated hands focus
-         back to `<body>` under the HTML focus-fixup rule, and it never returns. This keeps the control
-         focusable and in the tab order while telling assistive technology it is inert; `download()`
-         carries the guard that `disabled` used to. -->
+    <!-- `aria-disabled`, not `disabled`: disabling the activated element drops focus to `<body>`
+         for good. `download()` carries the guard instead. -->
     <button
       class="chip__action"
       type="button"

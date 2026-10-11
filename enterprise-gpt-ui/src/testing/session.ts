@@ -29,10 +29,8 @@ export const MCP_GRANT: PermissionDto = {
 };
 
 /**
- * A `UserDto` exactly as `POST api/users/me` returns it.
- *
- * `permissions` defaults to the seeded `Upload File` grant alone; pass `[]` for the
- * zero-grants case US-202 requires to be a success rather than a failure.
+ * A `UserDto` exactly as `POST api/users/me` returns it, holding only the seeded `Upload File`
+ * grant; pass `[]` for a zero-grants user, which is a success rather than a failure.
  */
 export function userFixture(overrides: Partial<UserDto> = {}): UserDto {
   const firstName = overrides.firstName ?? 'Ada';

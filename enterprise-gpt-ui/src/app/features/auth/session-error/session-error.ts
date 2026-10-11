@@ -17,16 +17,8 @@ import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
 import { AuthPage } from '../auth-page/auth-page';
 
 /**
- * Frame `6c` — signed in, but `POST api/users/me` did not return.
- *
- * Unguarded on purpose: it has to render precisely when `sessionGuard` cannot pass,
- * so guarding it would be a loop.
- *
- * The panel is `ErrorPanel`, whose own documentation already names this frame. That
- * is also why the explanatory line reads `userMessage(error)` rather than the board's
- * literal sentence — a failure says the same thing here as it does in the toast that
- * a different code path would have raised for it, and the `traceId` in JetBrains Mono
- * comes from the same component.
+ * Unguarded: it renders precisely when `sessionGuard` cannot pass. `ErrorPanel` words the failure
+ * the same way the toast would.
  */
 @Component({
   selector: 'app-session-error',
@@ -46,10 +38,8 @@ export class SessionError implements OnInit {
   protected readonly canRetry = computed(() => !this.retrying());
 
   constructor() {
-    // Not `focusOnRender`: the panel is inside an `@if`, so on the bookmarked path
-    // where there is no error to explain there is nothing to focus, and the helper's
-    // `viewChild.required` would throw. The panel owns its heading, so it also owns
-    // moving focus to it.
+    // Not `focusOnRender`: the panel is inside an `@if`, so its `viewChild.required` would throw
+    // on the bookmarked path with no error.
     afterNextRender(() => this._panel()?.focusHeading(), { injector: this._injector });
   }
 

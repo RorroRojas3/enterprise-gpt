@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { BrandIcon } from './brand-icon';
 import { BrandIconName } from './brand-icon-names';
 
-describe('BrandIcon (US-418)', () => {
+describe('BrandIcon', () => {
   let fixture: ComponentFixture<BrandIcon>;
 
   async function render(inputs: { name: BrandIconName; label?: string }) {
@@ -37,9 +37,6 @@ describe('BrandIcon (US-418)', () => {
     expect(labelled.getAttribute('aria-label')).toBe('Context7');
   });
 
-  // The fill invariant that separates this from `app-icon` is asserted where it is
-  // falsifiable — `icon-names.spec.ts` reads the emitted sprite and requires
-  // `fill="currentColor"` on the `bi-` lane and on nothing else. Asserting it here
-  // through `getComputedStyle` cannot fail: jsdom normalises the keyword to
-  // lowercase, so every spelling of the check passes whatever the stylesheet says.
+  // The fill invariant is asserted in `icon-names.spec.ts` against the emitted sprite; via
+  // `getComputedStyle` here it could not fail, since jsdom normalises the keyword.
 });

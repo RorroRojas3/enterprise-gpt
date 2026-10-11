@@ -1,23 +1,11 @@
 using Enterprise.Gpt.Common.Enums;
-using Enterprise.Gpt.Repository;
-using Enterprise.Gpt.Service.Settings;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Agents.Models;
+using Enterprise.Gpt.Service.Options;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace Enterprise.Gpt.Service.Agents;
-
-/// <summary>
-/// Whether a user may start another File Agent run, and why not when they may not.
-/// </summary>
-/// <param name="Allowed">Whether the tool should be attached to this turn.</param>
-/// <param name="Explanation">
-/// A sentence for the assistant to relay, or <see langword="null"/> when the run is allowed.
-/// </param>
-public sealed record FileAgentQuotaDecision(bool Allowed, string? Explanation)
-{
-    /// <summary>The decision for a deployment that configured no ceiling, and for a user under one.</summary>
-    public static readonly FileAgentQuotaDecision Unbounded = new(true, null);
-}
 
 /// <summary>
 /// Applies the per-user ceiling on file generation.
@@ -28,12 +16,7 @@ public sealed record FileAgentQuotaDecision(bool Allowed, string? Explanation)
 /// </remarks>
 public interface IFileAgentQuotaService
 {
-    /// <summary>
-    /// Decides whether the File Agent may be offered to a user's next turn.
-    /// </summary>
-    /// <param name="userId">The caller.</param>
-    /// <param name="modelId">The agent's pinned catalog model, which is what marks its rows.</param>
-    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
+    /// <summary>Decides whether the File Agent may be offered to a user's next turn.</summary>
     /// <returns>The decision, allowed when no ceiling is configured.</returns>
     Task<FileAgentQuotaDecision> CheckAsync(Guid userId, Guid modelId, CancellationToken cancellationToken);
 }
@@ -41,10 +24,12 @@ public interface IFileAgentQuotaService
 /// <inheritdoc />
 public sealed class FileAgentQuotaService(
     EnterpriseGptDbContext ctx,
-    IOptions<FileAgentOptions> options) : IFileAgentQuotaService
+    IOptions<FileAgentOptions> options,
+    TimeProvider timeProvider) : IFileAgentQuotaService
 {
     private readonly EnterpriseGptDbContext _ctx = ctx;
     private readonly IOptions<FileAgentOptions> _options = options;
+    private readonly TimeProvider _timeProvider = timeProvider;
 
     /// <inheritdoc />
     public async Task<FileAgentQuotaDecision> CheckAsync(
@@ -61,7 +46,7 @@ public sealed class FileAgentQuotaService(
 
         // A rolling window rather than a calendar day: a UTC midnight reset lands in the middle of the
         // working afternoon somewhere, and every user should get the same length of day.
-        var since = DateTimeOffset.UtcNow.AddDays(-1);
+        var since = _timeProvider.GetUtcNow().AddDays(-1);
 
         var spent = await _ctx.ConversationUsageToolCalls
             .AsNoTracking()

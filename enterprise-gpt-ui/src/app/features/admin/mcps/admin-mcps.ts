@@ -21,24 +21,8 @@ import { DeactivateMcpServerDialog } from './deactivate-mcp-server-dialog';
 import { McpServerFormDialog } from './mcp-server-form-dialog';
 
 /**
- * The administration MCP server registry, frame `5g` (US-1208).
- *
- * **Regime C, so there is no URL contract**, exactly as the model catalog next door:
- * `GET api/mcps/all` is unpaginated, so the screen holds the whole registry and the
- * search field filters it in memory. No route inputs, no `_applyQuery`, no pager.
- *
- * **Deactivated servers are rendered, not hidden.** `DELETE api/mcps/{id}` is a soft
- * delete and `mcps/all` is the only route that returns what it produces — the user-facing
- * `api/mcps` filters to active servers the caller holds a grant for. A table that dropped
- * them would make the action look inert. They render muted against frame `5g`'s own
- * active/inactive dot, and their kebab offers no items at all: there is no reactivate
- * route, so every item would be an affordance that cannot work.
- *
- * The linked-permission badge names the permission from the **server's own name**, with
- * no second request: `McpServerService` creates the permission with that name and
- * re-syncs it on every rename, and the two share one uniqueness space. The badge is
- * absent once `permissionId` is null, which only happens on a deactivated row — the
- * cascade takes the permission with the server.
+ * The admin MCP server registry. Deactivated (soft-deleted) servers stay listed, muted, because
+ * hiding them would make Deactivate look inert.
  */
 @Component({
   selector: 'app-admin-mcps',
@@ -82,11 +66,7 @@ export class AdminMcps {
     () => `No servers match “${this.servers.query().trim()}”`,
   );
 
-  /**
-   * Fields rather than template literals. `provideCheckNoChangesConfig({ exhaustive:
-   * true })` compares bindings between passes, and an array or an arrow allocated in the
-   * template is a new value on every check.
-   */
+  /** Fields, not template literals: exhaustive no-changes checks see those as new values. */
   protected readonly columns: readonly TableColumn<McpServerDto>[] = [
     { key: 'server', header: 'Server', width: 'minmax(0, 1.1fr)', mobile: 'title' },
     {
@@ -97,8 +77,7 @@ export class AdminMcps {
       hideOnTablet: true,
     },
     { key: 'url', header: 'URL', width: 'minmax(0, 1.7fr)', mobile: 'meta' },
-    // 150px, not frame `5g`'s 90: "Entra ID (on behalf of)" is one of only two values
-    // this column can hold, and a narrower track ellipsises it permanently.
+    // A narrower track would permanently ellipsise "Entra ID (on behalf of)".
     { key: 'auth', header: 'Auth', width: '150px', mobile: 'meta', hideOnTablet: true },
     {
       key: 'scope',
@@ -109,8 +88,7 @@ export class AdminMcps {
     },
     { key: 'permission', header: 'Permission', width: 'minmax(0, 1fr)', mobile: 'badges' },
     { key: 'status', header: 'Status', width: '100px', mobile: 'badges' },
-    // headerHidden rather than an empty header: the column still needs a name for a
-    // screen reader listing the table's columns, and the board draws no label here.
+    // headerHidden rather than empty: screen readers still need the column's name.
     {
       key: 'actions',
       header: 'Actions',
@@ -127,12 +105,8 @@ export class AdminMcps {
   constructor() {
     this.servers.load();
 
-    // `McpServerActionsStore` is root-scoped and outlives this route, while an open dialog
-    // is about one visit to it. Without these two, opening Add server, leaving for another
-    // admin tab and coming back would re-mount the dialog with `open()` still true and
-    // `Modal` would `showModal()` a surface the reader never asked for.
-    //
-    // Neither clears `formBusy`, which tracks a request rather than a surface.
+    // The root-scoped actions store outlives this route, so a dialog left open on a previous
+    // visit would otherwise reopen. `formBusy` tracks a request, so it is left alone.
     this.actions.cancelForm();
     this.actions.cancelDeactivate();
   }
@@ -143,9 +117,7 @@ export class AdminMcps {
 
   protected clearSearch(): void {
     this.onSearched('');
-    // The button removes itself the moment rows come back, and focus would fall to
-    // `<body>` inside a table the reader then has to find again. The field is outside
-    // every branch of the template, so it is always connected.
+    // The button removes itself once rows return; without this, focus falls to `<body>`.
     this._search().focusField();
   }
 }

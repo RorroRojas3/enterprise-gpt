@@ -79,8 +79,7 @@ describe('AttachmentChip', () => {
   });
 
   it('names the refused extension and the supported set, and offers no retry', async () => {
-    // The same file through the same pipeline will be refused again, so the control
-    // frame 4l draws here would be a button that cannot work — see `canRetry`.
+    // The same file would be refused again, so a Retry here could not work; see `canRetry`.
     const { host } = await render({
       kind: 'unsupported',
       reason: '.mov isn’t supported — PDF, DOCX, MD, PPTX, TXT',

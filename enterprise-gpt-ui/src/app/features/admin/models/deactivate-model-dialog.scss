@@ -11,8 +11,7 @@
   line-height: 1.5;
 }
 
-// The default-model consequence is a fact about the catalog after this action, not an
-// aside, so it carries the warning surface rather than the muted one.
+// A consequence of the action, not an aside, so it gets the warning surface.
 .deactivate-model__note--warn {
   padding: 8px 10px;
   border-radius: 8px;

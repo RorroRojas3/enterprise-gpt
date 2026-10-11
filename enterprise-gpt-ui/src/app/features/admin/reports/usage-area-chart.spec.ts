@@ -4,7 +4,7 @@ import { UsageSeriesPointDto } from '@domain/api/usage-report';
 import { usageSeriesFixture } from '@testing/reports';
 import { UsageAreaChart } from './usage-area-chart';
 
-describe('UsageAreaChart (US-1302)', () => {
+describe('UsageAreaChart', () => {
   beforeEach(() => {
     TestBed.resetTestingModule();
   });
@@ -21,8 +21,6 @@ describe('UsageAreaChart (US-1302)', () => {
     const host = await render(usageSeriesFixture(11));
     const line = host.querySelector('.area__line')?.getAttribute('d') ?? '';
 
-    // A spline through daily totals would invent values between the days that were measured,
-    // which on a spend report is a number somebody could act on.
     expect(line).not.toContain('C');
     expect(line).not.toContain('Q');
     expect(line.match(/L/g)).toHaveLength(10);
@@ -61,8 +59,7 @@ describe('UsageAreaChart (US-1302)', () => {
     const host = await render([{ date: '2026-08-01', totalTokens: 42, estimatedCost: null }]);
     const line = host.querySelector('.area__line');
 
-    // SVG 2 §13: a subpath with no line-drawing command is not stroked, so a lone `M320,10` would
-    // paint nothing however it is capped. The zero-length segment is what makes the cap apply.
+    // A lone `M320,10` is not stroked (SVG 2 §13); the zero-length segment lets the cap paint.
     expect(line?.getAttribute('d')).toBe('M320,10 L320,10');
     expect(line?.getAttribute('stroke-linecap')).toBe('round');
   });
@@ -70,9 +67,8 @@ describe('UsageAreaChart (US-1302)', () => {
   it('keeps the stroke an even width, though the viewBox is stretched to the column', async () => {
     const host = await render(usageSeriesFixture(5));
 
-    // `preserveAspectRatio="none"` scales x and y differently, so without this the horizontal runs
-    // render thinner than the vertical ones — thin enough on a narrow card to undercut the 3:1 the
-    // stroke's colour was chosen for.
+    // `preserveAspectRatio="none"` scales x and y differently, thinning horizontal runs on a
+    // narrow card below the 3:1 the stroke's colour was chosen for.
     expect(host.querySelector('.area__line')?.getAttribute('vector-effect')).toBe(
       'non-scaling-stroke',
     );
@@ -113,8 +109,6 @@ describe('UsageAreaChart (US-1302)', () => {
     const firstId = first.querySelector('linearGradient')?.getAttribute('id');
     const secondId = second.querySelector('linearGradient')?.getAttribute('id');
 
-    // A fixed id would be a duplicate-id violation the moment two charts render, and would
-    // silently re-point the first chart's fill at the second chart's gradient.
     expect(firstId).toBeTruthy();
     expect(firstId).not.toBe(secondId);
     expect(first.querySelector('.area__fill')?.getAttribute('fill')).toBe(`url(#${firstId})`);

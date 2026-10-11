@@ -15,18 +15,8 @@ import { ProjectActionsStore } from '@core/projects/project-actions-store';
 import { Modal } from '@shared/overlay/modal/modal';
 
 /**
- * The create-and-edit project modal, frame `4h` (US-903).
- *
- * **One component, three entry points** — the board's own caption. The grid's New
- * project button and a project's header kebab drive it today; US-307's composer picker
- * adds the third without a change here, because every invoker talks to
- * `ProjectActionsStore` and none of them talks to this dialog.
- *
- * It copies `RenameConversationDialog`, the app's first Signal Form, including the part
- * that is easy to miss: the server's verdict arrives through a declarative `validate`
- * rule that reports it only while the field still holds the exact name the server
- * rejected. That is what clears the inline message on the next keystroke — Signal Forms
- * has no `setErrors` to clear, so an imperative reset has nothing to reset.
+ * One dialog for every entry point, all of which go through `ProjectActionsStore`. Server
+ * rejections surface via a `validate` rule keyed to the rejected name, as there is no `setErrors`.
  */
 @Component({
   selector: 'app-project-form-dialog',
@@ -43,10 +33,8 @@ export class ProjectFormDialog {
   private readonly model = signal({ name: '', description: '', instructions: '' });
 
   protected readonly f = form(this.model, (path) => {
-    // A schema rule rather than a `[disabled]` binding: the `[formField]` directive
-    // owns that attribute (NG8022), exactly as it owns `maxlength`. One rule at the
-    // root covers every field, which is what the edit dialog needs while the project
-    // it is about is still being fetched.
+    // A schema rule, not `[disabled]`, which `[formField]` owns (NG8022). At the root, so
+    // every field stays disabled while an edit's project is still being fetched.
     disabled(path, () => this.actions.formLoading());
     required(path.name, { message: 'A name is required.' });
     maxLength(path.name, PROJECT_FIELD_LENGTHS.name, {
@@ -60,15 +48,12 @@ export class ProjectFormDialog {
     });
     validate(path.name, ({ value }) => {
       const rejected = this.actions.formRejectedName();
-      // Trimmed, because the store submits the trimmed value: the field may hold
-      // surrounding whitespace the server never saw.
+      // Trimmed, as the store submits it: the field may hold whitespace the server never saw.
       if (rejected === null || value().trim() !== rejected) {
         return null;
       }
 
-      // `projectNameMessages` rather than `serverMessagesFor`: the duplicate-name
-      // message is the one string the board words for us, and this is where it is
-      // swapped for the server's.
+      // Not `serverMessagesFor`: this swaps the server's duplicate-name sentence for ours.
       return projectNameMessages(this.actions.formError()).map((message) => ({
         kind: 'server',
         message,
@@ -91,10 +76,7 @@ export class ProjectFormDialog {
       !this.actions.formLoading(),
   );
 
-  /**
-   * Field errors render once the user has interacted — or immediately when they came
-   * from the server, which no amount of prior interaction predicts.
-   */
+  /** After interaction, or at once for a server error, which no prior interaction predicts. */
   protected readonly showNameErrors = computed(
     () => this.f.name().invalid() && (this.f.name().touched() || this.actions.formError() !== null),
   );
@@ -113,11 +95,7 @@ export class ProjectFormDialog {
     () => this.f.instructions().invalid() && this.f.instructions().touched(),
   );
 
-  /**
-   * Messages under keys the form does not model — object-level rules, and any property
-   * this dialog never sends wrong. Rendered rather than dropped, because a server
-   * message the user cannot see is a save that silently fails.
-   */
+  /** Messages under keys the form does not model, shown so none silently fails the save. */
   protected readonly unmatched = computed(() =>
     unmatchedServerMessages(this.actions.formError(), ['name', 'description', 'instructions']),
   );
@@ -127,10 +105,8 @@ export class ProjectFormDialog {
   );
 
   constructor() {
-    // Both are tracked. `formMode` is the open, and `formTarget` is what arrives one
-    // round trip later when the grid's kebab had only the listing shape to open on —
-    // seeding on the mode alone would leave those fields empty for good. Reseeding
-    // cannot destroy typing: the fields are disabled for the whole of that fetch.
+    // Tracks `formTarget` too: an edit opened from a listing card gets its full project a
+    // round trip later. Reseeding cannot destroy typing; the fields are disabled meanwhile.
     effect(() => {
       const mode = this.actions.formMode();
       const target = this.actions.formTarget();
@@ -145,8 +121,7 @@ export class ProjectFormDialog {
           description: target?.description ?? '',
           instructions: target?.instructions ?? '',
         });
-        // Clears touched/dirty left over from a previous open — the component is
-        // mounted once and lives as long as the projects area.
+        // Mounted once in `Shell`, so clear touched/dirty left by a previous open.
         this.f().reset();
       });
     });

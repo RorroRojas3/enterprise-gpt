@@ -14,15 +14,8 @@ import { Icon } from '@shared/icon/icon';
 let nextId = 0;
 
 /**
- * A debounced search field — the sidebar, both libraries, and every admin tab.
- *
- * The label is required and rendered as a real `<label for>`. A placeholder is not an
- * accessible name: it disappears the moment the user types, and several screen readers
- * do not announce it at all.
- *
- * Debouncing uses `setTimeout` inside an `effect` with `onCleanup` rather than an
- * rxjs pipeline: it needs no `rxjs-interop` import, and `vi.useFakeTimers()` drives it
- * directly in tests.
+ * The label is a real `<label for>`, as a placeholder is no accessible name. Debounced with
+ * `setTimeout` in an effect, not rxjs, so `vi.useFakeTimers()` drives it directly.
  */
 @Component({
   selector: 'app-search-input',
@@ -47,25 +40,12 @@ export class SearchInput {
 
   protected readonly inputId = `search-input-${nextId++}`;
 
-  /**
-   * What is in the field right now, before the debounce commits it.
-   *
-   * `linkedSignal` rather than an effect writing a signal: it is writable state
-   * derived from `value`, which is exactly what `linkedSignal` is for. Resetting
-   * `value` from outside — clearing a filter from an empty state, restoring a query
-   * from the URL — puts the field back in step with no extra pass.
-   */
+  /** The uncommitted field text; resetting `value` from outside resyncs it with no extra pass. */
   protected readonly text = linkedSignal(() => this.value());
 
   private readonly _field = viewChild.required<ElementRef<HTMLInputElement>>('field');
 
-  /**
-   * Puts the caret in the field.
-   *
-   * Exposed as a method so a caller that *reveals* the field — the collapsed sidebar's
-   * search button, which expands the sidebar first — does not have to reach into
-   * markup this component owns.
-   */
+  /** For callers that reveal the field, such as the collapsed sidebar's search button. */
   focusField(): void {
     this._field().nativeElement.focus();
   }
@@ -80,8 +60,6 @@ export class SearchInput {
         }
       }, this.debounceMs());
 
-      // Every keystroke replaces the pending timer, which is what makes this a
-      // debounce rather than a queue of stale searches.
       onCleanup(() => clearTimeout(timer));
     });
   }
@@ -90,7 +68,6 @@ export class SearchInput {
     this.text.set((event.target as HTMLInputElement).value);
   }
 
-  /** Escape clears — the shortcut every search field is expected to have. */
   protected onEscape(): void {
     this.text.set('');
   }

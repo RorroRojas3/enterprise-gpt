@@ -1,47 +1,33 @@
-using Enterprise.Gpt.Api.Agents;
-using Enterprise.Gpt.Dto.Enums;
+using Enterprise.Gpt.Common.Constants;
 using Enterprise.Gpt.Service.Agents;
-using Enterprise.Gpt.Service.Chat;
+using Enterprise.Gpt.Service.Agents.Exceptions;
+using Enterprise.Gpt.Service.Conversations.Chat;
+using Enterprise.Gpt.Service.Conversations.Chat.Exceptions;
 using Enterprise.Gpt.Service.Prompts;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Enterprise.Gpt.Api.Startup;
 
 /// <summary>
-/// Refuses to start against a File Agent that could not run: a <c>FileAgent:ModelId</c> naming no
-/// usable catalog row, a missing chat client, an instruction template left out of the build, or a
-/// skills directory that did not ship.
+/// Refuses to start against a File Agent that could not run: an unusable model, a missing chat client,
+/// or a prompt template or skills directory that did not ship.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Runs unconditionally, whatever <c>FileAgent:Enabled</c> says: a deployment whose agent is
-/// misconfigured should say so when it is deployed, not on the first request after somebody
-/// switches the feature on months later.
-/// </para>
-/// <para>
-/// Called inline from <c>Program.cs</c> beside the other two bootstrappers rather than registered as
-/// an <see cref="IHostedService"/>, and for the same reason: it needs a live backing store, and
-/// <c>WebApplicationFactory</c> starts the host before the integration fixture creates the schema.
-/// </para>
+/// Runs whatever <c>FileAgent:Enabled</c> says, so misconfiguration fails the deploy. Not an
+/// <see cref="IHostedService"/>, for the same reason as <see cref="SummarizerBootstrapper"/>.
 /// </remarks>
-public static class FileAgentBootstrapper
+public static partial class FileAgentBootstrapper
 {
+    #region Public static methods
+
     /// <summary>
-    /// Resolves the pinned model, verifies its client and its keyed sandbox client exist, and forces
-    /// the prompt and skill content to be read off disk.
+    /// Resolves the pinned model from a scoped provider, verifies its clients exist, and forces the
+    /// prompt and skill content to be read off disk.
     /// </summary>
-    /// <param name="services">A scoped service provider.</param>
-    /// <param name="skillsRoot">The directory the deployed skills were expected at.</param>
-    /// <param name="logger">The logger that reports the resolved deployment.</param>
-    /// <param name="cancellationToken">A token that propagates cancellation.</param>
-    /// <exception cref="Service.Exceptions.FileAgentNotConfiguredException">
-    /// The configured id names no active model row, or one on a provider that cannot carry a hosted
-    /// code interpreter.
+    /// <exception cref="FileAgentNotConfiguredException">
+    /// No active model row, or one on a provider without a hosted code interpreter.
     /// </exception>
-    /// <exception cref="Service.Exceptions.ProviderNotConfiguredException">
-    /// The row's provider has no chat client registered in this deployment.
-    /// </exception>
+    /// <exception cref="ProviderNotConfiguredException">The row's provider has no chat client.</exception>
     /// <exception cref="DirectoryNotFoundException">The deployed skills are missing.</exception>
     public static async Task ValidateAsync(
         IServiceProvider services, string skillsRoot, ILogger logger, CancellationToken cancellationToken = default)
@@ -63,13 +49,17 @@ public static class FileAgentBootstrapper
 
         var skills = FileAgentSkills.Discover(skillsRoot);
 
-        logger.LogInformation(
-            "The File Agent will use model {ModelId} ({DeploymentName}) on provider {ProviderId}, with {SkillCount} skill(s) "
-                + "and a conversion matrix of {CellCount} cell(s).",
-            model.ModelId,
-            model.DeploymentName,
-            model.ProviderId,
-            skills.Count,
-            matrix.Cells.Count);
+        LogFileAgentModel(
+            logger, model.ModelId, model.DeploymentName, model.ProviderId, skills.Count, matrix.Cells.Count);
     }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "The File Agent will use model {ModelId} ({DeploymentName}) on provider {ProviderId}, with {SkillCount} skill(s) and a conversion matrix of {CellCount} cell(s).")]
+    private static partial void LogFileAgentModel(
+        ILogger logger, Guid modelId, string deploymentName, Guid providerId, int skillCount, int cellCount);
+
+    #endregion
 }

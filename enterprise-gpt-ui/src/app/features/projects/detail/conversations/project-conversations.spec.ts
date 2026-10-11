@@ -18,7 +18,7 @@ const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
 const PUT_URL = `${TEST_API_BASE_URL}/api/conversations`;
 const PROJECT_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 
-describe('ProjectConversations (US-908)', () => {
+describe('ProjectConversations', () => {
   let backend: HttpTestingController;
   let fixture: ComponentFixture<ProjectConversations>;
 
@@ -39,8 +39,7 @@ describe('ProjectConversations (US-908)', () => {
 
     backend = TestBed.inject(HttpTestingController);
 
-    // `ProjectDetail` binds this in the application, so the tab strip's count is right
-    // from any tab; here the panel is rendered on its own and the spec plays that part.
+    // `ProjectDetail` binds this in the app; with the panel rendered alone, the spec does.
     const store = TestBed.inject(ProjectConversationsStore);
     TestBed.runInInjectionContext(() => store.bindProject(() => PROJECT_ID));
     TestBed.tick();
@@ -76,19 +75,15 @@ describe('ProjectConversations (US-908)', () => {
     expect(host.querySelector('.project-conversations__name')?.textContent?.trim()).toBe(
       'Helios release status',
     );
-    // Updated, not the model: frame 4g's second column is a relative timestamp.
     expect(host.querySelector('.project-conversations__updated')?.textContent?.trim()).toBeTruthy();
     expect(host.querySelector('.project-conversations__star')).not.toBeNull();
     expect(host.querySelector('.menu__trigger')).not.toBeNull();
 
-    // The board draws neither, so neither ships.
     expect(host.querySelector('.search__field')).toBeNull();
     expect(host.querySelector('input[type="checkbox"]')).toBeNull();
   });
 
   it('offers the five row actions, with Remove always present', async () => {
-    // Unlike the sidebar and the library, every row here is in a project by
-    // construction, so Remove always has something to act on.
     const host = await render();
     await openRowMenu(host);
 
@@ -136,14 +131,12 @@ describe('ProjectConversations (US-908)', () => {
     move?.click();
     await fixture.whenStable();
 
-    // The panel reads the root lookup store and never fetches for itself — that list is
-    // drained once at sign-in, so opening a picker costs no request.
+    // The picker reads the root lookup store, drained at sign-in, so opening it costs no request.
     backend.expectNone((request) => request.url === `${TEST_API_BASE_URL}/api/projects`);
     expect(host.querySelector('.picker')?.getAttribute('role')).toBe('dialog');
   });
 
   it('points its empty state at the composer above it', async () => {
-    // Frame 4g's caption, verbatim: the call to action is the project composer.
     const host = await render([], 0);
 
     const empty = host.querySelector('app-empty-state');
@@ -152,9 +145,8 @@ describe('ProjectConversations (US-908)', () => {
     expect(host.querySelector('.menu__trigger')).toBeNull();
   });
 
-  it('states no ceiling, because US-907 landed with it', async () => {
-    // The interim criterion required "Showing the 500 most recent conversations" above
-    // the list. One filtered request means there is nothing to disclaim.
+  it('shows no "most recent" ceiling caption', async () => {
+    // The server filters by project and Load more pages the rest, so there is no cap to disclaim.
     const host = await render();
 
     expect(host.textContent).not.toContain('most recent');
@@ -221,8 +213,6 @@ describe('ProjectConversations (US-908)', () => {
     await fixture.whenStable();
     const host = fixture.nativeElement as HTMLElement;
 
-    // The rows on screen would belong to a query that failed, so the panel replaces
-    // the list rather than sitting beside it.
     expect(host.querySelector('app-error-panel')).not.toBeNull();
     expect(host.querySelector('app-data-table')).toBeNull();
   });
@@ -253,11 +243,8 @@ describe('ProjectConversations (US-908)', () => {
   });
 
   it('keeps a starred row, whose updated event is the app’s one synthesized payload', async () => {
-    // The favourite endpoint answers 204 with no body, so `ConversationActionsStore`
-    // builds `{ ...target, isFavorite }` itself — the only `updated` payload the app does
-    // not take from the server. This panel evicts on any payload whose projectId differs
-    // from the route's, so a synthesis that lost projectId would make starring a row
-    // delete it from the list.
+    // The favourite endpoint returns no body, so the store synthesizes the `updated` payload;
+    // one that lost projectId would evict the starred row from this list.
     const row = conversationFixture({ projectId: PROJECT_ID, isFavorite: false });
     const host = await render([row]);
 
@@ -275,9 +262,8 @@ describe('ProjectConversations (US-908)', () => {
   });
 
   it('recovers focus when a row evicts itself', async () => {
-    // Remove-from-project destroys the kebab that `Menu.close()` has already focused,
-    // optimistically, before the server confirmed. Without the fixup focus lands on a
-    // detached node and falls to <body>.
+    // Removal destroys the kebab `Menu.close()` just focused, so without the fixup focus falls
+    // to <body>.
     const row = conversationFixture({ projectId: PROJECT_ID });
     const survivor = conversationFixture({ projectId: PROJECT_ID });
     const host = await render([row, survivor], 2);

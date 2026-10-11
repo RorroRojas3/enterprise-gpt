@@ -4,8 +4,7 @@
   padding: 1px 7px;
   border: 1px solid var(--bs-border-color);
   border-radius: 6px;
-  // A nested activity card inverts the badge against its own surface (US-502),
-  // so the host sets `--kind-badge-bg`; everywhere else the default applies.
+  // A nested activity card sets `--kind-badge-bg` to invert the badge against its surface.
   background: var(--kind-badge-bg, var(--surface-2));
   color: var(--muted);
   font-size: 10.5px;

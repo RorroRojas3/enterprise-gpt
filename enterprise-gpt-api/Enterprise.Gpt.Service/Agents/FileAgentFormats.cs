@@ -20,13 +20,8 @@ public static class FileAgentFormats
         '/', '\\', '*', '_', '`'
     ];
 
-    /// <summary>
-    /// The words that name a target format, deliberately narrower than the skill filter's own topics.
-    /// </summary>
-    /// <remarks>
-    /// "document" and "sheet" are absent on purpose: both read as common nouns far more often than as a
-    /// format, and a wrong reading here refuses a conversion rather than advertising an unwanted skill.
-    /// </remarks>
+    // Narrower than the skill filter's topics: "document" and "sheet" are usually common nouns, and a wrong
+    // reading here refuses a conversion.
     private static readonly FrozenDictionary<string, string> _byWord = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["docx"] = "docx",
@@ -47,8 +42,9 @@ public static class FileAgentFormats
         ["txt"] = "txt"
     }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
+    #region Public static methods
+
     /// <summary>Splits a string into the distinct words a topic or format can be matched against.</summary>
-    /// <param name="text">The instruction, or <see langword="null"/>.</param>
     /// <returns>The words, compared case-insensitively.</returns>
     public static HashSet<string> Words(string? text) =>
         string.IsNullOrWhiteSpace(text)
@@ -57,12 +53,8 @@ public static class FileAgentFormats
                 text.Split(_wordBreaks, StringSplitOptions.RemoveEmptyEntries), StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Strikes a set of file names out of an instruction, leaving the prose around them.</summary>
-    /// <param name="instruction">The run's instruction.</param>
-    /// <param name="names">The names to remove.</param>
-    /// <returns>The instruction with every occurrence of every name replaced by a space.</returns>
     /// <remarks>
-    /// A file name splits into ordinary words — "draft.docx" yields "draft" — so a scan reading an
-    /// instruction for what it asks for has to strike the names out before it counts anything.
+    /// A file name splits into ordinary words ("draft.docx" yields "draft"), so scans strike names first.
     /// </remarks>
     public static string Without(string instruction, IEnumerable<string> names)
     {
@@ -81,16 +73,10 @@ public static class FileAgentFormats
         return remainder;
     }
 
-    /// <summary>
-    /// Finds the formats an instruction asks for, ignoring the source files it names.
-    /// </summary>
-    /// <param name="instruction">The run's instruction.</param>
-    /// <param name="sourceNames">
-    /// The file names already resolved as sources. Removed before the scan, because "convert deck.pptx
-    /// to pdf" otherwise reads its own source as a second target and no request would ever name exactly
-    /// one.
-    /// </param>
-    /// <returns>The distinct target formats named, in the order <see cref="Producible"/> lists them.</returns>
+    /// <summary>Finds the target formats an instruction names, in <see cref="Producible"/> order.</summary>
+    /// <remarks>
+    /// Resolved source names are struck out first, or "convert deck.pptx to pdf" reads its source as a target.
+    /// </remarks>
     public static IReadOnlyList<string> DetectTargets(string? instruction, IEnumerable<string> sourceNames)
     {
         ArgumentNullException.ThrowIfNull(sourceNames);
@@ -108,4 +94,6 @@ public static class FileAgentFormats
                 pair => string.Equals(pair.Value, format, StringComparison.Ordinal) && words.Contains(pair.Key)))
         ];
     }
+
+    #endregion
 }

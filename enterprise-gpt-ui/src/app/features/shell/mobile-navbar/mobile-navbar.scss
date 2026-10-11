@@ -1,7 +1,4 @@
-// Frame 1d: 54px, a 14px gutter, and a rule below it.
-//
-// `min-height` rather than `height`, and a top inset: `index.html` carries
-// `viewport-fit=cover`, so this bar is the surface that sits under the notch.
+// `min-height` and a top inset: with `viewport-fit=cover`, this bar sits under the notch.
 :host {
   display: flex;
   flex: 0 0 auto;
@@ -14,8 +11,7 @@
   background: var(--surface);
 }
 
-// 44px, not the board's 22px glyph box: its own caption asks for 44px targets at this
-// width, which is the reading `PillSubnav` already took for the pill strip.
+// 44px rather than the 22px glyph box, for touch targets at this width.
 .navbar__menu {
   display: flex;
   flex: 0 0 auto;

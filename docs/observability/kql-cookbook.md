@@ -19,7 +19,7 @@ Every query here has been checked against the field names in `RequestLogMessages
 Two habits that every recipe below depends on:
 
 - **`customDimensions` is a dynamic column, and most of its interesting keys contain dots** — `gen_ai.request.model`, `sheet_query.outcome`. Kusto's dot-navigation syntax (`customDimensions.Foo`) parses a literal dot as a *nested* property access, so a dotted key silently returns `null` unless you index it as a string: `customDimensions["gen_ai.request.model"]`. Bracket notation is used throughout this document for that reason, even on the plain PascalCase keys the access log writes, so every recipe here is copy-paste safe.
-- **The access log's four event kinds share one table with no queryable event name.** `RequestLoggingMiddleware` writes events 1000–1004 to `traces`, and the exporter does not carry the `.NET` `EventId`/`EventName` through as its own column. Discriminate by the fields each event actually sets instead — `customDimensions["StatusCode"]` exists **only** on a completion record (1001), which is the discriminator every query below that reads `traces` relies on.
+- **The access log's five event kinds share one table with no queryable event name.** `RequestLoggingMiddleware` writes events 1000–1004 to `traces`, and the exporter does not carry the `.NET` `EventId`/`EventName` through as its own column. Discriminate by the fields each event actually sets instead — `customDimensions["StatusCode"]` exists **only** on a completion record (1001), which is the discriminator every query below that reads `traces` relies on.
 
 ## Correlating one request end to end by `traceId`
 
@@ -160,7 +160,7 @@ customMetrics
 
 Note `sum(value)` here, not `valueSum`: `FileAgentVerification` is a `Counter<long>`, and for a counter the preaggregated total lands in `value` (`valueSum` is meaningful for histograms). See [telemetry.md](telemetry.md) for the instrument-kind table.
 
-**A caveat on `exceptions`.** Every fault this API can raise is caught by one of three `IExceptionHandler`s and turned into a Problem Details response before it ever reaches ASP.NET Core's own unhandled-exception path — which is what usually populates the `exceptions` table. Look for a genuine application fault in `traces` first (`Outcome == "Faulted"` on the completion record, from the [error-rate recipe](#error-rate-and-p95-latency-by-route) above, which also carries the exception's message) or in `requests` (`resultCode >= 500`). Treat a hit in `exceptions` as noteworthy precisely because it means something escaped the handler chain itself.
+**A caveat on `exceptions`.** Every fault this API can raise is caught by the single `GlobalExceptionHandler` and turned into a Problem Details response before it ever reaches ASP.NET Core's own unhandled-exception path — which is what usually populates the `exceptions` table. Look for a genuine application fault in `traces` first (`Outcome == "Faulted"` on the completion record, from the [error-rate recipe](#error-rate-and-p95-latency-by-route) above, which also carries the exception's message) or in `requests` (`resultCode >= 500`). Treat a hit in `exceptions` as noteworthy precisely because it means something escaped the handler itself.
 
 ## Document-ingestion outcomes (spreadsheets)
 

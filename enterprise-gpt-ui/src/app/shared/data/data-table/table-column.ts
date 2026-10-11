@@ -1,9 +1,6 @@
 /**
- * Where a column goes when the table collapses into cards below the breakpoint.
- *
- * `trailing` sits beside the title for a single icon control; `actions` is the card's
- * full-width foot, for a row of labelled buttons. A lone kebab in `actions` reads as a
- * broken bar rather than a menu.
+ * A column's place on the mobile card. `trailing` sits beside the title, for one icon control;
+ * `actions` is the full-width foot for labelled buttons, where a lone kebab looks broken.
  */
 export type MobileSlot =
   'title' | 'subtitle' | 'meta' | 'badges' | 'trailing' | 'actions' | 'hidden';

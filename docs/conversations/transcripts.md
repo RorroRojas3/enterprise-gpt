@@ -47,7 +47,6 @@ partition key `/pk` of `{userId}:{conversationId}`. Shapes are in
 | `QueryAsync<T>` | Runs **one page** against one partition | Takes page size and continuation token |
 | `PatchItemAsync` | Partial update | Capped at 10 operations; returns `false` when absent |
 | `ExecuteBatchAsync` | One transaction on one partition | Capped at 100 operations; reports which operation failed |
-| `DeletePartitionAsync` | Empties a partition | Server-side delete, with a batched fallback |
 
 **Every member takes a partition key and none accepts a cross-partition query.** A transcript read
 that fanned out would be both a cost surprise and a tenancy hole, so it is unreachable through this
@@ -146,13 +145,13 @@ and billed figures measure the same thing.
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Transcripts/ITranscriptStore.cs` | The access surface and its partition-key rule |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Transcripts/TranscriptBatch.cs` | Recorded batch operations |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Serialization/CosmosSerialization.cs` | Fixed-width UTC dates |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Tokenization/ContextBudgetCalculator.cs` | Trimming |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Tokenization/TokenizerProvider.cs` | Shared vocabularies |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Tokenization/PromptOverhead.cs` | Framing and tool-schema cost |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/` | Transcript tests against the Cosmos emulator |
+| `enterprise-gpt-api/Enterprise.Gpt.Repository/Cosmos/CosmosTranscriptStore.cs` | The access surface and its partition-key rule |
+| `enterprise-gpt-api/Enterprise.Gpt.Repository/Cosmos/Models/TranscriptBatch.cs` | Recorded batch operations |
+| `enterprise-gpt-api/Enterprise.Gpt.Repository/Cosmos/Serialization/CosmosSerialization.cs` | Fixed-width UTC dates |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Conversations/Tokenization/ContextBudgetCalculator.cs` | Trimming |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Conversations/Tokenization/TokenizerProvider.cs` | Shared vocabularies |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Conversations/Tokenization/PromptOverheadCalculator.cs` | Framing and tool-schema cost |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Integration.Test/` | Transcript tests against the Cosmos emulator |
 
 ## Related
 

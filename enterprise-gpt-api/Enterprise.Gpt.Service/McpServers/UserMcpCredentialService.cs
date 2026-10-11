@@ -1,0 +1,223 @@
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Dto.Actions.McpServers;
+using Enterprise.Gpt.Dto.McpServers;
+using Enterprise.Gpt.Entity.McpServers;
+using Enterprise.Gpt.Repository.Sql.DbContexts;
+using Enterprise.Gpt.Service.Caching;
+using Enterprise.Gpt.Service.Exceptions;
+using Enterprise.Gpt.Service.Extensions;
+using Enterprise.Gpt.Service.Security;
+using FluentValidation;
+using FluentValidation.Results;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+
+namespace Enterprise.Gpt.Service.McpServers;
+
+public interface IUserMcpCredentialService
+{
+    /// <summary>Stores or replaces the caller's credential and evicts their cached client.</summary>
+    /// <exception cref="ValidationException">The server takes no user credential.</exception>
+    /// <exception cref="NotFoundException">No active server with <paramref name="mcpServerId"/> exists.</exception>
+    /// <exception cref="ForbiddenException">The caller does not hold the server's permission.</exception>
+    Task<McpCredentialStatusDto> SaveAsync(
+        Guid mcpServerId, SaveMcpCredentialActionDto request, CancellationToken cancellationToken = default);
+
+    /// <summary>Removes the caller's credential for a server and evicts their cached client.</summary>
+    /// <exception cref="NotFoundException">No active server exists, or the caller holds no credential for it.</exception>
+    /// <exception cref="ForbiddenException">The caller does not hold the server's permission.</exception>
+    Task DeleteAsync(Guid mcpServerId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks a user's stored credential refused so it stops being offered; a no-op when none is held, so a
+    /// race with the user removing theirs cannot resurrect a row.
+    /// </summary>
+    Task MarkRejectedAsync(Guid mcpServerId, Guid userOid, CancellationToken cancellationToken = default);
+}
+
+public partial class UserMcpCredentialService(ILogger<UserMcpCredentialService> logger,
+    ITokenService tokenService,
+    EnterpriseGptDbContext ctx,
+    IUserSecretProtector protector,
+    IMcpClientCache mcpClientCache,
+    TimeProvider timeProvider) : IUserMcpCredentialService
+{
+    private readonly ILogger<UserMcpCredentialService> _logger = logger;
+    private readonly ITokenService _tokenService = tokenService;
+    private readonly EnterpriseGptDbContext _ctx = ctx;
+    private readonly IUserSecretProtector _protector = protector;
+    private readonly IMcpClientCache _mcpClientCache = mcpClientCache;
+    private readonly TimeProvider _timeProvider = timeProvider;
+
+    /// <inheritdoc />
+    public async Task<McpCredentialStatusDto> SaveAsync(
+        Guid mcpServerId, SaveMcpCredentialActionDto request, CancellationToken cancellationToken = default)
+    {
+        var oid = _tokenService.GetOid();
+        var server = await LoadPermittedServerAsync(mcpServerId, oid, cancellationToken);
+
+        if (server.AuthType != McpAuthTypes.UserApiKey)
+        {
+            throw new ValidationException(
+            [
+                new ValidationFailure(nameof(SaveMcpCredentialActionDto.ApiKey),
+                    $"MCP server '{server.Name}' does not take an API key.")
+            ]);
+        }
+
+        var credential = await UpsertAsync(request.ApiKey, mcpServerId, oid, cancellationToken);
+
+        _mcpClientCache.InvalidateServerForUser(mcpServerId, oid);
+
+        LogApiKeySaved(_logger, oid, mcpServerId);
+
+        return credential.MapToMcpCredentialStatusDto(mcpServerId);
+    }
+
+    /// <inheritdoc />
+    public async Task DeleteAsync(Guid mcpServerId, CancellationToken cancellationToken = default)
+    {
+        var oid = _tokenService.GetOid();
+        _ = await LoadPermittedServerAsync(mcpServerId, oid, cancellationToken);
+
+        var credential = await _ctx.UserMcpCredentials
+            .FirstOrDefaultAsync(c => c.UserId == oid && c.McpServerId == mcpServerId, cancellationToken)
+            ?? throw new NotFoundException("No API key is stored for this MCP server.");
+
+        credential.DateDeactivated = _timeProvider.GetUtcNow();
+        credential.ModifiedById = oid;
+
+        await _ctx.SaveChangesOrConflictAsync("Your API key for this MCP server was changed by another request. Reload and try again.", cancellationToken);
+
+        _mcpClientCache.InvalidateServerForUser(mcpServerId, oid);
+
+        LogApiKeyRemoved(_logger, oid, mcpServerId);
+    }
+
+    /// <inheritdoc />
+    public async Task MarkRejectedAsync(Guid mcpServerId, Guid userOid, CancellationToken cancellationToken = default)
+    {
+        var date = _timeProvider.GetUtcNow();
+
+        // ExecuteUpdate, not load-and-save: this runs mid-turn on the streaming request's context, where
+        // SaveChangesAsync would flush whatever else that request is tracking.
+        var updated = await _ctx.UserMcpCredentials
+            .Where(c => c.UserId == userOid && c.McpServerId == mcpServerId && !c.DateRejected.HasValue)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(c => c.DateRejected, date)
+                    .SetProperty(c => c.DateModified, date)
+                    .SetProperty(c => c.ModifiedById, userOid),
+                cancellationToken);
+
+        if (updated == 0)
+        {
+            return;
+        }
+
+        // ExecuteUpdate bypasses the tracker: a tracked copy would serve the next read the pre-rejection
+        // value, and the save that clears a rejection would then find nothing to change.
+        foreach (var entry in _ctx.ChangeTracker
+            .Entries<UserMcpCredential>()
+            .Where(e => e.Entity.UserId == userOid && e.Entity.McpServerId == mcpServerId)
+            .ToList())
+        {
+            entry.State = EntityState.Detached;
+        }
+
+        LogApiKeyRejected(_logger, mcpServerId, userOid);
+    }
+
+    #region Private methods
+
+    // Retries once when a concurrent save took the row first: the filtered unique index on
+    // (UserId, McpServerId) alone serializes two inserts, so a double-clicked Save updates instead of a 500.
+    private async Task<UserMcpCredential> UpsertAsync(
+        string apiKey, Guid mcpServerId, Guid oid, CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            var credential = await _ctx.UserMcpCredentials
+                .FirstOrDefaultAsync(c => c.UserId == oid && c.McpServerId == mcpServerId, cancellationToken);
+
+            if (credential is null)
+            {
+                credential = new UserMcpCredential
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = oid,
+                    McpServerId = mcpServerId,
+                    CreatedById = oid
+                };
+
+                _ctx.Add(credential);
+            }
+
+            credential.Ciphertext = _protector.Protect(oid, mcpServerId, apiKey);
+            credential.ApiKeyHint = Hint(apiKey);
+            // Saving reasserts the key, so a stale rejection must not keep hiding the server.
+            credential.DateRejected = null;
+            credential.ModifiedById = oid;
+
+            try
+            {
+                await _ctx.SaveChangesAsync(cancellationToken);
+
+                return credential;
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                throw new ConflictException(
+                    "Your API key for this MCP server was changed by another request. Reload and try again.", ex);
+            }
+            catch (DbUpdateException) when (attempt == 1)
+            {
+                // Detached so the retry's read is not answered with the entity that failed to insert.
+                _ctx.Entry(credential).State = EntityState.Detached;
+            }
+        }
+    }
+
+    // Not IUserPermissionCache, as in McpToolProvider: storing a credential is a use of the server, so a
+    // revoked grant must apply on the next request.
+    private async Task<McpServer> LoadPermittedServerAsync(
+        Guid mcpServerId, Guid oid, CancellationToken cancellationToken)
+    {
+        var result = await _ctx.McpServers
+            .AsNoTracking()
+            .Where(s => s.Id == mcpServerId && !s.DateDeactivated.HasValue)
+            .Select(s => new
+            {
+                Server = s,
+                IsPermitted = s.Permissions.Any(p => p.UserPermissions.Any(up => up.UserId == oid))
+            })
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new NotFoundException("MCP server not found.");
+
+        return result.IsPermitted
+            ? result.Server
+            : throw new ForbiddenException($"You do not have permission to use MCP server '{result.Server.Name}'.");
+    }
+
+    // The last four characters, all any route discloses. Empty for shorter keys so this never fails open
+    // into GET api/mcps, though the validator's minimum length makes that branch unreachable.
+    private static string Hint(string apiKey)
+    {
+        return apiKey.Length <= 4 ? string.Empty : apiKey[^4..];
+    }
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "User {UserId} saved an API key for MCP server {McpServerId}")]
+    private static partial void LogApiKeySaved(ILogger logger, Guid userId, Guid mcpServerId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "User {UserId} removed their API key for MCP server {McpServerId}")]
+    private static partial void LogApiKeyRemoved(ILogger logger, Guid userId, Guid mcpServerId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "MCP server {McpServerId} rejected the API key of user {UserId}")]
+    private static partial void LogApiKeyRejected(ILogger logger, Guid mcpServerId, Guid userId);
+
+    #endregion
+}

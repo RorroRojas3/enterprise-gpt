@@ -36,15 +36,8 @@ import {
 const SKELETON_ROWS = 6;
 
 /**
- * The documents library: every document the signed-in user holds in a conversation —
- * uploaded or assistant-produced — newest first, grouped by conversation by default.
- *
- * **The URL is the source of truth for the query**, on the conversations library's
- * contract: `withComponentInputBinding()` binds `?name=`, `?view=` and `?source=` to the
- * inputs, {@link _applyQuery} is the only writer, and the loop cannot feed itself because
- * a navigation re-seeds `SearchInput`'s `linkedSignal`, whose debounce finds the text
- * unchanged and emits nothing. Both filters are served, so a search reaches every document
- * the caller holds rather than the window this screen happens to have paged to.
+ * The URL is the query's source of truth, on the conversations library's contract: the inputs
+ * bind from it and {@link _applyQuery} is the only writer.
  */
 @Component({
   selector: 'app-documents',
@@ -55,35 +48,19 @@ const SKELETON_ROWS = 6;
   styleUrl: './documents.scss',
 })
 export class Documents {
-  /**
-   * Bound from `?name=` by `withComponentInputBinding()`.
-   *
-   * Trimmed in the transform because the router writes `undefined` when the key
-   * leaves the URL, and a hand-edited `?name=%20%20` has to mean unfiltered.
-   */
+  /** Bound from `?name=`. Trimmed, so a hand-edited `?name=%20%20` means unfiltered. */
   readonly name = input('', {
     transform: (value: string | undefined) => value?.trim() ?? '',
   });
 
-  /**
-   * Bound from `?view=` by `withComponentInputBinding()`.
-   *
-   * Anything other than the one value the screen writes reads as grouped — the
-   * default frame `4j` draws — so a hand-edited `?view=list` cannot put the switch
-   * and the listing out of step.
-   */
+  /** Bound from `?view=`; anything but the value the screen writes reads as grouped. */
   readonly view = input(false, {
     transform: (value: string | undefined) => value === VIEW_FLAT,
   });
 
   /**
-   * Bound from `?source=` by `withComponentInputBinding()`, so it is named for the query
-   * key rather than for what it means — {@link generatedOnly} is the readable half, as
-   * {@link grouped} is for {@link view}.
-   *
-   * Same rule as {@link view}: anything but the one value the screen writes reads as
-   * unfiltered, so a hand-edited `?source=uploaded` narrows nothing rather than asking
-   * the server for something the switch cannot represent.
+   * Bound from `?source=`, hence the name; {@link generatedOnly} is the readable half. Anything
+   * but the value the screen writes reads as unfiltered.
    */
   readonly source = input(false, {
     transform: (value: string | undefined) => value === SOURCE_GENERATED,
@@ -96,11 +73,9 @@ export class Documents {
   private readonly _injector = inject(Injector);
   private readonly _document = inject(DOCUMENT);
   private readonly _host = inject<ElementRef<HTMLElement>>(ElementRef);
-  // Optional, unlike the conversations screen's: the toolbar — and the field with
-  // it — is withheld in the error branch here, so `required` would be a lie.
+  // Optional: the toolbar, field included, is withheld in the error branch.
   private readonly _search = viewChild(SearchInput);
-  // Optional for the same reason, and the control the filtered empty state hands focus
-  // back to: it outlives the branch the button that moved focus lives in.
+  // Optional likewise; the filtered empty state hands focus back to it.
   private readonly _sourceSwitch = viewChild<ElementRef<HTMLInputElement>>('sourceSwitch');
 
   /** A 403 answers the same however often it is asked; a 502 does not. */
@@ -108,30 +83,19 @@ export class Documents {
 
   protected readonly chatRoute = CHAT_ROUTE;
 
-  /**
-   * A field, not a template literal: `provideCheckNoChangesConfig({ exhaustive: true })`
-   * compares bindings between passes, and an array allocated in the template is a new
-   * value every check.
-   */
+  /** A field, not a template literal: exhaustive checkNoChanges would see a new array each pass. */
   protected readonly skeletonRows = Array.from({ length: SKELETON_ROWS });
 
   protected readonly grouped = computed(() => !this.view());
 
   protected readonly generatedOnly = computed(() => this.source());
 
-  /**
-   * Frame `4b`'s heading shape, naming the term.
-   *
-   * Read from the **store's** committed name, not from {@link name}: the store's copy is
-   * the one the empty result belongs to.
-   */
+  /** The store's committed term, not {@link name}: the one the empty result belongs to. */
   protected readonly noMatchHeading = computed(() => `No documents match “${this.library.name()}”`);
 
   /**
-   * The count and the busy state as one string, because they share one live region.
-   *
-   * Built here rather than interpolated beside an `@if` in the template, where the
-   * formatter's line breaks become whitespace inside the announced text.
+   * The count and busy state as one string for their shared live region; template interpolation
+   * beside an `@if` would put the formatter's line breaks into the announced text.
    */
   protected readonly announcement = computed(() => {
     if (this.library.isFirstLoad()) {
@@ -147,32 +111,20 @@ export class Documents {
   private readonly _focusAfterPage = signal(false);
 
   /**
-   * Conversations whose group the reader collapsed.
-   *
-   * Screen-local rather than store state: which groups are folded is view state that
-   * should survive a filter change but die with the route, exactly like a scroll
-   * position. A new `Set` per write, because `patchState`-style reference equality is
-   * how signals decide whether anything changed. Held as collapsed ids — not expanded
-   * ones — so every group starts expanded, including groups a filter reveals later.
+   * Collapsed groups: view state that survives a filter change but dies with the route. Held as
+   * collapsed ids, so groups a filter reveals later start expanded.
    */
   private readonly _collapsed = signal<ReadonlySet<string>>(new Set());
 
   protected readonly trackGroup = (group: DocumentGroup): string => group.conversationId;
 
   constructor() {
-    // The constructor is an injection context, which a signal-valued reactive method
-    // requires. Handing over a computation — not the values — is what makes a deep link
-    // issue one request carrying both filters, rather than an unfiltered request followed
-    // by a filtered one. It is also what starts the listing.
     this.library.bindQuery(() => ({ name: this.name(), generatedOnly: this.source() }));
 
-    // Focus, not state — the one thing a signal cannot express declaratively. Load more
-    // removes itself when the last page lands, leaving the reader who pressed it standing
-    // on a node that no longer exists and focus on `<body>`.
+    // Load more removes itself when the last page lands, so focus would fall to `<body>`.
     effect(() => {
       const settled = !this.library.loadingMore();
-      // Untracked, so clearing the request below cannot re-enter this effect, and so the
-      // only thing it waits on is the page.
+      // Untracked, so clearing it below cannot re-run this effect; only the page drives it.
       const requested = untracked(this._focusAfterPage);
 
       if (!settled || !requested) {
@@ -181,8 +133,7 @@ export class Documents {
 
       this._focusAfterPage.set(false);
 
-      // Still there and still focused: the reader is paging through, and moving focus off
-      // the control they are pressing would be the worse defect.
+      // Load more is still there and focused, so the reader keeps paging from it.
       if (untracked(this.library.hasMore)) {
         return;
       }
@@ -193,9 +144,8 @@ export class Documents {
 
   protected onLoadMore(): void {
     this.library.loadMore();
-    // Only when a page actually started. The control carries `aria-disabled` rather than
-    // `disabled`, so a press during a narrowing search still reaches this — and
-    // `loadMore()` no-ops there, leaving a flag that would never be cleared.
+    // Only if a page started: an aria-disabled press still lands here, and a flag set while
+    // `loadMore()` no-ops would never be cleared.
     this._focusAfterPage.set(this.library.loadingMore());
   }
 
@@ -230,47 +180,35 @@ export class Documents {
   }
 
   protected toggleGrouped(): void {
-    // Never replaces: on/off is the add-or-remove transition `shouldReplaceHistory`
-    // exists to push at, so back undoes the toggle in both directions.
+    // Always pushes, so back undoes the toggle in both directions.
     this._applyQuery({ [VIEW_PARAM]: this.grouped() ? VIEW_FLAT : null }, false);
   }
 
   protected toggleGenerated(): void {
-    // Never replaces, for the reason the view toggle does not.
+    // Always pushes, as the view toggle does.
     this._applyQuery({ [SOURCE_PARAM]: this.generatedOnly() ? null : SOURCE_GENERATED }, false);
   }
 
   protected clearFilter(): void {
     this.onSearched('');
-    // The button removes itself the moment rows come back, and focus would fall to
-    // `<body>` inside a list the reader then has to find again. The field is outside
-    // every branch of the non-error template, so it is still connected.
+    // The button removes itself once rows come back; the field sits outside every non-error
+    // branch, so it is still there to take focus.
     this._search()?.focusField();
   }
 
-  /**
-   * The filtered empty state's way out. It drops the name term too, because the label
-   * promises every document and leaving a term behind would land the reader on the
-   * no-matches card instead.
-   */
+  /** Drops the name term too: the label promises every document, not the no-matches card. */
   protected showEveryDocument(): void {
     this._applyQuery({ [SOURCE_PARAM]: null, [NAME_PARAM]: null }, false);
-    // The button is inside the branch this navigation tears down, so focus would fall to
-    // `<body>`; the switch it just turned off is where the state now lives.
+    // The button's branch is torn down; the switch it just turned off is where the state lives.
     this._sourceSwitch()?.nativeElement.focus();
   }
 
   /**
-   * Puts focus on the last row after the final page, since the control that was holding it
-   * has gone.
-   *
-   * The download button rather than the file name: the name is a `<span>`, and the button
-   * is the one control every row renders in both view modes. The filter field is the
-   * fallback because it is the only control outside every branch of the listing.
+   * After the final page, focuses the last row's download button, the one control every row has
+   * in both views; the filter field is the fallback.
    */
   private _focusLastRow(): void {
-    // Only when focus actually fell through. A reader who clicked into the filter field
-    // while the page was on the wire must not be yanked out of it.
+    // Only if focus fell through: a reader who clicked into the field meanwhile stays there.
     const active = this._document.activeElement;
     const fellThrough = active === null || active === this._document.body || !active.isConnected;
 
@@ -289,11 +227,7 @@ export class Documents {
     last.focus();
   }
 
-  /**
-   * The single writer. Every query change is a navigation and nothing writes the
-   * store directly, which is what keeps the URL authoritative and the back button
-   * working without a line of code.
-   */
+  /** The single writer: every query change is a navigation, so the URL stays authoritative. */
   private _applyQuery(queryParams: Params, replaceUrl: boolean): void {
     void this._router.navigate([], {
       relativeTo: this._route,

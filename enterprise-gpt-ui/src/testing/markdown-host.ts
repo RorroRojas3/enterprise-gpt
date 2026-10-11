@@ -3,14 +3,8 @@ import { ComponentFixture } from '@angular/core/testing';
 import { MarkdownComponent } from 'ngx-markdown';
 
 /**
- * A bare host for driving one source string through the real chat markdown
- * pipeline — the marked renderer overrides, then DOMPurify with the app's
- * profile — rather than through a stub.
- *
- * Every spec that reads rendered output needs the same thing and needs it to be
- * exactly right, which is why it is shared: the renderer writes its output a
- * beat *after* change detection returns, and reading the DOM early would pass a
- * negative assertion for the wrong reason.
+ * Drives a source string through the real markdown pipeline. Shared because the renderer writes
+ * after change detection returns, and an early read passes negative assertions wrongly.
  */
 @Component({
   selector: 'app-markdown-host',
@@ -23,17 +17,10 @@ export class MarkdownHost {
 
   private _resolve: (() => void) | null = null;
 
-  /**
-   * Resolves when the renderer has actually written its output.
-   *
-   * Counting microtasks by hand would couple callers to how many times
-   * ngx-markdown happens to await internally.
-   */
+  /** Resolves once the renderer has written, without counting ngx-markdown's internal awaits. */
   nextRender(): Promise<void> {
     if (this._resolve !== null) {
-      // `ready` fires off a floating promise, so a second caller waiting on the
-      // same slot would silently be handed the *previous* render's completion.
-      // Failing here turns that into a red test rather than a stale assertion.
+      // A second waiter on this slot would be handed the previous render's completion.
       throw new Error('A render is already being awaited on this host.');
     }
 

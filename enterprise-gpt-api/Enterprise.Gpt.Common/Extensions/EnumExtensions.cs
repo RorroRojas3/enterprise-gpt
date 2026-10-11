@@ -1,22 +1,25 @@
 ﻿using System.ComponentModel;
 using System.Reflection;
 
-namespace Enterprise.Gpt.Common.Extensions
+namespace Enterprise.Gpt.Common.Extensions;
+
+public static class EnumExtensions
 {
-    public static class EnumExtensions
+    #region Public static methods
+
+    public static string GetDescription(this Enum value)
     {
-        public static string GetDescription(this Enum value)
+        var field = value.GetType().GetField(value.ToString());
+
+        if (field is null)
         {
-            FieldInfo? field = value.GetType().GetField(value.ToString());
-
-            if (field is null)
-            {
-                return value.ToString();
-            }
-
-            DescriptionAttribute? attribute = field.GetCustomAttribute<DescriptionAttribute>();
-
-            return attribute?.Description ?? value.ToString();
+            return value.ToString();
         }
+
+        var attribute = field.GetCustomAttribute<DescriptionAttribute>();
+
+        return attribute?.Description ?? value.ToString();
     }
+
+    #endregion
 }

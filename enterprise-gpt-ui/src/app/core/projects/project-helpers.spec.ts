@@ -20,7 +20,7 @@ function validationError(errors: Record<string, readonly string[]>): ValidationA
   };
 }
 
-describe('toProjectBody (US-903)', () => {
+describe('toProjectBody', () => {
   const project = projectDetailFixture({
     name: 'Helios',
     description: 'Cutover work',
@@ -28,8 +28,6 @@ describe('toProjectBody (US-903)', () => {
   });
 
   it('echoes every field when only the name changes', () => {
-    // The trap the helper exists for: `PUT api/projects/{id}` assigns unconditionally,
-    // so a body carrying `name` alone clears the description *and* the instructions.
     expect(toProjectBody(project, { name: 'Helios 2.4' })).toEqual({
       name: 'Helios 2.4',
       description: 'Cutover work',
@@ -46,8 +44,6 @@ describe('toProjectBody (US-903)', () => {
   });
 
   it('distinguishes "leave it" from "clear it"', () => {
-    // `undefined` and `null` cannot be collapsed: a `??` here would make clearing a
-    // description impossible.
     expect(toProjectBody(project, { description: null }).description).toBeNull();
     expect(toProjectBody(project, { description: undefined }).description).toBe('Cutover work');
   });
@@ -61,7 +57,7 @@ describe('toProjectBody (US-903)', () => {
   });
 });
 
-describe('projectNameMessages (US-903)', () => {
+describe('projectNameMessages', () => {
   it('swaps the server duplicate message for the copy frame 4h requires', () => {
     const messages = projectNameMessages(
       validationError({ Name: ["A project named 'RFP Responses' already exists."] }),
@@ -79,8 +75,7 @@ describe('projectNameMessages (US-903)', () => {
   });
 
   it('reads the PascalCase key the server actually sends', () => {
-    // `DictionaryKeyPolicy` is not set server-side, so `errors` keys stay verbatim
-    // PascalCase while every DTO property is camelCase.
+    // No server-side `DictionaryKeyPolicy`, so `errors` keys stay PascalCase.
     expect(projectNameMessages(validationError({ Name: ['Required.'] }))).toEqual(['Required.']);
   });
 

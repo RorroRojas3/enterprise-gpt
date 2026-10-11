@@ -34,12 +34,8 @@ interface McpCatalogState {
 const initialState: McpCatalogState = { servers: [] };
 
 /**
- * Applies one server's confirmed credential state to the catalogue.
- *
- * A standalone updater rather than an inline literal, as `withRequestStatus`'s setters are:
- * it tree-shakes and tests without a `TestBed`. Returns the state unchanged when the event
- * names a server this user cannot see, so an unrelated event does not invalidate every
- * downstream computed by allocating a new array.
+ * Returns no change for a server this user cannot see, so an unrelated event doesn't allocate a
+ * new array and invalidate every downstream computed.
  */
 function applyCredentialStatus(
   status: McpCredentialStatusDto,
@@ -57,15 +53,8 @@ function applyCredentialStatus(
 }
 
 /**
- * The MCP tool servers the signed-in user may use, from `GET api/mcps`.
- *
- * The route is already filtered to the caller's grants server-side, so this list is
- * rendered as it arrives. Filtering it again here would be impossible anyway: the
- * permission behind each server is created per server at run time and no client
- * constant names it.
- *
- * Reloaded per session rather than cached across users, because the filter is the
- * user's own permission set.
+ * The MCP servers the signed-in user may use, filtered by grant server-side: each server's
+ * permission is created at run time, so no client constant could name it.
  */
 export const McpCatalogStore = signalStore(
   { providedIn: 'root' },
@@ -79,8 +68,7 @@ export const McpCatalogStore = signalStore(
   })),
   withMethods((store) => {
     async function load(): Promise<boolean> {
-      // Only the newest attempt may write: a reload started from a UI control while an
-      // earlier load is still in flight must not be overwritten by it. See SessionStore.
+      // Only the newest attempt may write, so a stale in-flight load can't overwrite a reload.
       const generation = ++store._load.generation;
       const isCurrent = (): boolean => generation === store._load.generation;
 
@@ -97,8 +85,7 @@ export const McpCatalogStore = signalStore(
         }
 
         if (servers === null) {
-          // Sign-out cancelled the request; idle rather than an error, which is not
-          // what the user's own action deserves to be reported as.
+          // Sign-out cancelled the request: idle, since the user's own action isn't an error.
           patchState(store, setIdle());
 
           return false;
@@ -130,24 +117,14 @@ export const McpCatalogStore = signalStore(
   }),
   withHooks({
     onInit(store) {
-      // The memo is a prop, so the reset below does not reach it. See SessionStore.
+      // The memo is a prop, so the reset below does not reach it.
       store._signedOut$.pipe(takeUntilDestroyed()).subscribe(() => {
         store._load.promise = null;
       });
     },
   }),
-  // The administration area registers, renames and deactivates these servers; this
-  // catalogue is what the composer's Tools menu reads. Without this the picker goes on
-  // offering a server whose permission was revoked from everyone the moment it was
-  // deactivated, and a turn started on one fails.
-  //
-  // `reload()` rather than `ensureLoaded()`: the memo is already resolved by the time an
-  // administrator can change anything, so the memoized call would hand back the stale
-  // list — and `reload()` also replaces the memo, so a later `ensureLoaded()` sees the
-  // fresh one. Mirrors `ModelCatalogStore`.
-  //
-  // The credential event patches one row instead, because unlike the catalogue events it
-  // arrives carrying the server's own answer for exactly the server it names.
+  // Keeps the Tools menu from offering a deactivated server; `reload()` since the resolved memo
+  // would return the stale list. The credential event carries its row's answer, so it patches.
   withEventHandlers((store, events = inject(Events)) => [
     events.on(adminEvents.mcpCatalogChanged).pipe(tap(() => void store.reload())),
     events

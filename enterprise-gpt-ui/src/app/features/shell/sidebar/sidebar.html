@@ -1,5 +1,4 @@
 @if (collapsed()) {
-  <!-- Frame 3b: the 60px strip. Every target is a 44px square. -->
   <nav class="strip" id="sidebar-primary" aria-label="Primary">
     <app-brand-logo class="strip__mark" variant="mark" alt="Andes" />
 
@@ -46,12 +45,7 @@
       }
     </ul>
 
-    <!--
-      Frame `Sidebar` lines 115-116: a second rule, then the star that stands in for the
-      whole project tree. Absent when nothing is starred, because expanding to a section
-      that is not there is an affordance with nothing behind it — the same rule the
-      section itself follows.
-    -->
+    <!-- Absent when nothing is starred: there would be no section to expand to. -->
     @if (projects.hasFavorites()) {
       <hr class="strip__rule" />
 
@@ -76,18 +70,6 @@
       <div class="sidebar__brand-row">
         <app-brand-logo class="sidebar__logo" variant="full" alt="Andes Software Solutions" />
 
-        <!--
-          The collapse control. The boards state that it "lives inside the sidebar"
-          (frame 3f) without drawing one, so the glyph is this application's choice:
-          a chevron pointing the way the panel will move, and one already in the
-          74-glyph sprite.
-        -->
-        <!--
-          Absent in `overlay` mode rather than disabled: inside frame `3e`'s drawer
-          there is no collapsed width to go to, and the shell's close button already
-          occupies this corner. Two dismissals that mean different things is worse
-          than one.
-        -->
         @if (showCollapse()) {
           <button
             #collapseControl
@@ -106,10 +88,7 @@
     </div>
 
     <div class="sidebar__actions">
-      <!--
-        A link, not a button: "New conversation" navigates to the empty chat route and
-        creates nothing (US-303). Nothing is posted until the first prompt.
-      -->
+      <!-- A link, not a button: it navigates, and nothing is created until the first prompt. -->
       <a class="btn btn-primary sidebar__new" [routerLink]="chatRoute">
         <app-icon name="bi-plus-lg" />
         <span>New conversation</span>
@@ -148,10 +127,7 @@
     <section class="sidebar__conversations" aria-labelledby="sidebar-conversations-heading">
       <h2 class="sidebar__heading" id="sidebar-conversations-heading">Conversations</h2>
 
-      <!--
-        The scroll container is this element alone, which is US-302's fourth criterion:
-        the list scrolls without taking the brand, the actions or the footer with it.
-      -->
+      <!-- The only scroll container, so the brand, actions and footer stay put. -->
       <div class="sidebar__list" [attr.aria-busy]="conversations.isPending() ? 'true' : null">
         @if (isFirstLoad()) {
           @for (row of skeletonRows; track $index) {
@@ -196,11 +172,7 @@
             }
           </ul>
 
-          <!--
-            Stated rather than silent. The list is the server's newest-first order and
-            this store asks for no order, so an undisclosed cut-off would read as "this is all
-            of them" when it is the first page of more.
-          -->
+          <!-- Stated, not silent: an undisclosed cut-off reads as "this is all of them". -->
           @if (conversations.hasMore() && !conversations.isPending()) {
             <button
               class="btn btn-sm btn-link sidebar__more"

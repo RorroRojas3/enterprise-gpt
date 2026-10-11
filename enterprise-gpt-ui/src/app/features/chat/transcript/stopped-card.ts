@@ -11,14 +11,8 @@ import { COPY_CONFIRMATION_MS, copyText } from '@core/clipboard/copy-text';
 import { Icon } from '@shared/icon/icon';
 
 /**
- * Frame `1h`'s detached "Stopped — not saved to this conversation" card
- * (US-407). The dashed border and the left inset are the design's statement
- * that this text is **not** part of the transcript: the server transcribed
- * neither the answer nor the prompt, and the card vanishes on route change,
- * reopen, and reload because the state behind it does.
- *
- * Retry restores the prompt and its turn settings into the composer — it
- * deliberately does not re-send.
+ * Detached from the transcript because the server saved neither prompt nor answer. Retry
+ * restores the prompt and its settings into the composer; it deliberately does not re-send.
  */
 @Component({
   selector: 'app-stopped-card',
@@ -31,7 +25,7 @@ export class StoppedCard {
   readonly text = input.required<string>();
   readonly retried = output<void>();
 
-  /** The kit's confirmation span; the focused button's label change announces it. */
+  /** The focused button's label change is what announces the confirmation. */
   protected readonly copied = signal(false);
 
   private _copiedTimer: ReturnType<typeof setTimeout> | null = null;

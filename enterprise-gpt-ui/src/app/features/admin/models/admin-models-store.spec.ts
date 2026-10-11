@@ -12,7 +12,7 @@ import { AdminModelsStore } from './admin-models-store';
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models/all`;
 
-describe('AdminModelsStore (US-1207)', () => {
+describe('AdminModelsStore', () => {
   let store: InstanceType<typeof AdminModelsStore>;
   let backend: HttpTestingController;
 
@@ -53,7 +53,7 @@ describe('AdminModelsStore (US-1207)', () => {
 
     const request = backend.expectOne(MODELS_URL);
     expect(request.request.method).toBe('GET');
-    // Unpaginated: no skip, no take, no name. That is what makes regime C honest.
+    // Unpaginated: no skip, take or name.
     expect(request.request.params.keys()).toEqual([]);
     request.flush([modelFixture()]);
     await settle();
@@ -67,8 +67,7 @@ describe('AdminModelsStore (US-1207)', () => {
       modelFixture({ name: 'Claude Sonnet 4.5', providerId: PROVIDER_ID.anthropic }),
     ]);
 
-    // Frame `5e`'s placeholder promises both, and neither string appears in the other's
-    // name — so this can only pass if the provider is in the searchable text.
+    // Neither string is in the other's name, so this passes only if the provider is searched.
     store.search('anthropic');
     expect(store.results().map((model) => model.name)).toEqual(['Claude Sonnet 4.5']);
 
@@ -92,7 +91,7 @@ describe('AdminModelsStore (US-1207)', () => {
     store.search('nothing matches this');
     await settle();
 
-    // Regime C: no second request, ever. `backend.verify()` is the assertion.
+    // No second request: `backend.verify()` is the assertion.
     expect(store.results()).toHaveLength(0);
     expect(store.hasNoMatches()).toBe(true);
   });
@@ -122,8 +121,6 @@ describe('AdminModelsStore (US-1207)', () => {
   it('offers sort only over a set it holds in full', async () => {
     await loadWith([modelFixture()]);
 
-    // Regime C's whole premise: one request is the complete set, so there is no
-    // pagination to be partway through.
     expect(store.canSort()).toBe(true);
     expect(store.sortUnavailableReason()).toBeNull();
   });
@@ -135,9 +132,7 @@ describe('AdminModelsStore (US-1207)', () => {
     await settle();
     const refetch = backend.expectOne(MODELS_URL);
 
-    // `isFulfilled` alone would read false here, so US-902's sort control would vanish
-    // and come back on every save, and `isResultPartial` would call a complete result
-    // partial. The rows on screen are still the whole catalog.
+    // `isFulfilled` alone would read false here, though the rows are still the whole catalog.
     expect(store.canSort()).toBe(true);
     expect(store.sortUnavailableReason()).toBeNull();
 
@@ -152,8 +147,7 @@ describe('AdminModelsStore (US-1207)', () => {
     TestBed.inject(Dispatcher).dispatch(adminEvents.modelCatalogChanged());
     await settle();
 
-    // The event is void: saving a model with `isDefault` demotes a row no response
-    // describes, so only a refetch can show the catalog as it now stands.
+    // Saving with `isDefault` demotes a row no response describes; only a refetch shows it.
     backend
       .expectOne(MODELS_URL)
       .flush([

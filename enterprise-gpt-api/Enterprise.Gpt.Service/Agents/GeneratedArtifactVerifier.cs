@@ -4,6 +4,7 @@ using CsvHelper;
 using CsvHelper.Configuration;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
+using Enterprise.Gpt.Service.Agents.Models;
 using Microsoft.Extensions.Logging;
 using PdfSharp.Pdf.IO;
 using Paragraph = DocumentFormat.OpenXml.Wordprocessing.Paragraph;
@@ -12,47 +13,21 @@ using Table = DocumentFormat.OpenXml.Wordprocessing.Table;
 
 namespace Enterprise.Gpt.Service.Agents;
 
-/// <summary>What re-opening a produced artifact found.</summary>
-/// <param name="Passed">Whether the file opened and carries something.</param>
-/// <param name="Shape">
-/// What was measured — sheet count, slide count, page count, header row — for the answer to state.
-/// Empty on a failure.
-/// </param>
-/// <param name="Reason">Why it failed, in a sentence safe to relay. <see langword="null"/> on a pass.</param>
-public sealed record ArtifactVerification(bool Passed, string Shape, string? Reason)
-{
-    /// <summary>A file that opened, with what was measured in it.</summary>
-    /// <param name="shape">The measurement, for the answer to quote.</param>
-    /// <returns>A passing verdict.</returns>
-    public static ArtifactVerification Pass(string shape) => new(true, shape, null);
-
-    /// <summary>A file that did not.</summary>
-    /// <param name="reason">A clause that completes "… could not be saved because …".</param>
-    /// <returns>A failing verdict.</returns>
-    public static ArtifactVerification Fail(string reason) => new(false, string.Empty, reason);
-}
-
-/// <summary>
-/// Re-opens a produced artifact and measures it, before it is stored.
-/// </summary>
+/// <summary>Re-opens a produced artifact and measures it, before it is stored.</summary>
 /// <remarks>
-/// Deterministic and free: no model call, no sandbox session, no network. It runs against the exact
-/// bytes that will be stored and downloaded, which is a stronger claim than checking a copy still
-/// inside the sandbox container.
+/// Deterministic and free (no model, sandbox or network), and run against the exact bytes that will be stored.
 /// </remarks>
 public interface IGeneratedArtifactVerifier
 {
     /// <summary>
-    /// Opens an artifact with the library that owns its format and reports what it holds.
+    /// Opens an artifact with the library that owns its format (by file extension) and reports what it holds.
     /// </summary>
-    /// <param name="fileName">The name the sandbox gave it; only its extension is read.</param>
-    /// <param name="content">The artifact's bytes.</param>
     /// <returns>The verdict. A file that cannot be opened is a failed check, never an exception.</returns>
     ArtifactVerification Verify(string fileName, byte[] content);
 }
 
 /// <inheritdoc />
-public sealed class GeneratedArtifactVerifier(ILogger<GeneratedArtifactVerifier> logger) : IGeneratedArtifactVerifier
+public sealed partial class GeneratedArtifactVerifier(ILogger<GeneratedArtifactVerifier> logger) : IGeneratedArtifactVerifier
 {
     // Permissive on purpose: a ragged row is a shape observation, not a parse failure, and refusing one
     // here would discard a spreadsheet the user can open perfectly well.
@@ -95,11 +70,13 @@ public sealed class GeneratedArtifactVerifier(ILogger<GeneratedArtifactVerifier>
         {
             // Logged and never relayed: a parser's own message can quote the bytes it choked on, and
             // those bytes are the document's content.
-            _logger.LogWarning(exception, "A generated {Extension} artifact could not be re-opened", extension);
+            LogArtifactReopenFailed(_logger, exception, extension);
 
             return ArtifactVerification.Fail($"it could not be re-opened as {extension.TrimStart('.')}");
         }
     }
+
+    #region Private methods
 
     private static ArtifactVerification VerifyWord(byte[] content)
     {
@@ -171,9 +148,8 @@ public sealed class GeneratedArtifactVerifier(ILogger<GeneratedArtifactVerifier>
     {
         using var stream = new MemoryStream(content, writable: false);
 
-        // Import rather than Modify, so nothing resolves a font: this process registers a font resolver
-        // only for the export renderer, and a full open would fail on that rather than on the file.
-        // (InformationOnly reads as the right mode and is not implemented in PDFsharp 6.)
+        // Import, not Modify, so no font resolves: only the export renderer registers a font resolver.
+        // InformationOnly is not implemented in PDFsharp 6.
         using var document = PdfReader.Open(stream, PdfDocumentOpenMode.Import);
 
         return document.PageCount == 0
@@ -217,4 +193,13 @@ public sealed class GeneratedArtifactVerifier(ILogger<GeneratedArtifactVerifier>
 
     private static string Count(int value, string noun) =>
         string.Create(CultureInfo.InvariantCulture, $"{value} {noun}{(value == 1 ? string.Empty : "s")}");
+
+    #endregion
+
+    #region Logging
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "A generated {Extension} artifact could not be re-opened")]
+    private static partial void LogArtifactReopenFailed(ILogger logger, Exception exception, string extension);
+
+    #endregion
 }

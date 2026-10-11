@@ -15,27 +15,9 @@ import { addPendingId, removePendingId, withPendingIds } from '@core/state/with-
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 
 /**
- * Fetches the original file behind a document, on click and never before (US-804).
- *
- * The response's `downloadUrl` is a **bearer credential** with roughly a five-minute
- * life: anyone holding it reads the file with no sign-in. That is what shapes this
- * store more than anything else —
- *
- * - **Nothing is prefetched.** A list of forty documents issues zero requests until one
- *   is clicked, so forty live credentials are never in flight for a user who wanted
- *   one file.
- * - **The URL never lands anywhere.** It is not written to state, `localStorage`,
- *   `sessionStorage`, a router URL, or a log; it exists inside {@link save} and is gone
- *   when that function returns. Holding it in store state would also survive into the
- *   next render for no purpose.
- * - **The link is not fetched, only followed.** It carries its own SAS credential and
- *   must not receive the app's `Authorization` header, so it deliberately does not go
- *   through `HttpClient`. The route already signs `Content-Disposition`, so the browser
- *   saves the right file name whether or not the `download` attribute survives the
- *   cross-origin hop.
- *
- * `withPendingIds` keyed by document id is what lets one row spin without disabling the
- * other thirty-nine.
+ * Fetches a document's signed link on click, never before: it is a bearer credential for about
+ * five minutes. The URL never reaches state, storage, the router or a log, and is followed by
+ * an anchor rather than `HttpClient`, so it never carries the app's `Authorization` header.
  */
 export const DocumentDownloadStore = signalStore(
   { providedIn: 'root' },
@@ -48,19 +30,10 @@ export const DocumentDownloadStore = signalStore(
     _signedOut$: injectSignedOut(),
   })),
   withMethods((store) => {
-    /**
-     * Hands the file to the browser and lets go of the credential immediately.
-     *
-     * The handoff itself is `saveWithAnchor`, shared with the conversation export
-     * (US-1502); the scheme check below stays here, because it is about a URL the
-     * server chose and a `blob:` URL the client made needs nothing of the kind.
-     */
+    /** Checks the scheme here, not in `saveWithAnchor`: only a server-chosen URL needs it. */
     function save(download: DocumentDownloadDto): boolean {
-      // A direct `href` assignment bypasses Angular's `DomSanitizer` entirely, so a
-      // `javascript:` value would execute on click. The value is server-issued and
-      // authenticated, which makes this defence in depth rather than a live hole —
-      // but it is the same standard the markdown pipeline already holds itself to,
-      // and the check costs one parse.
+      // A direct `href` bypasses `DomSanitizer`, so a `javascript:` URL would run on click;
+      // defence in depth, since the value is server-issued.
       let parsed: URL;
       try {
         parsed = new URL(download.downloadUrl, store._document.baseURI);
@@ -92,8 +65,7 @@ export const DocumentDownloadStore = signalStore(
           return;
 
         case 'storage-not-configured':
-          // A deployment fact, not a failure of this file — and not retryable, which
-          // is why `retryInterceptor` leaves an app-typed 503 alone too.
+          // A deployment fact, not a failure of this file, and not retryable.
           store._toasts.show({
             tone: 'error',
             title: 'Downloads aren’t available in this deployment',
@@ -109,8 +81,7 @@ export const DocumentDownloadStore = signalStore(
     }
 
     const _download = rxMethod<{ target: UploadTarget; documentId: string; fileName: string }>(
-      // mergeMap, not switchMap: two downloads are two files, and the second must not
-      // cancel the first the way a second search supersedes the first.
+      // mergeMap: a second download is a second file and must not cancel the first.
       mergeMap(({ target, documentId, fileName }) => {
         patchState(store, addPendingId(documentId));
 
@@ -139,14 +110,7 @@ export const DocumentDownloadStore = signalStore(
     );
 
     return {
-      /**
-       * Fetches a signed link and saves the file. Call this from a click, never from
-       * a render.
-       *
-       * @param target The conversation or project the document hangs off.
-       * @param documentId The persisted document.
-       * @param fileName Used only in failure copy; the saved name comes from the link.
-       */
+      /** Call from a click, never a render. `fileName` is only for failure copy. */
       download(target: UploadTarget, documentId: string, fileName: string): void {
         _download({ target, documentId, fileName });
       },

@@ -110,8 +110,7 @@ describe('McpCredentialDialog', () => {
       'Remove the spaces or line breaks',
     );
 
-    // Enabled but inert: the button is the affordance that reveals the message, and pressing
-    // it sends nothing.
+    // Enabled but inert: pressing it reveals the message and sends nothing.
     expect(submitButton().disabled).toBe(false);
     submitButton().click();
     await fixture.whenStable();

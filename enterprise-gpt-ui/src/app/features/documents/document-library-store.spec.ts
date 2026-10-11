@@ -20,7 +20,7 @@ import { DOCUMENT_PAGE_SIZE, DocumentLibraryStore } from './document-library-sto
 
 const DOCUMENTS_URL = `${TEST_API_BASE_URL}/api/documents`;
 
-describe('DocumentLibraryStore (US-1002/US-1003)', () => {
+describe('DocumentLibraryStore', () => {
   let backend: HttpTestingController;
   let store: InstanceType<typeof DocumentLibraryStore>;
   let term: ReturnType<typeof signal<string>>;
@@ -46,7 +46,7 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
     backend.verify();
   });
 
-  /** Wires the query the way the screen's constructor does — one computation, both filters. */
+  /** Binds the query the way the screen's constructor does. */
   function bind(): void {
     TestBed.runInInjectionContext(() =>
       store.bindQuery(() => ({ name: term(), generatedOnly: generatedOnly() })),
@@ -64,12 +64,11 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
     );
   }
 
-  /** A full page, so more is left behind and `hasMore()` is true. */
   function fullPage(count = DOCUMENT_PAGE_SIZE): UserDocumentDto[] {
     return Array.from({ length: count }, () => userDocumentFixture());
   }
 
-  /** A first page that leaves more behind, answered the way the server would. */
+  /** Loads a full first page that leaves more behind. */
   function loadFirstPage(totalCount = 60): void {
     bind();
     expectRequest().flush(documentPage(fullPage(), { totalCount, pageSize: DOCUMENT_PAGE_SIZE }));
@@ -77,8 +76,6 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
   }
 
   it('starts empty and idle, with zero seeded records', () => {
-    // Asserted explicitly: the library is built from the server's answer alone, so a
-    // brand-new user sees the empty state and never a placeholder row.
     expect(store.entities()).toEqual([]);
     expect(store.isIdle()).toBe(true);
     expect(store.totalCount()).toBe(0);
@@ -102,8 +99,7 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
       const request = expectRequest();
       expect(request.request.params.get('take')).toBe(String(DOCUMENT_PAGE_SIZE));
       expect(request.request.params.get('skip')).toBe('0');
-      // Omitted, never sent empty: a blank `name=` would still take the server down its
-      // LIKE branch.
+      // Omitted, never sent blank: it would still take the server down its LIKE branch.
       expect(request.request.params.has('name')).toBe(false);
 
       request.flush(documentPage([userDocumentFixture()], { pageSize: DOCUMENT_PAGE_SIZE }));
@@ -142,8 +138,6 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
 
       store.loadMore();
       TestBed.tick();
-      // `skip` has not moved yet, so a second request would fetch the same window twice
-      // and `addEntities` would silently no-op on every id.
       backend.expectNone(() => true);
 
       inFlight.flush(documentPage([], { totalCount: 60, pageSize: DOCUMENT_PAGE_SIZE, skip: 25 }));
@@ -175,8 +169,6 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
       TestBed.tick();
       await Promise.resolve();
 
-      // The rows already on screen belong to a query that succeeded, so swapping the list
-      // for an error panel would throw away a usable result set.
       expect(store.entities().length).toBe(DOCUMENT_PAGE_SIZE);
       expect(store.error()).toBeNull();
       expect(store.loadingMore()).toBe(false);
@@ -193,8 +185,6 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
       term.set('quarterly');
       TestBed.tick();
 
-      // Without `_querySuperseded$` this page would land after the new query's
-      // `setAllEntities` and append a window from a list that no longer exists.
       expect(page.cancelled).toBe(true);
       expect(store.loadingMore()).toBe(false);
 
@@ -218,8 +208,7 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
       TestBed.inject(Dispatcher).dispatch(conversationEvents.deleted(doomed?.conversationId ?? ''));
       TestBed.tick();
 
-      // The page's URL was built against the pre-removal offset, so letting it land would
-      // skip the rows that slid into the gap.
+      // Built against the pre-removal offset, it would skip the rows that slid into the gap.
       expect(page.cancelled).toBe(true);
       expect(store.loadingMore()).toBe(false);
     });
@@ -268,8 +257,6 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
       store.loadMore();
       TestBed.tick();
 
-      // The reachability guarantee: without this the second page searches nothing and a
-      // match ranked past the first page never comes back.
       const next = expectRequest();
       expect(next.request.params.get('name')).toBe('quarterly');
       expect(next.request.params.get('skip')).toBe(String(DOCUMENT_PAGE_SIZE));
@@ -302,7 +289,6 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
       expectRequest().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
       TestBed.tick();
 
-      // Zero documents and no term: "Nothing uploaded yet" is the truth.
       expect(store.isEmpty()).toBe(true);
       expect(store.hasNoMatches()).toBe(false);
       expect(store.countSummary()).toBe('No documents');
@@ -312,7 +298,6 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
       expectRequest().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
       TestBed.tick();
 
-      // A term with nothing behind it is the other state, and the one with a way out.
       expect(store.hasNoMatches()).toBe(true);
     });
   });
@@ -381,7 +366,6 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
       expectRequest().flush(documentPage([document], { pageSize: DOCUMENT_PAGE_SIZE }));
       TestBed.tick();
 
-      // Never "1 of 1 files": the group is whole, and the qualifier would be noise.
       expect(store.groups()[0]?.countLabel).toBe('1 file');
     });
 
@@ -467,8 +451,7 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
       generatedOnly.set(true);
       TestBed.tick();
 
-      // Held rows under the new filter would be counted and captioned as that filter's set
-      // for a whole round trip; the skeleton is the honest thing to show instead.
+      // Held rows would be counted as the new filter's set for a round trip; a skeleton is honest.
       expect(store.isFirstLoad()).toBe(false);
       expectGeneratedRequest().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
       TestBed.tick();
@@ -485,8 +468,6 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
       );
       TestBed.tick();
 
-      // It would otherwise describe the whole library, which is the dishonesty serving the
-      // filter exists to avoid.
       expect(store.countSummary()).toBe('Showing 25 of 600 generated documents');
     });
 
@@ -526,8 +507,6 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
       expect(store.entityMap()[renamedA.id]?.conversationName).toBe('Renamed');
       expect(store.entityMap()[renamedB.id]?.conversationName).toBe('Renamed');
       expect(store.entityMap()[kept.id]?.conversationName).toBe(kept.conversationName);
-      // The filter is on document names only, so a rename never removes a row — or moves
-      // a counter.
       expect(store.entities().length).toBe(3);
       expect(store.totalCount()).toBe(3);
     });
@@ -547,8 +526,7 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
       TestBed.tick();
 
       expect(store.entities().map((document) => document.id)).toEqual([kept.id]);
-      // Both together: the total because the count would otherwise claim rows that are
-      // gone, and the offset because `hasMore` compares the two.
+      // The offset too, since `hasMore` compares the two.
       expect(store.totalCount()).toBe(1);
       expect(store.skip()).toBe(1);
     });
@@ -564,8 +542,7 @@ describe('DocumentLibraryStore (US-1002/US-1003)', () => {
     TestBed.inject(Dispatcher).dispatch(sessionEvents.signedOut());
     TestBed.tick();
 
-    // Clearing state is not cancelling work: `withResetOnSignOut` empties the store and the
-    // response would write the previous user's rows straight back over it.
+    // The reset clears state but cancels nothing; the response would write the old rows back.
     expect(inFlight.cancelled).toBe(true);
     expect(store.entities()).toEqual([]);
     expect(store.loadingMore()).toBe(false);

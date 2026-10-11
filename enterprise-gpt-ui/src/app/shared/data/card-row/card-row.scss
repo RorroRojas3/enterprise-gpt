@@ -34,11 +34,8 @@
   font-size: 12px;
 }
 
-// `:empty` alone is not enough: a consumer that projects one wrapper per slot — as
-// `DataTable` does — leaves the slot holding an empty element rather than nothing, and a
-// collapsed slot is the difference between a card and a card with a 44px blank bar.
-// `:only-child`, because a slot may hold several projected nodes and one of them being
-// empty says nothing about the rest — and a bare `<input>` is always `:empty`.
+// The `:has` arm hides a slot holding one empty wrapper, as `DataTable` projects; `:only-child`
+// because one empty node among several says nothing about the rest.
 .card-row__subtitle,
 .card-row__meta,
 .card-row__badges,
@@ -75,9 +72,8 @@
   display: flex;
   gap: 8px;
 
-  // The foot is for labelled buttons, which share the width evenly. Their height is the
-  // consumer's, because the button lives in the consumer's own stylesheet and a
-  // `min-height` here would land on whatever wrapper it happens to project.
+  // Labelled buttons share the width. Height stays the consumer's: a `min-height` here would
+  // land on whatever wrapper it projects.
   ::ng-deep > * {
     flex: 1 1 0;
   }

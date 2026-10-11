@@ -1,16 +1,8 @@
 @use 'breakpoints' as bp;
 
-// 100dvh rather than 100%: the host is a routed sibling of <router-outlet> inside
-// <app-root>, which has no height of its own, and dvh is what keeps the composer clear
-// of the mobile browser's collapsing toolbar.
-//
-// Flex rather than grid: `flex-basis` and `width` are plain interpolable lengths, where
-// animating `grid-template-columns` depends on both track lists staying interpolable.
-//
-// `position: relative` since US-1403: it makes this the containing block for frame 3g's
-// backdrop and floating panel, both of which are absolutely positioned. It does not
-// reach the collapsed strip's tooltip flyout, which positions against its own host
-// rather than against this element.
+// 100dvh keeps the composer clear of the mobile browser's collapsing toolbar. Flex rather than
+// grid, so the sidebar width animates as a plain length. Relative for the tablet backdrop and
+// floating panel.
 :host {
   display: flex;
   position: relative;
@@ -28,16 +20,14 @@
   width: 60px;
 }
 
-// 200ms, from the one transition scale in `_motion.scss`, whose `--t-slow` names the
-// sidebar width as its example. The global prefers-reduced-motion block suppresses it.
+// The global prefers-reduced-motion block suppresses this.
 :host(.shell--animated) .shell__sidebar {
   transition:
     flex-basis var(--t-slow) ease,
     width var(--t-slow) ease;
 }
 
-// min-width: 0 is load-bearing on a flex child: without it the screen's own content
-// sets the item's minimum and the sidebar gets squeezed instead.
+// min-width: 0, or the screen's content sets this item's minimum and squeezes the sidebar.
 .shell__main {
   display: flex;
   flex: 1;
@@ -45,22 +35,16 @@
   min-width: 0;
   overflow: hidden;
 
-  // The skip link's target. Focus only ever lands here from that link, so the ring is
-  // the confirmation the link worked — suppressing it would leave a keyboard user with
-  // no signal that anything happened. `:focus-visible`, so a mouse user who happens to
-  // click into the region gets nothing.
+  // The skip link's target: the ring confirms the link worked.
   &:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
   }
 }
 
-// ── Frame 3g: 768–1023px ─────────────────────────────────────────────────────
-// The strip is the default at this width and the expanded panel floats over the
-// content. `.shell__main` is never told about any of it: the panel leaves the flow and
-// `.shell__rail` holds the 60px track it vacated, so the flex row the main column is
-// laid out against is byte-for-byte the same open or closed. That is what makes "the
-// main content never reflows" structural rather than arithmetic.
+// ── Tablet: 768–1023px ───────────────────────────────────────────────────────
+// The expanded panel floats over the content and `.shell__rail` holds the 60px track it
+// vacated, so `.shell__main` never reflows.
 @include bp.tablet {
   .shell__rail {
     flex: 0 0 60px;
@@ -83,21 +67,15 @@
   }
 }
 
-// ── Frames 1d and 3e: below 768px ────────────────────────────────────────────
-// The navbar stacks above the routed screen, and the sidebar is not in the flow at all
-// — it exists only inside the drawer.
+// ── Mobile: below 768px ──────────────────────────────────────────────────────
+// The navbar stacks above the screen; the sidebar exists only inside the drawer.
 @include bp.mobile {
   :host {
     flex-direction: column;
   }
 
-  // Inside the drawer the sidebar is full-bleed, so the 260px track it takes in the
-  // flow has to be undone. It still carries the class: it is one declaration rendered
-  // at one of two outlets, and this is the price of that.
-  //
-  // The insets are the drawer's, not the sidebar's: with `viewport-fit=cover` and a
-  // full-width panel this surface reaches every edge of the device, including under the
-  // notch in landscape. The composer and the transcript take the same treatment.
+  // Full-bleed in the drawer, undoing the 260px track. The safe-area insets are the drawer's:
+  // with `viewport-fit=cover` this surface reaches under the notch in landscape.
   .shell__sidebar {
     flex: 1 1 auto;
     width: 100%;
@@ -108,10 +86,8 @@
   }
 }
 
-// Frame 3e's 40×40 close control, inset from the panel's own corner. Absolute against
-// `.offcanvas-panel__body`, which `bare` makes a containing block for exactly this.
-// The safe-area insets are added because `viewport-fit=cover` puts this corner under
-// the notch in landscape.
+// Absolute against `.offcanvas-panel__body`, which `bare` makes a containing block for this;
+// the safe-area insets keep it out from under the notch in landscape.
 .shell__drawer-close {
   display: flex;
   position: absolute;

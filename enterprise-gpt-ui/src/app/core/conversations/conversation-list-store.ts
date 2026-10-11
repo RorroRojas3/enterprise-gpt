@@ -38,23 +38,13 @@ import {
 } from '@core/state/with-request-status';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 
-/**
- * How many rows the sidebar asks for at a time.
- *
- * Below the server's 1–100 clamp and high enough that most users never reach the
- * "Load more" row; EP-7's full library pages properly.
- */
+/** Within the server's 1–100 clamp, and high enough that most users never reach "Load more". */
 export const SIDEBAR_PAGE_SIZE = 50;
 
 interface ConversationListState {
   /** The `name=` filter currently in force. Empty means unfiltered. */
   readonly name: string;
-  /**
-   * Whether `ensureLoaded` has released the query. See the `onInit` hook.
-   *
-   * Private: it is a release sentinel, not something a screen should render or reason
-   * about, and `@ngrx/signals` strips `_`-prefixed members from the public store type.
-   */
+  /** Whether `ensureLoaded` has released the query; a sentinel, so private. */
   readonly _started: boolean;
   /**
    * A page beyond the first is in flight. Separate from `requestStatus` so the loaded
@@ -62,10 +52,8 @@ interface ConversationListState {
    */
   readonly loadingMore: boolean;
   /**
-   * Which result set the entities belong to; every query bump replaces it. Private:
-   * it exists so a {@link RemovedRow} can prove it still describes the list on
-   * screen — `restoreRow` must not splice a row into a result set its removal never
-   * touched, nor advance counters that never lost it.
+   * Bumped per query, so `restoreRow` can refuse a {@link RemovedRow} from a result set no
+   * longer on screen.
    */
   readonly _queryGeneration: number;
 }
@@ -86,12 +74,8 @@ export interface RemovedRow {
 }
 
 /**
- * Narrows a value to the fields the list holds.
- *
- * Callers legitimately hand this store a `ConversationDetailDto` — `ConversationStore`
- * does, after `GET api/conversations/{id}` — and spreading one straight into an entity
- * would leave `mcpServerIds` on some rows and not others, so `entities()` would stop
- * being uniformly `ConversationDto`-shaped.
+ * Strips a `ConversationDetailDto`, which `ConversationStore` passes in, to list fields so no
+ * row carries `mcpServerIds`.
  */
 function listFields(conversation: ConversationDto): ConversationDto {
   const { id, projectId, modelId, name, isFavorite, dateCreated, dateModified } = conversation;
@@ -100,44 +84,11 @@ function listFields(conversation: ConversationDto): ConversationDto {
 }
 
 /**
- * The signed-in user's conversations, from `GET api/conversations/search`.
- *
- * **This is the reference list store.** Fifteen more are written against its shape,
- * so four things in it are decisions rather than details:
- *
- * 1. **`rxMethod` + `switchMap`, not the promise-and-generation-counter shape
- *    `SessionStore` and `ModelCatalogStore` use.** Those two exist to be awaited by a
- *    guard. This one is driven by typing, where a slow response to `"ang"` must not
- *    paint over a fast response to `"angular"` — and cancellation is what `switchMap`
- *    is for.
- * 2. **Loading is declarative.** The query is wired once, in `onInit`, to a
- *    computation over `started` and `name`; changing either refetches with no second
- *    call site. `ensureLoaded` therefore only flips a flag — it is called from
- *    `SessionBootstrap`, where there is no injection context to bind a signal-valued
- *    reactive method to.
- * 3. **No `debounceTime` here.** `SearchInput` already debounces 300ms and emits only
- *    the committed value; a second debounce would add 300ms of latency for nothing.
- *    Add one here only if a caller ever drives `search` from raw keystrokes.
- * 4. **`takeUntil(signedOut$)` on the inner request.** `withResetOnSignOut` clears
- *    state and nothing else — a response already on the wire would otherwise write
- *    the previous user's rows back over an emptied store.
- *
- * Rows keep the server's order (`dateCreated` descending) and this store sends no
- * `sort=`, even though US-706 put one on the route: the sidebar is a fixed recency list
- * with no control to offer, and the reader who wants another order has `/conversations`,
- * where the select lives.
- *
- * `withPendingIds` arrived with US-304, the first per-row action. The mutation surface
- * around it — {@link renameRow}, {@link favoriteRow}, {@link setRowPending} — exists
- * because the store that drives renames, favourites and deletes
- * (`ConversationActionsStore`) cannot `patchState` a store whose state is protected;
- * entity writes stay methods here, decisions stay there.
- *
- * The `_started` + release-the-query trio (`ensureLoaded`, the `null` arm of
- * `_runQuery`, and the `onInit` computation) is the obvious candidate for a sixth
- * feature in `core/state/`. It stays inline here on the skill's own rule — two stores
- * sharing a shape is a coincidence, three is a feature — so the extraction trigger is
- * the *third* store that needs a bootstrap-released load, not this one.
+ * The signed-in user's conversations, newest first; the reference list store. `switchMap` so a
+ * slow response cannot paint over a newer search, no `debounceTime` as `SearchInput` debounces,
+ * `takeUntil(signedOut$)` so a late response cannot refill a reset store, and no `sort=` as the
+ * sidebar is a fixed recency list. Row writes are methods because `ConversationActionsStore`
+ * cannot patch protected state.
  */
 export const ConversationListStore = signalStore(
   { providedIn: 'root' },
@@ -152,12 +103,8 @@ export const ConversationListStore = signalStore(
     _url: inject(ApiUrl).build('conversations/search'),
     _signedOut$: injectSignedOut(),
     /**
-     * Fires when the result set the list is paging through is replaced.
-     *
-     * `switchMap` cancels the *query* pipeline's own request, but a "Load more" is a
-     * second pipeline and nothing in the first reaches it. Left running, its page —
-     * rows from the previous result set — would be appended under the new one and its
-     * `setPage` would advance `skip` past a window that no longer exists.
+     * Cancels an in-flight "Load more", which `switchMap` cannot reach, when the result set is
+     * replaced; its stale page would land under the new set and skew `skip`.
      */
     _querySuperseded$: new Subject<void>(),
   })),
@@ -178,8 +125,7 @@ export const ConversationListStore = signalStore(
       const trimmed = name.trim();
       let params = new HttpParams().set('skip', String(skip)).set('take', String(store.take()));
 
-      // Omitted rather than sent empty: US-302's first criterion, and `name=` blank
-      // would still take the server down its LIKE branch.
+      // Omitted rather than sent empty: a blank `name=` still takes the server's LIKE branch.
       if (trimmed !== '') {
         params = params.set('name', trimmed);
       }
@@ -187,11 +133,8 @@ export const ConversationListStore = signalStore(
       return { url: store._url, params };
     }
 
-    // Deliberately no `distinctUntilChanged`. The signal computation below only emits
-    // when `started` or `name` actually change, so it would be redundant for that path
-    // — and it would break the other two: `retry()` pushes the same name a second time
-    // on purpose, and after sign-out resets the store the very next query is the
-    // identical one the previous user ran.
+    // No `distinctUntilChanged`: `retry()` re-pushes the same name on purpose, and after a
+    // sign-out reset the next query can be identical to the previous user's.
     const _runQuery = rxMethod<string | null>(
       pipe(
         filter((name): name is string => name !== null),
@@ -227,8 +170,7 @@ export const ConversationListStore = signalStore(
     );
 
     const _loadNextPage = rxMethod<void>(
-      // exhaustMap: a second press while a page is in flight is a double-click, not a
-      // request for the page after next.
+      // exhaustMap: a second press while a page is in flight is a double-click.
       exhaustMap(() => {
         const { url, params } = searchUrl(store.name(), store.skip());
         patchState(store, { loadingMore: true });
@@ -260,9 +202,8 @@ export const ConversationListStore = signalStore(
       _runQuery,
 
       /**
-       * Releases the query. Idempotent, and called by `SessionBootstrap` after
-       * `POST api/users/me` resolves — never alongside it, because the request would
-       * otherwise go out before a token exists.
+       * Releases the query. Idempotent; `SessionBootstrap` calls it after `POST api/users/me`
+       * resolves, as no token exists before then.
        */
       ensureLoaded(): void {
         if (!store._started()) {
@@ -283,26 +224,16 @@ export const ConversationListStore = signalStore(
       },
 
       loadMore(): void {
-        // `isPending()` is the load-bearing half. `_querySuperseded$` cancels a page
-        // that a *later* query overtook, but it cannot help a page started *after* a
-        // query was already on the wire: that request carries the old `skip` against
-        // the new result set, and when it lands after the query's `setFirstPage` it
-        // appends a window from the middle of a list that no longer exists — leaving a
-        // hole the user can never scroll to, with `hasMore()` reading false.
+        // `isPending()` matters most: a page started while a query is on the wire carries the
+        // old `skip`, and landing after `setFirstPage` it would leave an unreachable hole.
         if (!store.isPending() && !store.loadingMore() && store.hasMore()) {
           _loadNextPage();
         }
       },
 
       /**
-       * Adopts a fresher copy of a row the list already holds — the title the server
-       * generates out of band after a first turn (US-409), or an edit made from the
-       * conversation header (US-304, US-305).
-       *
-       * A conversation the list does not hold is **ignored**, because it could be
-       * anywhere in the server's order and inserting it at either end would be a
-       * guess. A conversation that was just *created* is the one case where the
-       * position is known — see {@link prependNewest}.
+       * Adopts a fresher copy of a held row, such as a server-generated title. Rows the list
+       * does not hold are ignored: their position is unknown (see {@link prependNewest}).
        */
       refreshRow(conversation: ConversationDto): void {
         if (store.entityMap()[conversation.id] !== undefined) {
@@ -314,13 +245,8 @@ export const ConversationListStore = signalStore(
       },
 
       /**
-       * Optimistically renames a held row (US-304). The caller rolls a failure back
-       * by calling it again with the previous name.
-       *
-       * A row the list does not hold is ignored for the same reason as
-       * {@link refreshRow}. `dateModified` is deliberately untouched: the server's
-       * value arrives via `refreshRow` when the request succeeds, and a local bump
-       * would diverge from it on the next fetch.
+       * Optimistic; roll back by calling again with the old name. `dateModified` is untouched
+       * because the server's value arrives via `refreshRow`.
        */
       renameRow(id: string, name: string): void {
         if (store.entityMap()[id] !== undefined) {
@@ -329,13 +255,8 @@ export const ConversationListStore = signalStore(
       },
 
       /**
-       * Optimistically sets a held row's favourite flag (US-305). The caller rolls a
-       * failure back by calling it again with the previous value.
-       *
-       * A row the list does not hold is ignored for the same reason as
-       * {@link refreshRow}. Only `isFavorite` moves: the server does not bump
-       * `dateModified` for a favourite, so unlike a rename there is never a server
-       * value to adopt afterwards, and a local bump would be pure divergence.
+       * Optimistic; roll back by calling again with the old value. The server never bumps
+       * `dateModified` for a favourite, so neither does this.
        */
       favoriteRow(id: string, isFavorite: boolean): void {
         if (store.entityMap()[id] !== undefined) {
@@ -344,15 +265,8 @@ export const ConversationListStore = signalStore(
       },
 
       /**
-       * Optimistically moves a held row into a project, or out of every project when
-       * `projectId` is null (US-307). The caller rolls a failure back by calling it
-       * again with the previous value.
-       *
-       * A row the list does not hold is ignored for the same reason as
-       * {@link refreshRow}. `dateModified` is left alone here even though the server
-       * *does* bump it for a move: the server's value arrives via `refreshRow` on the
-       * 200, and a local guess would diverge from it in the meantime — the same
-       * bargain {@link renameRow} makes.
+       * Optimistic; `null` unlinks, and a rollback calls again with the old value. The server's
+       * bumped `dateModified` arrives via `refreshRow`, so there is no local guess.
        */
       moveRow(id: string, projectId: string | null): void {
         if (store.entityMap()[id] !== undefined) {
@@ -361,19 +275,8 @@ export const ConversationListStore = signalStore(
       },
 
       /**
-       * Clears `projectId` on every held row that belonged to a deleted project
-       * (US-903).
-       *
-       * Not cosmetic, and not optional. `DeactivateProjectAsync` soft-deletes the
-       * project but **releases** its conversations, setting their `ProjectId` to null —
-       * so a held row still carrying that id is carrying a dead one, and `toUpdateBody`
-       * echoes `projectId` on every rename. Left alone, the next rename of such a
-       * conversation would PUT a project the server has deleted and take a 404 for a
-       * request that has nothing to do with projects.
-       *
-       * Nothing renders `projectId` yet, which is exactly why this is easy to forget
-       * and worth stating: the defect it prevents is invisible until US-307 or a
-       * rename, whichever comes first.
+       * Nulls `projectId` on rows of a deleted project, as the server does; otherwise the next
+       * rename echoes the dead id through `toUpdateBody` and takes a 404.
        */
       releaseProject(projectId: string): void {
         for (const conversation of store.entities()) {
@@ -384,30 +287,17 @@ export const ConversationListStore = signalStore(
       },
 
       /**
-       * Marks or clears a row's own in-flight action (US-304 rename; US-306 delete).
-       *
-       * Driven by `ConversationActionsStore` around its requests — always through
-       * `tapResponse`'s `finalize`, so the flag clears on success, failure and
-       * sign-out cancellation alike.
+       * Driven by `ConversationActionsStore`, always cleared in `finalize` so success, failure
+       * and sign-out cancellation all release it.
        */
       setRowPending(id: string, pending: boolean): void {
         patchState(store, pending ? addPendingId(id) : removePendingId(id));
       },
 
       /**
-       * Optimistically removes a held row (US-306), returning what {@link restoreRow}
-       * needs to undo it — null when the list does not hold the row.
-       *
-       * The inverse of {@link prependNewest}'s bookkeeping: the server no longer
-       * counts this row, so the window the next "Load more" asks for must shift back
-       * with it. Both counters clamp at zero because a page response landing between
-       * remove and restore can already have moved them.
-       *
-       * A "Load more" page already on the wire is superseded here too: its URL was
-       * built against the pre-removal offset, and if the server deletes first, the
-       * row that slid into the last fetched position would fall between the windows
-       * — a permanent one-row hole. Cancelling lets the next press use the
-       * corrected offset.
+       * Optimistic; returns what {@link restoreRow} needs, or null if the row is not held. Shifts
+       * the paging window back (clamped, as a page may land in between) and cancels an
+       * in-flight "Load more" built on the old offset, which would otherwise leave a hole.
        */
       removeRow(id: string): RemovedRow | null {
         const conversation = store.entityMap()[id];
@@ -426,17 +316,8 @@ export const ConversationListStore = signalStore(
       },
 
       /**
-       * Reinserts a removed row at its previous position — the rollback of a delete
-       * the server refused. `setAllEntities` over a spliced copy, because the entity
-       * catalogue has no insert-at and hand-patching `ids` would bypass it.
-       *
-       * Refused outright when the removal belonged to a different result set (the
-       * user searched while the delete was in flight): the row may not match the
-       * query on screen, and the counter bump would starve a genuine row out of the
-       * next "Load more" window. The error toast has already reported the failed
-       * delete; the row reappears with the next refetch of a set it belongs to.
-       * Also a no-op when the id is already back, and index-clamped because pages
-       * may have appended meanwhile.
+       * Rolls back a refused delete at the old index (clamped). Refused once the result set has
+       * changed, as the row may not match the query; a no-op when the id is already back.
        */
       restoreRow({ conversation, index, generation }: RemovedRow): void {
         if (
@@ -455,15 +336,8 @@ export const ConversationListStore = signalStore(
       },
 
       /**
-       * Puts a just-created conversation at the head of the list.
-       *
-       * Correct only for a conversation created in this session, and only because the
-       * server orders by `dateCreated` **descending**: a row created a moment ago is at
-       * server position 0 by construction. `skip` and `totalCount` both advance with
-       * it, so the window the next "Load more" asks for still lines up — and if the
-       * server returns the same row in that page, `addEntities` no-ops on the id.
-       *
-       * US-401 calls this when `POST api/conversations` returns.
+       * Only for a conversation created this session: the server orders by `dateCreated`
+       * descending, so it is at position 0. The counters advance so "Load more" still lines up.
        */
       prependNewest(conversation: ConversationDto): void {
         if (store.entityMap()[conversation.id] !== undefined) {
@@ -478,17 +352,14 @@ export const ConversationListStore = signalStore(
     };
   }),
   withEventHandlers((store, events = inject(Events)) => [
-    // A project delete reaches across two features, which is what puts it on the event
-    // bus rather than on a method call: `ProjectActionsStore` is root-scoped and knows
-    // nothing about conversations, and this list is the only holder of the stale ids.
+    // On the bus because `ProjectActionsStore` knows nothing about conversations, and this
+    // list is the only holder of the stale ids.
     events.on(projectEvents.deleted).pipe(tap(({ payload: id }) => store.releaseProject(id))),
   ]),
   withHooks({
     onInit(store) {
-      // An injection context, which a signal-valued rxMethod argument requires — and
-      // the reason `ensureLoaded` sets a flag instead of calling this itself, from
-      // `SessionBootstrap`, where there is no injection context to bind the
-      // subscription to.
+      // A signal-valued rxMethod argument needs this injection context, which
+      // `SessionBootstrap` lacks; hence `ensureLoaded` only sets a flag.
       store._runQuery(() => (store._started() ? store.name() : null));
     },
     onDestroy(store) {

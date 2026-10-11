@@ -11,7 +11,7 @@ import { DeactivateMcpServerDialog } from './deactivate-mcp-server-dialog';
 
 const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps`;
 
-describe('DeactivateMcpServerDialog (US-1208)', () => {
+describe('DeactivateMcpServerDialog', () => {
   let backend: HttpTestingController;
   let fixture: ComponentFixture<DeactivateMcpServerDialog>;
   let actions: InstanceType<typeof McpServerActionsStore>;
@@ -75,9 +75,7 @@ describe('DeactivateMcpServerDialog (US-1208)', () => {
   it('says the permission and its grants go with the server', async () => {
     await open();
 
-    // `DeactivateMcpServerAsync` deactivates the linked permission and every grant of it
-    // in the same save. That is a change to other people's access, and the part of this
-    // action a reader is least likely to expect.
+    // The same save revokes the linked permission and every grant of it.
     expect(text()).toContain('revoked from everyone who held it');
     expect(text()).toContain('cannot be brought back from here');
   });
@@ -95,8 +93,7 @@ describe('DeactivateMcpServerDialog (US-1208)', () => {
     confirmButton().click();
     await fixture.whenStable();
 
-    // Unlike a user deactivation there is no optimistic removal and no undo to thread
-    // back to the screen: the delete is soft, and the row turns muted on the refetch.
+    // No optimistic removal or undo: the delete is soft, and the row turns muted on refetch.
     const request = backend.expectOne(`${MCPS_URL}/${target.id}`);
     expect(request.request.method).toBe('DELETE');
     request.flush(null, { status: 204, statusText: 'No Content' });

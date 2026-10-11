@@ -1,0 +1,96 @@
+using DotNet.Testcontainers.Builders;
+using DotNet.Testcontainers.Containers;
+using Enterprise.Gpt.Repository.Cosmos;
+using Enterprise.Gpt.Repository.Cosmos.Options;
+using Enterprise.Gpt.Repository.Cosmos.Provisioning;
+using Enterprise.Gpt.Repository.Cosmos.Serialization;
+using Microsoft.Azure.Cosmos;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Xunit;
+
+namespace Enterprise.Gpt.Integration.Test.TestInfrastructure;
+
+/// <summary>
+/// Runs the Azure Cosmos DB Linux emulator in Docker and exposes a real
+/// <see cref="ITranscriptStore"/> over it.
+/// </summary>
+/// <remarks>
+/// Transactional batches and ordered cross-document queries are what an in-memory fake cannot prove.
+/// Its own collection, so the emulator starts only when these tests run.
+/// </remarks>
+public sealed class CosmosEmulatorFixture : IAsyncLifetime
+{
+    // The emulator's well-known public account key; not a secret.
+    private const string EmulatorKey =
+        "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
+
+    private const ushort GatewayPort = 8081;
+    private const ushort HealthPort = 8080;
+
+    // vNext rather than the legacy image: it starts in seconds on any architecture. It defaults to
+    // HTTP, which the .NET SDK does not support, hence the explicit protocol.
+    private readonly IContainer _container =
+        new ContainerBuilder("mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-latest")
+        .WithPortBinding(GatewayPort, true)
+        .WithPortBinding(HealthPort, true)
+        .WithCommand("--protocol", "https")
+        .WithWaitStrategy(Wait.ForUnixContainer()
+            .UntilHttpRequestIsSucceeded(request => request.ForPort(HealthPort).ForPath("/ready")))
+        .Build();
+
+    private CosmosClient? _client;
+
+    public ITranscriptStore Store { get; private set; } = null!;
+
+    public Container Container { get; private set; } = null!;
+
+    /// <inheritdoc />
+    public async ValueTask InitializeAsync()
+    {
+        try
+        {
+            await _container.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                "The Azure Cosmos DB emulator container could not be started. These tests need Docker and the image mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-latest; run 'dotnet test --filter \"Category!=Integration\"' to skip them.", ex);
+        }
+
+        var options = new CosmosDbOptions
+        {
+            ConnectionString = $"AccountEndpoint=https://localhost:{_container.GetMappedPublicPort(GatewayPort)}/;AccountKey={EmulatorKey};",
+            DatabaseId = "transcript-tests",
+            TranscriptContainerId = "transcript",
+            PageSize = 100
+        };
+
+        _client = new CosmosClient(options.ConnectionString, new CosmosClientOptions
+        {
+            // The emulator answers only over the gateway, with a self-signed certificate; both settings
+            // are scoped to this test client.
+            ConnectionMode = ConnectionMode.Gateway,
+            LimitToEndpoint = true,
+            HttpClientFactory = () => new HttpClient(new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+            }),
+            UseSystemTextJsonSerializerWithOptions = CosmosSerialization.CreateOptions()
+        });
+
+        // The production bootstrap, so the container is provisioned exactly as a deployment's is.
+        await new CosmosResourceProvisioner(_client, Options.Create(options), NullLogger<CosmosResourceProvisioner>.Instance)
+            .EnsureProvisionedAsync(CancellationToken.None);
+
+        Container = _client.GetContainer(options.DatabaseId, options.TranscriptContainerId);
+        Store = new CosmosTranscriptStore(_client, Options.Create(options));
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        _client?.Dispose();
+        await _container.DisposeAsync();
+    }
+}

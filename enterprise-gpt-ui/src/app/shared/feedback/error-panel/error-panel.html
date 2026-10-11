@@ -1,9 +1,5 @@
-<!--
-  role="alert" so replacing a loading skeleton with this is announced — but only where
-  nothing takes focus. It implies aria-atomic, so on a full-page state whose heading is
-  focused it would read the entire panel and then the heading again. Where focus moves,
-  focus is the announcement.
--->
+<!-- role="alert" only where nothing takes focus: it implies aria-atomic, so a focused heading
+     would be read twice. -->
 <div class="error-panel" [attr.role]="headingLevel() === null ? 'alert' : null">
   <app-icon class="error-panel__icon" name="bi-exclamation-octagon" />
 

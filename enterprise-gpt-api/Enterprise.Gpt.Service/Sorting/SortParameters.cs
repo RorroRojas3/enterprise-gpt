@@ -1,81 +1,54 @@
+using Enterprise.Gpt.Common.Enums;
 using FluentValidation;
 using FluentValidation.Results;
 
 namespace Enterprise.Gpt.Service.Sorting;
 
-/// <summary>
-/// Parses the <c>?sort=</c> and <c>?dir=</c> query parameters the paginated list routes accept, and
-/// rejects an unrecognised value as a validation problem naming the parameter.
-/// </summary>
+/// <summary>Parses the <c>?sort=</c> and <c>?dir=</c> query parameters the paginated list routes accept.</summary>
 /// <remarks>
-/// Silently ignoring a value nobody recognises is the failure mode this exists to prevent: a caller
-/// who misspells a sort field would otherwise get a correct-looking page in the wrong order and no
-/// way to tell. The rejection is keyed by the <em>query-parameter</em> name rather than a
-/// <c>nameof</c>, because that is the token the caller sent and the one a client can render against
-/// its own control — the same choice the export route's <c>format</c> failure makes.
-/// <para>
-/// Each listing's key table appears three times over — as an enumeration, as a display list, and as
-/// a lookup — and a token must be the same string in all three, or the supported set a rejection
-/// advertises and the set it actually accepts drift apart. <c>SortKeysTests</c> is what keeps them in
-/// step.
-/// </para>
+/// Unrecognised values are rejected, keyed by the query-parameter name, because a misspelt field would otherwise
+/// return a plausible page in the wrong order. A listing's enum, display list and lookup must use identical
+/// tokens; <c>SortKeysTests</c> enforces it.
 /// </remarks>
 public static class SortParameters
 {
-    /// <summary>
-    /// The <c>errors</c> key a rejected sort field is reported under.
-    /// </summary>
+    /// <summary>The <c>errors</c> key a rejected sort field is reported under.</summary>
     public const string SortKey = "sort";
 
-    /// <summary>
-    /// The <c>errors</c> key a rejected sort direction is reported under.
-    /// </summary>
+    /// <summary>The <c>errors</c> key a rejected sort direction is reported under.</summary>
     public const string DirectionKey = "dir";
 
     private const string AscendingName = "asc";
     private const string DescendingName = "desc";
 
-    private static readonly Dictionary<string, SortDirection> DirectionsByName =
+    private static readonly Dictionary<string, SortDirections> DirectionsByName =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            [AscendingName] = SortDirection.Ascending,
-            [DescendingName] = SortDirection.Descending
+            [AscendingName] = SortDirections.Ascending,
+            [DescendingName] = SortDirections.Descending
         };
 
-    /// <summary>
-    /// Gets the accepted <c>?dir=</c> values rendered for a validation message.
-    /// </summary>
     public static string SupportedDirectionList { get; } = $"'{AscendingName}', '{DescendingName}'";
 
-    /// <summary>
-    /// Reports whether the caller asked for no particular order.
-    /// </summary>
-    /// <param name="sort">The raw <c>?sort=</c> value.</param>
-    /// <param name="dir">The raw <c>?dir=</c> value.</param>
-    /// <returns><see langword="true"/> when neither parameter was supplied.</returns>
+    #region Public static methods
+
+    /// <summary>Reports whether neither <c>?sort=</c> nor <c>?dir=</c> was supplied.</summary>
     /// <remarks>
-    /// Callers branch on this to emit their listing's original <c>ORDER BY</c> untouched. That
-    /// ordering is a promise to clients written before these parameters existed, and even a tie-break
-    /// added to it can move rows that compare equal.
+    /// Callers then emit their original <c>ORDER BY</c> untouched: older clients rely on it, and even an added
+    /// tie-break can move rows that compare equal.
     /// </remarks>
     public static bool IsDefaultOrder(string? sort, string? dir) =>
         string.IsNullOrWhiteSpace(sort) && string.IsNullOrWhiteSpace(dir);
 
     /// <summary>
-    /// Resolves a <c>?sort=</c> value against the fields one listing accepts.
+    /// Resolves a <c>?sort=</c> value against one listing's fields, or <paramref name="fallback"/> when blank.
     /// </summary>
-    /// <typeparam name="TKey">The listing's sort-field enumeration.</typeparam>
-    /// <param name="sort">The requested field, or <see langword="null"/> when the caller sent none.</param>
-    /// <param name="byName">
-    /// The accepted values. Build it with <see cref="StringComparer.OrdinalIgnoreCase"/>: a table
-    /// built with the default comparer would reject <c>?sort=NAME</c> with a message listing
-    /// <c>'name'</c> as supported.
-    /// </param>
-    /// <param name="fallback">The field used when no value was sent.</param>
-    /// <param name="supportedList">The accepted values rendered for a rejection message.</param>
-    /// <returns>The resolved field.</returns>
+    /// <remarks>
+    /// Build <paramref name="byName"/> with <see cref="StringComparer.OrdinalIgnoreCase"/>, or
+    /// <c>?sort=NAME</c> is rejected by a message listing <c>'name'</c> as supported.
+    /// </remarks>
     /// <exception cref="ValidationException">
-    /// <paramref name="sort"/> names no accepted field. Surfaces as a 400 keyed <see cref="SortKey"/>.
+    /// <paramref name="sort"/> names no accepted field; surfaces as a 400 keyed <see cref="SortKey"/>.
     /// </exception>
     public static TKey ResolveKey<TKey>(
         string? sort,
@@ -103,19 +76,14 @@ public static class SortParameters
     }
 
     /// <summary>
-    /// Resolves a <c>?dir=</c> value.
+    /// Resolves a <c>?dir=</c> value, or <paramref name="natural"/> when blank: the direction the field
+    /// reads most usefully in.
     /// </summary>
-    /// <param name="dir">The requested direction, or <see langword="null"/> when the caller sent none.</param>
-    /// <param name="natural">
-    /// The direction used when no value was sent — the one the field reads most usefully in, so a
-    /// caller asking for <c>sort=created</c> alone gets newest first rather than oldest.
-    /// </param>
-    /// <returns>The resolved direction.</returns>
     /// <exception cref="ValidationException">
-    /// <paramref name="dir"/> is neither <c>asc</c> nor <c>desc</c>. Surfaces as a 400 keyed
+    /// <paramref name="dir"/> is neither <c>asc</c> nor <c>desc</c>; surfaces as a 400 keyed
     /// <see cref="DirectionKey"/>.
     /// </exception>
-    public static SortDirection ResolveDirection(string? dir, SortDirection natural)
+    public static SortDirections ResolveDirection(string? dir, SortDirections natural)
     {
         if (string.IsNullOrWhiteSpace(dir))
         {
@@ -134,4 +102,6 @@ public static class SortParameters
                 $"'{dir}' is not a supported sort direction. Supported directions are {SupportedDirectionList}.")
         ]);
     }
+
+    #endregion
 }

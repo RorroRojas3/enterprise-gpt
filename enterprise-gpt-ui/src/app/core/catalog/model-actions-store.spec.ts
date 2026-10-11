@@ -40,7 +40,7 @@ function validationProblem(errors: Record<string, string[]>): object {
   return { ...PROBLEM_FIXTURES.validationError, errors };
 }
 
-describe('ModelActionsStore (US-1207)', () => {
+describe('ModelActionsStore', () => {
   let store: InstanceType<typeof ModelActionsStore>;
   let backend: HttpTestingController;
   let toasts: {
@@ -89,8 +89,7 @@ describe('ModelActionsStore (US-1207)', () => {
 
     const request = backend.expectOne(MODELS_URL);
     expect(request.request.method).toBe('POST');
-    // All twelve, including the three frame `5f` does not draw: `ModelMapper` assigns
-    // every one unconditionally.
+    // All twelve: `ModelMapper` assigns every one unconditionally.
     expect(request.request.body).toEqual({
       providerId: PROVIDER_ID.anthropic,
       name: 'Claude Sonnet 4.5',
@@ -120,9 +119,6 @@ describe('ModelActionsStore (US-1207)', () => {
     settle();
     const inFlight = backend.expectOne(MODELS_URL);
 
-    // exhaustMap: a second submit while one is on the wire is a double-click, not a
-    // second model — and a duplicate would take the "already exists" 400 the first one
-    // had just made true.
     store.submitForm(formValue());
     settle();
     backend.expectNone(MODELS_URL);
@@ -170,20 +166,16 @@ describe('ModelActionsStore (US-1207)', () => {
     settle();
     const inFlight = backend.expectOne(`${MODELS_URL}/${target.id}`);
 
-    // The reader force-closes the edit before the save lands — a second Escape is
-    // uncancelable in Chromium. Opening the *other* form in this window is no longer
-    // possible at all (`beginCreate` refuses while `formBusy`), which is a stronger
-    // guarantee than this test could make; what remains reachable is the closed surface.
+    // Force-closed before the save lands (Chromium can't cancel a second Escape); reopening is
+    // refused while `formBusy`, so the closed surface is the only one left to test.
     store.cancelForm();
 
     inFlight.flush(validationProblem({ Name: ['That name is in use.'] }), BAD_REQUEST);
     settle();
 
-    // Nothing inline, because there is nothing on screen to render it against.
     expect(store.formError()).toBeNull();
     expect(store.formMode()).toBeNull();
-    // With no surface to render it on, the validation problem is toasted by hand —
-    // `fromError` silences validation problems on the assumption they render inline.
+    // By hand: `fromError` silences validation errors, assuming they render inline.
     expect(toasts.show).toHaveBeenCalledOnce();
   });
 
@@ -192,8 +184,7 @@ describe('ModelActionsStore (US-1207)', () => {
       name: 'GPT-5',
       isDefault: false,
       isReasoningEnabled: true,
-      // A hidden model promoted to default must stay hidden: the PUT is a full
-      // representation, so an omitted flag would put the summarizer back in the picker.
+      // A hidden model must stay hidden when promoted: an omitted flag would unhide the summarizer.
       isUserSelectable: false,
       inputPricePerMillionTokens: 1.25,
       outputPricePerMillionTokens: 10,
@@ -230,10 +221,6 @@ describe('ModelActionsStore (US-1207)', () => {
     settle();
     const inFlight = backend.expectOne(`${MODELS_URL}/${target.id}`);
 
-    // The reader opens Add model while the row's PUT is still on the wire. `formBusy`
-    // disables every field, both footer buttons, *and* `Modal`'s Escape and backdrop
-    // dismissal — so setting it here would trap them inside a dialog they opened,
-    // waiting on a request that is not theirs (WCAG 2.1.2).
     store.beginCreate();
     expect(store.formBusy()).toBe(false);
 
@@ -254,8 +241,7 @@ describe('ModelActionsStore (US-1207)', () => {
     store.submitForm(formValue({ name: 'Edited twice' }));
     settle();
 
-    // A separate rxMethod, so the row's PUT cannot occupy the form's `exhaustMap`. Shared,
-    // this submit would have been dropped with the dialog left open and nothing said.
+    // A separate rxMethod, so the row's PUT cannot occupy the form's `exhaustMap`.
     const formRequest = backend.expectOne(`${MODELS_URL}/${edited.id}`);
     expect(store.formBusy()).toBe(true);
 
@@ -274,8 +260,7 @@ describe('ModelActionsStore (US-1207)', () => {
     backend.expectOne(MODELS_URL).error(new ProgressEvent('error'));
     settle();
 
-    // `retryInterceptor` retries GETs only, so a transient blip on Save is not retried —
-    // and closing would discard twelve fields, one of them 1024 characters, for good.
+    // `retryInterceptor` retries GETs only, so closing would lose the typed fields for good.
     expect(store.formMode()).toBe('create');
     expect(toasts.fromError).toHaveBeenCalledOnce();
   });
@@ -286,8 +271,6 @@ describe('ModelActionsStore (US-1207)', () => {
     store.submitForm(value);
     settle();
 
-    // `CreateModelAsync` throws exactly one NotFoundException, and it is
-    // `EnsureProviderExistsAsync`'s — a provider this deployment has since deactivated.
     backend
       .expectOne(MODELS_URL)
       .flush(
@@ -316,8 +299,6 @@ describe('ModelActionsStore (US-1207)', () => {
       );
     settle();
 
-    // Ambiguous on this flow — somebody else may have retired the model — so it is said
-    // rather than guessed at, and the dialog still keeps what was typed.
     expect(store.formNotFound()).toBeNull();
     expect(store.formMode()).toBe('edit');
     expect(toasts.fromError).toHaveBeenCalledOnce();
@@ -333,7 +314,6 @@ describe('ModelActionsStore (US-1207)', () => {
       .flush(validationProblem({ Name: ['Something about the name.'] }), BAD_REQUEST);
     settle();
 
-    // No form produced it, so there is nowhere inline for it to land.
     expect(store.formError()).toBeNull();
     expect(toasts.fromError).toHaveBeenCalledOnce();
   });
@@ -351,8 +331,7 @@ describe('ModelActionsStore (US-1207)', () => {
     request.flush(null, { status: 204, statusText: 'No Content' });
     settle();
 
-    // The same event as a save, for a reason no payload could carry: the server also
-    // clears `IsDefault` on the row it retires.
+    // A refetch: the server also clears `IsDefault` on the row it retires.
     expect(changed).toBe(1);
     expect(store.deactivateTarget()).toBeNull();
     expect(toasts.success).toHaveBeenCalledWith('GPT-4.1 (legacy) retired');
@@ -369,7 +348,6 @@ describe('ModelActionsStore (US-1207)', () => {
     store.confirmDeactivate();
     settle();
 
-    // mergeMap: independent rows. exhaustMap would silently drop the second.
     backend.expectOne(`${MODELS_URL}/${first.id}`).flush(null, { status: 204, statusText: '' });
     backend.expectOne(`${MODELS_URL}/${second.id}`).flush(null, { status: 204, statusText: '' });
     settle();
@@ -386,7 +364,6 @@ describe('ModelActionsStore (US-1207)', () => {
     backend.expectOne(`${MODELS_URL}/${target.id}`).error(new ProgressEvent('error'));
     settle();
 
-    // Events carry server-confirmed facts only, so a failure announces nothing at all.
     expect(changed).toBe(0);
     expect(toasts.fromError).toHaveBeenCalledOnce();
   });
@@ -426,14 +403,11 @@ describe('ModelActionsStore (US-1207)', () => {
     settle();
     const inFlight = backend.expectOne(MODELS_URL);
 
-    // The dialog is force-closed mid-flight — a second Escape is uncancelable in
-    // Chromium — or the reader navigates away and `AdminModels` closes it on the way
-    // back. `formBusy` survives both, by design.
+    // Force-closed mid-flight, or closed by `AdminModels` on returning to the tab; `formBusy`
+    // survives both by design.
     store.cancelForm();
     expect(store.formBusy()).toBe(true);
 
-    // Reopening now would give a dialog whose fields, buttons and Escape handling are all
-    // driven by that flag: no focusable element and no way out (WCAG 2.1.2).
     store.beginCreate();
     expect(store.formMode()).toBeNull();
 
@@ -443,7 +417,6 @@ describe('ModelActionsStore (US-1207)', () => {
     inFlight.flush(modelFixture());
     settle();
 
-    // And it opens again the moment the request settles.
     store.beginCreate();
     expect(store.formMode()).toBe('create');
   });
@@ -456,8 +429,7 @@ describe('ModelActionsStore (US-1207)', () => {
 
     store.cancelForm();
 
-    // The flag tracks the request, not the dialog: a reopened form must not report itself
-    // ready while `exhaustMap` is still occupied and would swallow the next submit.
+    // Tracks the request, not the dialog, or a reopened form would swallow the next submit.
     expect(store.formBusy()).toBe(true);
 
     inFlight.flush(modelFixture());

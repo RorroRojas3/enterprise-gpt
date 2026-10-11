@@ -10,7 +10,6 @@ import { ConversationExportStore } from './conversation-export-store';
 const CONVERSATION_ID = '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b';
 const EXPORT_URL = `${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/export`;
 
-/** How the API answers: bytes, an attachment name, and no-store. */
 function okResponse(fileName = 'Planning-notes.md'): {
   body: Blob;
   headers: Record<string, string>;
@@ -34,9 +33,8 @@ describe('ConversationExportStore', () => {
   let revoked: string[];
 
   beforeEach(() => {
-    // File-wide, so the store's 10-second revoke timer never escapes a test as a real one.
-    // `vi.clearAllTimers()` is implemented as a no-op unless fake timers are installed, so
-    // without this the teardown below would claim a cleanup it was not performing.
+    // So the 10-second revoke timer never escapes a test; `vi.clearAllTimers()` is a no-op
+    // without fake timers.
     vi.useFakeTimers();
     clicks = [];
     created = [];
@@ -50,7 +48,7 @@ describe('ConversationExportStore', () => {
     store = TestBed.inject(ConversationExportStore);
     toasts = TestBed.inject(ToastStore);
 
-    // jsdom implements neither; the object URL is also the thing this store must let go of.
+    // jsdom implements neither, and the tests track what gets revoked.
     vi.stubGlobal('URL', {
       ...URL,
       createObjectURL: vi.fn((_: Blob) => {
@@ -110,11 +108,7 @@ describe('ConversationExportStore', () => {
     });
   });
 
-  /**
-   * A blob URL holds the whole rendered document in memory until it is revoked, and a
-   * transcript is the most sensitive thing this app renders. The delay is the other half:
-   * revoking before the browser has read the URL cancels the download it was just handed.
-   */
+  /** Revoking early cancels the download; never revoking keeps the transcript in memory. */
   it('revokes the object URL, but only after the browser has had time to read it', async () => {
     store.download(CONVERSATION_ID, 'pdf');
     const { body, headers } = okResponse('Planning-notes.pdf');
@@ -130,10 +124,7 @@ describe('ConversationExportStore', () => {
     expect(revoked).toEqual(created);
   });
 
-  /**
-   * The name is what lands on the reader's disk, and a conversation named in any script
-   * travels only in the RFC 5987 form.
-   */
+  /** A name in any script travels only in the RFC 5987 form. */
   it('prefers the encoded filename* over the plain filename', () => {
     store.download(CONVERSATION_ID, 'docx');
 
@@ -158,9 +149,8 @@ describe('ConversationExportStore', () => {
   });
 
   /**
-   * The defect this store's `responseType: 'blob'` would otherwise cause: `HttpClient`
-   * leaves an error body as a `Blob`, `parseProblemDetails` rejects it, and the arm
-   * degrades to plain `http` — losing the one type that says "not available here".
+   * With `responseType: 'blob'` the error body stays a Blob, which `parseProblemDetails`
+   * rejects, so the typed 503 would degrade to plain `http`.
    */
   it('reads the problem body back out of the error blob', async () => {
     store.download(CONVERSATION_ID, 'pdf');
@@ -181,7 +171,6 @@ describe('ConversationExportStore', () => {
     expect(toast?.traceLine).toContain(TRACE_ID);
   });
 
-  /** Criterion 4: the menu returns to idle, and the outcome says it failed. */
   it('settles as a failure without clearing the outcome sequence', async () => {
     store.download(CONVERSATION_ID, 'pdf');
     backend
@@ -208,7 +197,6 @@ describe('ConversationExportStore', () => {
     expect(store.outcome()?.seq).toBe(first + 1);
   });
 
-  /** A second press while one is out is a double-click, not a second file. */
   it('ignores a second request while one is in flight', () => {
     store.download(CONVERSATION_ID, 'md');
     store.download(CONVERSATION_ID, 'pdf');
@@ -220,10 +208,7 @@ describe('ConversationExportStore', () => {
     requests[0]?.flush(new Blob(['x']));
   });
 
-  /**
-   * The request opts out of `retryInterceptor`: its error body is a `Blob` the interceptor
-   * cannot classify, so an application-typed 503 would be replayed three times.
-   */
+  /** Its Blob error body is unclassifiable, so the retry interceptor would replay a typed 503. */
   it('is not retried on a 503', () => {
     store.download(CONVERSATION_ID, 'pdf');
 

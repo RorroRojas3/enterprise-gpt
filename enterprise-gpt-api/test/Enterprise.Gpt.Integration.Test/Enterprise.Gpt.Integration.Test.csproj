@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Enterprise.Gpt.Integration.Test</RootNamespace>
+    <!-- xUnit v3 test projects build as executables. -->
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+    <!-- Security pin over the version Testcontainers brings; see Directory.Packages.props. -->
+    <PackageReference Include="SSH.NET" />
+    <!-- Real SQL Server 2025 in Docker: SqlPersistenceConfiguration pins UseCompatibilityLevel(170),
+         which pre-2025 engines (including LocalDB) reject. -->
+    <PackageReference Include="Testcontainers.MsSql" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Enterprise.Gpt.Api\Enterprise.Gpt.Api.csproj" />
+  </ItemGroup>
+
+</Project>

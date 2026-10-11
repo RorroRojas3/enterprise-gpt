@@ -135,8 +135,7 @@ describe('GeneratedFiles', () => {
     expect(host.querySelector('.chip')).toBeNull();
   });
 
-  // A real button rather than a clickable div is what puts the file in the tab order and makes Enter
-  // and Space activate it, without a keydown handler of our own to get wrong.
+  // A real button gives tab order and Enter/Space activation with no keydown handler to get wrong.
   it('is reachable and operable without a mouse', () => {
     const action = host.querySelector<HTMLButtonElement>('.chip__action');
 
@@ -147,11 +146,8 @@ describe('GeneratedFiles', () => {
   });
 
   /**
-   * `disabled` would hand focus back to `<body>` under the HTML focus-fixup rule the moment the
-   * download starts, and it never returns — so the in-flight state is `aria-disabled` plus a guard in
-   * the handler. jsdom does not implement that rule in either direction, so this asserts the
-   * *mechanism* rather than the focus itself; `expect(document.activeElement)` here would pass
-   * whichever attribute the template used, which is exactly the false green worth avoiding.
+   * `disabled` would drop focus to `<body>` when the download starts, so in flight is
+   * `aria-disabled` plus a guard. jsdom has no focus fixup, so this asserts the mechanism instead.
    */
   it('stays focusable while the download is in flight', async () => {
     const action = host.querySelector<HTMLButtonElement>('.chip__action');
@@ -173,7 +169,7 @@ describe('GeneratedFiles', () => {
     action?.click();
     await fixture.whenStable();
 
-    // What `disabled` used to prevent. One request, not two.
+    // The handler's guard: one request, not two.
     host.querySelector<HTMLButtonElement>('.chip__action')?.click();
     await fixture.whenStable();
 

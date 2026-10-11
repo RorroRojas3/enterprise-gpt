@@ -1,14 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
 /**
- * A loading placeholder.
- *
- * Always `aria-hidden`: the container that swaps it for content carries `aria-busy`,
- * and a screen reader reading out a row of grey boxes helps nobody.
- *
- * Static, with no shimmer. Bootstrap's `_placeholders.scss` would add a fifth keyframe
- * against the four the design defines, and a static placeholder is also what the
- * reduced-motion path would collapse to anyway.
+ * Always `aria-hidden`, since the container swapping it out carries `aria-busy`. Static: a
+ * shimmer would add a keyframe the design does not define.
  */
 @Component({
   selector: 'app-skeleton',

@@ -1,12 +1,7 @@
 /**
- * A model the caller may use, as `GET api/models` returns it.
- *
- * The route returns active models only and is not permission-gated, so this list is
- * the catalog every user sees. `GET api/models/all` is Administrator-gated and returns
- * the same shape for retired models too (US-1207).
- *
- * `contextWindowSize` and `maxOutputTokens` are `decimal` server-side and arrive as
- * JSON numbers. `isToolEnabled` is what disables the MCP picker for a turn (FR-9).
+ * `GET api/models` returns the active catalog every user sees; the admin-only
+ * `GET api/models/all` adds retired models in the same shape. `isToolEnabled` gates the MCP
+ * picker.
  */
 export interface ModelDto {
   readonly id: string;
@@ -20,21 +15,12 @@ export interface ModelDto {
   /** Read only by the Azure AI Foundry chat client; no other provider consults it. */
   readonly isReasoningEnabled: boolean;
   /**
-   * Whether the model is offered in the chat picker. Always `true` on `GET api/models`,
-   * which filters on it, so it is only ever meaningful on the administrative
-   * `GET api/models/all`.
-   *
-   * Visibility, not authorization: a turn naming a hidden model by id is still served.
-   * It is how the pinned document summarizer stays out of the picker without being
-   * retired, which `dateDeactivated` would do instead.
+   * Picker visibility, not authorization: a hidden model is still served by id. Always `true`
+   * on `GET api/models`; it keeps the pinned summarizer out of the picker without retiring it.
    */
   readonly isUserSelectable: boolean;
   readonly isDefault: boolean;
-  /**
-   * Null is **unpriced**, not free. A report that sums nulls as zero silently
-   * understates spend, which is why the server models them as nullable decimals
-   * rather than defaulting them.
-   */
+  /** Null is unpriced, not free; summing nulls as zero would understate spend. */
   readonly inputPricePerMillionTokens: number | null;
   readonly outputPricePerMillionTokens: number | null;
   /** Only populated by the administrative `GET api/models/all`. */
@@ -42,15 +28,8 @@ export interface ModelDto {
 }
 
 /**
- * The body `POST api/models` and `PUT api/models/{id}` both take.
- *
- * `CreateModelActionDto` and `UpdateModelActionDto` are the same twelve fields
- * server-side, so one shape serves both.
- *
- * **The PUT is a full representation, not a patch.** `ModelMapper` assigns every
- * field unconditionally, so an omitted price *clears* the stored one and an omitted
- * `isReasoningEnabled` reads as `false`. Anything the form does not edit still has to
- * be echoed back — the same rule `UpdateUserActionDto` imposes on the user profile.
+ * The body of both `POST api/models` and `PUT api/models/{id}`. The PUT is a full
+ * representation: an omitted price clears the stored one, so echo back every unedited field.
  */
 export interface ModelWriteBody {
   readonly providerId: string;
@@ -67,7 +46,6 @@ export interface ModelWriteBody {
   readonly outputPricePerMillionTokens: number | null;
 }
 
-/** Whether `GET api/models/all` returned this model as retired (US-1207). */
 export function isRetired(model: ModelDto): boolean {
   return (model.dateDeactivated ?? null) !== null;
 }

@@ -85,18 +85,15 @@ describe('provideBrowserTelemetry', () => {
       ],
     });
 
-    // App initializers run when ApplicationInitStatus is first instantiated, not when the
-    // testing module is configured.
+    // App initializers run when ApplicationInitStatus is first injected.
     await TestBed.inject(ApplicationInitStatus).donePromise;
-    // The provider starts the load without awaiting it, on purpose, so the spec awaits the
-    // loader's own promise rather than guessing at a number of microtasks.
+    // The provider does not await the load, so wait on the loader's own promise.
     await loading.catch(() => undefined);
   }
 
   function initialize(item: ITelemetryItem): void {
     for (const initializer of started[0]?.initializers ?? []) {
-      // A telemetry initializer that returns false drops the item, which would silently
-      // discard everything this one is here to enrich.
+      // An initializer that returns false drops the item.
       expect(initializer(item)).not.toBe(false);
     }
   }
@@ -129,10 +126,6 @@ describe('provideBrowserTelemetry', () => {
     expect(started[0]?.pageViews).toHaveLength(3);
   });
 
-  /**
-   * The SDK's own route hook fires per history mutation, which the sign-in path performs
-   * three times for one arrival.
-   */
   it('leaves the SDK route hook off', async () => {
     await start(enabled());
 
@@ -174,7 +167,6 @@ describe('provideBrowserTelemetry', () => {
     expect(item.tags?.['ai.user.authUserId']).toBeUndefined();
   });
 
-  /** The fragment carries the authorization code; the query string carries search terms. */
   it.each([
     [
       'uri',

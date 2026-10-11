@@ -1,11 +1,6 @@
-// Design tokens — the source of record for every colour in the application.
-// `scripts/check-tokens.mjs` holds the pre-paint colours duplicated into `index.html`
-// in step with these, and measures the code-surface and focus-ring pairs for contrast.
-//
-// **Never `@use` this file from a component stylesheet.** It emits `:root` blocks;
-// under emulated encapsulation a component would re-emit them scoped to its own
-// attribute, matching nothing and costing bytes in every component. Components read
-// tokens with `var(--…)` and import nothing.
+// The source of record for every colour; `check-tokens.mjs` keeps `index.html`'s pre-paint copy
+// in step and measures contrast. Never `@use` it from a component: its `:root` blocks would be
+// re-emitted scoped to that component, matching nothing.
 @use 'sass:color';
 @use 'sass:map';
 
@@ -75,49 +70,10 @@ $dark: (
   'show-dark': inline,
 );
 
-// Tokens layered on top of the Bootstrap-facing set above.
-//
-// The `-rgb` companions are not optional decoration: Bootstrap 5.3 consumes them in
-// `rgba(var(--bs-body-color-rgb), …)` for its .text-*, .bg-* and .link-* opacity
-// utilities. Overriding only the solid values would leave those utilities rendering
-// Bootstrap's default blues over a branded palette — latent in the prototype only
-// because it never used them.
-//
-// The tooltip pair fixes a real defect in the boards: they hard-code the flyout as
-// #0B1F33 on white, and #0B1F33 *is* --bs-body-bg in dark, so the tooltip would be
-// invisible in the theme it is most used in.
-//
-// The code palette is what makes Prism themeable from tokens instead of a second
-// stylesheet. The code surface is dark in both themes by design, so there is no
-// light variant to swap to — which puts the whole of US-604's legibility criterion
-// on these values. `scripts/check-tokens.mjs` measures every code-surface pair in
-// both maps, including the head bar's hovered state, so editing one is checked
-// rather than trusted.
-// The focus indicator is its own token rather than `--accent`. WCAG 2.1 SC 1.4.11
-// wants 3:1 against adjacent colours, and #21A8D8 gives only 2.74:1 on --surface,
-// 2.62:1 on --bs-body-bg and 2.48:1 on --surface-2 — so an accent-coloured ring fails
-// on every light surface in the kit. The darker light-theme value clears 3:1 on all
-// three while staying on the brand ramp; dark theme keeps the accent, which is already
-// 6.09:1 there.
-// The two code-head text colours are transcribed from the Transcript board,
-// where they are literals rather than tokens (#B9CBDC for the Copy control,
-// #8FA9C0 for the language label). They sit in both maps unchanged for the same
-// reason the Prism palette does: --code-head is dark in both themes, so text on
-// it never flips. Both clear 4.5:1 on --code-head in either theme, hovered as well
-// as at rest — the token check measures both states.
-//
-// The provider dots (frame 2b) are pinned rather than aliased to --accent/--ok:
-// a provider's colour is its identity across themes and must not silently
-// rebrand when the palette moves. Azure and Anthropic come from the frame;
-// Bedrock has no frame value (the prototype's "Meta" green is an artifact), so
-// it takes the palette's green ramp, which the design family already uses for
-// its third dot.
-//
-// The avatar ramp of frames `5a`/`5c` is deliberately **not** here. Only
-// `AvatarInitials` uses it, and this file is global: eight entries emitted twice
-// would cost every page of the app for one component on one lazy route. It lives in
-// that component's own stylesheet instead — which is also where the reasoning about
-// its two board-supplied ink colours belongs.
+// Tokens beyond Bootstrap's set. The tooltip pair replaces a literal #0B1F33, the dark body
+// background; the focus ring is not `--accent`, which is under 3:1 on light surfaces. Code
+// colours never flip, as the code surface is dark in both themes. Provider dots are pinned so a
+// provider keeps its colour. The avatar ramp stays in `AvatarInitials`, off every other page.
 $extra-light: (
   'focus-ring': #0e7fa8,
   'tooltip-bg': #0b1f33,
@@ -152,7 +108,7 @@ $extra-dark: (
   'provider-bedrock': #4cc47a,
 );
 
-// Bootstrap reads these as three comma-separated channels, not a colour.
+// Channel triples Bootstrap's opacity utilities read; without them they keep its default blues.
 $rgb-companions: ('bs-body-bg', 'bs-body-color', 'bs-link-color', 'bs-link-hover-color');
 
 $light-all: map.merge($light, $extra-light);
@@ -185,9 +141,8 @@ $dark-all: map.merge($dark, $extra-dark);
   }
 }
 
-// Selectors byte-identical to Bootstrap's own `_root.scss`. Equal specificity plus a
-// later source position means these win with no `!important` — which is exactly why
-// `styles.scss` imports this file immediately after `bootstrap/scss/root`.
+// Selectors byte-identical to Bootstrap's `_root.scss`, so the later source position wins
+// without `!important`.
 :root,
 [data-bs-theme='light'] {
   @include emit($light-all);

@@ -20,10 +20,8 @@ const EMAIL_INFO = 'email';
 const HEADER = /^(to|cc|subject)\s*:\s*(.*)$/i;
 
 /**
- * An address list is comma- or semicolon-separated, and the display-name form
- * `Alice <a@b.com>` is reduced to the address: a mail client re-resolves the
- * name, and passing the whole thing through a `mailto:` recipient rarely
- * survives the round trip.
+ * Comma- or semicolon-separated; `Alice <a@b.com>` reduces to the address, since a display name
+ * rarely survives a `mailto:` recipient.
  */
 function parseAddresses(value: string): readonly string[] {
   return value
@@ -36,12 +34,8 @@ function parseAddresses(value: string): readonly string[] {
 }
 
 /**
- * Reads the leading header run off an email's lines.
- *
- * Headers run until the first line that is not one, a blank line included. The
- * run has to end structurally rather than after a fixed number of lines: a body
- * sentence beginning "To: confirm the date…" is body, and dropping it because it
- * matched a header pattern would silently cut a line out of what the user sends.
+ * Headers end at the first non-header line, blank included, so a body line such as "To: confirm
+ * the date…" is never mistaken for one and dropped.
  */
 function readHeaders(lines: readonly string[]): { draft: Omit<EmailDraft, 'body'>; end: number } {
   const to: string[] = [];
@@ -85,20 +79,13 @@ function parseEmailBlock(content: string): EmailDraft {
 }
 
 /** Cheap rejection for the overwhelmingly common answer that marks no email. */
-// `[^\S\n]` rather than `[ \t]`, to match every space `String.trim` would strip
-// off the info string below — the two must agree or this rejects a block the
-// scanner would have accepted.
+// `[^\S\n]`, not `[ \t]`: it must match every space `String.trim` strips off the info string,
+// or this rejects a block the scanner would accept.
 const ANY_EMAIL_FENCE = /^ {0,3}(?:`{3,}|~{3,})[^\S\n]*email[^\S\n]*$/im;
 
 /**
- * Cuts an answer into the email blocks the model marked and the markdown around
- * them, preserving source order and offsets.
- *
- * Only a **closed** fence yields a card. A fence still being streamed is left as
- * markdown, so a half-written email renders as the code block it currently is
- * rather than flickering through a card with half a body in it — and so is one
- * closed by a nested opener, whose card would carry a body cut off at the nested
- * fence and hand that truncation to a mail client.
+ * Only a closed fence yields a card: a streaming one stays a code block rather than a half card,
+ * as does one closed by a nested opener, whose body would be truncated.
  */
 export function splitEmailSegments(text: string): readonly EmailSegment[] {
   const whole: readonly EmailSegment[] = [{ kind: 'markdown', start: 0, text }];
@@ -147,14 +134,8 @@ const SIGN_OFF =
 const HEADING = /^ {0,3}#{1,6}\s+\S/;
 
 /**
- * Recognises an email the model wrote without marking it, for models that ignore
- * the fence and for answers written before it was asked for.
- *
- * Two independent markers are always required, never one: an answer *about* email
- * quotes a subject line as readily as one that is an email, so a lone `Subject:`
- * decides nothing. It never harvests a recipient out of prose either — an address
- * becomes a `To:` only on a header line, or a document the model was fed could
- * choose who the user's mail client addresses.
+ * Detects an unfenced email by two independent markers, since advice about email quotes subject
+ * lines too. Recipients come only from header lines, never from prose a document could plant.
  */
 export function detectEmailDraft(markdown: string): EmailDraft | null {
   const text = markdown.trim();

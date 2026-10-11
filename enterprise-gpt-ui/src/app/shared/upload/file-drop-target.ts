@@ -10,27 +10,8 @@ import {
 } from '@angular/core';
 
 /**
- * Makes an element a file drop zone, or leaves it completely inert.
- *
- * US-204 asks for two different things and they need two different mechanisms. "No
- * attach control renders" is `@if` in the template — the same answer US-203 gave the
- * Admin nav entry, and it stays that way. "Drag-and-drop is inert" cannot be: the
- * prompt box still has to render, it just must not react. That is this directive.
- *
- * The permission is a **required input**, not an injected `SessionStore` read. Burying
- * an authorization decision inside a `shared/` primitive puts it where no reviewer
- * looks and makes the directive unusable for any non-upload drop; keeping it an input
- * makes the check visible at the call site, which is what "checked explicitly, never
- * inferred from `Administrator`" actually means. Required, so an unbound directive is
- * a `strictTemplates` compile error rather than a silently-open drop zone.
- *
- * @example
- * <div [appFileDropTarget]="session.canUploadFiles()"
- *      (filesDropped)="attach($event)"
- *      #drop="appFileDropTarget">
- *   <textarea …></textarea>
- *   &commat;if (drop.isDragOver()) { <app-drop-overlay /> }
- * </div>
+ * Makes an element a file drop zone, or leaves it inert while it still renders. The permission
+ * is a required input, not a `SessionStore` read, so the check stays visible at the call site.
  */
 @Directive({
   selector: '[appFileDropTarget]',
@@ -46,18 +27,8 @@ export class FileDropTarget {
   private readonly _host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
 
   /**
-   * Nesting depth, not a boolean.
-   *
-   * `dragleave` fires every time the pointer crosses into a *child*, so a boolean
-   * clears the overlay while the pointer is still well inside the zone. The prettier
-   * fix — checking whether `relatedTarget` is contained — is unreliable: Safari has
-   * historically reported `relatedTarget: null` on those inner transitions, which is
-   * indistinguishable from leaving the window.
-   *
-   * Linked to the permission rather than reset from inside the effect below: revoking
-   * it mid-drag has to clear the overlay, and expressing that as a derivation makes it
-   * a property of the type instead of an ordering the next editor has to preserve — and
-   * settles it in one change-detection pass rather than two.
+   * A depth, not a boolean: `dragleave` fires on entering a child, and Safari's null
+   * `relatedTarget` rules out containment checks. Linked so revoking mid-drag clears it.
    */
   private readonly _depth = linkedSignal<boolean, number>({
     source: this.appFileDropTarget,
@@ -74,11 +45,7 @@ export class FileDropTarget {
         return;
       }
 
-      // Raw addEventListener rather than `host:` metadata, because host bindings
-      // cannot be attached conditionally and "binds no listeners at all when
-      // disabled" is the criterion. Raw rather than Renderer2.listen because under
-      // zoneless the signal write *is* the change-detection notification — there is
-      // nothing for a zone-aware wrapper to do here.
+      // Not `host:` listeners, which cannot be conditional: a disabled zone binds none at all.
       const controller = new AbortController();
       const options = { signal: controller.signal };
 
@@ -105,10 +72,6 @@ export class FileDropTarget {
       return;
     }
 
-    // `dropEffect` is only honoured when set during `dragover`, and `preventDefault`
-    // on `dragover` is what makes the element a drop target at all — without it the
-    // `drop` event never fires, which is the single most common reason a zone looks
-    // right and does nothing.
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect = 'copy';
     }
@@ -132,19 +95,15 @@ export class FileDropTarget {
     }
 
     event.preventDefault();
-    // The innermost target wins, and the window-level suppressor has nothing left to
-    // do for an event that has already been claimed and handled.
+    // The innermost target wins; the window-level suppressor has nothing left to do.
     event.stopPropagation();
-    // Hard reset: `drop` consumes the drag outright and no balancing `dragleave`
-    // follows it. `dragend` is not an alternative — it never fires for an OS file
-    // drag, because the drag did not start in this document.
+    // No `dragleave` follows a drop, and `dragend` never fires for an OS file drag.
     this._depth.set(0);
 
     const files = Array.from(event.dataTransfer?.files ?? []);
 
-    // A dropped *folder* yields an empty `files` in several browsers; reading it needs
-    // `webkitGetAsEntry()`, which belongs to EP-8. Emitting nothing is a visible
-    // no-op the user can retry, where emitting `[]` would be a silent one.
+    // A dropped folder yields an empty `files` in several browsers (reading it needs
+    // `webkitGetAsEntry()`); emit nothing rather than a silent `[]`.
     if (files.length > 0) {
       this.filesDropped.emit(files);
     }

@@ -29,17 +29,8 @@ import { ProjectDocumentsStore } from './files/project-documents-store';
 import { ProjectStore } from './project-store';
 
 /**
- * One project's screen — the header, the composer slot and the tab strip (frame `4e`).
- *
- * The board's order is load-bearing: header, then composer, then tabs. Sending from the
- * composer creates a conversation *inside* this project (US-906), which is why it sits
- * above the panels rather than inside one — it belongs to the project, not to whichever
- * tab happens to be open.
- *
- * Frame `4e` draws three tabs and a favourite star. The **Conversations** tab is
- * US-908's and waits on US-307 for its row menu; the star waits on US-909 for a flag to
- * put on the wire. Both are absent rather than disabled, the repo's pattern for an
- * unshipped affordance.
+ * The composer sits above the tabs, not inside one: a prompt sent here creates a conversation in
+ * the project, whichever tab is open.
  */
 @Component({
   selector: 'app-project-detail',
@@ -56,11 +47,8 @@ import { ProjectStore } from './project-store';
     RouterOutlet,
     Skeleton,
   ],
-  // Two upload stores, because the two surfaces upload to different parents. The
-  // project-bound one is provided here rather than on the files panel so switching tabs
-  // mid-upload does not tear the transfer down; the composer gets its own, left unbound,
-  // because a file attached there belongs to the conversation the prompt is about to
-  // create — not to this project.
+  // Two upload stores: the project's lives here so a tab switch does not cancel a transfer, and
+  // the composer's stays unbound because its files belong to the conversation it will create.
   providers: [
     UploadStore,
     provideComposerUploads(),
@@ -82,28 +70,17 @@ export class ProjectDetail {
   private readonly _uploads = inject(UploadStore);
   private readonly _router = inject(Router);
 
-  /**
-   * Frame `4e`'s count beside the Files tab.
-   *
-   * Null until the list has actually been read: "Files 0" on a project that has four is
-   * a worse answer than no count, and the strip renders before the panel it counts.
-   */
+  /** Null until the list is read: "Files 0" on a project that has four is worse than no count. */
   protected readonly filesCount = computed(() =>
     this._documents.isFulfilled() ? this._documents.count() : null,
   );
 
-  /** Frame `4e`'s count beside the Conversations tab (US-908), withheld the same way. */
+  /** Withheld until read, like {@link filesCount}. */
   protected readonly conversationsCount = computed(() => this._conversations.count());
 
   /**
-   * Below 768px the tab strip becomes the same scrollable pill strip the administration
-   * area uses (frame `5m`'s treatment). Frame `4e`'s caption asks for stacked accordions
-   * instead; that is a **deliberate departure**, agreed before implementation. These
-   * three tabs are real child routes, one of them behind a `canDeactivate` guard that
-   * can *refuse* the navigation — so a disclosure marked `aria-expanded` would announce
-   * a state the control neither owns nor can guarantee. `aria-current="page"` on a link
-   * is the honest statement, and reusing the strip means one responsive navigation
-   * pattern in the application rather than two.
+   * Narrow screens get the pill strip, not accordions: the tabs are child routes a guard can
+   * refuse, so `aria-expanded` would claim a state the control cannot guarantee.
    */
   protected readonly isNarrow = injectMediaQuery(MOBILE_VIEWPORT);
 
@@ -122,31 +99,19 @@ export class ProjectDetail {
     // A computation, not a value: navigating from one project to another reuses this
     // component, and `switchMap` inside each store cancels the request left behind.
     this.project.bindRoute(this.projectId);
-    // Here rather than in the files panel, because the count belongs to the tab strip
-    // and has to be right while the reader is standing on Instructions.
+    // Bound here, not in the panels, so the tab strip's counts are right from any tab.
     this._documents.bindProject(this.projectId);
-    // Bound here for the same reason, and it is what makes the Conversations count
-    // right while the reader is standing on another tab (US-908).
     this._conversations.bindProject(this.projectId);
 
-    // Bound the moment the id is known, so a file dropped on the Files tab starts
-    // uploading immediately. Only that store is bound: the composer's stays targetless,
-    // which is what defers its files until a conversation exists to own them.
+    // Only the project's store is bound; the composer's stays targetless until a conversation
+    // exists to own its files.
     effect(() => {
       const projectId = this.projectId();
       untracked(() => this._uploads.bindProject(projectId));
     });
 
-    // A chip that finished is a row nobody has read yet: the upload route answers with
-    // a job id, never a document, so the name, size and created date can only come from
-    // asking for the list again — after which the chip retires, or the same file would
-    // sit on screen twice.
-    //
-    // Here rather than on the files panel because `UploadStore` is provided here: a
-    // file dropped on the Files tab while the reader is on Instructions has to become a
-    // row too, and the tab strip's own count would otherwise go stale. It reads the
-    // project-bound store only — the composer's lives under `COMPOSER_UPLOADS` and is
-    // never reached from here.
+    // The upload route answers with a job id, so a ready chip becomes a row only by re-reading
+    // the list; the chip then retires so the file is not shown twice.
     effect(() => {
       const settled = this._uploads.attachments().filter((row) => row.state.kind === 'ready');
       if (settled.length === 0) {
@@ -161,9 +126,7 @@ export class ProjectDetail {
       });
     });
 
-    // Deleted from this screen's own kebab, or from another tab. The store cannot
-    // navigate, so it raises a flag and the screen leaves — to the grid, because the
-    // project this URL names no longer exists and reloading would 404.
+    // Deleted here or in another tab: the store cannot navigate, so the screen leaves for the grid.
     effect(() => {
       if (this.project.deleted()) {
         untracked(() => void this._router.navigate([PROJECTS_ROUTE]));
@@ -171,10 +134,7 @@ export class ProjectDetail {
     });
   }
 
-  /**
-   * The star's name, which is its whole accessible name: the glyph has none of its own
-   * and `aria-pressed` is deliberately absent, so the label has to carry the direction.
-   */
+  /** The star's whole accessible name; with no `aria-pressed`, it carries the direction. */
   protected favoriteLabel(project: ProjectDto): string {
     return project.isFavorite ? `Unfavourite ${project.name}` : `Favourite ${project.name}`;
   }

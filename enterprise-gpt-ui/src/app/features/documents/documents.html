@@ -1,14 +1,8 @@
 <h1 class="documents__title font-display">Documents</h1>
 
 @if (library.error(); as error) {
-  <!--
-    Instead of the list rather than beside it: the rows on screen belong to a query that
-    failed, so leaving them up would show a stale result set as if it were the answer. A
-    failed *page* is the other case, and it keeps its rows and toasts.
-
-    The toolbar is withheld too — a divergence from the conversations library, whose field
-    stays up beside its panel. Frame 4k draws the error card alone.
-  -->
+  <!-- Instead of the list, whose rows belong to the query that failed. The toolbar is withheld
+       too, unlike in the conversations library. -->
   <app-error-panel
     [error]="error"
     [canRetry]="canRetry(error)"
@@ -17,8 +11,7 @@
   />
 } @else {
   <div class="documents__toolbar">
-    <!-- "Filter", not "Search": the board's own wording, kept even though the term now
-         reaches the server, because it is what the reader is doing to the listing. -->
+    <!-- "Filter", not "Search": it is what the reader is doing to the listing. -->
     <app-search-input
       class="documents__search"
       label="Filter documents by name"
@@ -27,8 +20,6 @@
       (searched)="onSearched($event)"
     />
 
-    <!-- Frame 4j draws the switch checked: grouped is the default, and the URL
-         records only the deviation. -->
     <div class="form-check form-switch documents__group-toggle">
       <input
         id="documents-group-switch"
@@ -41,8 +32,7 @@
       <label class="form-check-label" for="documents-group-switch">Group by conversation</label>
     </div>
 
-    <!-- A switch rather than a pressed button: two filters that look alike beat one that
-         invents a second idiom for the same toolbar. -->
+    <!-- A switch rather than a pressed button, matching the grouping switch beside it. -->
     <div class="form-check form-switch documents__source-toggle">
       <input
         #sourceSwitch
@@ -56,21 +46,15 @@
       <label class="form-check-label" for="documents-source-switch">Generated only</label>
     </div>
 
-    <!--
-      aria-hidden because the same string is handed to the status region below, which
-      announces it once when it changes. Withheld before the first response, where
-      "No documents" would be a claim rather than a count.
-    -->
+    <!-- aria-hidden: the status region announces it. Withheld before the first response, where
+         "No documents" would be a claim, not a count. -->
     @if (!library.isFirstLoad()) {
       <p class="documents__count" aria-hidden="true">{{ library.countSummary() }}</p>
     }
   </div>
 
-  <!--
-    Present from first render so a changing count is announced. The busy state rides the
-    same region rather than a second one: two live regions describing one list would have
-    a screen reader announce the change twice.
-  -->
+  <!-- Present from first render so a changing count is announced, and shared with the busy
+       state so a screen reader never announces one change twice. -->
   <p class="visually-hidden" role="status">{{ announcement() }}</p>
 
   @if (library.isFirstLoad()) {
@@ -85,9 +69,7 @@
       }
     </div>
   } @else if (library.hasNoMatches()) {
-    <!-- Frame 4b's shape: the term named, the scope stated, one clear way out. The scope
-         line is unqualified because the server searched the whole library, not the rows
-         this screen happens to hold. -->
+    <!-- The scope line is unqualified: the server searched the whole library. -->
     <app-empty-state
       [heading]="noMatchHeading()"
       [headingLevel]="2"
@@ -103,11 +85,7 @@
       </button>
     </app-empty-state>
   } @else if (library.isEmpty()) {
-    <!--
-      After the no-matches branch, now that the term is served: with a term in play the
-      server has already told us nothing matches it, so "Nothing uploaded yet" would be a
-      claim about the library made from an answer about the search.
-    -->
+    <!-- After no-matches: with a term in play, an empty answer says nothing about the library. -->
     @if (generatedOnly()) {
       <app-empty-state
         heading="No generated documents yet"
@@ -125,10 +103,7 @@
         </button>
       </app-empty-state>
     } @else {
-      <!--
-        No action: uploading happens in a conversation's composer, and a button here
-        could only restate the sentence below it.
-      -->
+      <!-- No action: uploading happens in a conversation's composer. -->
       <app-empty-state
         heading="Nothing uploaded yet"
         [headingLevel]="2"
@@ -141,11 +116,8 @@
       @if (grouped()) {
         @for (group of library.groups(); track trackGroup(group)) {
           <div class="documents__group-header">
-            <!--
-              aria-controls only while its target is rendered: a collapsed group's
-              list leaves the DOM, and an id reference to nothing is an axe
-              violation, not a hint.
-            -->
+            <!-- aria-controls only while its target renders: a collapsed group's list leaves the
+                 DOM, and a dangling id reference fails axe. -->
             <button
               class="documents__group-chevron"
               type="button"
@@ -192,19 +164,11 @@
       }
     </div>
 
-    <!--
-      Below the card and outside it, so it serves the grouped and flat views alike.
-
-      Gone rather than disabled once everything is loaded: a disabled control still reads
-      as "there is more, but not for you".
-    -->
+    <!-- Outside the card, so it serves both views. Removed, not disabled, once all is loaded: a
+         disabled control still implies there is more. -->
     <div class="documents__more">
       @if (library.hasMore()) {
-        <!--
-          Both halves of `loadMore()`'s own guard, so the control cannot look operable
-          while a press would be a silent no-op — which is what it would be during a
-          narrowing search, where the rows and this button both stay up.
-        -->
+        <!-- Mirrors `loadMore()`'s guard, so it can't look operable while a press would no-op. -->
         <button
           class="btn btn-outline-secondary btn-sm"
           type="button"

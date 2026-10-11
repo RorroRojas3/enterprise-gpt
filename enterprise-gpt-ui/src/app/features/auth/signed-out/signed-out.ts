@@ -15,16 +15,8 @@ import { focusOnRender } from '@shared/a11y/focus-on-render';
 import { AuthPage } from '../auth-page/auth-page';
 
 /**
- * Where sign-out lands — the successful end-session round trip and the failure
- * fallback both.
- *
- * Unguarded, and that is the entire point rather than a convenience. `authGuard` on
- * this route would start a sign-in immediately, and after a *failed* sign-out the Entra
- * session cookie is still live, so Entra would silently re-authenticate the person who
- * just walked away from the machine. Signing in again has to be a deliberate press.
- *
- * It is not one of the `6x` frames; the design puts sign-out in the sidebar footer and
- * says nothing about where it lands. This reuses `AuthPage` so the family reads as one.
+ * Unguarded: after a failed sign-out the Entra cookie is still live, so `authGuard` would silently
+ * re-authenticate. Signing in again has to be a deliberate press.
  */
 @Component({
   selector: 'app-signed-out',
@@ -51,10 +43,8 @@ export class SignedOut {
     try {
       await this._auth.signIn(CHAT_ROUTE);
     } catch {
-      // The browser is still here, so the redirect never started. A reload is the only
-      // recovery: MSAL takes its interaction lock before navigating and exposes no way
-      // to release it in-document, and this page — unlike `/login-failed` — has not run
-      // a handshake that could clear it.
+      // The redirect never started. Only a reload clears MSAL's interaction lock, since this page
+      // ran no handshake.
       this._navigation.reload();
     }
   }

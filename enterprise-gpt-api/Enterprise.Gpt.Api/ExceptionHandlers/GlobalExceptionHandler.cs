@@ -1,179 +1,132 @@
-﻿using Microsoft.AspNetCore.Diagnostics;
-using Microsoft.AspNetCore.Mvc;
 using Enterprise.Gpt.Api.Problems;
+using Enterprise.Gpt.Api.Problems.Constants;
+using Enterprise.Gpt.Api.Problems.Models;
 using Enterprise.Gpt.Service.Exceptions;
+using FluentValidation;
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Mvc;
 
-namespace Enterprise.Gpt.Api.ExceptionHandlers
+namespace Enterprise.Gpt.Api.ExceptionHandlers;
+
+/// <remarks>
+/// A <see cref="ProblemException"/> carries its own status and problem type, so a new one maps without
+/// this handler naming it. Anything unmapped is a 500 whose message never reaches the caller.
+/// </remarks>
+internal sealed partial class GlobalExceptionHandler(
+    IProblemDetailsService problemDetailsService,
+    ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
 {
-    /// <summary>
-    /// Fallback exception handler that maps the remaining exception types
-    /// (<see cref="ArgumentException"/>, <see cref="ArgumentNullException"/>,
-    /// <see cref="ConversationBusyException"/>,
-    /// <see cref="InvalidOperationException"/>, <see cref="NotFoundException"/>,
-    /// <see cref="KeyNotFoundException"/>, <see cref="ForbiddenException"/>,
-    /// <see cref="McpServerUnavailableException"/>,
-    /// <see cref="McpCredentialRequiredException"/>,
-    /// <see cref="McpCredentialRejectedException"/>,
-    /// <see cref="ProviderNotConfiguredException"/>,
-    /// <see cref="SummarizerNotConfiguredException"/>,
-    /// <see cref="SummarizerProtectedException"/>,
-    /// <see cref="StorageNotConfiguredException"/>,
-    /// <see cref="ExportRendererNotConfiguredException"/>) and any
-    /// otherwise unhandled exception to an RFC 9457 <see cref="ProblemDetails"/> response.
-    /// Always returns <see langword="true"/> so any exception receives a consistent payload.
-    /// </summary>
-    /// <param name="problemDetailsService">Writes the content-negotiated problem details response.</param>
-    /// <param name="logger">Logger instance for recording error information.</param>
-    internal sealed class GlobalExceptionHandler(
-        IProblemDetailsService problemDetailsService,
-        ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
+    private readonly IProblemDetailsService _problemDetailsService = problemDetailsService;
+    private readonly ILogger<GlobalExceptionHandler> _logger = logger;
+
+    /// <inheritdoc />
+    public async ValueTask<bool> TryHandleAsync(
+        HttpContext httpContext,
+        Exception exception,
+        CancellationToken cancellationToken)
     {
-        private readonly IProblemDetailsService _problemDetailsService = problemDetailsService;
-        private readonly ILogger<GlobalExceptionHandler> _logger = logger;
-
-        /// <summary>
-        /// Handles the specified exception by logging it and writing a <see cref="ProblemDetails"/>
-        /// response to the HTTP response stream.
-        /// </summary>
-        /// <param name="httpContext">The HTTP context for the current request.</param>
-        /// <param name="exception">The exception to handle.</param>
-        /// <param name="cancellationToken">A token that propagates cancellation.</param>
-        /// <returns><see langword="true"/> always; this handler is the final fallback.</returns>
-        public async ValueTask<bool> TryHandleAsync(
-            HttpContext httpContext,
-            Exception exception,
-            CancellationToken cancellationToken)
+        // Only a client that actually went away gets 499. A timeout inside the request is a server
+        // fault and falls through to the 500 arm.
+        if (exception is OperationCanceledException && httpContext.RequestAborted.IsCancellationRequested)
         {
-            // The trace id is omitted from the template: the hosting layer already puts it on every
-            // log scope as TraceId, and repeating it here under the same name with a different value
-            // is what made response and log ids disagree.
-            _logger.LogError(exception, "An error occurred: {Message}", exception.Message);
+            LogRequestCancelled(_logger);
 
-            // Belt and braces. ExceptionHandlerMiddleware already rethrows without invoking any
-            // handler once the response has started, so this is not what keeps a faulting SSE stream
-            // intact — the middleware is. Kept because the status and headers really are immutable
-            // here, and assigning either would throw and mask the original exception.
-            if (httpContext.Response.HasStarted)
+            if (!httpContext.Response.HasStarted)
             {
-                return true;
-            }
-
-            var problemDetails = MapToProblemDetails(exception);
-
-            // The writer reads Response.StatusCode rather than ProblemDetails.Status, and the
-            // exception handler middleware has already set it to 500 before this handler runs.
-            httpContext.Response.StatusCode = problemDetails.Status ?? StatusCodes.Status500InternalServerError;
-
-            if (!await _problemDetailsService.TryWriteAsync(new ProblemDetailsContext
-            {
-                HttpContext = httpContext,
-                ProblemDetails = problemDetails,
-                Exception = exception
-            }))
-            {
-                // The writer declines media types outside JSON, writing nothing. A caller sending
-                // Accept: text/html still gets a body rather than a bare status — and Enrich has to
-                // run explicitly here, because this path never reaches CustomizeProblemDetails.
-                ProblemDetailsRegistration.Enrich(httpContext, problemDetails);
-                await httpContext.Response.WriteAsJsonAsync(
-                    problemDetails,
-                    options: null,
-                    contentType: ProblemDetailsRegistration.ProblemMediaType,
-                    cancellationToken);
+                httpContext.Response.StatusCode = StatusCodes.Status499ClientClosedRequest;
             }
 
             return true;
         }
 
-        private static ProblemDetails MapToProblemDetails(Exception exception) =>
-            exception switch
-            {
-                ArgumentNullException => Create(StatusCodes.Status400BadRequest, exception.Message),
-                ArgumentException => Create(StatusCodes.Status400BadRequest, exception.Message),
-                // Kestrel throws this when the request body exceeds the limit
-                // MaxUploadSizeEndpointFilter lowers for chunked uploads, which declare no
-                // Content-Length for its first layer to check. Its StatusCode is already the right
-                // client error (413 there), so falling through to the 500 arm would report a server
-                // fault for a client mistake.
-                BadHttpRequestException badRequest => Create(badRequest.StatusCode, badRequest.Message),
-                // Contention is a temporary state the caller can retry out of, so it must not
-                // collapse into the 400 bucket alongside validation failures.
-                ConversationBusyException => Create(
-                    StatusCodes.Status409Conflict, exception.Message, ProblemTypes.ConversationBusy),
-                InvalidOperationException => Create(StatusCodes.Status400BadRequest, exception.Message),
-                NotFoundException => Create(
-                    StatusCodes.Status404NotFound, exception.Message, ProblemTypes.NotFound),
-                KeyNotFoundException => Create(
-                    StatusCodes.Status404NotFound, exception.Message, ProblemTypes.NotFound),
-                ForbiddenException => Create(
-                    StatusCodes.Status403Forbidden, exception.Message, ProblemTypes.Forbidden),
-                McpServerUnavailableException serverUnavailable => WithServerName(
-                    Create(StatusCodes.Status502BadGateway, exception.Message, ProblemTypes.McpServerUnavailable),
-                    serverUnavailable.ServerName),
-                // 428: refused until the caller supplies something no token refresh, permission
-                // grant or retry can produce.
-                McpCredentialRequiredException credentialRequired => WithCredentialTarget(
-                    Create(StatusCodes.Status428PreconditionRequired, exception.Message, ProblemTypes.McpCredentialRequired),
-                    credentialRequired.McpServerId, credentialRequired.ServerName),
-                McpCredentialRejectedException credentialRejected => WithCredentialTarget(
-                    Create(StatusCodes.Status428PreconditionRequired, exception.Message, ProblemTypes.McpCredentialRejected),
-                    credentialRejected.McpServerId, credentialRejected.ServerName),
-                // 503, not 500: the request is well formed and the model exists — this deployment just
-                // has no client for its provider, which an operator fixes by configuring one rather
-                // than by the caller changing anything about the request.
-                ProviderNotConfiguredException providerNotConfigured => WithExtension(
-                    Create(StatusCodes.Status503ServiceUnavailable, exception.Message, ProblemTypes.ProviderNotConfigured),
-                    "providerId", providerNotConfigured.ProviderId),
-                // Same reasoning again, for a summarizer whose catalog row has gone missing or been
-                // retired since start. It reuses provider-not-configured rather than adding an
-                // eleventh problem type, because to a caller the two are one condition: this
-                // deployment cannot serve the model. The message names only the configured id.
-                SummarizerNotConfiguredException => Create(
-                    StatusCodes.Status503ServiceUnavailable, exception.Message, ProblemTypes.ProviderNotConfigured),
-                // No domain type: a DELETE carries no body for a client to key an errors entry
-                // against, so Detail is the whole payload — and adding an eleventh problem type
-                // for one refusal would be a breaking contract change for every client.
-                SummarizerProtectedException => Create(
-                    StatusCodes.Status409Conflict, exception.Message),
-                // Same reasoning as above, for the download link storage could not sign. The message
-                // names no account, container or credential, so it is safe to pass through.
-                StorageNotConfiguredException => Create(
-                    StatusCodes.Status503ServiceUnavailable, exception.Message, ProblemTypes.StorageNotConfigured),
-                // Same reasoning again, for a conversation export format this deployment cannot
-                // render. The format extension is what lets a client offering three formats disable
-                // the one that is unavailable rather than the whole download control.
-                ExportRendererNotConfiguredException exportRendererNotConfigured => WithExtension(
-                    Create(StatusCodes.Status503ServiceUnavailable, exception.Message, ProblemTypes.ExportRendererNotConfigured),
-                    "format", exportRendererNotConfigured.Format),
-                // The real message is suppressed: an unmapped exception may carry connection
-                // strings, file paths, or query text.
-                _ => Create(StatusCodes.Status500InternalServerError, "An unexpected internal server error occurred.")
-            };
+        var problemDetails = MapToProblemDetails(exception);
+        var statusCode = problemDetails.Status ?? StatusCodes.Status500InternalServerError;
 
-        // A null problemType leaves Type and Title unset, which is what makes ProblemDetailsDefaults
-        // fill in the RFC 9110 status-section link and reason phrase for generic failures.
-        private static ProblemDetails Create(int statusCode, string detail, ProblemType? problemType = null) =>
-            new()
-            {
-                Status = statusCode,
-                Title = problemType?.Title,
-                Type = problemType?.Type,
-                Detail = detail
-            };
+        // .NET 10 no longer logs an exception an IExceptionHandler handled; 4xx outcomes are expected.
+        if (statusCode >= StatusCodes.Status500InternalServerError)
+        {
+            LogServerError(_logger, exception, exception.Message);
+        }
 
-        private static ProblemDetails WithServerName(ProblemDetails problemDetails, string serverName) =>
-            WithExtension(problemDetails, "serverName", serverName);
+        // ExceptionHandlerMiddleware already skips handlers once the response has started; the status and
+        // headers are immutable here, and assigning either would mask the original exception.
+        if (httpContext.Response.HasStarted)
+        {
+            return true;
+        }
 
-        // The id as well as the name: the client opens the key dialog for this server, and a name
-        // is display copy rather than something it can address a request to.
-        private static ProblemDetails WithCredentialTarget(
-            ProblemDetails problemDetails, Guid mcpServerId, string serverName) =>
-            WithExtension(WithServerName(problemDetails, serverName), "mcpServerId", mcpServerId);
+        // The writer reads Response.StatusCode, which the middleware has already set to 500.
+        httpContext.Response.StatusCode = statusCode;
 
-        private static ProblemDetails WithExtension(ProblemDetails problemDetails, string name, object? value)
+        if (!await _problemDetailsService.TryWriteAsync(new ProblemDetailsContext
+        {
+            HttpContext = httpContext,
+            ProblemDetails = problemDetails,
+            Exception = exception
+        }))
+        {
+            // The writer declines media types outside JSON. A caller sending Accept: text/html still gets
+            // a body, and Enrich runs explicitly because this path never reaches CustomizeProblemDetails.
+            ProblemDetailsRegistration.Enrich(httpContext, problemDetails);
+            await httpContext.Response.WriteAsJsonAsync(
+                problemDetails,
+                options: null,
+                contentType: ProblemDetailsRegistration.ProblemMediaType,
+                cancellationToken);
+        }
+
+        return true;
+    }
+
+    #region Private methods
+
+    private static ProblemDetails MapToProblemDetails(Exception exception) =>
+        exception switch
+        {
+            ValidationException validation => ValidationProblems.Create(validation.Errors),
+            // Kestrel throws this when a chunked upload exceeds the limit MaxUploadSizeEndpointFilter
+            // lowers; its StatusCode is already the right client error (413 there).
+            BadHttpRequestException badRequest => Create(badRequest.StatusCode, badRequest.Message),
+            ProblemException problem => ToProblem(problem),
+            // The real message is suppressed: an unmapped exception may carry connection strings, file
+            // paths, or query text.
+            _ => Create(StatusCodes.Status500InternalServerError, "An unexpected internal server error occurred.")
+        };
+
+    private static ProblemDetails ToProblem(ProblemException exception)
+    {
+        // An unmapped code degrades to the RFC 9110 default rather than failing inside the handler.
+        var problemType = exception.ProblemCode is { } problemCode ? ProblemTypes.ForCode(problemCode) : null;
+        var problemDetails = Create((int)exception.StatusCode, exception.Message, problemType);
+
+        foreach (var (name, value) in exception.Extensions)
         {
             problemDetails.Extensions[name] = value;
-            return problemDetails;
         }
+
+        return problemDetails;
     }
+
+    // A null problemType leaves Type and Title unset, so the RFC 9110 status-section defaults apply.
+    private static ProblemDetails Create(int statusCode, string detail, ProblemType? problemType = null) =>
+        new()
+        {
+            Status = statusCode,
+            Title = problemType?.Title,
+            Type = problemType?.Type,
+            Detail = detail
+        };
+
+    #endregion
+
+    #region Logging
+
+    // The trace id stays out of the template: the hosting layer already puts it on every log scope.
+    [LoggerMessage(Level = LogLevel.Error, Message = "An error occurred: {Message}")]
+    private static partial void LogServerError(ILogger logger, Exception exception, string message);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Request was cancelled.")]
+    private static partial void LogRequestCancelled(ILogger logger);
+
+    #endregion
 }

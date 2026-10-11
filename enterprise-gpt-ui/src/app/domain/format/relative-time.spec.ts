@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatRelativeTime, formatShortDate } from './relative-time';
 
-/**
- * A fixed clock, because the function is pure in `now` precisely so it can be.
- *
- * Local time, not `Z`: the day boundary the function tests is the reader's calendar
- * day, so a UTC literal would make these assertions depend on the runner's time zone.
- */
+/** Local time, not `Z`, so the calendar-day assertions don't depend on the runner's zone. */
 const NOW = Date.parse('2026-08-14T15:00:00');
 
 function at(iso: string): string {
@@ -32,15 +27,12 @@ describe('formatRelativeTime', () => {
   });
 
   it('falls back to a date once it is older than yesterday', () => {
-    // The month and day are formatted for the reader's locale; the year is what this
-    // asserts, because that is the branch.
+    // Month and day are locale-formatted, so only the year branch is asserted.
     expect(at('2026-08-05T09:00:00')).not.toContain('2026');
     expect(at('2025-11-05T09:00:00')).toContain('2025');
   });
 
   it('reads a future timestamp as "Just now" rather than as a negative age', () => {
-    // Clock skew between a server stamp and the browser is normal and must not render
-    // as "-3m ago".
     expect(at('2026-08-14T15:05:00')).toBe('Just now');
   });
 

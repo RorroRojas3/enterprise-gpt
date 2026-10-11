@@ -17,7 +17,7 @@ import { UserFormDialog } from './user-form-dialog';
 const USERS_URL = `${TEST_API_BASE_URL}/api/users`;
 const PERMISSIONS_URL = `${TEST_API_BASE_URL}/api/permissions`;
 
-describe('UserFormDialog (US-1202)', () => {
+describe('UserFormDialog', () => {
   let backend: HttpTestingController;
   let fixture: ComponentFixture<UserFormDialog>;
   let actions: InstanceType<typeof UserActionsStore>;
@@ -91,8 +91,7 @@ describe('UserFormDialog (US-1202)', () => {
 
     expect(emailField()).not.toBeNull();
     expect(host().querySelectorAll('input, textarea, select')).toHaveLength(
-      // The email field plus one checkbox per permission. No name, role, status,
-      // password or confirm-password field exists, because the API has none.
+      // The email field plus one checkbox per permission: the API takes nothing else.
       1 + 2,
     );
     expect(host().textContent).not.toContain('Password');
@@ -104,8 +103,7 @@ describe('UserFormDialog (US-1202)', () => {
 
     const boxes = host().querySelectorAll<HTMLInputElement>('.checklist .form-check-input');
     expect(boxes).toHaveLength(2);
-    // Granting MCP tool access is the only way anybody gets it — the lock says the
-    // permission's definition belongs to its server, not that the grant is frozen.
+    // Disabling would leave no way to grant MCP tool access; the lock marks the definition.
     expect([...boxes].some((box) => box.disabled)).toBe(false);
     expect(host().textContent).toContain('managed by its MCP server');
   });
@@ -114,8 +112,7 @@ describe('UserFormDialog (US-1202)', () => {
     await open();
     await type('not-an-email');
 
-    // The submit button is disabled while the form is invalid, so the message cannot
-    // wait on a press — it appears when the field is left, which is what `touched` is.
+    // Submit is disabled while invalid, so the message appears on leaving the field instead.
     submitButton().click();
     await fixture.whenStable();
     backend.expectNone((request) => request.method === 'POST');

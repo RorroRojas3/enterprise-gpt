@@ -4,7 +4,6 @@ import { formatBytes } from '@domain/format/bytes';
 import { DocumentDownloadStore } from '@core/documents/document-download-store';
 import { AttachmentChip } from '@shared/chip/attachment-chip/attachment-chip';
 
-/** The files an assistant message produced, under its answer. */
 @Component({
   selector: 'app-generated-files',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -28,10 +27,10 @@ export class GeneratedFiles {
     })),
   );
 
-  /** Whether a download can be addressed at all. A chip that cannot act does not offer to. */
+  /** A chip that cannot address a download does not offer one. */
   protected readonly downloadable = computed(() => this.conversationId() !== null);
 
-  /** Whether this file's own link is being minted. Keyed by document id, so one chip spins alone. */
+  /** Keyed by document id, so one chip spins alone. */
   protected downloading(documentId: string): boolean {
     return this._downloads.isRowPending(documentId);
   }

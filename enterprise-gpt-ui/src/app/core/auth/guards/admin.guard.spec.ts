@@ -75,9 +75,7 @@ describe('adminCanMatch', () => {
   });
 
   it('never requests the admin chunk for a non-administrator', async () => {
-    // The whole of US-203. `loadChildren` is what puts the chunk on the wire, so a
-    // spy on it is the faithful, bundler-agnostic form of "not requested over the
-    // network" — jsdom cannot observe a fetch that a real browser would make.
+    // jsdom cannot observe the chunk fetch, so a spy on `loadChildren` stands in for the network.
     configure(signedInMsal());
     const harness = await RouterTestingHarness.create();
 
@@ -103,8 +101,7 @@ describe('adminCanMatch', () => {
   });
 
   it('withholds the chunk from a signed-out visitor too', async () => {
-    // No sign-in is started from here: handing the navigation to the chat route lets
-    // authGuard own the redirect, and the chunk stays unrequested either way.
+    // authGuard owns the sign-in, so this guard hands the navigation to the chat route.
     configure(signedOutMsal());
     const harness = await RouterTestingHarness.create();
 
@@ -115,8 +112,7 @@ describe('adminCanMatch', () => {
   });
 
   it('sends a failed session bootstrap to frame 6c, not to forbidden', async () => {
-    // "We could not read your permissions" and "you do not have this permission" are
-    // different answers, and showing the second for the first is a lie.
+    // "We could not read your permissions" is not "you do not have this permission".
     configure(signedInMsal());
     const harness = await RouterTestingHarness.create();
 
@@ -141,10 +137,8 @@ describe('adminCanMatch', () => {
     void TestBed.inject(AuthService).signOut();
     await harness.navigateByUrl('/admin');
 
-    // Only the chunk is asserted. Where the navigation ends up is not this guard's to
-    // decide once it declines: in production the wildcard leads to /chat, whose own
-    // guards are latched off too, so the navigation is cancelled and the interstitial
-    // owns the screen — an outcome this stub route table cannot reproduce.
+    // Only the chunk is asserted: the production outcome, a navigation cancelled by the latched
+    // /chat guards, needs the real route table.
     expect(loadAdmin).not.toHaveBeenCalled();
   });
 });

@@ -39,22 +39,8 @@ interface ConversationState {
 const initialState: ConversationState = { conversationId: null, conversation: null };
 
 /**
- * The conversation currently open on the chat route.
- *
- * Provided by `Chat` rather than `providedIn: 'root'`, so its lifetime is the chat
- * screen's. Thanks to `chatMatcher` that lifetime spans `/chat` and
- * `/chat/{id}` without a remount, which is what lets US-401 create a conversation
- * mid-turn without losing anything the user has typed.
- *
- * It reads `GET api/conversations/{id}`, deliberately **not**
- * `GET api/conversations/{id}/messages`: the latter is built from the Cosmos document
- * and reports `projectId`, `modelId` and `isFavorite` as null/null/false whatever the
- * truth, so it cannot hydrate a picker or a favourite star. This is also the only
- * source of `mcpServerIds`, which US-410 restores into the MCP picker.
- *
- * It is also where the model and MCP selections a conversation last used are
- * seeded back into `TurnSettingsStore` (US-410), and where the name the server
- * generates after a first turn is picked up (US-409).
+ * Reads `GET api/conversations/{id}`, not `/messages`, which reports `projectId`, `modelId` and
+ * `isFavorite` as null/null/false whatever the truth and carries no `mcpServerIds`.
  */
 export const ConversationStore = signalStore(
   withState(initialState),
@@ -68,14 +54,7 @@ export const ConversationStore = signalStore(
   })),
   withComputed((store) => ({
     isOpen: computed(() => store.conversationId() !== null),
-    /**
-     * The name to put in the header.
-     *
-     * Falls back to the sidebar's copy while the detail request is in flight, so
-     * opening a conversation from the list shows its title immediately rather than
-     * flashing a placeholder for the length of a round trip. Empty only for a deep
-     * link to a row the list has not loaded.
-     */
+    /** Falls back to the sidebar's copy while the detail loads, so the title shows at once. */
     name: computed(() => {
       const id = store.conversationId();
       if (id === null) {
@@ -85,10 +64,8 @@ export const ConversationStore = signalStore(
       return store.conversation()?.name ?? store._list.entityMap()[id]?.name ?? '';
     }),
     /**
-     * The DTO the header's actions operate on (US-308). Detail preferred — its
-     * `projectId` is the fresh one the rename must echo — with the sidebar's copy
-     * while the detail request is in flight. Null for a deep link the list never
-     * held: the kebab waits one round trip rather than acting on a guess.
+     * Detail preferred, as rename echoes its fresh `projectId`. Null for a deep link the list
+     * never held, so the kebab waits a round trip rather than acting on a guess.
      */
     current: computed<ConversationDto | null>(() => {
       const id = store.conversationId();
@@ -99,15 +76,8 @@ export const ConversationStore = signalStore(
       return store.conversation() ?? store._list.entityMap()[id] ?? null;
     }),
     /**
-     * Whether the open conversation is favourited, for the header star (US-305).
-     *
-     * The list's copy wins over the detail one — the reverse of {@link current} —
-     * because it is the copy `favoriteRow` patches optimistically, so the star and the
-     * sidebar row flip together on the click rather than a round trip apart, which is
-     * US-308's deferred criterion. A deep link the list never held falls back to the
-     * detail DTO, whose `isFavorite` is trustworthy (unlike the one
-     * `GET api/conversations/{id}/messages` reports) and simply lags a toggle by the
-     * round trip until `conversationEvents.updated` lands.
+     * The list's copy wins, unlike {@link current}: `favoriteRow` patches it optimistically, so
+     * the star and the sidebar row flip together. The detail covers a deep link.
      */
     isFavorite: computed(() => {
       const id = store.conversationId();
@@ -117,11 +87,7 @@ export const ConversationStore = signalStore(
 
       return store._list.entityMap()[id]?.isFavorite ?? store.conversation()?.isFavorite ?? false;
     }),
-    /**
-     * This conversation's own rename, favourite or delete is in flight; the header
-     * kebab's items and its star disable for the duration. Reads `pendingIds()`
-     * directly so the dependency is explicit to the computed.
-     */
+    /** This conversation's own rename, favourite or delete is in flight. */
     actionPending: computed(() => {
       const id = store.conversationId();
 
@@ -143,15 +109,12 @@ export const ConversationStore = signalStore(
           );
 
           if (id === undefined || id === null) {
-            // Nothing is resumed on the empty screen, so no warning about a
-            // resumed model belongs there (US-410). The selection itself stays:
-            // it persists across conversations for the session (US-402).
+            // No resumed-model warning on the empty screen; the selection itself persists.
             store._settings.clearRestoredModel();
           }
         }),
-        // The null case is handled *inside* switchMap rather than filtered out ahead
-        // of it: filtering would leave a request for the conversation just closed
-        // still running, because switchMap would never see the value that cancels it.
+        // Null passes through switchMap rather than being filtered, so closing a conversation
+        // cancels its request.
         switchMap((id) => {
           if (id === undefined || id === null) {
             return EMPTY;
@@ -164,21 +127,10 @@ export const ConversationStore = signalStore(
             tapResponse({
               next: (conversation) => {
                 patchState(store, { conversation }, setFulfilled());
-                // Keeps the sidebar row in step with a name the server changed out of
-                // band. A conversation the list does not hold is ignored there.
+                // Syncs the sidebar row with a name the server changed out of band.
                 store._list.refreshRow(conversation);
-                // US-410: the next turn behaves like the last one. Seeded from
-                // the detail response because it is the only shape carrying
-                // `mcpServerIds`, and unvalidated because the settings store's
-                // own joins drop a model or server that has since gone.
-                //
-                // An empty payload is not a selection of "nothing" — the server
-                // writes `modelId` and the MCP set from the newest usage row, so
-                // a conversation whose first turn has not finished reports both
-                // empty. Seeding it would clear the model and tool servers the
-                // user picked for the turn creating it right now (US-401
-                // re-opens this store as its `replaceUrl` lands), which is US-402
-                // and US-403 undone by a round trip.
+                // Unvalidated: the settings store drops a model or server since gone. Empty means
+                // the first turn has not finished, and seeding it would undo the user's picks.
                 if (conversation.modelId !== null || conversation.mcpServerIds.length > 0) {
                   store._settings.applyConversationSettings({
                     modelId: conversation.modelId,
@@ -194,13 +146,8 @@ export const ConversationStore = signalStore(
     );
 
     /**
-     * Re-reads the open conversation without disturbing the screen (US-409).
-     *
-     * Separate from {@link open} because that one clears `conversation` and
-     * goes pending, which would blank the header mid-conversation and flash the
-     * sidebar's stale name back. Failure is swallowed for the same reason:
-     * everything on screen is still true, and a name that arrives one refresh
-     * late is not worth an error panel over a conversation the user is reading.
+     * Unlike {@link open}, never clears the detail or goes pending, which would blank the header.
+     * Failures are swallowed: what is on screen is still true.
      */
     const refreshDetail = rxMethod<string>(
       pipe(
@@ -211,18 +158,13 @@ export const ConversationStore = signalStore(
             takeUntil(store._signedOut$),
             tapResponse({
               next: (conversation) => {
-                // Unguarded: the row is keyed by id, so the sidebar earns the
-                // generated name even if the user moved on mid-round-trip —
-                // which is the half of US-409 they will still be looking at.
+                // Unguarded: the sidebar gets the name even if the user has moved on.
                 store._list.refreshRow(conversation);
                 if (store.conversationId() === conversation.id) {
                   patchState(store, { conversation });
                 }
               },
-              // Swallowed, and through `tapResponse` rather than a `catchError`
-              // ahead of the handler: a throw escaping here would kill the
-              // rxMethod, and every later first turn would silently stop
-              // refreshing its name.
+              // Swallowed in `tapResponse`: an escaping throw would kill the rxMethod for good.
               error: () => {},
             }),
           );
@@ -244,10 +186,8 @@ export const ConversationStore = signalStore(
     };
   }),
   withEventHandlers((store, events = inject(Events)) => [
-    // A rename confirmed by the server (US-304) lands here even when the sidebar
-    // list does not hold the row — the deep-link case `refreshRow` ignores. Without
-    // it the header would keep showing the old name, because `name` prefers the
-    // detail copy this store holds.
+    // `name` prefers the detail copy, so a rename must patch it too, including on a deep link
+    // the list never held.
     events.on(conversationEvents.updated).pipe(
       tap(({ payload }) => {
         const current = store.conversation();
@@ -258,11 +198,8 @@ export const ConversationStore = signalStore(
       }),
     ),
 
-    // The open conversation's project was deleted somewhere else (US-903). The server
-    // released it to standalone, so the id this store holds is dead — and `toUpdateBody`
-    // echoes `projectId` on every rename, which would then PUT a deleted project and
-    // take a 404. `ConversationListStore` clears its own rows; this is the detail copy
-    // the header prefers, and it outlives the row on a deep link.
+    // The server released the conversation to standalone; a stale `projectId` would make the
+    // next rename PUT a deleted project and take a 404.
     events.on(projectEvents.deleted).pipe(
       tap(({ payload: projectId }) => {
         const current = store.conversation();
@@ -272,10 +209,8 @@ export const ConversationStore = signalStore(
       }),
     ),
 
-    // US-409: the server names a conversation after its first turn, and says so
-    // nowhere on the stream — a refetch is the only way to learn it. Bounded to
-    // that one turn, because every later turn would refetch a name that cannot
-    // have changed.
+    // The server names a conversation after its first turn without saying so on the stream;
+    // later turns cannot change the name.
     events.on(turnEvents.completed).pipe(
       tap(({ payload }) => {
         if (payload.wasFirstTurn && payload.conversationId === store.conversationId()) {

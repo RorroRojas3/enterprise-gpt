@@ -1,11 +1,5 @@
-// jsdom implements neither `DragEvent` nor `DataTransfer` — there is no
-// `DragEvent-impl.js` under its `living/events/` directory at all. Without these
-// shims none of the US-204 specs can be written, so they ship with the story rather
-// than as a convenience.
-//
-// `MouseEvent` is the right base: `DragEvent extends MouseEvent`, and `relatedTarget`
-// — which the `dragleave` depth counter depends on — comes free from it. Only
-// `dataTransfer` has to be grafted on.
+// jsdom has neither `DragEvent` nor `DataTransfer`. These build on `MouseEvent`, which
+// `DragEvent` extends, so `relatedTarget` comes free and only `dataTransfer` is grafted on.
 
 /** What a drag is carrying. Files and text are the two cases the app distinguishes. */
 export interface DragPayload {
@@ -32,13 +26,7 @@ export function textFile(name: string, contents = 'x'): File {
   return new File([contents], name, { type: 'text/plain' });
 }
 
-/**
- * Dispatches a drag event and returns it, so a caller can assert on
- * `defaultPrevented` and on `dataTransfer.dropEffect`.
- *
- * `relatedTarget` is what the four-event child-`dragleave` sequence needs; the
- * browser sets it to `null` when the pointer leaves the window entirely.
- */
+/** Dispatches a drag event and returns it, for asserting `defaultPrevented` and `dropEffect`. */
 export function dispatchDrag(
   target: EventTarget,
   type: DragEventType,
@@ -72,9 +60,7 @@ function fakeDataTransfer({ files = [], types }: DragPayload): DataTransfer {
   const resolvedTypes = types ?? (files.length > 0 ? ['Files'] : ['text/plain']);
 
   return {
-    // A real `types` is a frozen array in modern browsers and a DOMStringList in
-    // older Safari; production code goes through Array.from for exactly that reason,
-    // and an array satisfies both.
+    // Production reads `types` through Array.from for older Safari, so an array suffices.
     types: resolvedTypes,
     files: fakeFileList(files),
     dropEffect: 'none',

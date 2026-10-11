@@ -1,20 +1,13 @@
 import { PROBLEM_TYPE } from './problem-types';
 
 /**
- * An RFC 9457 problem body as this API writes it.
- *
- * `traceId` and `instance` are stamped on every problem by
- * `ProblemDetailsRegistration.Enrich`. `traceId` is body-only — the API's CORS
- * policy exposes `Content-Disposition` and nothing else — so there is no header
- * to read it from.
+ * An RFC 9457 problem body as this API writes it. `traceId` is body-only: the CORS policy
+ * exposes no header but `Content-Disposition`.
  */
 export interface ProblemDetails {
   /** Application problem type URI, or an RFC 9110 status-section link. */
   readonly type: string;
-  /**
-   * Optional per RFC 9457. This API always writes one, but declaring it required
-   * would let a body without it produce a value whose type lies.
-   */
+  /** The API always writes one, but RFC 9457 makes it optional and a body may lack it. */
   readonly title?: string;
   readonly status: number;
   /** Null on validation problems by design: the `errors` map carries the messages. */
@@ -26,13 +19,8 @@ export interface ProblemDetails {
 }
 
 /**
- * A 400 from FluentValidation.
- *
- * The `errors` keys are the server's own property paths, verbatim and therefore
- * PascalCase — unlike every other property on the wire, because
- * `JsonSerializerDefaults.Web` camel-cases property names but leaves dictionary
- * keys alone. Nested and indexed paths appear as `Chunking.MaxTokens` and
- * `Files[0].FileName`; object-level rules use the empty string.
+ * A 400 from FluentValidation. `errors` keys are the server's property paths, left PascalCase by
+ * the serializer (`Chunking.MaxTokens`, `Files[0].FileName`); object-level rules use `''`.
  */
 export interface ValidationProblemDetails extends ProblemDetails {
   readonly type: typeof PROBLEM_TYPE.validationError;
@@ -58,10 +46,8 @@ export interface McpServerUnavailableProblemDetails extends ProblemDetails {
 }
 
 /**
- * A 428 raised when a tool server needs an API key the user supplies and none is usable.
- *
- * `mcpServerId` as well as `serverName`: the client opens the key dialog for that server,
- * and a name is display copy rather than something a request can be addressed to.
+ * A 428 raised when a tool server needs a user-supplied API key and none is usable. The id
+ * addresses the key dialog; the name is display copy.
  */
 export interface McpCredentialRequiredProblemDetails extends ProblemDetails {
   readonly type: typeof PROBLEM_TYPE.mcpCredentialRequired;
@@ -83,10 +69,8 @@ export interface ProviderNotConfiguredProblemDetails extends ProblemDetails {
 }
 
 /**
- * A 503 raised when this deployment has no renderer for a conversation export format.
- *
- * `format` is the `?format=` token the request used, so a download menu can disable the one
- * item rather than the whole control.
+ * A 503 raised when this deployment has no renderer for an export format. `format` lets a
+ * download menu disable that one item rather than the whole control.
  */
 export interface ExportRendererNotConfiguredProblemDetails extends ProblemDetails {
   readonly type: typeof PROBLEM_TYPE.exportRendererNotConfigured;
@@ -94,18 +78,9 @@ export interface ExportRendererNotConfiguredProblemDetails extends ProblemDetail
 }
 
 /**
- * Every problem body shape.
- *
- * The trailing {@link ProblemDetails} covers framework problems, whose `type` is
- * an RFC 9110 status-section link rather than one of ours.
- *
- * Note this union does **not** narrow on `type`: the base member's `type` is
- * `string`, which absorbs every literal, and TypeScript cannot express "any
- * string except these ten". The union is still worth having — it is what lets a
- * fixture or a caller carry extension members without a cast — but to *read* an
- * extension, either narrow the {@link AppError} arm, which is what stores and
- * toasts consume, or use the readers below, which validate the member's type
- * rather than merely asserting it.
+ * Every problem body shape; the trailing base covers framework problems. It does not narrow on
+ * `type` (the base's `string` absorbs every literal), so read extensions through the narrowed
+ * {@link AppError} arm or the validating readers below.
  */
 export type AnyProblemDetails =
   | ValidationProblemDetails
@@ -119,14 +94,8 @@ export type AnyProblemDetails =
   | ProblemDetails;
 
 /**
- * Minimal shape check for a parsed response body.
- *
- * Returns `null` for anything that is not a problem body — an HTML error page, an
- * empty body, or the `{ error, text }` wrapper `HttpClient` produces when a
- * non-JSON error body fails to parse — so both normalization entry points degrade
- * identically.
- *
- * @param value A parsed JSON body, or any other value.
+ * Null for anything that is not a problem body: an HTML error page, an empty body, or
+ * `HttpClient`'s `{ error, text }` wrapper for an unparseable one.
  */
 export function parseProblemDetails(value: unknown): AnyProblemDetails | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -141,36 +110,21 @@ export function parseProblemDetails(value: unknown): AnyProblemDetails | null {
   return candidate as unknown as AnyProblemDetails;
 }
 
-/**
- * Reads an extension member that the API documents as a string.
- *
- * @param problem The problem body.
- * @param key The extension name, exactly as it appears on the wire.
- */
+/** Reads a string extension member by its wire name; null when absent or mistyped. */
 export function stringExtension(problem: ProblemDetails, key: string): string | null {
   const value = (problem as unknown as Record<string, unknown>)[key];
 
   return typeof value === 'string' ? value : null;
 }
 
-/**
- * Reads an extension member that the API documents as a number.
- *
- * @param problem The problem body.
- * @param key The extension name, exactly as it appears on the wire.
- */
+/** Reads a finite number extension member by its wire name; null when absent or mistyped. */
 export function numberExtension(problem: ProblemDetails, key: string): number | null {
   const value = (problem as unknown as Record<string, unknown>)[key];
 
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-/**
- * Reads an extension member that the API documents as an array of strings.
- *
- * @param problem The problem body.
- * @param key The extension name, exactly as it appears on the wire.
- */
+/** Reads a string-array extension member by its wire name, dropping non-string items. */
 export function stringArrayExtension(problem: ProblemDetails, key: string): readonly string[] {
   const value = (problem as unknown as Record<string, unknown>)[key];
 
@@ -179,11 +133,7 @@ export function stringArrayExtension(problem: ProblemDetails, key: string): read
     : [];
 }
 
-/**
- * Reads the `errors` dictionary from a validation problem.
- *
- * @param problem The problem body.
- */
+/** Reads a validation problem's `errors`, dropping malformed entries. */
 export function errorsExtension(problem: ProblemDetails): Readonly<Record<string, string[]>> {
   const value = (problem as unknown as Record<string, unknown>)['errors'];
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {

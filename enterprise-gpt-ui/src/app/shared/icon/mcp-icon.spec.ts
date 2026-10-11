@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BRAND_ICON_NAME_SET } from './brand-icon-names';
 import { MCP_FALLBACK_ICON, MCP_ICON_OPTIONS, mcpBrandIcon } from './mcp-icon';
 
-describe('MCP icon registry (US-418)', () => {
+describe('MCP icon registry', () => {
   it('resolves a known key to its mark', () => {
     expect(mcpBrandIcon('microsoft')).toBe('brand-microsoft');
     expect(mcpBrandIcon('context7')).toBe('brand-context7');
@@ -23,8 +23,7 @@ describe('MCP icon registry (US-418)', () => {
   it('offers only marks the sprite actually holds, with "None" first', () => {
     expect(MCP_ICON_OPTIONS[0]).toEqual({ value: '', label: 'None', icon: null });
 
-    // Source order is the admin form's <select> order, so the docstring's "file it,
-    // don't append it" needs something behind it.
+    // Source order is the admin form's <select> order, so entries are filed, not appended.
     const labels = MCP_ICON_OPTIONS.slice(1).map((option) => option.label);
     expect(labels).toEqual([...labels].sort());
 

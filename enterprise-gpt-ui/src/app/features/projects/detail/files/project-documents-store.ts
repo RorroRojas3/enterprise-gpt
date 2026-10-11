@@ -35,27 +35,15 @@ interface ProjectDocumentsState {
   /** The project whose documents these are, or null before the route has bound one. */
   readonly projectId: string | null;
   /**
-   * The rows, in the server's order.
-   *
-   * A plain array rather than `withEntities`: `GET api/projects/{id}/documents` answers
-   * with a **bare array** and no paging, the list is replaced wholesale on every read,
-   * and an optimistic removal has to restore a row at the index it came from — which is
-   * bookkeeping an entity map would only get in the way of.
+   * A plain array, not `withEntities`: the route answers with a bare, unpaged array, and a failed
+   * removal restores its row at the original index.
    */
   readonly documents: readonly ProjectDocumentDto[];
 }
 
 /**
- * A project's uploaded documents, from `GET api/projects/{id}/documents` (US-905).
- *
- * The route returns every active document at once — no envelope, no `skip`/`take` — so
- * there is no pagination to model and nothing to drain. Route-scoped, because the rows
- * belong to the project on screen.
- *
- * Uploading is **not** here: that is `UploadStore`, which the panel provides alongside
- * this and points at `{ kind: 'project', id }`. The split is the one EP-8 already drew
- * — a file in flight is a chip with a job behind it, a file that finished is a row with
- * a document id — and this store is told to re-read when one becomes the other.
+ * Uploads live in `UploadStore`: a file in flight is a chip there, a landed one a row here, and
+ * this store is told to re-read when one becomes the other.
  */
 export const ProjectDocumentsStore = signalStore(
   withState<ProjectDocumentsState>({ projectId: null, documents: [] }),
@@ -98,9 +86,7 @@ export const ProjectDocumentsStore = signalStore(
     );
 
     const _remove = rxMethod<ProjectDocumentDto>(
-      // mergeMap: removals of different documents are independent and may overlap.
-      // Same-id overlap cannot happen — the row and its confirmation are gone, and
-      // `remove` guards on the pending id.
+      // mergeMap: removals of different documents may overlap; `remove` guards same-id ones.
       mergeMap((document) => {
         const projectId = store.projectId();
         if (projectId === null) {
@@ -109,8 +95,7 @@ export const ProjectDocumentsStore = signalStore(
 
         patchState(store, addPendingId(document.id));
 
-        // Captured before the removal, so a failure can put the row back where it was
-        // rather than at either end of the list.
+        // Captured first, so a failure puts the row back where it was.
         const removed: RemovedDocument = {
           document,
           index: store.documents().findIndex((candidate) => candidate.id === document.id),
@@ -128,9 +113,8 @@ export const ProjectDocumentsStore = signalStore(
           tapResponse({
             next: () => store._toasts.success(`${document.name} removed`),
             error: (cause: unknown) => {
-              // Only into the list it came out of. A refetch since then would have
-              // replaced the array, and splicing a stale row into it would resurrect a
-              // document the server has already removed.
+              // Only into the list it came out of: a refetch since would have replaced the
+              // array, and splicing a stale row into it could resurrect a removed document.
               if (store.projectId() === projectId) {
                 const next = [...store.documents()];
                 next.splice(Math.min(Math.max(removed.index, 0), next.length), 0, removed.document);
@@ -150,22 +134,14 @@ export const ProjectDocumentsStore = signalStore(
       bindProject: _load,
 
       /**
-       * Re-reads the list.
-       *
-       * Also the panel's Retry, and how a finished upload becomes a row: the upload
-       * route answers with a job id rather than a document, so the only way to learn a
-       * new document's name, size and created date is to ask for the list again — which
-       * is cheap here precisely because it is unpaginated.
+       * Also the panel's Retry, and how a finished upload becomes a row: the upload route answers
+       * with a job id, not the document.
        */
       refresh(): void {
         _load(store.projectId());
       },
 
-      /**
-       * Removes a document, optimistically, with the row put back on a failure.
-       *
-       * @param document The row the confirmation named.
-       */
+      /** Optimistic; the row is put back on failure. */
       remove(document: ProjectDocumentDto): void {
         if (store.isRowPending(document.id)) {
           return;

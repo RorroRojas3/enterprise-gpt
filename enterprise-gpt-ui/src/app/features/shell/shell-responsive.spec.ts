@@ -26,17 +26,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Shell } from './shell';
 
 /**
- * The three viewport modes of frames `3e`, `3f` and `3g` (US-1403).
- *
- * A separate file from `shell.spec.ts` on purpose: that suite is the shell's behaviour
- * at one width, and every one of its tests runs with **no media query configured** —
- * which is the proof that "nothing set" still resolves to desktop. Mixing the two would
- * mean one `beforeEach` deciding a viewport for tests that must not have one.
- *
- * jsdom computes no layout, so nothing here asserts a width, an overlap or a scrollbar.
- * Those are browser checks, and US-1405's harness is where they land. What is assertable
- * — and is where the value is — is which branch renders, what each gesture writes, and
- * where focus goes.
+ * Separate from `shell.spec.ts`, whose tests run with no media query set to prove that resolves
+ * to desktop. jsdom computes no layout, so this asserts branches, writes and focus, not widths.
  */
 
 const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;
@@ -49,7 +40,7 @@ const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
 })
 class Blank {}
 
-describe('Shell responsive layout (US-1403)', () => {
+describe('Shell responsive layout', () => {
   let backend: HttpTestingController;
   let attached: HTMLElement | null = null;
 
@@ -128,13 +119,8 @@ describe('Shell responsive layout (US-1403)', () => {
   }
 
   /**
-   * The structural invariant, checked at every width.
-   *
-   * Both of `Sidebar`'s branches emit `<nav id="sidebar-primary" aria-label="Primary">`,
-   * so a second instance is a duplicate id at serious impact *and* two navigations with
-   * one name. It is the assertion that catches the trap in `Offcanvas`: its `<dialog>`
-   * is unconditionally in the DOM, so content projected into it without an `@if` is
-   * present at every width, open or not.
+   * Checked at every width: a second sidebar would duplicate its nav id and "Primary" landmark,
+   * the trap in `Offcanvas`, whose always-present dialog holds unguarded content at every width.
    */
   function expectAtMostOneSidebar(element: HTMLElement): void {
     expect(element.querySelectorAll('#sidebar-primary').length).toBeLessThanOrEqual(1);
@@ -154,9 +140,7 @@ describe('Shell responsive layout (US-1403)', () => {
 
   describe('768–1023px (frame 3g)', () => {
     it('defaults to the strip whatever the stored preference says', async () => {
-      // Through the one sanctioned writer, not a raw `setItem`: `check:forbidden`
-      // enforces that there is exactly one call site, and a spec is not a reason to
-      // make it two.
+      // Through the one sanctioned writer: `check:forbidden` allows a single `setItem` call site.
       writePreference(PREFERENCE_KEYS.sidebar, 'expanded');
       const fixture = await render();
       await atWidth(TABLET_VIEWPORT_QUERY, fixture);
@@ -181,14 +165,11 @@ describe('Shell responsive layout (US-1403)', () => {
 
       expect(element.querySelector('nav.sidebar')).not.toBeNull();
       expect(element.querySelector('.shell__backdrop')).not.toBeNull();
-      // The rail holds the 60px track the panel vacated, which is what makes "the main
-      // content never reflows" structural rather than arithmetic.
+      // The rail holds the 60px track the panel vacated, so the main content never reflows.
       expect(element.querySelector('.shell__rail')).not.toBeNull();
       expectAtMostOneSidebar(element);
 
-      // The whole point of the mode: at this width the strip is the viewport's default
-      // rather than the user's choice, so expanding here must not change the width they
-      // chose for a desktop.
+      // At this width the strip is the default, not the user's choice, so the preference stays.
       expect(localStorage.getItem(PREFERENCE_KEYS.sidebar)).toBeNull();
       expect(TestBed.inject(UiStore).sidebarCollapsed()).toBe(false);
     });
@@ -207,9 +188,7 @@ describe('Shell responsive layout (US-1403)', () => {
         ?.click();
       await fixture.whenStable();
 
-      // A backdrop that is only visual lies to the keyboard: without this the content
-      // behind it stays reachable by Tab. jsdom cannot prove the *behaviour* of `inert`,
-      // only that the attribute is applied — the rest is a browser check.
+      // jsdom can only prove `inert` is applied; its behaviour is a browser check.
       expect(main?.hasAttribute('inert')).toBe(true);
     });
 
@@ -224,8 +203,7 @@ describe('Shell responsive layout (US-1403)', () => {
         ?.click();
       await fixture.whenStable();
 
-      // `pointerdown`, not `click`: the panel is dismissed on the press, as every other
-      // dismissal in the app is.
+      // `pointerdown`, not `click`: the panel dismisses on the press.
       element
         .querySelector('.shell__backdrop')
         ?.dispatchEvent(new Event('pointerdown', { bubbles: true }));
@@ -233,7 +211,6 @@ describe('Shell responsive layout (US-1403)', () => {
 
       expect(element.querySelector('nav.sidebar')).toBeNull();
       expect(element.querySelector('.shell__backdrop')).toBeNull();
-      // Not the document body, where the next Tab restarts at the top of the page.
       expect(document.activeElement).toBe(
         element.querySelector('.strip__button[aria-label="Expand sidebar"]'),
       );
@@ -247,8 +224,7 @@ describe('Shell responsive layout (US-1403)', () => {
       const element = host(fixture);
 
       expect(element.querySelector('app-mobile-navbar')).not.toBeNull();
-      // Not merely hidden: the sidebar is not instantiated, so no second
-      // `#sidebar-primary` is sitting inside the always-present `<dialog>`.
+      // Not instantiated, rather than hidden inside the always-present `<dialog>`.
       expect(element.querySelector('#sidebar-primary')).toBeNull();
       expectAtMostOneSidebar(element);
     });
@@ -266,8 +242,6 @@ describe('Shell responsive layout (US-1403)', () => {
 
       expect(element.querySelector('#sidebar-primary')).not.toBeNull();
       expectAtMostOneSidebar(element);
-      // `data-modal-autofocus` puts the opening focus on the close control rather than
-      // on the first conversation row.
       expect(document.activeElement).toBe(element.querySelector('.shell__drawer-close'));
 
       element.querySelector<HTMLButtonElement>('.shell__drawer-close')?.click();
@@ -289,17 +263,15 @@ describe('Shell responsive layout (US-1403)', () => {
       await loadConversations(fixture);
 
       // There is no collapsed width to go to here, and the shell's close button already
-      // occupies that corner (frame 3e).
+      // occupies that corner.
       expect(element.querySelector('.sidebar__collapse')).toBeNull();
       expect(element.querySelector('.shell__drawer-close')).not.toBeNull();
     });
   });
 
   it('renders the phone frame on a cold load, not only after a resize', async () => {
-    // Every other test here renders at desktop and then narrows, which exercises the
-    // `change` listener. A phone opening the app cold takes the other path entirely:
-    // `injectMediaQuery` reads `list.matches` at construction, and `MobileNavbar` exists
-    // on the *first* render rather than being created later.
+    // Other tests narrow after a desktop render, exercising the `change` listener; a cold load
+    // reads `list.matches` at construction instead.
     setMediaQuery(NARROW_VIEWPORT, true);
 
     const fixture = await render();
@@ -311,9 +283,8 @@ describe('Shell responsive layout (US-1403)', () => {
   });
 
   it('dismisses the overlay when the viewport crosses a breakpoint', async () => {
-    // The overlay is a gesture on one viewport. Carried across it would also change what
-    // it *is*: a modal dialog at mobile, a panel in the shell's own box at tablet, with
-    // two different focus-return targets.
+    // Carried across, the overlay would change what it is: a modal dialog at mobile, a panel at
+    // tablet, with different focus-return targets.
     const fixture = await render();
     await atWidth(NARROW_VIEWPORT, fixture);
     const element = attach(fixture);

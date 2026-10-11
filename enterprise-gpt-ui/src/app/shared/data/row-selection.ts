@@ -1,10 +1,6 @@
 /**
- * Selection updaters for {@link DataTable}.
- *
- * Every one returns a **new** `Set`. `set.add(id)` followed by writing the same
- * reference back performs no signal write at all: the view never re-renders and the
- * bug looks like a dead checkbox. `core/state/with-pending-ids.ts` documents the same
- * rule for the same reason, and the specs here assert `not.toBe` to keep it true.
+ * Selection updaters for {@link DataTable}. Each returns a new `Set`: writing back a mutated one
+ * is no signal write, and the checkbox looks dead.
  */
 
 export function toggleRow(ids: ReadonlySet<string>, id: string): ReadonlySet<string> {

@@ -17,25 +17,12 @@ import { addPendingId, removePendingId, withPendingIds } from '@core/state/with-
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 import { McpServerFormValue, describeRejectedFields, toMcpServerBody } from './mcp-server-form';
 
-/** What the MCP server form is doing, which decides its heading and its verb. */
 export type McpServerFormMode = 'create' | 'edit';
 
-/**
- * Which flow a failed request came from.
- *
- * Carried through the request rather than read back off the store, so a response cannot
- * be rendered on a surface that replaced the one it belongs to — the defect
- * `UserActionsStore.rejectForm` documents in three variants.
- */
+/** Carried with each request so a response never renders on a surface that replaced its own. */
 type FormFlow = { readonly mode: 'create' } | { readonly mode: 'edit'; readonly id: string };
 
-/**
- * Frame `5h`'s `--fail` panel: a save that failed, named and explained.
- *
- * A structure rather than a rendered string so the template can bold the server's name,
- * which is the part of the criterion that makes the panel worth having — a reader who
- * opened one dialog, was interrupted and came back needs to know *which* save failed.
- */
+/** A failed save, kept structured so the template can bold which server it was about. */
 export interface McpServerSaveFailure {
   /** The server the failed request was about, never the row that is on screen now. */
   readonly serverName: string;
@@ -51,41 +38,20 @@ interface McpServerActionsState {
   /** The server being edited. Null while registering one. */
   readonly formTarget: McpServerDto | null;
   /**
-   * **A submit from the dialog is in flight** — and only ever that.
-   *
-   * The dialog reads this to disable its fields and both footer buttons, and hands it to
-   * `Modal.busy`, which suppresses Escape and backdrop dismissal. Anything else setting
-   * it would trap the reader inside a dialog they opened, waiting on a request that is
-   * not theirs (WCAG 2.1.2) — the rule `ModelActionsStore` states in full.
-   *
-   * In-flight tracking, not dialog state — a form force-closed mid-flight (a second
-   * Escape is uncancelable in Chromium) leaves this true until the request settles, so a
-   * reopened form honestly reports that `exhaustMap` is still occupied rather than
-   * swallowing the next submit silently. `cancelForm()` deliberately does not clear it.
+   * Only a dialog submit is in flight; anything else setting it would trap the reader in a modal
+   * (WCAG 2.1.2). It outlives a force-closed form, so `cancelForm()` leaves it alone.
    */
   readonly formBusy: boolean;
   /** The validation problem the server returned for the last attempt. */
   readonly formError: ValidationAppError | null;
   /**
-   * The panel at the top of the dialog, set for **every** rejection kept on this surface
-   * — a validation problem included.
-   *
-   * This is the one place `ModelActionsStore`'s shape is not copied, and the acceptance
-   * criterion is why: it asks for a `--fail` panel that names the server on a validation
-   * failure *and* on a transport-level one. A non-validation failure therefore renders
-   * here instead of raising a toast, so the same fact is not reported twice; it falls
-   * back to a toast only once its surface is no longer the one on screen.
+   * The dialog's top panel, set for every rejection kept here, validation included; other
+   * failures show here instead of a toast until their surface is gone.
    */
   readonly formFailure: McpServerSaveFailure | null;
   /**
-   * The exact form values the server rejected. Each field shows {@link formError}'s
-   * messages only while it still holds the value that was sent, which is what makes an
-   * inline message clear itself on the next edit **of the field it belongs to** — Signal
-   * Forms has no `setErrors`, so an imperative reset would have nothing to reset.
-   *
-   * The whole value rather than one field's, because the server may fault more than one,
-   * and the raw form value rather than the body built from it, so the comparison is
-   * exact: the body has been trimmed, and a scope the body dropped is still in the field.
+   * The raw value the server rejected (the body is trimmed). Each field shows {@link formError}
+   * only while unchanged from it, since Signal Forms has no `setErrors`.
    */
   readonly formRejectedValue: McpServerFormValue | null;
   /** The server the deactivate confirmation names. Null keeps it closed. */
@@ -103,30 +69,9 @@ const initialState: McpServerActionsState = {
 };
 
 /**
- * The register, edit and deactivate flows the MCP server tab shares (US-1208).
- *
- * Root-scoped for the reason `UserActionsStore` and `ModelActionsStore` are: `rxMethod`
- * binds its subscription to the injector that created it, and every one of these requests
- * can outlive the screen that started it — an administrator who confirms a deactivation
- * and then clicks another admin tab would otherwise have the `DELETE` torn down
- * mid-flight, with nothing deleted and nothing said.
- *
- * **It must stay reachable only from the admin chunk.** `providedIn: 'root'` is a
- * dependency-injection scope, not a chunk assignment, so this file rides the lazy admin
- * bundle exactly as long as nothing eagerly reachable imports it — and the initial graph
- * has a fraction of a kilobyte of headroom. `check-initial-chunk.mjs` guards
- * `features/admin/`; this file is in `core/`, so the only thing keeping it out is that
- * `features/admin/mcps/` is its sole importer.
- *
- * The boundaries are the ones the user and model stores document:
- *
- * - **Entity writes travel as events** (`adminEvents.mcpCatalogChanged`), never as
- *   `patchState` into another store's protected state. Both observers — the route-scoped
- *   `AdminMcpsStore` and the root `McpCatalogStore` the composer's Tools menu reads —
- *   refetch.
- * - **No failure closes the dialog**, because five fields including a 1024-character
- *   description are behind it and `retryInterceptor` retries neither a POST nor a PUT.
- * - **Events carry server-confirmed facts only.**
+ * Root-scoped so a request outlives the screen that started it; import it only from
+ * `features/admin/mcps/`, since `check-initial-chunk.mjs` guards `features/admin/`, not `core/`.
+ * No failure closes the dialog: `retryInterceptor` retries neither POST nor PUT.
  */
 export const McpServerActionsStore = signalStore(
   { providedIn: 'root' },
@@ -145,14 +90,12 @@ export const McpServerActionsStore = signalStore(
       return { formError: null, formFailure: null, formRejectedValue: null };
     }
 
-    /** Frame `5h`'s panel copy: which server, and what the server said about it. */
     function toFailure(error: AppError, serverName: string): McpServerSaveFailure {
       if (error.kind === 'validation-error') {
         return {
           serverName,
-          // "The server rejected the URL." when the keys name a field this form shows,
-          // and the generic line when they do not — a panel must never claim a field was
-          // rejected that the reader cannot find.
+          // Generic copy unless the keys name a field this form shows: never claim a rejected
+          // field the reader cannot find.
           reason: describeRejectedFields(Object.keys(error.errors)) ?? userMessage(error),
           // The fields carry the detail; a trace id beside them is noise.
           traceLine: null,
@@ -163,14 +106,8 @@ export const McpServerActionsStore = signalStore(
     }
 
     /**
-     * Renders a rejection on the surface that produced it, and as a toast when that
-     * surface is no longer the one on screen.
-     *
-     * **The flow identifies itself; nothing is inferred from what is open.** Create and
-     * edit share one dialog and one store, and it can be force-closed mid-flight, so by
-     * the time a response lands the *other* mode may be up — or a different row.
-     *
-     * **Nothing here closes the dialog.**
+     * Create and edit share one dialog that can be force-closed mid-flight, so the flow names its
+     * surface and a stale one falls back to a toast. Never closes the dialog.
      */
     function rejectForm(
       cause: unknown,
@@ -180,8 +117,7 @@ export const McpServerActionsStore = signalStore(
       serverName: string,
     ): void {
       const error = toAppError(cause, { url });
-      // Still the same surface, and — for an edit — still the same row: reopening the
-      // dialog on another server while a save is in flight is the same mistake.
+      // For an edit, the same row too: the dialog may have reopened on another server.
       const isOwnSurface =
         store.formMode() === flow.mode &&
         (flow.mode === 'create' || store.formTarget()?.id === flow.id);
@@ -197,9 +133,7 @@ export const McpServerActionsStore = signalStore(
       }
 
       if (error.kind === 'validation-error') {
-        // `fromError` silences validation problems on the assumption they render inline;
-        // with no inline to render on there is nothing to say them, so this one is raised
-        // by hand — the same deliberate exception the user and model dialogs make.
+        // `fromError` silences validation errors, assuming they render inline; here they can't.
         store._toasts.show({
           tone: 'error',
           title: `${serverName} could not be saved`,
@@ -214,10 +148,8 @@ export const McpServerActionsStore = signalStore(
     }
 
     const _create = rxMethod<{ body: McpServerWriteBody; value: McpServerFormValue }>(
-      // exhaustMap: a second submit while one is in flight is a double-click, not a
-      // second server — and a duplicate that slipped through would take the "name already
-      // in use" 400 the first one had just made true. `formBusy` disables the buttons;
-      // this closes the race under them.
+      // exhaustMap: a second submit in flight is a double-click, which would otherwise hit the
+      // "name already in use" 400 the first just caused. Closes the race under `formBusy`.
       exhaustMap(({ body, value }) => {
         patchState(store, { formBusy: true, ...clearFormErrors() });
         const url = store._api.build('mcps');
@@ -231,8 +163,7 @@ export const McpServerActionsStore = signalStore(
               patchState(store, { formMode: null, formTarget: null });
             },
             error: (cause: unknown) => rejectForm(cause, url, value, { mode: 'create' }, body.name),
-            // Runs on success, failure and sign-out cancellation alike — the one path
-            // that reliably releases the flag. It is not cleared in `cancelForm()`.
+            // The only path that always releases the flag, so `cancelForm()` leaves it alone.
             finalize: () => patchState(store, { formBusy: false }),
           }),
         );
@@ -253,8 +184,8 @@ export const McpServerActionsStore = signalStore(
           takeUntil(store._signedOut$),
           tapResponse({
             next: (updated) => {
-              // Void, and the list refetches: a rename also renames the server's linked
-              // permission, which nothing in this response describes.
+              // Refetch, not patch: a rename also renames the linked permission, which this
+              // response doesn't describe.
               store._dispatcher.dispatch(adminEvents.mcpCatalogChanged());
               store._toasts.success(`${updated.name} updated`);
               patchState(store, { formMode: null, formTarget: null });
@@ -272,9 +203,8 @@ export const McpServerActionsStore = signalStore(
     );
 
     const _deactivate = rxMethod<McpServerDto>(
-      // mergeMap: deactivations of different servers are independent and may overlap —
-      // exhaustMap would silently drop the second. Same-id overlap cannot happen:
-      // `beginDeactivate` guards on the pending id.
+      // mergeMap: deactivations of different servers may overlap; `beginDeactivate`'s
+      // pending-id guard rules out the same one twice.
       mergeMap((target) => {
         patchState(store, addPendingId(target.id));
         const url = store._api.build(`mcps/${ApiUrl.segment(target.id)}`);
@@ -284,8 +214,8 @@ export const McpServerActionsStore = signalStore(
           tapResponse({
             next: () => {
               store._toasts.success(`${target.name} deactivated`);
-              // The same event as a save. `DeactivateMcpServerAsync` also deactivates the
-              // linked permission and every grant of it, none of which a 204 can carry.
+              // Refetch: deactivation also revokes the linked permission and its grants, which
+              // a 204 can't carry.
               store._dispatcher.dispatch(adminEvents.mcpCatalogChanged());
             },
             // No form produced this, so there is nowhere inline to put it.
@@ -297,12 +227,8 @@ export const McpServerActionsStore = signalStore(
     );
 
     return {
-      /** Opens the add-server dialog (frame `5h`), unless a submit is still on the wire. */
       beginCreate(): void {
-        // The `formBusy` guard is not politeness. That flag drives the schema's `disabled`
-        // rule, both footer buttons *and* `Modal`'s Escape and backdrop handling, so a
-        // dialog opened while it is true would contain no focusable field and no way out
-        // until an unrelated request settled.
+        // A dialog opened while `formBusy` would have no enabled field and no way out.
         if (store.formBusy()) {
           return;
         }
@@ -311,13 +237,8 @@ export const McpServerActionsStore = signalStore(
       },
 
       /**
-       * Opens the dialog on a server, unless its own request is in flight.
-       *
-       * No fetch first, unlike `ProjectActionsStore.beginEdit`: `GET api/mcps/all` returns
-       * the complete `McpServerDto`, so the row already carries every field the PUT has to
-       * send back. `GET api/mcps/{id}` exists and is deliberately unused — it would answer
-       * 404 for a deactivated server, and a second path to the same data with a different
-       * failure mode is what the user tab's §13 note refuses.
+       * Needs no fetch: the `api/mcps/all` row is the complete DTO. `GET api/mcps/{id}` is
+       * deliberately unused, as it 404s for a deactivated server.
        */
       beginEdit(server: McpServerDto): void {
         if (store.formBusy() || store.isRowPending(server.id)) {
@@ -327,21 +248,11 @@ export const McpServerActionsStore = signalStore(
         patchState(store, { formMode: 'edit', formTarget: server, ...clearFormErrors() });
       },
 
-      /**
-       * Closes the dialog. Safe to call from every close path — Cancel, Escape, backdrop
-       * — including redundantly after a submit already closed it.
-       */
+      /** Safe on every close path, including after a submit already closed the dialog. */
       cancelForm(): void {
         patchState(store, { formMode: null, formTarget: null, ...clearFormErrors() });
       },
 
-      /**
-       * Submits the open form.
-       *
-       * @param value The dialog's fields. `toMcpServerBody` refuses anything the wire
-       *   cannot take, so an unparsable auth type cannot reach the request as `NaN` and a
-       *   scope the form has hidden cannot reach it at all.
-       */
       submitForm(value: McpServerFormValue): void {
         const mode = store.formMode();
         if (mode === null || store.formBusy()) {
@@ -367,7 +278,6 @@ export const McpServerActionsStore = signalStore(
         _update({ target, body, value });
       },
 
-      /** Opens the deactivate confirmation, unless the server's request is in flight. */
       beginDeactivate(server: McpServerDto): void {
         if (store.isRowPending(server.id)) {
           return;
@@ -376,18 +286,14 @@ export const McpServerActionsStore = signalStore(
         patchState(store, { deactivateTarget: server });
       },
 
-      /** Closes the confirmation. Safe on every close path, confirm included. */
+      /** Safe on every close path, confirm included. */
       cancelDeactivate(): void {
         patchState(store, { deactivateTarget: null });
       },
 
       /**
-       * Deactivates the open target.
-       *
-       * The modal closes at once and the request settles behind it. **Nothing is removed
-       * optimistically**, unlike a user deactivation: this is a soft delete the table goes
-       * on rendering, muted, once the refetch lands — so there is no rollback to thread
-       * back to the screen and this confirms on the store rather than emitting.
+       * Not optimistic, unlike a user deactivation: the table keeps the soft-deleted row, muted,
+       * after the refetch, so there is nothing to roll back.
        */
       confirmDeactivate(): void {
         const target = store.deactivateTarget();

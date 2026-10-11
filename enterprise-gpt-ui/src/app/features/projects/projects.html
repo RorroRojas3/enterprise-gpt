@@ -1,13 +1,8 @@
 <h1 class="projects__title font-display">Projects</h1>
 
 <div class="projects__toolbar">
-  <!--
-    `[busy]` is the *list* loading, and since US-902 a sort re-query raises it too — so a
-    reorder marks this field busy rather than the select that caused it. Left as it is
-    deliberately: separating the two means holding "which input started this request" in
-    store state, and the field is still the control the reader most recently used in every
-    other case. Recorded in the build order's interim-behaviours table.
-  -->
+  <!-- `[busy]` is the list loading, so a sort re-query marks this field busy too: accepted,
+       since telling them apart would need the triggering input held in store state. -->
   <app-search-input
     class="projects__search"
     label="Search projects by name"
@@ -18,18 +13,9 @@
   />
 
   <!--
-    Frame `4c`'s sort select (US-902). The label is hidden rather than absent: "Last
-    updated" reads as a value, not as what the control does, and the board draws no
-    visible label for it.
-
-    The selection is bound on the options, never as `[value]` on the select: that binding
-    runs before `@for` inserts the options, so it sets `selectedIndex = -1` on an empty
-    list and the browser's reset then selects the first — a deep link to `?sort=name`
-    would request Alphabetical and display "Last updated".
-
-    It is never disabled. Frame `4d` disables it past a load ceiling, because a
-    client-side sort over 500 of 1,284 rows would be a lie; the order is the server's, so
-    every page is a continuation of the same run and there is nothing to disable.
+    The label is hidden, not absent: "Last updated" reads as a value, not as the control's job.
+    Selection binds on the options, not `[value]` on the select, which runs before `@for`
+    inserts them: a deep link to `?sort=name` would otherwise display "Last updated".
   -->
   <label class="projects__sort">
     <span class="visually-hidden">Sort projects</span>
@@ -53,9 +39,8 @@
 </div>
 
 @if (projects.error(); as error) {
-  <!-- Instead of the grid rather than beside it: the cards on screen belong to a query
-       that failed, so leaving them up would show a stale result set as if it were the
-       answer. A failed *page* is the other case, and it keeps its cards and toasts. -->
+  <!-- Replaces the grid: its cards belong to the query that failed. A failed page keeps its
+       cards and toasts instead. -->
   <app-error-panel
     [error]="error"
     [canRetry]="canRetry(error)"
@@ -73,7 +58,6 @@
     }
   </div>
 } @else if (projects.hasNoMatches()) {
-  <!-- Frame `4b`'s treatment: the ridgeline motif, the term named, one clear action. -->
   <app-empty-state
     [heading]="noMatchHeading()"
     [headingLevel]="2"
@@ -105,25 +89,12 @@
     </button>
   </app-empty-state>
 } @else {
-  <!--
-    The board draws three columns at 1440 and its caption gives the responsive rule.
-    This used to be written with `row g-3` and `col-12 col-md-6 col-xl-4`, and none of
-    those classes exists: `_bootstrap-components.scss` deliberately omits
-    `bootstrap/scss/grid`, so the "grid" was a plain block stack at every width. The
-    intrinsic `auto-fill` track in `projects.scss` is the replacement that file's own
-    comment promised.
-  -->
   <div class="projects__grid">
     @for (project of projects.entities(); track trackId(project)) {
       <!--
-          Frame `4c`'s star, live since US-909 put `isFavorite` on the listing shape.
-          Confirm-then-render rather than optimistic, like every other project write:
-          `pending` covers the round trip, and `ProjectActionsStore` has no channel into
-          this route-scoped store to roll a guess back through.
-
-          An absolute link, not a relative one: a relative `[project.id]` would resolve
-          against whichever route happens to host the card, and this component's own
-          route is a path-less child.
+          The star is confirm-then-render: `ProjectActionsStore` has no channel into this
+          route-scoped store to roll a guess back. The link is absolute because this
+          component's route is a path-less child.
         -->
       <app-project-card
         [name]="project.name"
@@ -134,15 +105,8 @@
         [pending]="actions.isRowPending(project.id)"
         (favoriteToggled)="actions.toggleFavorite(project)"
       >
-        <!-- Frame `4c`'s caption: Rename, Delete. Both route through
-               `ProjectActionsStore` and its shared dialogs rather than being
-               reimplemented here, so the detail screen's own header offers the same
-               two without a second copy of either flow.
-
-               `aria-disabled`, not `disabled`: the native attribute blurs the item the
-               instant it is pressed, so a keyboard reader would land on `<body>` for
-               the whole round trip. Both `beginEdit` and `beginDelete` refuse on the
-               pending id, so the guard is real either way. -->
+        <!-- `aria-disabled`: `disabled` blurs the pressed item to `<body>` for the round
+               trip. Both handlers refuse the pending id, so the guard is real. -->
         <app-menu cardMenu [label]="'Actions for ' + project.name">
           <button
             appMenuItem
@@ -169,20 +133,10 @@
     }
   </div>
 
-  <!--
-    Its own markup rather than a projected slot: the grid is a plain card layout with no
-    `<app-data-table>` to hang a `tableFooter` on.
-
-    Gone rather than disabled once everything is loaded: a disabled control still reads as
-    "there is more, but not for you".
-  -->
+  <!-- Gone rather than disabled once all is loaded: disabled reads as "more, but not for you". -->
   <div class="projects__more">
     @if (projects.hasMore()) {
-      <!--
-        Both halves of `loadMore()`'s own guard, so the control cannot look operable while
-        a press would be a silent no-op — which is what it would be during a narrowing
-        search, where the cards and this button both stay up.
-      -->
+      <!-- Mirrors `loadMore()`'s guard, so it never looks operable while a press would no-op. -->
       <button
         class="btn btn-outline-secondary btn-sm"
         type="button"
@@ -199,7 +153,6 @@
     }
   </div>
 
-  <!-- Announced, never drawn: the board has no visible counter here, but a grid that
-       grows on request has to say by how much. -->
+  <!-- Announced, never drawn: a grid that grows on request has to say by how much. -->
   <p class="visually-hidden" role="status">{{ projects.countSummary() }}</p>
 }

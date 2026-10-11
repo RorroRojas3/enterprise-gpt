@@ -97,7 +97,7 @@ describe('ToolsMenu', () => {
     expect(menu.host.querySelector('.font-mono')).toBeNull();
 
     // The switch is decoration; the row keeps the semantics, because a native
-    // `<input role="switch">` is not a valid child of `role="menu"` (US-417).
+    // `<input role="switch">` is not a valid child of `role="menu"`.
     expect(menu.switches()).toHaveLength(2);
     expect(menu.host.querySelector('[role="switch"]')).toBeNull();
     expect(menu.host.querySelector('.tools-menu__option input')).toBeNull();
@@ -113,9 +113,7 @@ describe('ToolsMenu', () => {
     await loadServers([mcpFixture({ name: 'Jira Cloud' }), mcpFixture({ name: 'Weather' })]);
 
     expect(menu.pillText()).toBe('Tools');
-    // The label carries a class only so the stylesheet can hide it below 768px, and
-    // jsdom loads no stylesheet — so a rename would drop the mobile compaction with
-    // every gate still green unless this pins the hook.
+    // jsdom loads no stylesheet, so this pins the hook the mobile compaction hides.
     expect(menu.host.querySelector('.tools-menu__pill-label')?.textContent?.trim()).toBe('Tools');
     expect(
       menu.host.querySelector('.tools-menu__pill')?.classList.contains('tools-menu__pill--armed'),
@@ -133,9 +131,8 @@ describe('ToolsMenu', () => {
     await menu.toggle(1);
     expect(menu.panel()).not.toBeNull();
     expect(menu.pillText()).toBe('2 Tools');
-    // The count is the only visible sign that servers are armed, so below 768px the
-    // stylesheet keeps the label on this class and hides it without. jsdom loads no
-    // stylesheet; the class binding is the half that can be pinned.
+    // Below 768px the stylesheet keeps the label only with this class; jsdom can pin only the
+    // binding.
     expect(
       menu.host.querySelector('.tools-menu__pill')?.classList.contains('tools-menu__pill--armed'),
     ).toBe(true);
@@ -181,7 +178,7 @@ describe('ToolsMenu', () => {
     expect(settings.streamSelection()).toEqual({ modelId: limited.id, mcpServerIds: [] });
   });
 
-  it('draws each server its brand mark, and bi-plug for everything else (US-418)', async () => {
+  it('draws each server its brand mark, and bi-plug for everything else', async () => {
     const menu = await render();
     await loadModels([modelFixture({ isDefault: true })]);
     await loadServers([

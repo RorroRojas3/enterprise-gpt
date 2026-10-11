@@ -29,7 +29,7 @@ Three things must all be true before the tool is offered:
 | `MaxRunsPerUserPerDay` | unset | 1–10000 | Rolling-day run ceiling per user |
 | `MaxSandboxSecondsPerUserPerDay` | unset | 1–1000000 | Rolling-day sandbox seconds per user |
 
-`ModelId` is checked explicitly non-empty, because a `Guid` has no natural "unset" `[Range]`.
+`FileAgentOptionsValidator` checks `ModelId` explicitly against the empty guid, which is what an unset `Guid` binds to.
 
 The pinned catalog row is validated at startup by `FileAgentBootstrapper` and seeded by its own
 migration.
@@ -202,25 +202,25 @@ Status: confirmed. Recorded: 2026-08-28. Deployment: rr-gpt-5.6-luna. Office con
 | txt | ✓ | n/a | n/a | ✓ | n/a | ✓ | — |
 <!-- conversion-matrix:end -->
 
-Each cell in the JSON carries the engine that serves it, the note the answer must include, the
-proposed tier, and — once recorded — the evidence of the attempt that settled it. A pair proposed as
-`refused` is still attempted; the recorded attempt is what makes the refusal evidence rather than an
-assumption.
+Each cell in the JSON carries the engine that serves it, the note the answer must include, its tier,
+and the evidence recorded when it was last confirmed against a sandbox. The matrix is maintained by
+hand: change a tier in `conversion-matrix.json` and in this table together, because
+`ConversionMatrixDocumentTests` fails until they agree.
 
 ## Key files
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-api/Enterprise.Gpt.Api/Agents/FileAgentSandbox.cs` | Sandbox session, uploads and downloads |
-| `enterprise-gpt-api/Enterprise.Gpt.Api/Agents/FileAgentSkills.cs` | Discovery, the refusing script runner |
-| `enterprise-gpt-api/Enterprise.Gpt.Api/Agents/FileAgentToolProvider.cs` | Per-turn composition |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Agents/FileAgentSandbox.cs` | Sandbox session, uploads and downloads |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Agents/FileAgentSkills.cs` | Discovery, the refusing script runner |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Agents/FileAgentToolProvider.cs` | Per-turn composition |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Agents/FileAgentQuotaService.cs` | Rolling-day ceilings |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Agents/FileAgentDocumentReader.cs` | File-name tokens, resolved against the conversation |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Agents/FileAgentPreflight.cs` | Ambiguous, missing-source and refused-conversion checks |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Agents/GeneratedArtifactVerifier.cs` | Post-run checks |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Agents/ConversionMatrix.cs` | What the sandbox can convert |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Settings/FileAgentOptions.cs` | The options above |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Agents/` | Skill selection, the single-runner guard |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Options/FileAgentOptions.cs` | The options above |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Service/Agents/` | Skill selection, the single-runner guard |
 
 ## Related
 

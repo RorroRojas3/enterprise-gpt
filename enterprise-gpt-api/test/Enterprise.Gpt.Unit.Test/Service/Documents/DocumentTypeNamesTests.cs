@@ -1,0 +1,58 @@
+using Enterprise.Gpt.Common.Enums;
+using Enterprise.Gpt.Service.Documents;
+using FluentValidation;
+using Xunit;
+
+namespace Enterprise.Gpt.Unit.Test.Service.Documents;
+
+/// <summary>
+/// The <c>?type=</c> tokens live in both the advertised <c>Supported</c> set and the private parse
+/// lookup, and only this keeps them in step; drift fails silently and client-facing.
+/// </summary>
+public sealed class DocumentTypeNamesTests
+{
+    [Fact]
+    public void Supported_NamesEveryOriginExactlyOnce()
+    {
+        Assert.Equal(Enum.GetValues<ConversationDocumentTypes>().Length, DocumentTypeNames.Supported.Count);
+        Assert.Equal(
+            DocumentTypeNames.Supported.Count,
+            DocumentTypeNames.Supported.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.All(DocumentTypeNames.Supported, token => Assert.False(string.IsNullOrWhiteSpace(token)));
+    }
+
+    [Fact]
+    public void EverySupportedToken_ResolvesToADistinctOrigin()
+    {
+        var resolved = DocumentTypeNames.Supported.Select(DocumentTypeNames.Resolve).ToList();
+
+        Assert.All(resolved, origin => Assert.NotNull(origin));
+        Assert.Equal(DocumentTypeNames.Supported.Count, resolved.Distinct().Count());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("   ")]
+    public void Resolve_NoValue_NarrowsNothing(string? type)
+    {
+        Assert.Null(DocumentTypeNames.Resolve(type));
+    }
+
+    [Theory]
+    [InlineData("GENERATED")]
+    [InlineData("  generated  ")]
+    public void Resolve_CasingAndPadding_AreIgnored(string type)
+    {
+        Assert.NotNull(DocumentTypeNames.Resolve(type));
+    }
+
+    [Fact]
+    public void Resolve_UnsupportedToken_ThrowsNamingTheParameterAndTheSupportedSet()
+    {
+        var exception = Assert.Throws<ValidationException>(() => DocumentTypeNames.Resolve("assistant"));
+
+        var failure = Assert.Single(exception.Errors);
+        Assert.Equal(DocumentTypeNames.TypeKey, failure.PropertyName);
+        Assert.Contains(DocumentTypeNames.SupportedList, failure.ErrorMessage);
+    }
+}

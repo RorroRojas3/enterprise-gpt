@@ -27,13 +27,8 @@ export function userDocumentFixture(overrides: Partial<UserDocumentDto> = {}): U
 }
 
 /**
- * A `PaginatedResponseDto` envelope with the server's own arithmetic.
- *
- * `pageSize` echoes the clamped `take` and `currentPage` is `(skip / take) + 1`, both
- * computed server-side — a fixture that invents them would let a store pass against a
- * shape the API never sends. The default `pageSize` is the server's clamp ceiling rather
- * than the screen's page size, so a paging test must pass its own: `setFirstPage` adopts
- * whatever the envelope reports and would otherwise widen `take` on the next page.
+ * A `PaginatedResponseDto` with the server's own arithmetic. `pageSize` defaults to the clamp
+ * ceiling, so a paging test must pass its own or `setFirstPage` widens `take`.
  */
 export function documentPage(
   items: UserDocumentDto[],

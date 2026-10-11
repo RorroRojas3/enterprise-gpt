@@ -3,8 +3,7 @@
 :host {
   display: flex;
   gap: 30px;
-  // The board's content pane. min-height rather than height: the table is what
-  // scrolls the page, and a fixed height would trap it.
+  // min-height, not height: the table scrolls the page, and a fixed height would trap it.
   min-height: 100%;
   padding: 26px 34px;
 }
@@ -79,27 +78,17 @@
 }
 
 .admin__content {
-  // min-width: 0 is what lets the table inside ellipsise instead of pushing the
-  // flex row wider than the viewport (WCAG SC 1.4.10 Reflow).
+  // Lets the table ellipsise instead of widening the row past the viewport (WCAG 1.4.10).
   min-width: 0;
   flex: 1;
-  // A column rather than a block so a tab can fill the pane with `flex: 1` and centre
-  // in it, which is what frame `5i` asks of the reports tab. It is inert for the three
-  // table tabs: a blockified flex item in a column is laid out exactly as the block it
-  // already was. The alternative — a percentage `min-height` on each tab's host — leans
-  // on a definiteness the Flexbox spec does not guarantee through this chain.
+  // A column, so a tab can fill the pane with `flex: 1` and centre in it; inert for the table
+  // tabs, and sturdier than a percentage `min-height` on each tab's host.
   display: flex;
   flex-direction: column;
 }
 
-// `.shell__main` is `overflow: hidden`, so a routed screen that does not scroll itself
-// is *clipped* below the fold rather than scrolled — silently, and at every width. Only
-// the chat route escaped it, because `.chat__body` is its own scroll container.
-//
-// `min-height: 100%` above is deliberately **kept**: it is what makes the rail span the
-// pane when a tab's content is short, and dropping it to zero would let the host
-// collapse to its content and take the rail with it. The pane has a definite height, so
-// `100%` resolves and this scrolls the overflow rather than shrinking to avoid it.
+// `.shell__main` is `overflow: hidden`, so a tab that doesn't scroll itself would be clipped.
+// The `min-height: 100%` above stays, so the rail spans the pane when content is short.
 :host {
   overflow-y: auto;
 }

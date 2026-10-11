@@ -39,9 +39,12 @@ public static class FileAgentOutcomes
     /// <summary>The run threw for any other reason.</summary>
     public const string Error = "error";
 
+    #region Public static methods
+
     /// <summary>Whether an outcome is a refusal the agent made rather than a failure it suffered.</summary>
-    /// <param name="outcome">One of the constants on this type.</param>
     /// <returns><see langword="true"/> for a refusal, which completes the activity rather than failing it.</returns>
     public static bool IsRefusal(string outcome) =>
         outcome is RefusedConversion or RefusedAmbiguous or RefusedUnknownSource;
+
+    #endregion
 }

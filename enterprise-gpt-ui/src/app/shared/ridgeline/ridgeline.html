@@ -1,7 +1,6 @@
 @switch (variant()) {
   @case ('divider') {
-    <!-- Sidebar divider under the wordmark. Stretches to the sidebar width, which is
-         why this is the one variant that drops preserveAspectRatio. -->
+    <!-- Stretches to the sidebar width, hence the one variant without preserveAspectRatio. -->
     <svg
       viewBox="0 0 228 10"
       preserveAspectRatio="none"
@@ -18,8 +17,7 @@
     </svg>
   }
   @case ('thinking') {
-    <!-- The pre-first-delta indicator. Two copies of one path: a dim base, and a
-         dashed overlay whose offset animates along it. -->
+    <!-- One path twice: a dim base, and a dashed overlay whose offset animates along it. -->
     <svg viewBox="0 0 76 16" aria-hidden="true" focusable="false" class="ridge ridge--thinking">
       <path
         d="M0 13 L11 5 L18 10 L27 3 L35 11 L45 4 L53 9 L62 3.5 L76 12"

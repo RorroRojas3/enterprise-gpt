@@ -92,8 +92,7 @@ describe('UserFooter', () => {
     await fixture.whenStable();
 
     expect(auth.isSigningOut()).toBe(true);
-    // Latched at the DOM as well as in the service, so the second press is not merely
-    // ignored — there is nothing to press.
+    // Latched in the DOM too, so there is nothing to press a second time.
     expect(button?.disabled).toBe(true);
 
     button?.click();
@@ -102,8 +101,7 @@ describe('UserFooter', () => {
   });
 
   it('clears the session but keeps the browser preferences', async () => {
-    // US-205's second criterion. The theme is written before sign-out precisely so the
-    // assertion proves survival rather than absence.
+    // The theme is written first so the assertion proves survival rather than absence.
     const fixture = await render();
     host(fixture).querySelector<HTMLButtonElement>('.theme-toggle')?.click();
     await fixture.whenStable();
@@ -118,12 +116,8 @@ describe('UserFooter', () => {
   });
 
   it('does not sweep localStorage — the build gate is what keeps user data out of it', async () => {
-    // Stated as a test because it is the surprising half of the criterion. Sign-out
-    // deliberately touches nothing here, so "no conversation, project, document or user
-    // data is present" holds because `check-forbidden-apis.mjs` refuses to let anything
-    // but core/storage/local-preferences.ts write, not because anything cleans up after
-    // the fact. A key outside the allowlist would survive — which is exactly why the
-    // gate, and not this component, is the enforcement point.
+    // Sign-out clears nothing here: user data stays out because `check-forbidden-apis.mjs`
+    // lets only core/storage/local-preferences.ts write, so a stray key survives.
     const fixture = await render();
     localStorage.setItem('egpt.leftover', 'what a regression looks like');
 

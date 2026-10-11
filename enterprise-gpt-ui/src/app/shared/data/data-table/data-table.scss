@@ -3,9 +3,8 @@
 }
 
 .data-table {
-  // Grid rather than table layout, so a column width is one track definition instead
-  // of a colgroup. Every ARIA role is restated in the template because this strips the
-  // implicit ones.
+  // Grid, so a column width is one track definition. It strips the implicit ARIA roles, which
+  // the template restates.
   display: grid;
   width: 100%;
   border: 1px solid var(--bs-border-color);
@@ -80,8 +79,7 @@ td {
   list-style: none;
 }
 
-// Projected into `CardRow`'s meta slot, and styled from here because this template
-// declares it — the label column sizes to its widest header so the values line up.
+// Projected into `CardRow`'s meta slot, but styled here because this template declares it.
 .card-meta {
   display: grid;
   grid-template-columns: minmax(0, auto) minmax(0, 1fr);
@@ -129,10 +127,8 @@ td {
 .table-footer {
   margin-top: 12px;
 
-  // A consumer that conditions its footer has to project a stable wrapper — an `@if`
-  // around it compiles to an `ng-template` carrying no `tableFooter` attribute, and
-  // the content is dropped. That makes the slot itself never `:empty` again, so the
-  // gap has to key on the wrapper collapsing rather than on the slot being empty.
+  // A conditional footer needs a stable wrapper (an `@if` drops the `tableFooter` attribute),
+  // so the slot is never `:empty` and the gap keys on the wrapper instead.
   &:has(> :empty) {
     margin-top: 0;
   }

@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { KpiTile } from './kpi-tile';
 
-describe('KpiTile (US-1302)', () => {
+describe('KpiTile', () => {
   beforeEach(() => {
     TestBed.resetTestingModule();
   });
@@ -42,8 +42,7 @@ describe('KpiTile (US-1302)', () => {
   it('draws no arrow at all for an unchanged figure', async () => {
     const host = await render(0);
 
-    // `bi-arrow-down-right` beside the text "0%" would announce a decrease that did not happen,
-    // and the arrow is the non-colour channel the tile leans on.
+    // A down arrow beside "0%" would announce a decrease that did not happen.
     expect(host.querySelector('use')).toBeNull();
     expect(host.querySelector('.kpi__change')?.textContent?.trim()).toBe('0%');
   });

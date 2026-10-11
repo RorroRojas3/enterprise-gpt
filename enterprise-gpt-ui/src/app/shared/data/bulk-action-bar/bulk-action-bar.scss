@@ -1,6 +1,5 @@
-// Frame 4a draws this as one pill at 1440px. It is `position: fixed`, so nothing
-// downstream can rescue it from overflowing a narrow viewport — hence the cap and the
-// wrap here rather than at each call site (WCAG SC 1.4.10 Reflow).
+// Fixed, so nothing downstream can stop it overflowing a narrow viewport: the cap and wrap
+// live here (WCAG SC 1.4.10 Reflow).
 .bulk-bar {
   position: fixed;
   inset-inline-start: 50%;

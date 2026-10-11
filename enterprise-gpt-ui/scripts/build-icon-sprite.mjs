@@ -1,16 +1,7 @@
 #!/usr/bin/env node
-// Builds public/icons/sprite.svg from two checked-in manifests: the monochrome
-// glyphs, resolved against the individual SVGs in bootstrap-icons, and the
-// multi-colour brand marks, resolved against src/app/shared/icon/brand/.
-// US-109, US-418.
-//
-// The full icon font is deliberately not shipped: its stylesheet alone is roughly
-// 72 kB against an initial-bundle budget with under 20 kB of headroom, and it would
-// carry 2,078 glyphs to render the 74 the design uses.
-//
-// The sprite is an asset rather than a bundled string. Inlining it through the
-// build (`loader: {".svg": "text"}`) would put ~34 kB into the initial JS chunk;
-// as a file in public/ it costs zero against the budget and is fetched once.
+// Builds public/icons/sprite.svg from the glyph and brand manifests. The icon font's stylesheet
+// alone (~72 kB) would blow the initial-bundle budget, and inlining the sprite would add ~34 kB to
+// the initial chunk; as a public/ asset it costs nothing against the budget.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,9 +21,7 @@ function die(...lines) {
   process.exit(1);
 }
 
-// A manifest is read as text rather than imported. Node can strip types today,
-// but importing would couple this script to a Node version and to the
-// erasable-syntax rules, for no gain over one unambiguous regex.
+// Read as text rather than imported, so the script doesn't depend on Node's type stripping.
 function readManifest(file, constName, pattern, label) {
   if (!existsSync(file)) die(`${label} manifest not found.`, `expected: ${file}`);
 
@@ -106,10 +95,8 @@ for (const name of names) {
 
   const { viewBox, body } = readSource(file);
 
-  // `fill` moves onto the <symbol> because the source carried it on the <svg> root
-  // that is being discarded. `currentColor` is what lets one sprite serve both
-  // themes, and it only resolves that way because the sprite is injected into the
-  // host document rather than referenced as an external file.
+  // `fill` moves here from the discarded <svg> root. currentColor lets one sprite serve both
+  // themes, which works only because the sprite is injected into the host document.
   symbols.push(`<symbol id="${name}" viewBox="${viewBox}" fill="currentColor">${body}</symbol>`);
 }
 
@@ -133,11 +120,7 @@ for (const name of brandNames) {
 
   const { viewBox, body } = readSource(file);
 
-  // No `fill="currentColor"` here, and that omission is the whole point of the
-  // second lane: a brand mark keeps the colours its owner specifies, so it must
-  // inherit nothing from the caller's `color`. Each source keeps its own viewBox
-  // too — a <symbol> establishes its own viewport, so a 28-unit mark still scales
-  // to whatever font-size the caller sets.
+  // No currentColor: a brand mark keeps its owner's colours and must not inherit the caller's.
   symbols.push(`<symbol id="${name}" viewBox="${viewBox}">${body}</symbol>`);
 }
 
@@ -150,8 +133,7 @@ if (missingBrand.length > 0) {
   );
 }
 
-// position/overflow rather than display:none — hidden sprites have a long history
-// of engine bugs with the latter, and this is the convention every sprite tool uses.
+// Hidden by size rather than display:none, which has a long history of engine bugs in sprites.
 const sprite =
   '<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" ' +
   'style="position:absolute;width:0;height:0;overflow:hidden">' +

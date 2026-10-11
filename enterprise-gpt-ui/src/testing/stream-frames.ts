@@ -21,9 +21,8 @@ const CANNED_EVENTS = {
   },
   ActivityStarted: {
     kind: 'ActivityStarted',
-    // Since Andes 0.7.0 an MCP activity's `displayName` is the tool the model called, which for a
-    // leased tool is `{sanitizedServer}_{tool}` — so this carries the prefix the client strips.
-    // The server name stays in `source`.
+    // An MCP activity's `displayName` is the called tool, `{sanitizedServer}_{tool}` when leased,
+    // so this carries the prefix the client strips. The server name stays in `source`.
     scopeId: 'scope-1',
     displayName: 'Weather_get_forecast',
     source: 'Weather',
@@ -90,9 +89,8 @@ export function assistantEvent(
 }
 
 /**
- * A recorded turn covering all eight kinds, with a nested child activity and a
- * failed sibling alongside a completed answer (the design's frame `1f` shape).
- * The shared input for the fold spec, the codec spec, and the transport spec.
+ * A recorded turn covering all eight kinds, with a nested child activity and a failed sibling.
+ * Shared by the fold, codec and transport specs.
  */
 export function fullTurnEvents(): AssistantUiEvent[] {
   return [
@@ -139,7 +137,7 @@ export function splitBytes(bytes: Uint8Array, at: number): [Uint8Array, Uint8Arr
 
 /** Drives a synthetic streaming response chunk by chunk. */
 export interface StreamingResponseHandle {
-  /** Structural, cast once — realm-safe under jsdom, per `ResponseLike`'s rationale. */
+  /** Structural and cast once, which keeps it realm-safe under jsdom. */
   readonly response: Response;
   enqueue(text: string): void;
   enqueueBytes(bytes: Uint8Array): void;
@@ -148,17 +146,15 @@ export interface StreamingResponseHandle {
   /** Faults the body mid-stream, as a dropped connection would. */
   fail(reason: unknown): void;
   /**
-   * Emulates real `fetch` cancellation: when the request's signal aborts, the
-   * pending and all future reads reject with an `AbortError` `DOMException`.
-   * Call from the fake fetch with the `RequestInit.signal` it received.
+   * Emulates `fetch` cancellation: once `signal` aborts, pending and future reads reject with an
+   * `AbortError`. Call it with the `RequestInit.signal` the fake fetch received.
    */
   abortOn(signal: AbortSignal | null | undefined): void;
 }
 
 /**
- * A 200 `text/event-stream` response over a synthetic `ReadableStream`
- * (US-405's "no browser and no backend" criterion). Pass `body: null` for the
- * degenerate headers-only response.
+ * A 200 `text/event-stream` response over a synthetic `ReadableStream`. Pass `body: null` for
+ * the degenerate headers-only response.
  */
 export function streamingResponse(
   options: { body?: 'stream' | null } = {},
@@ -207,9 +203,8 @@ export function streamingResponse(
 }
 
 /**
- * A pre-stream failure response: `application/problem+json`, with a spying
- * `body.getReader` so specs can assert the transport never touched the body
- * before parsing the problem.
+ * A pre-stream `application/problem+json` failure whose spied `body.getReader` shows the
+ * transport never touched the body before parsing the problem.
  */
 export function problemResponse(
   body: object,

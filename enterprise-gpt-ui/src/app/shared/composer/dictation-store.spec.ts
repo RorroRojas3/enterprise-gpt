@@ -4,7 +4,7 @@ import { FakeRecognition } from '@testing/speech';
 import { SPEECH_RECOGNITION, SpeechRecognitionLike } from '@core/speech/speech-recognition';
 import { DictationStore } from './dictation-store';
 
-describe('DictationStore (US-413)', () => {
+describe('DictationStore', () => {
   let recognition: FakeRecognition;
   let store: InstanceType<typeof DictationStore>;
 
@@ -40,8 +40,6 @@ describe('DictationStore (US-413)', () => {
     expect(store.recording()).toBe(true);
     expect(recognition.starts).toBe(1);
     expect(recognition.continuous).toBe(true);
-    // Interim results rewrite themselves word by word; the prompt box is the
-    // wrong place to watch that happen.
     expect(recognition.interimResults).toBe(false);
     expect(recognition.lang).toBe(navigator.language);
   });

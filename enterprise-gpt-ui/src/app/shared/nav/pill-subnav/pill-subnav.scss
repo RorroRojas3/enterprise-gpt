@@ -19,7 +19,7 @@
 .pill-subnav__pill {
   display: inline-flex;
   align-items: center;
-  // The board's caption asks for 44px targets here; 7px padding on 12.5px text is 31.
+  // 44px touch targets; the padding on 12.5px text alone gives 31.
   min-height: 44px;
   padding: 7px 14px;
   border-radius: 999px;
@@ -40,8 +40,7 @@
   color: var(--btnP-fg);
 }
 
-// The board's count treatment on the wide strip: a smaller run beside the label, not a
-// badge.
+// A smaller run beside the label, as on the wide strip, not a badge.
 .pill-subnav__count {
   margin-inline-start: 4px;
   font-size: 11px;

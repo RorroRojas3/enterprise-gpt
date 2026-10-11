@@ -9,23 +9,9 @@ export interface McpIconOption {
 }
 
 /**
- * The brand marks a server can be given, keyed by the slug the API stores.
- *
- * **The API validates the shape of this key, not its value.** The artwork lives
- * here, in the sprite, so shipping a new icon is a client deploy and nothing
- * more — an unrecognised key degrades to {@link MCP_FALLBACK_ICON} rather than
- * failing, which is also what a server registered by a newer client looks like
- * to an older one.
- *
- * "None" first and the marks alphabetical after it — this array is the admin form's
- * `<select>` in source order, so a new entry is filed, not appended.
- *
- * Lives beside the artwork rather than in `core/catalog/` beside
- * `mcp-server-form.ts`, because dependencies run one way — `core` may not import
- * from `shared`, and this list is typed by {@link BrandIconName}. It is off the
- * initial graph either way, for the reason `AUTH_TYPE_OPTIONS` gives: both
- * consumers — the composer's Tools menu and the admin form — ride lazy chunks,
- * while `domain/api/mcp.ts` is reached from the root `McpCatalogStore`.
+ * The marks a server can be given, keyed by the stored slug. The API checks only its shape, so
+ * an unknown key degrades to {@link MCP_FALLBACK_ICON}. This is the admin `<select>` in source
+ * order: "None", then alphabetical. Not in `core/`, which may not import `shared/` types.
  */
 export const MCP_ICON_OPTIONS: readonly McpIconOption[] = [
   { value: '', label: 'None', icon: null },
@@ -39,12 +25,7 @@ export const MCP_ICON_OPTIONS: readonly McpIconOption[] = [
 /** Drawn for a server with no icon, or one whose key this build does not know. */
 export const MCP_FALLBACK_ICON = 'bi-plug' as const;
 
-/**
- * The brand mark for a stored icon key, or `null` to fall back to the generic
- * glyph.
- *
- * @param iconKey The key as the API returned it.
- */
+/** The brand mark for a stored icon key, or `null` to fall back to the generic glyph. */
 export function mcpBrandIcon(iconKey: string | null | undefined): BrandIconName | null {
   if (!iconKey) {
     return null;

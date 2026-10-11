@@ -11,7 +11,7 @@
   list-style: none;
 }
 
-// Frame `5c` gives the rows more air, because each carries a second line.
+// More air, because each block row carries a second line.
 .checklist--block {
   gap: 11px;
 }
@@ -58,8 +58,7 @@
   display: flex;
   align-items: flex-start;
   gap: 7px;
-  // Indented to the label text, so the refusal reads as belonging to the row above it
-  // rather than to the list.
+  // Indented to the label text, so the refusal reads as the row's rather than the list's.
   margin: 8px 0 0 26px;
   color: var(--fail);
   font-size: 12.5px;

@@ -29,9 +29,8 @@ import { shouldReplaceHistory } from './conversations-route';
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
 
 /**
- * `SearchInput`'s own 300 ms window, with room for the effect that follows it and
- * for a loaded CI runner — these are real timers, because faking the clock also
- * stalls the scheduler `whenStable()` awaits.
+ * `SearchInput`'s 300 ms window plus slack for a loaded CI runner. Real timers: faking the clock
+ * also stalls the scheduler `whenStable()` awaits.
  */
 const DEBOUNCE_MS = 450;
 
@@ -45,13 +44,11 @@ describe('shouldReplaceHistory', () => {
   });
 
   it('replaces while a term is being refined', () => {
-    // Otherwise every debounce leaves an entry and back walks the reader through
-    // their own typing one keystroke at a time.
     expect(shouldReplaceHistory('quar', 'quarterly')).toBe(true);
   });
 });
 
-describe('Conversations (US-701)', () => {
+describe('Conversations', () => {
   let backend: HttpTestingController;
   let harness: RouterTestingHarness;
   let models: ReturnType<typeof signal<readonly ModelDto[]>>;
@@ -65,8 +62,7 @@ describe('Conversations (US-701)', () => {
         provideTestAppConfig(),
         provideHttpClient(),
         provideHttpClientTesting(),
-        // Stubbed rather than loaded: `SessionBootstrap` fills the catalogue in
-        // the application, and this screen only ever reads it.
+        // Stubbed: `SessionBootstrap` fills the catalogue in the app; this screen only reads it.
         { provide: ModelCatalogStore, useValue: { models } },
         provideRouter(
           [{ path: 'conversations', component: Conversations }],
@@ -78,9 +74,8 @@ describe('Conversations (US-701)', () => {
 
     backend = TestBed.inject(HttpTestingController);
     harness = await RouterTestingHarness.create();
-    // The harness navigates directly and never starts the router's popstate
-    // listener, so without this a back press moves `Location` and leaves the
-    // router — and the screen — on the URL it already had.
+    // The harness never starts the router's popstate listener, so without this back would move
+    // `Location` but not the router.
     TestBed.inject(Router).setUpLocationChangeListener();
   });
 
@@ -103,23 +98,14 @@ describe('Conversations (US-701)', () => {
     await harness.fixture.whenStable();
   }
 
-  /**
-   * Presses back and lets the router finish.
-   *
-   * `Location.back()` raises a popstate the router handles asynchronously, so
-   * `whenStable()` alone would assert against the URL it had before the pop.
-   */
+  /** Presses back and waits a macrotask, since the router handles the popstate asynchronously. */
   async function goBack(): Promise<void> {
     TestBed.inject(Location).back();
     await new Promise((resolve) => setTimeout(resolve, 0));
     await harness.fixture.whenStable();
   }
 
-  /**
-   * Types into the field and waits the debounce out with **real** timers: it is a
-   * `setTimeout` inside an effect, and faking the clock also stalls the scheduler
-   * `whenStable` awaits.
-   */
+  /** Types into the field and waits out the debounce on real timers. */
   async function type(term: string): Promise<void> {
     const field = element().querySelector<HTMLInputElement>('.search__field');
     expect(field).not.toBeNull();
@@ -170,8 +156,7 @@ describe('Conversations (US-701)', () => {
       expectSearch().flush(conversationPage([]));
       await harness.fixture.whenStable();
 
-      // The whole reason this screen has a store of its own: frame 4a draws both
-      // fields at once, and a library search must not retype the sidebar's.
+      // The library has its own store so its search never narrows the sidebar's.
       expect(TestBed.inject(ConversationListStore).name()).toBe('');
     });
   });
@@ -187,8 +172,7 @@ describe('Conversations (US-701)', () => {
     });
 
     it('issues exactly one request for a link opened cold', async () => {
-      // Handing `bindQuery` the *signal* is what makes this one request: reading
-      // its value in the constructor would fire unfiltered first, filtered second.
+      // One request because `bindQuery` gets a computation, not the constructor-time value.
       await harness.navigateByUrl('/conversations?name=quarterly', Conversations);
 
       const request = expectSearch();
@@ -260,8 +244,6 @@ describe('Conversations (US-701)', () => {
       await harness.fixture.whenStable();
 
       expect(TestBed.inject(Router).url).toBe('/conversations');
-      // The button removes itself when the rows come back, so focus would
-      // otherwise fall to <body> inside a list the reader has to find again.
       expect(document.activeElement?.classList.contains('search__field')).toBe(true);
     });
 
@@ -295,9 +277,8 @@ describe('Conversations (US-701)', () => {
         conversationFixture({ modelId: null }),
       ]);
 
-      // The column renders through a cell template keyed on `columns[1].key`; if
-      // the two ever diverge `DataTable` falls back to `column.text`, which is
-      // undefined here, and the column would silently render blank.
+      // Rendered through a cell template keyed on the column's key; if they diverge, `DataTable`
+      // falls back to the undefined `column.text` and the column renders blank.
       const cells = [...element().querySelectorAll('.conversations__model')].map((cell) =>
         cell.textContent?.trim(),
       );
@@ -313,8 +294,6 @@ describe('Conversations (US-701)', () => {
       expect(element().querySelector('.table-skeleton')).toBeNull();
 
       await type('quarterly');
-      // Narrowing keeps the rows on screen and marks the field busy instead of
-      // flashing an empty frame between two result sets.
       expect(element().querySelector('.table-skeleton')).toBeNull();
       expect(element().querySelectorAll('.conversations__name')).toHaveLength(1);
 
@@ -342,7 +321,7 @@ describe('Conversations (US-701)', () => {
     });
   });
 
-  describe('choosing the order (US-706)', () => {
+  describe('choosing the order', () => {
     function sortSelect(): HTMLSelectElement {
       const control = element().querySelector<HTMLSelectElement>('.conversations__sort select');
 
@@ -360,11 +339,10 @@ describe('Conversations (US-701)', () => {
       await harness.fixture.whenStable();
     }
 
-    it('offers a real control where US-705 stated the order, and states nothing', async () => {
+    it('offers a sort control rather than a caption stating the order', async () => {
       await open();
 
-      // The statement and its flyout are gone: the endpoint accepts an order now, so
-      // explaining why the list cannot be reordered would be false.
+      // No caption explaining a fixed order, and no flyout for it.
       expect(element().querySelector('.conversations__order')).toBeNull();
       expect(element().querySelector('.conversations__order-info')).toBeNull();
 
@@ -381,8 +359,6 @@ describe('Conversations (US-701)', () => {
 
       await choose('oldest');
 
-      // `?sort=oldest` is what the reader chose; `sort=created&dir=asc` is what the
-      // request needs. The URL is a contract with the reader, not a proxy for the wire.
       expect(TestBed.inject(Router).url).toBe('/conversations?sort=oldest');
       const reordered = expectSearch();
       expect(reordered.request.params.get('sort')).toBe('created');
@@ -390,15 +366,11 @@ describe('Conversations (US-701)', () => {
       reordered.flush(conversationPage([conversationFixture()]));
       await harness.fixture.whenStable();
 
-      // `[selected]` on the options is uncontrolled — the browser moves the value and
-      // Angular writes it back only when the bound expression changes — so the control
-      // agreeing with the query it just issued is worth pinning rather than assuming.
+      // `[selected]` is written only when its expression changes, so pin the control's value.
       expect(sortSelect().value).toBe('oldest');
     });
 
     it('replaces between two orders, so arrowing through the select does not stack history', async () => {
-      // A closed `<select>` fires `change` on every arrow key. Pushing each one would bury
-      // the unsorted list behind orders nobody chose.
       await open('/conversations?sort=oldest');
 
       await choose('name');
@@ -422,8 +394,6 @@ describe('Conversations (US-701)', () => {
     });
 
     it('falls back to the default when the URL names an order that does not exist', async () => {
-      // The control can never display a value the URL contradicts, and the server never
-      // sees a `sort=` it would answer with a 400 the reader never asked for.
       await harness.navigateByUrl('/conversations?sort=zzz', Conversations);
 
       const request = expectSearch();
@@ -495,7 +465,6 @@ describe('Conversations (US-701)', () => {
       );
       await harness.fixture.whenStable();
 
-      // The combined set is page one's server order followed by page two's, untouched.
       expect(
         [...element().querySelectorAll('.conversations__name')].map((row) =>
           row.textContent?.trim(),
@@ -504,7 +473,7 @@ describe('Conversations (US-701)', () => {
     });
   });
 
-  describe('filtering to favourites (US-703)', () => {
+  describe('filtering to favourites', () => {
     function filterButton(): HTMLButtonElement {
       const button = element().querySelector<HTMLButtonElement>('.conversations__filter');
       expect(button).not.toBeNull();
@@ -550,8 +519,6 @@ describe('Conversations (US-701)', () => {
       filterButton().click();
       await harness.fixture.whenStable();
 
-      // `queryParamsHandling: 'merge'` is what keeps the term in the URL, and one
-      // request carries both.
       expect(url()).toContain('name=quarterly');
       expect(url()).toContain('favorites=1');
       const request = expectSearch();
@@ -564,8 +531,6 @@ describe('Conversations (US-701)', () => {
     it('ignores a favourites value it never writes', async () => {
       await open('/conversations?favorites=yes');
 
-      // The transform reads anything but `1` as off, so the toolbar and the request
-      // cannot disagree about a hand-edited URL.
       expect(filterButton().getAttribute('aria-pressed')).toBe('false');
     });
 
@@ -583,9 +548,7 @@ describe('Conversations (US-701)', () => {
         `${TEST_API_BASE_URL}/api/conversations/${conversation.id}/favorite`,
       );
       expect(request.request.body).toEqual({ isFavorite: true });
-      // aria-disabled, not the native attribute: `disabled` would blur the button the
-      // instant it was pressed, dropping a keyboard reader onto `<body>` for the whole
-      // round trip.
+      // aria-disabled, not `disabled`, which would blur the button mid-press.
       expect(element().querySelector('.conversations__star')?.getAttribute('aria-disabled')).toBe(
         'true',
       );
@@ -596,8 +559,7 @@ describe('Conversations (US-701)', () => {
       request.flush(null, { status: 204, statusText: 'No Content' });
       await harness.fixture.whenStable();
 
-      // The 204 carries no body; the row updates from the event the actions store
-      // dispatches once the server has confirmed it.
+      // The 204 has no body; the row updates from the actions store's confirmed event.
       expect(
         element().querySelector('.conversations__star')?.getAttribute('aria-disabled'),
       ).toBeNull();
@@ -618,14 +580,11 @@ describe('Conversations (US-701)', () => {
         .flush(null, { status: 204, statusText: 'No Content' });
       await harness.fixture.whenStable();
 
-      // It no longer matches the query that produced it, and refetching instead would
-      // throw away every page the reader had loaded.
       expect(element().querySelectorAll('.conversations__name')).toHaveLength(0);
       expect(element().querySelector('app-empty-state')?.textContent).toContain(
         'No favourite conversations',
       );
-      // The button that was pressed went with the row, so focus needs somewhere to
-      // land other than `<body>`.
+      // The pressed star went with the row.
       expect(document.activeElement).toBe(element().querySelector('.search__field'));
     });
 
@@ -645,7 +604,7 @@ describe('Conversations (US-701)', () => {
     });
   });
 
-  describe('deleting several at once (US-704)', () => {
+  describe('deleting several at once', () => {
     function rowCheckboxes(): HTMLInputElement[] {
       return [...element().querySelectorAll<HTMLInputElement>('tbody input[type="checkbox"]')];
     }
@@ -682,8 +641,6 @@ describe('Conversations (US-701)', () => {
     it('puts select-all in the toolbar, not the table header', async () => {
       await openWithRows();
 
-      // Frame 4a draws it beside the Favorites filter, and below the breakpoint
-      // there is no header row to hold one at all.
       expect(element().querySelector('thead input[type="checkbox"]')).toBeNull();
 
       selectAll().click();
@@ -712,8 +669,6 @@ describe('Conversations (US-701)', () => {
       element().querySelector<HTMLButtonElement>('.bulk-bar .btn-danger')!.click();
       await harness.fixture.whenStable();
 
-      // Destructive actions confirm via modal naming what is going — the board's own
-      // note for this frame.
       const dialog = element().querySelector('app-modal');
       expect(dialog?.textContent).toContain('Delete 3 conversations?');
       backend.expectNone(() => true);
@@ -771,7 +726,7 @@ describe('Conversations (US-701)', () => {
           row.textContent?.trim(),
         ),
       ).toEqual(['Row 0', 'Row 1', 'Row 2']);
-      // Re-selected, so Retry is one press rather than three.
+      // Re-selected, so Retry is one press.
       expect(bulkBar()?.textContent).toContain('3 selected');
       expect(TestBed.inject(ToastStore).toasts()).toHaveLength(1);
     });
@@ -795,9 +750,7 @@ describe('Conversations (US-701)', () => {
       element().querySelectorAll<HTMLButtonElement>('app-modal [modalFooter]')[1]!.click();
       await harness.fixture.whenStable();
 
-      // The request lives in the root actions store precisely so both lists move.
-      // Leaving them in the sidebar would 404 on click and put its next page one
-      // window late.
+      // Rows left in the sidebar would 404 on click and put its next page one window late.
       expect(sidebar.entities()).toHaveLength(0);
       expect(sidebar.totalCount()).toBe(7);
 
@@ -822,8 +775,7 @@ describe('Conversations (US-701)', () => {
       await harness.fixture.whenStable();
 
       await open('/conversations', rows);
-      // The first two, in list order — what select-all and top-down ticking both
-      // produce, and the direction a naive restore gets wrong.
+      // The first two, top-down: the order a naive restore gets wrong.
       rowCheckboxes()[0]!.click();
       rowCheckboxes()[1]!.click();
       await harness.fixture.whenStable();
@@ -859,7 +811,7 @@ describe('Conversations (US-701)', () => {
     });
   });
 
-  describe('paging (US-702)', () => {
+  describe('paging', () => {
     function loadMoreButton(): HTMLButtonElement | null {
       return element().querySelector<HTMLButtonElement>('.conversations__more button');
     }
@@ -891,9 +843,6 @@ describe('Conversations (US-701)', () => {
     it('hands the same count to the table’s live region rather than a second one', async () => {
       await openPaged(312);
 
-      // Two disagreeing counts — "25 results" from the table and "25 of 312" here —
-      // would both be announced. The visible one is aria-hidden and the table's
-      // summary carries the string.
       expect(element().querySelector('.conversations__count')?.getAttribute('aria-hidden')).toBe(
         'true',
       );
@@ -950,9 +899,7 @@ describe('Conversations (US-701)', () => {
       await openPaged();
 
       await type('quarterly');
-      // The rows and the button both stay up while the query runs, and `loadMore()`
-      // refuses while `isPending()`. A control that looks operable and silently does
-      // nothing is the failure `aria-disabled` exists to prevent.
+      // `loadMore()` refuses while `isPending()`, so the control must not look operable.
       expect(loadMoreButton()?.getAttribute('aria-disabled')).toBe('true');
 
       expectSearch().flush(conversationPage([], { pageSize: LIBRARY_PAGE_SIZE }));
@@ -976,8 +923,6 @@ describe('Conversations (US-701)', () => {
       );
       await harness.fixture.whenStable();
 
-      // The button the reader pressed is gone; without this, focus falls to `<body>`
-      // and most screen readers reset to the top of the document.
       expect(loadMoreButton()).toBeNull();
       expect(document.activeElement?.textContent?.trim()).toBe('Last');
     });
@@ -999,8 +944,6 @@ describe('Conversations (US-701)', () => {
       );
       await harness.fixture.whenStable();
 
-      // Moving focus off a control the reader is repeatedly pressing would be the
-      // worse defect of the two.
       expect(document.activeElement).toBe(loadMoreButton());
     });
 
@@ -1011,8 +954,6 @@ describe('Conversations (US-701)', () => {
       loadMoreButton()!.click();
       await harness.fixture.whenStable();
 
-      // The reader moved on mid-flight. Yanking them back out of the field they are
-      // typing in is worse than the focus loss the fallback exists to fix.
       const field = element().querySelector<HTMLInputElement>('.search__field')!;
       field.focus();
 
@@ -1030,7 +971,6 @@ describe('Conversations (US-701)', () => {
 
     it('withholds the counter until there is one, and beside an error', async () => {
       await harness.navigateByUrl('/conversations', Conversations);
-      // "Showing 0 of 0 conversations" beside a skeleton is a claim, not a count.
       expect(element().querySelector('.conversations__count')).toBeNull();
 
       expectSearch().flush(FRAMEWORK_PROBLEM_FIXTURES.serverError, {
@@ -1039,13 +979,11 @@ describe('Conversations (US-701)', () => {
       });
       await harness.fixture.whenStable();
 
-      // The panel replaces the table precisely so a stale result set is not shown as
-      // the answer; a counter still describing it would undo that.
       expect(element().querySelector('.conversations__count')).toBeNull();
     });
   });
 
-  describe('project chip and row kebab (US-307)', () => {
+  describe('project chip and row kebab', () => {
     const project = projectFixture({ name: 'Data Platform Migration' });
 
     /** Drains the root lookup store, which is what turns a projectId into a name. */
@@ -1067,14 +1005,12 @@ describe('Conversations (US-701)', () => {
       ]);
 
       const chips = [...element().querySelectorAll('.conversations__project')];
-      // One chip, not two: "no project" is a real state and renders nothing, unlike the
-      // model column's em dash, which means "the catalogue does not know this id".
       expect(chips).toHaveLength(1);
       expect(chips[0]?.textContent?.trim()).toBe('Data Platform Migration');
     });
 
     it('shows no chip for a project past the lookup ceiling', async () => {
-      // Naming it is impossible, and an em dash would read as "none" — which is wrong.
+      // Unnamable, and a dash would wrongly read as "none".
       loadProjects([]);
       await open('/conversations', [conversationFixture({ projectId: project.id })]);
 
@@ -1117,8 +1053,7 @@ describe('Conversations (US-701)', () => {
     await harness.fixture.whenStable();
     resetMediaQueries();
 
-    // The star and the kebab are icon controls: stretched across the card's foot they read
-    // as two broken bars rather than as the row's actions.
+    // Icon controls stretched across the card's foot would read as two broken bars.
     const trailing = element().querySelector('.card-row__trailing');
     expect(trailing?.querySelectorAll('button')).toHaveLength(2);
     expect(element().querySelector('.card-row__actions button')).toBeNull();

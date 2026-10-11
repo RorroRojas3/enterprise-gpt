@@ -107,11 +107,8 @@
   block-size: 3px;
   inline-size: 100%;
   transform-origin: left;
-  // A transition rather than a keyframe, so the four keyframes the app defines stay
-  // the only four in the app. @starting-style is what gives a transition something to
-  // animate *from* on an element that was just inserted — without it there is no
-  // change of state and nothing moves. Where it is unsupported the bar simply sits
-  // empty; the toast still dismisses on time.
+  // A transition, not a keyframe, to keep the app's four keyframes; `@starting-style` gives a
+  // freshly inserted bar a state to animate from. Where unsupported, the bar sits empty.
   transform: scaleX(0);
   transition: transform var(--toast-duration, 5000ms) linear;
   background: var(--toast-accent);
@@ -122,9 +119,7 @@
   }
 }
 
-// Under reduced motion the global block collapses the transition to 0.01ms, which
-// would flash the bar to empty. Hiding it entirely is the honest result: the toast
-// still auto-dismisses, it just no longer animates a countdown.
+// Reduced motion collapses the transition to 0.01ms, flashing the bar empty, so hide it.
 @media (prefers-reduced-motion: reduce) {
   .toast__drain {
     display: none;

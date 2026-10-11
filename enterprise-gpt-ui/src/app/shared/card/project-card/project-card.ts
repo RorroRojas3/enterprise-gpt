@@ -5,11 +5,8 @@ import { Icon } from '@shared/icon/icon';
 let nextId = 0;
 
 /**
- * A project tile — frames `4c` and `4d`.
- *
- * The title is a real `<a routerLink>` rather than a clickable card, so the whole tile
- * is not one giant unlabelled button and the link is reachable, focusable and
- * middle-clickable. The row menu projects into `[cardMenu]`.
+ * The title is a real `<a routerLink>` rather than a clickable card, so the link is focusable
+ * and middle-clickable. The row menu projects into `[cardMenu]`.
  */
 @Component({
   selector: 'app-project-card',
@@ -28,14 +25,7 @@ export class ProjectCard {
   readonly link = input.required<readonly unknown[] | string>();
   readonly favorite = input<boolean>(false);
 
-  /**
-   * Whether to render the star at all.
-   *
-   * It was false everywhere until US-909 put the flag on `ProjectSummaryDto` — a
-   * control that can be pressed and never persisted is worse than one that is not
-   * there. The input survives that story because it is the honest switch for any future
-   * caller that renders a card it cannot star.
-   */
+  /** Off for a caller that cannot persist the star: an unsaved control is worse than none. */
   readonly showFavorite = input<boolean>(true);
 
   /** From `withPendingIds`: this row alone is busy, the rest stay interactive. */

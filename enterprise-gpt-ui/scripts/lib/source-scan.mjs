@@ -1,10 +1,7 @@
-// Shared helpers for the static source checks. Kept out of the individual scripts
-// so `check-forbidden-apis` and `check-icon-names` cannot drift on what counts as a
-// comment — a name that appears only in prose must not fail either of them.
+// Shared so `check-forbidden-apis` and `check-icon-names` agree on what counts as a comment.
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-/** Every file under `dir`, recursively. */
 export function walk(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
@@ -13,11 +10,8 @@ export function walk(dir) {
 }
 
 /**
- * Blanks out comments while preserving line and column positions, so a match's line
- * number still refers to the original file.
- *
- * String-literal awareness is the point: without it the `//` in a URL swallows the
- * rest of the line, and a check that silently stops scanning is worse than no check.
+ * Blanks comments in place so match positions still refer to the original file. String-aware,
+ * so the `//` in a URL cannot silently swallow the rest of the line.
  */
 export function stripComments(source, { html = false } = {}) {
   const blank = (match) => match.replace(/[^\n]/g, ' ');

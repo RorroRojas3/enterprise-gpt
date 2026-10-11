@@ -80,8 +80,7 @@ describe('RenameConversationDialog', () => {
     await open(conversationFixture({ name: 'Helios 2.4 release status' }));
 
     expect(dialog().open).toBe(true);
-    // Each button projects into the footer directly — a wrapper div would collapse
-    // the flex row's gap and break frame 3c's button placement.
+    // Direct projection into the footer: a wrapper div would collapse the row's gap.
     expect(renameButton().parentElement?.classList.contains('modal-panel__footer')).toBe(true);
     expect(cancelButton().parentElement?.classList.contains('modal-panel__footer')).toBe(true);
     expect(input().value).toBe('Helios 2.4 release status');
@@ -91,7 +90,6 @@ describe('RenameConversationDialog', () => {
   });
 
   it('counts characters live in the mono counter', async () => {
-    // Frame 3c: `25 / 256` in JetBrains Mono, updating as the user types.
     await open(conversationFixture({ name: 'Helios 2.4 release status' }));
     expect(counter()?.textContent?.replace(/\s+/g, ' ').trim()).toBe('25 / 256');
     expect(counter()?.classList.contains('font-mono')).toBe(true);
@@ -126,8 +124,6 @@ describe('RenameConversationDialog', () => {
   });
 
   it('renders the server rejection beneath the field and keeps the counter', async () => {
-    // Frame 3c's right-hand variant: message left in the fail colour, counter still
-    // right, input in its invalid state, nothing saved.
     const target = conversationFixture({ name: 'Before' });
     await open(target);
 
@@ -143,8 +139,7 @@ describe('RenameConversationDialog', () => {
 
     const errors = fixture.nativeElement.querySelector('#rename-conversation-errors');
     expect(errors?.textContent).toContain("'Name' must not be empty.");
-    // A key the form does not model still renders — a message the user cannot see
-    // is a rename that silently fails.
+    // A key the form does not model still renders, or the rename would fail silently.
     expect(errors?.textContent).toContain("'Context Window Size' must be greater than 0.");
     expect(counter()).not.toBeNull();
   });

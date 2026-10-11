@@ -1,20 +1,14 @@
 /**
- * The 202 body of an upload. Mirrors `Enterprise.Gpt.Dto.JobDto`.
- *
- * The id is a `Guid.ToString()` server-side, but the status route binds `{jobId}` as a
- * bare `string` with no `:guid` constraint, so it is typed as one here and never parsed.
+ * The 202 body of an upload. The id is a Guid server-side, but the status route binds
+ * `{jobId}` as a bare string, so it is never parsed here.
  */
 export interface JobDto {
   readonly id: string;
 }
 
 /**
- * The four-value vocabulary `DocumentEndpoints.MapState` projects `JobStatus` onto.
- *
- * Only `Succeeded` and `Failed` are terminal. Every stage that is neither queued nor
- * finished — including stages appended to the enum after this contract was set — maps
- * to `Processing`, which is what makes the server free to add stages without breaking
- * a client written today.
+ * `DocumentEndpoints.MapState`'s projection of `JobStatus`. Any stage between queued and
+ * finished, including ones added later, maps to `Processing`.
  */
 export const JOB_STATE = {
   enqueued: 'Enqueued',
@@ -26,24 +20,9 @@ export const JOB_STATE = {
 export type JobState = (typeof JOB_STATE)[keyof typeof JOB_STATE];
 
 /**
- * One poll of `GET api/documents/upload-status/{jobId}`.
- *
- * Mirrors `Enterprise.Gpt.Dto.JobStatusDto`. Three things about it are easy to get
- * wrong:
- *
- * - **`state` and `status` do not use the same words.** `state` is the coarse
- *   projection above; `status` is the `JobStatus` member name. `state: 'Succeeded'`
- *   pairs with `status: 'Processed'`, and `state: 'Enqueued'` with `status: 'Queued'`.
- *   Branch on `state`; render `status` only as prose.
- * - **`completedUnits`/`totalUnits` are cleared by any report that does not supply
- *   them**, which the countable stages (chunking, embedding) do and the others do not.
- *   A client that latches the last pair it saw will show a stale "3 of 12" through a
- *   stage that is not counting anything.
- * - **`progress` is already monotonic server-side** (`Math.Max` in `JobStatusStore`),
- *   and a failure leaves it where it stopped rather than resetting it.
- *
- * A `404` on this route is *not* modelled here: it means expired, evicted, restarted,
- * or another user's job, and the server deliberately makes those indistinguishable.
+ * One status poll. Branch on `state`; `status` is the `JobStatus` name and differs from it
+ * (`Succeeded` pairs with `Processed`). The unit counts clear on stages that don't count, so
+ * never latch them. A 404 (expired, or another user's job) is deliberately not modelled.
  */
 export interface JobStatusDto {
   readonly id: string;
@@ -64,12 +43,8 @@ export interface JobStatusDto {
 }
 
 /**
- * A short-lived signed link from `GET api/documents/{parent}/{parentId}/{documentId}`.
- *
- * Mirrors `Enterprise.Gpt.Dto.DocumentDownloadDto`. {@link downloadUrl} is a **bearer
- * credential** for roughly five minutes: anyone holding it reads the file with no
- * sign-in. It is fetched on click and used immediately, and must never be persisted,
- * logged, placed in a router URL, or held in store state.
+ * {@link downloadUrl} is a bearer credential for about five minutes: fetch it on click, use it
+ * immediately, and never persist, log, route or store it.
  */
 export interface DocumentDownloadDto {
   readonly downloadUrl: string;
@@ -79,37 +54,21 @@ export interface DocumentDownloadDto {
   readonly expiresAt: string;
 }
 
-/**
- * Where a document came from.
- *
- * Mirrors `ConversationDocumentTypes`, which travels as its **member name** rather than
- * its stored number — the converter is applied to that one property, so every other
- * enum this API sends is still a number.
- */
+/** Sent as its member name, unlike every other enum this API sends. */
 export type DocumentType = 'Uploaded' | 'Generated';
 
 /**
- * The `?type=` token that narrows a listing to assistant-produced documents.
- *
- * Lower-cased, unlike the value a row carries: the route resolves it case-insensitively,
- * and this is the spelling its rejection message advertises.
+ * The `?type=` filter for generated documents. Lower-cased, unlike a row's value: the route is
+ * case-insensitive and this is the spelling it advertises.
  */
 export const GENERATED_DOCUMENT_TYPE = 'generated';
 
 /**
- * A document the signed-in user holds in a conversation, as `GET api/documents` returns
- * one — uploaded by them or produced by the assistant.
- *
- * Mirrors `Enterprise.Gpt.Dto.UserDocumentDto`. The route answers with the standard
- * `PaginatedResponseDto` envelope, ordered by **`dateCreated` descending** (with `id`
- * breaking ties), so the client renders the server's order rather than re-sorting it.
- * Like `ProjectDocumentDto`, the wire shape also emits a read-only `documentId` alias
- * of the same value; only {@link id} is modelled here — a second name for one value in
- * store state is a bug waiting to be written.
+ * A conversation document from `GET api/documents`, newest first; render the server's order.
+ * The wire's duplicate `documentId` alias is deliberately not modelled.
  */
 export interface UserDocumentDto {
   readonly id: string;
-  /** The conversation the document belongs to. */
   readonly conversationId: string;
   /** The original file name. */
   readonly name: string;
@@ -119,40 +78,27 @@ export interface UserDocumentDto {
   readonly mimeType: string;
   /** Bytes. */
   readonly size: number;
-  /** Whether the user uploaded this document or the assistant produced it. */
   readonly type: DocumentType;
   /** ISO 8601 with offset — when ingestion finished, not when the upload started. */
   readonly dateCreated: string;
   /** The owning conversation's name — present only on the cross-conversation route. */
   readonly conversationName: string;
   /**
-   * How many of the owning conversation's active documents match the same `name`/`type`
-   * filters this listing was narrowed by — computed per response, never stored.
-   *
-   * A grouped client holds only what it has paged to, so this is the only way to say "3 of
-   * 8" rather than counting the rows in hand and calling that the whole group.
+   * The owning conversation's documents matching this listing's filters, so a grouped client
+   * can say "3 of 8" without having paged to them all.
    */
   readonly conversationDocumentCount: number;
 }
 
 /**
- * What a document hangs off.
- *
- * Upload and download are both routed by the parent — `documents/conversations/{id}`
- * and `documents/projects/{id}` — and ownership is read off that parent rather than
- * off the document row. Modelling it as a discriminated pair rather than a bare id is
- * what lets one store serve the composer (US-801) and, later, a project's files panel
- * (US-905) without either learning about the other's routes.
+ * What a document hangs off. Routes and ownership go through the parent, so one store serves
+ * both the composer and a project's files panel.
  */
 export type UploadTarget =
   | { readonly kind: 'conversation'; readonly id: string }
   | { readonly kind: 'project'; readonly id: string };
 
-/**
- * The `api/`-relative path segment a target's document routes live under.
- *
- * @param target The parent the document belongs to.
- */
+/** The `api/`-relative path segment a target's document routes live under. */
 export function documentTargetPath(target: UploadTarget): string {
   return target.kind === 'conversation' ? 'conversations' : 'projects';
 }

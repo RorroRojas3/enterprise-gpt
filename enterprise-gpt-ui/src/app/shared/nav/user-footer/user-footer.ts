@@ -6,17 +6,8 @@ import { Icon } from '@shared/icon/icon';
 import { ThemeToggle } from '@shared/theme-toggle/theme-toggle';
 
 /**
- * Frame `3a`'s sidebar footer — who is signed in, the theme control, and sign out.
- *
- * It injects `SessionStore` and `AuthService` from `core/`, which `shared/` is allowed
- * to do and `ThemeToggle` already does. The alternative — inputs and an output threaded
- * down from whichever screen hosts it — would make every future host re-derive the
- * initials and re-wire the sign-out call, for a component that is a singleton by
- * construction.
- *
- * Sign-out asks for no confirmation, matching the board. Nothing is lost by signing
- * out — conversations are on the server — so a dialog would be friction guarding
- * nothing.
+ * Injects its stores rather than taking inputs: it is a singleton, so every host would only
+ * re-wire the same calls. Sign-out skips confirmation because conversations live on the server.
  */
 @Component({
   selector: 'app-user-footer',
@@ -31,22 +22,12 @@ export class UserFooter {
   protected readonly session = inject(SessionStore);
 
   /**
-   * Stacks the row into the collapsed sidebar's 60px strip, dropping the display name.
-   *
-   * Frame `3b` draws the avatar alone there. The theme control and sign out are kept
-   * anyway, as icon buttons with tooltips: a collapsed sidebar is a persisted state, so
-   * hiding them would make signing out require expanding the sidebar first — and the
-   * board itself gives the strip no other route to either.
+   * Stacks into the collapsed sidebar's 60px strip, dropping the name. Theme and sign-out stay:
+   * the collapse persists, so hiding them would force an expand just to sign out.
    */
   readonly compact = input<boolean>(false);
 
-  /**
-   * First letters of the first and last name.
-   *
-   * The derivation moved to `@shared/avatar/initials` when the admin user table needed
-   * the same one; this footer keeps its own markup, because frame `3a` sizes and colours
-   * its avatar off the sidebar rather than off the avatar ramp.
-   */
+  /** Own markup, not the shared avatar: it is sized and coloured off the sidebar. */
   protected readonly initials = computed(() => initialsOf(this.session.displayName()));
 
   protected readonly signingOut = this._auth.isSigningOut;

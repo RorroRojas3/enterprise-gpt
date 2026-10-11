@@ -2,18 +2,9 @@ import { ValidationAppError } from './app-error';
 import { toCamelCase } from './camel-case';
 
 /**
- * Plucks the messages a validation problem carries for one field.
+ * One field's server messages, for a Signal Forms `validate` rule (there is no `setErrors`).
+ * PascalCase keys match via .NET camel-casing, then case-insensitively; flat keys only.
  *
- * Signal Forms has no `setErrors`, so server messages surface through a declarative
- * `validate` rule that reads them from store state rather than being written onto a
- * control. The server keys its `errors` dictionary by its own PascalCase property
- * paths while fields are named after the camelCase JSON the same DTO serializes to,
- * so each key is normalized with the server's own camel-casing algorithm before
- * comparison, with a case-insensitive match as the fallback.
- *
- * Flat keys only, deliberately: the forms shipped so far bind top-level properties.
- *
- * @param error The normalized validation error, or null when there is none.
  * @param field The camelCase field name, e.g. `name`.
  */
 export function serverMessagesFor(
@@ -35,13 +26,8 @@ export function serverMessagesFor(
 }
 
 /**
- * The messages a validation problem carries for no listed field — object-level rules,
- * which FluentValidation keys with the empty string, and any property the form does
- * not model. The caller renders them as a summary so nothing the server said is
- * silently discarded.
- *
- * @param error The normalized validation error, or null when there is none.
- * @param fields The camelCase field names the form models.
+ * Messages for no listed field (object-level rules keyed `''`, unmodelled properties), which the
+ * caller renders as a summary so none are silently dropped.
  */
 export function unmatchedServerMessages(
   error: ValidationAppError | null,

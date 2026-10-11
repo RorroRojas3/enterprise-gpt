@@ -14,18 +14,14 @@ import { PROJECT_LIST_PAGE_SIZE } from './project-list-store';
 import { Projects } from './projects';
 
 /**
- * The two library screens, in both themes.
- *
- * They share a shape — a title, a wrapping toolbar, then a collection — and between them
- * they exercise most of the shared kit: `DataTable` and its selection checkboxes, the
- * paginator, the bulk action bar, `ProjectCard` and the row kebabs. Both are rendered
- * with rows rather than empty, because an empty collection has none of that in it.
+ * Both library screens are rendered with rows, not empty, so most of the shared kit (`DataTable`,
+ * paginator, bulk bar, `ProjectCard`, kebabs) is in the audit.
  */
 
 const PROJECTS_URL = `${TEST_API_BASE_URL}/api/projects`;
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
 
-describe('library accessibility (US-1405)', () => {
+describe('library accessibility', () => {
   let backend: HttpTestingController;
   let harness: RouterTestingHarness;
   let attached: HTMLElement | null = null;
@@ -141,8 +137,7 @@ describe('library accessibility (US-1405)', () => {
       element.querySelector<HTMLButtonElement>('.projects__more button')?.click();
       await harness.fixture.whenStable();
 
-      // `aria-disabled`, never the native attribute: a disabled button would drop focus
-      // mid-press, which is the state this case exists to audit.
+      // `aria-disabled`, never `disabled`, which would drop focus mid-press.
       const busy = element.querySelector('.projects__more button');
       expect(busy?.getAttribute('aria-disabled')).toBe('true');
 

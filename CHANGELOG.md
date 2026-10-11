@@ -26,6 +26,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already cached is regenerated once, at cost, the next time it is requested. A completion cut off at
   the model's output cap is now kept and reported rather than passed off as an ordinary success, and
   the pinned summarization model's output cap was raised to give the longer summaries headroom.
+- The backend's build settings and layout now follow the Andes API standards; behaviour is
+  unchanged. The test projects moved from `tests/` to `test/`, `Enterprise.Gpt.sln` became
+  `Enterprise.Gpt.slnx`, package versions live in `Directory.Packages.props`, and `global.json`
+  selects the Microsoft Testing Platform runner, so tests run as
+  `dotnet test --project test/Enterprise.Gpt.Unit.Test` with xUnit filters after `--` (for example
+  `-- --filter-class "*ModelServiceTests"` or `-- --filter-not-trait "Category=Integration"`).
+  Source is grouped by feature (Service `Conversations/`, `Documents/`, `Agents/`, `Exports/`,
+  `McpServers/`, `ChatModels/` and so on; Repository by provider as `Sql/`, `Cosmos/`, `Blob/`),
+  enums moved to `Common/Enums/` and constant catalogs to `Common/Constants/`, and the File Agent
+  moved from `Api` to `Service/Agents/`. Update any local scripts or IDE run configurations that
+  name the old paths.
+- `Program.cs` is now composition only, and startup is stricter. Each feature registers through
+  `Api/Configuration/<Feature>Configuration.cs`, and schema migration, Cosmos provisioning and the
+  summarizer and File Agent checks run in a fixed order from `StartupBootstrapper` (still skipped
+  in the `Testing` environment), so their logger categories changed. Every options class now has
+  a FluentValidation validator checked at start: the host refuses to boot on an invalid nested
+  section, `Mcp:Cache`, `DocumentIntelligence` `OCRModelId` or `AnalysisTimeout`, or a
+  `BackgroundJobs:RetentionMinutes` of zero or less. One `GlobalExceptionHandler` replaces the
+  three exception handlers, and domain exceptions derive from `ProblemException`; the `/problems/*`
+  type URIs are unchanged. Request bodies are validated by an endpoint filter rather than in the
+  services. Some responses changed: an `OperationCanceledException` while the client is still
+  connected (such as an HttpClient timeout) is now a 500 rather than a 499;
+  `ArgumentException`, `InvalidOperationException` and `KeyNotFoundException` are 500 rather than
+  400 or 404; an unknown `ModelId` is a 400 validation error; a blank job id is a 404; and 4xx
+  responses are no longer logged as errors.
+- The persistence model is consolidated. Entities derive from generic bases in `Entity/Base/` and
+  carry no attributes, and soft delete is now the named `SoftDelete` query filter (every entity
+  except User, Model, Provider and McpServer) plus a `SoftDeleteInterceptor`, with
+  `AuditTimestampInterceptor` stamping `DateCreated` and `DateModified` from `TimeProvider`. The
+  new `DropLedgerRowVersion` migration, applied at startup, drops the `Version` column from
+  `Provider` and the four `ConversationUsage*` tables. Visible effects: a lost row-version race
+  returns 409 Conflict (`SaveChangesOrConflictAsync`); `DateModified` moves only when a
+  row really changes; a turn that finishes after its conversation was deleted skips the
+  conversation's counters, but its usage row is still written and billed; and a usage row's
+  `DateCreated` is the time it was saved. `PermissionService.GetAllPermissionsAsync` is now
+  `GetAllPermissionsIncludingDeactivatedAsync`.
+- Backend code shape is now enforced by the build. `TreatWarningsAsErrors`, `AnalysisLevel`
+  `latest-recommended` and XML-doc checks are on, with file-scoped namespaces, `var`, collection
+  expressions, primary constructors and unused usings raised to warnings, so a style violation now
+  fails `dotnet build`. Every direct `ILogger` call became a source-generated `[LoggerMessage]`
+  method with the same message template and level, so existing KQL keeps working; log records now
+  carry a generated `EventId` and `EventName` where they had none, and the `RequestLogMessages`
+  methods gained a `Log` prefix (their explicit event ids 1000-1004 are unchanged).
+  `JobStatusStore`, `McpClientCache` and `BlobDocumentStore` take an injected `TimeProvider`, and
+  `ReadinessProbe` is disposable. No other runtime behaviour changes.
+- Source comments across the Angular UI now follow the project comment standard. Multi-paragraph
+  TSDoc, template and SCSS comments were cut to their one- or two-line rationale, or removed when they
+  only restated the code; PRD story ids and design-frame references were dropped from comments, and
+  stale or misplaced comments were corrected. PRD story ids were also removed from UI test names and
+  from the `check-forbidden-apis`, `check-initial-chunk` and `check-icon-names` build-gate messages.
+  Only comments, test names and message text changed, so behaviour is unchanged.
+
+### Removed
+
+- The `CosmosDb:UsePartitionKeyDelete` setting. It only steered a transcript-partition purge that
+  nothing in the application ever called, so it had no effect; remove it from any environment that
+  sets it. The purge itself is gone with it.
+- The opt-in File Agent live-model suites (code-interpreter reachability, sandbox inventory,
+  conversion matrix and the generation benchmark) and their test harness. They needed a live
+  Azure OpenAI sandbox and user-secrets, and CI only ever reported them as skipped. The committed
+  `conversion-matrix.json` and its unit checks stay, so the matrix is now maintained by hand.
+- About 200 redundant backend tests: duplicates, cases already covered by a stronger test, and
+  theory rows that hit the same branch. Production line coverage across the two suites is unchanged.
+  Unused or never-read private members (IDE0051, IDE0052) now fail the build.
 
 ### Fixed
 

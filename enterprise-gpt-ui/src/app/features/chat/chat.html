@@ -1,29 +1,13 @@
-<!--
-  The star and the kebab, declared once and rendered at exactly one place: the 52px
-  header below, or frame `1d`'s navbar through `ShellChrome` when the viewport is
-  narrower than 768px and that header has given up its bar.
-
-  One declaration and not two, because a `TemplateRef` rendered in both would put two
-  of this menu — and two project pickers, each with its own open state — in the
-  document at the same time.
--->
+<!-- Declared once: rendering the TemplateRef in two places would put two menus in the DOM. -->
 <ng-template #navbarActions>
   <!--
-    US-308: the star and the kebab route through the same ConversationActionsStore
-    flows as the sidebar row — nothing reimplemented. Both wait for a full DTO
-    (`current`) because rename must echo the fresh projectId and every action names
-    the conversation, so a deep link shows neither for one round trip rather than
-    acting on a guess. US-1403 retired the last of the three criteria deferred out of
-    US-308: below 768px these controls move into frame 1d's navbar rather than
-    disappearing with the bar that used to hold them.
+    Waits for the full DTO: rename echoes the fresh projectId and every action names the
+    conversation, so a deep link shows neither for a round trip rather than acting on a guess.
   -->
   @if (conversation.current(); as current) {
     <!--
-      A label swap and a state class rather than aria-pressed, exactly as on
-      project-card: the label already says which way the control goes, and carrying
-      the state twice announces as "Unfavourite …, pressed". Native [disabled] is
-      right here — unlike the kebab's items, this button is not part of a
-      roving-focus panel it would drop out of.
+      No aria-pressed: the label already says the direction, and both would announce
+      "Unfavourite …, pressed". Native [disabled] is fine outside a roving-focus menu.
     -->
     <button
       class="chat__star"
@@ -36,15 +20,7 @@
       <app-icon [name]="conversation.isFavorite() ? 'bi-star-fill' : 'bi-star'" />
     </button>
 
-    <!--
-      US-1502, in the header as well as the composer and out of the same component —
-      "one shared menu offered from either place". Below 768px this whole template moves
-      into frame `1d`'s navbar through `ShellChrome`, so the control follows for free.
-
-      Gated on `turn.exportTarget()` rather than on `current`: the star and the kebab act
-      on the conversation row, which exists from the moment it is created, while a
-      download needs a transcript with something in it.
-    -->
+    <!-- Gated on `exportTarget()`, not `current`: a download needs a transcript with content. -->
     @if (turn.exportTarget(); as target) {
       <app-conversation-download-menu
         [conversationId]="target.id"
@@ -54,10 +30,8 @@
     }
 
     <!--
-      aria-disabled, never the native attribute: a natively disabled item cannot
-      take focus, which strands the menu's roving focus and its Escape handling.
-      The store's begin* methods already refuse a pending row, so the click is a
-      guarded no-op, not a hole.
+      aria-disabled: a natively disabled item cannot take focus, stranding the menu's roving
+      focus. The store's begin* methods refuse a pending row, so the click is a no-op.
     -->
     <app-menu #headerMenu class="chat__menu" [label]="'Actions for ' + current.name">
       <button
@@ -69,12 +43,7 @@
         <app-icon name="bi-pencil" />
         Rename
       </button>
-      <!--
-        US-307, in the order frame 3a's kebab draws them. The chevron is the board's
-        submenu affordance; what opens is a dialog rather than a nested menu, which is
-        what aria-haspopup announces. Remove is absent for a standalone conversation
-        rather than rendered inert.
-      -->
+      <!-- The chevron is visual only: what opens is a dialog, as aria-haspopup announces. -->
       <button
         appMenuItem
         type="button"
@@ -116,18 +85,9 @@
   }
 </ng-template>
 
-<!--
-  Frame 1b's header bar. Rendered only when a conversation is open: frame 1a has no
-  header at all, and an empty 52px rule above the empty state is not the same screen.
--->
 @if (conversation.isOpen()) {
   <header class="chat__header">
-    <!--
-      The skeleton sits *inside* the h1 rather than replacing it: a deep link to a row
-      the sidebar has not loaded has no name for the length of a round trip, and
-      swapping the heading out would leave the document with no level-1 heading at all
-      until it arrives.
-    -->
+    <!-- The skeleton sits inside the h1 so the page never lacks a level-1 heading mid-load. -->
     <h1 class="chat__title">
       @if (conversation.name(); as name) {
         {{ name }}
@@ -136,22 +96,13 @@
       }
     </h1>
 
-    <!--
-      Rendered here only while the header has a bar to hold it. Below 768px frame
-      `1d` replaces that bar with the shell's navbar, and the same template is
-      rendered there instead — never in both.
-    -->
     @if (!isNarrow()) {
       <ng-container [ngTemplateOutlet]="navbarActions" />
     }
   </header>
 }
 
-<!--
-  tabindex="-1" so the jump-to-latest control has somewhere deliberate to hand
-  focus when it removes itself, rather than letting it fall to <body>. Negative,
-  so the container never joins the tab order itself.
--->
+<!-- Where the jump-to-latest control hands focus when it removes itself, not <body>. -->
 <div
   class="chat__body"
   tabindex="-1"
@@ -159,17 +110,10 @@
   [pinningContent]="pinnedContent"
   #pinning="appTranscriptPinning"
 >
-  <!--
-    US-606: one wrapper around every branch, so the pinning directive has a single
-    stable element whose height it can watch. Watching the scroll container itself
-    would report nothing — its own box never changes as the answer grows.
-  -->
+  <!-- One stable wrapper for the pinning directive to measure; the scroll box never resizes. -->
   <div class="chat__content" #pinnedContent>
     @if (conversation.error(); as error) {
-      <!--
-        A 404 here means the conversation does not exist *or* belongs to someone else —
-        the API deliberately does not distinguish the two, and neither does this copy.
-      -->
+      <!-- The API does not tell missing from someone else's on a 404, and neither does this. -->
       <app-error-panel
         class="chat__error"
         [error]="error"
@@ -189,28 +133,14 @@
     }
   </div>
 
-  <!--
-    US-606: the bottom marker, deliberately outside the branches above so that it
-    is one element for the whole life of the screen — a sentinel inside a branch
-    would be replaced whenever the body swapped, and the observer would be left
-    watching a detached node.
-  -->
+  <!-- Outside the branches, so a body swap never leaves the observer on a detached node. -->
   <div class="chat__sentinel" #bottomSentinel aria-hidden="true"></div>
 </div>
 
-<!--
-  US-402/403: the composer, on the empty screen and on an open conversation
-  alike — but not under a conversation that failed to open, where sending has
-  no target.
--->
+<!-- Not under a conversation that failed to open: sending would have no target. -->
 @if (!conversation.error()) {
   <div class="chat__composer">
-    <!--
-      US-606: centred above the composer, and only while the reader is away from
-      the newest content. The ring is a wrapper rather than the button because
-      `ringpulse` animates box-shadow, which would otherwise replace the button's
-      own drop shadow for most of every cycle.
-    -->
+    <!-- The ring is a wrapper: `ringpulse` animates box-shadow over the button's own shadow. -->
     @if (pinning.showJump()) {
       <div class="chat__jump" [class.chat__jump--pulsing]="pinning.pulsing()">
         <button
@@ -228,20 +158,7 @@
 }
 
 <!--
-  US-1402: what a screen reader is told while a turn runs.
-
-  Here rather than in the transcript, and outside `.chat__body`, because the
-  transcript is `aria-busy` for the length of a turn — a live region inside it is
-  deferred along with the answer, which is exactly what makes the answer's own
-  region bearable and exactly what would silence this one.
-
-  Last in the document, like the transcript's own two regions and for the same
-  reason: `visually-hidden` is clipped rather than hidden, so a region placed at
-  the top would put "Get forecast is running" above the conversation title for
-  anyone reading the page in order.
-
-  Persistent and empty at rest: a region created together with its content is not
-  reliably announced, the same rule the toast stack, the composer's attachment
-  summary and the transcript's own status line already follow.
+  Outside the transcript, which is aria-busy during a turn and would silence it. Last, so it never
+  reads above the title; always present, as a region created with its content may not announce.
 -->
 <p class="visually-hidden" role="status">{{ turn.turnStatus() }}</p>

@@ -29,21 +29,13 @@ class MarkdownReference {
 
 const MESSAGE_ID = 'aaaaaaaa-1111-4222-8333-444444444444';
 
-describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
+describe('AssistantTurn markdown rendering', () => {
   let fixture: ComponentFixture<AssistantTurn>;
   let host: HTMLElement;
 
   beforeEach(() => {
-    // `provideChatMarkdown()` carries US-605's loader, which reads the feature
-    // flags — so a surface that renders answers cannot be mounted without a
-    // configuration saying whether diagrams and math are switched on.
-    //
-    // Pinned off rather than inherited from `public/config.json`. This file's
-    // subject is the head/tail split, highlighting and the footer; a deployment
-    // that turns diagrams on would otherwise make these specs start a real
-    // `import('mermaid')` that jsdom cannot run, and they would pass or fail on
-    // whether the import resolved before the test ended. Drawing is
-    // `markdown-extras.spec.ts`'s subject, where the module is substituted.
+    // Pinned off rather than read from `public/config.json`: diagrams on would start a real
+    // `import('mermaid')` jsdom cannot run. Drawing is `markdown-extras.spec.ts`'s subject.
     TestBed.configureTestingModule({
       providers: [
         provideTestAppConfig({ features: { diagrams: false, math: false, rawStreamCodec: false } }),
@@ -71,7 +63,7 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
     };
   }
 
-  /** The terminal frame, for the folded-`Finished` half of US-1402. */
+  /** The terminal frame, whose folded `Finished` clears `aria-busy`. */
   function finished() {
     return assistantEvent('Finished');
   }
@@ -163,10 +155,8 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
       expect(code).not.toBeNull();
       expect(code?.className).not.toContain('language-ts');
       expect(tail?.querySelector('.token')).toBeNull();
-      // It must still look like code while it arrives: `_prism.scss` keys the
-      // code surface off a `language-*` class, and the highlighter marks an
-      // unlabelled block `language-none` on its way past. Without that the block
-      // would render as bare text and then snap to a dark padded box at settle.
+      // Still code while it arrives: `_prism.scss` keys the code surface off `language-*`,
+      // which the highlighter sets to `language-none` on an unlabelled block.
       expect(code?.className).toContain('language-');
       expect(tail?.querySelector('pre')?.className).toContain('language-');
     });
@@ -174,19 +164,17 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
     it('highlights the same block once the turn settles', async () => {
       await show('Intro\n\n```ts\nconst a = 1;\n```', false);
 
-      // `pre > code`, not any `code`: US-603's head bar names the language in a
-      // `<code>` of its own, which comes first in document order.
+      // `pre > code`, not any `code`: the head bar names the language in a `<code>` of its
+      // own, which comes first in document order.
       const code = host.querySelector('pre > code');
       expect(code?.className).toContain('language-ts');
       expect(host.querySelector('.token')).not.toBeNull();
     });
   });
 
-  describe('deferred renderers (US-605)', () => {
+  describe('deferred renderers', () => {
     it('marks a mermaid fence only once the turn settles', async () => {
-      // Mid-stream the fence is in the tail, whose info strings `stripFenceInfo`
-      // has removed — so there is no language left to recognise, and a
-      // half-written diagram is not one.
+      // Mid-stream the fence is in the tail, whose info strings `stripFenceInfo` removed.
       await show('Intro\n\n```mermaid\ngraph TD; A-->B', true);
       expect(host.querySelector('.md-diagram')).toBeNull();
 
@@ -195,10 +183,8 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
     });
 
     it('draws nothing in the streaming head, even where the fence has closed', async () => {
-      // The head *does* keep its info string, so the wrapper is marked — but the
-      // live pair carries no `appMarkdownExtras`, because the head's content is
-      // replaced wholesale whenever a block closes and a diagram there would be
-      // torn down and laid out again on every flush.
+      // The head keeps its info string, so the wrapper is marked, but the live pair has no
+      // `appMarkdownExtras`: the head is replaced whenever a block closes.
       await show('```mermaid\ngraph TD; A-->B\n```\n\nstill writ', true);
 
       const [head] = renderers();
@@ -208,7 +194,7 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
     });
   });
 
-  describe('the streaming answer as a live region (US-1402)', () => {
+  describe('the streaming answer as a live region', () => {
     function content(): HTMLElement | null {
       return host.querySelector('.assistant-turn__content');
     }
@@ -217,10 +203,8 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
       await show('The forecast is', true);
       expect(content()?.getAttribute('aria-live')).toBe('polite');
 
-      // A turn rendered without `[streaming]` carries nothing — which is what
-      // keeps the answer from being announced a second time when the settled
-      // entry replaces the live one. That the *call site* passes no `[streaming]`
-      // is pinned in `transcript.spec.ts`, where the two are different instances.
+      // Silent once settled, so the replacing entry does not announce the answer twice. The
+      // call site is pinned in `transcript.spec.ts`.
       await show('The forecast is clear.', false);
       expect(content()?.getAttribute('aria-live')).toBeNull();
       expect(content()?.getAttribute('aria-busy')).toBeNull();
@@ -237,16 +221,14 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
       fixture.detectChanges();
       await fixture.whenStable();
 
-      // Still the streaming instance — the settle that swaps it in waits for the
-      // response body to close — so the region is mounted to be read at the
-      // moment it stops being busy. An explicit `false`, not a removed
-      // attribute: that release is the mutation the whole pattern hangs on.
+      // Still the streaming instance until the body closes, so the region is read as it stops
+      // being busy. An explicit `false`, not a removed attribute: that release announces it.
       expect(content()?.getAttribute('aria-live')).toBe('polite');
       expect(content()?.getAttribute('aria-busy')).toBe('false');
     });
   });
 
-  describe('the message footer (US-607)', () => {
+  describe('the message footer', () => {
     let writeText: ReturnType<typeof vi.fn>;
     let clipboardDescriptor: PropertyDescriptor | undefined;
 
@@ -267,9 +249,7 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
     it('offers Copy on a settled turn that claims no token counts', async () => {
       await show('All done.', false);
 
-      // US-504 gated the whole footer on the counts, so a stopped, cut-off or
-      // replayed turn had none. Copy is offerable whether or not a `Finished`
-      // ever arrived, so the counts are now the conditional part.
+      // Copy is offerable whether or not a `Finished` arrived; only the counts depend on it.
       expect(host.querySelector('.assistant-turn__footer')).not.toBeNull();
       expect(host.querySelector('app-message-copy')).not.toBeNull();
       expect(host.querySelector('.assistant-turn__usage')).toBeNull();
@@ -294,9 +274,8 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
     });
 
     it('copies every block of a turn whose text was split by an activity', async () => {
-      // `renderedNodes` slices the text per timeline node; the copy comes off
-      // the snapshot instead, so a turn interrupted by a tool call still yields
-      // its whole answer rather than the last block.
+      // The copy comes off the snapshot, not the per-node slices, so the whole answer survives
+      // a tool call splitting it.
       const events = [
         assistantEvent('TextDelta', { text: 'Before. ' }),
         assistantEvent('ActivityStarted', { scopeId: 'mcp-1' }),
@@ -319,12 +298,10 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
     });
   });
 
-  describe('the feedback controls (US-1103)', () => {
+  describe('the feedback controls', () => {
     /**
-     * The whole of the first criterion, and it holds by construction rather than by a
-     * flag: no persisted message id means no anchor, and there is nowhere to send a
-     * rating. That covers a server that sends no id and a completed turn whose transcript
-     * write failed, which is sent a `Finished` carrying no metadata at all.
+     * No persisted message id, nowhere to send a rating: that covers a server that sends no id
+     * and a failed transcript write, whose `Finished` carries no metadata.
      */
     it('withholds the thumbs from an answer that never became a persisted message', async () => {
       await show('All done.', false);
@@ -340,9 +317,8 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
       const footer = host.querySelector('.assistant-turn__footer');
       expect(footer?.querySelector('app-message-feedback')).not.toBeNull();
 
-      // Copy, then the thumbs — the order frame 1g draws, and the order a screen reader
-      // walks the footer in. The counts would follow, and are absent here because this
-      // turn folded no `Finished` and claims none.
+      // Copy, then the thumbs: the order a screen reader walks the footer in. No counts,
+      // because this turn folded no `Finished`.
       const controls = [...(footer?.children ?? [])].map((child) => child.tagName.toLowerCase());
       expect(controls).toEqual(['app-message-copy', 'app-message-feedback']);
     });
@@ -387,10 +363,7 @@ describe('AssistantTurn markdown rendering (US-601, US-602)', () => {
     });
   });
 
-  /**
-   * US-602's closing criterion: whatever the split did mid-stream, the settled
-   * turn must be the same render as one pass over the whole source.
-   */
+  /** Whatever the split did mid-stream, the settled turn must match one pass over the source. */
   it('settles to a render character-identical to a single full render', async () => {
     const source = [
       '# Heading',

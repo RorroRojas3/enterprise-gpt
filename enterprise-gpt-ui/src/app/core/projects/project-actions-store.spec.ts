@@ -24,7 +24,7 @@ const DUPLICATE_NAME_PROBLEM = {
   errors: { Name: ["A project named 'RFP Responses' already exists."] },
 };
 
-describe('ProjectActionsStore (US-903)', () => {
+describe('ProjectActionsStore', () => {
   let backend: HttpTestingController;
   let store: InstanceType<typeof ProjectActionsStore>;
   let toasts: InstanceType<typeof ToastStore>;
@@ -64,8 +64,7 @@ describe('ProjectActionsStore (US-903)', () => {
       TestBed.tick();
 
       const request = expectPost();
-      // Trimmed, and the untouched optional field sent as null rather than as "" —
-      // the column is nullable and an empty string is a different value.
+      // Trimmed, and the untouched optional field sent as null rather than "".
       expect(request.request.body).toEqual({
         name: 'Helios',
         description: null,
@@ -91,8 +90,6 @@ describe('ProjectActionsStore (US-903)', () => {
       expectPost().flush(DUPLICATE_NAME_PROBLEM, { status: 400, statusText: 'Bad Request' });
       TestBed.tick();
 
-      // The dialog stays open with the message under the field, which is the whole
-      // point: a toast would take the reader away from the input they must fix.
       expect(store.formMode()).toBe('create');
       expect(store.formRejectedName()).toBe('RFP Responses');
       expect(projectNameMessages(store.formError())).toEqual([DUPLICATE_NAME_MESSAGE]);
@@ -108,8 +105,6 @@ describe('ProjectActionsStore (US-903)', () => {
       expectPost().flush(DUPLICATE_NAME_PROBLEM, { status: 400, statusText: 'Bad Request' });
       TestBed.tick();
 
-      // Nowhere left to render it inline, and a rejection nobody sees is a create that
-      // silently failed.
       expect(toasts.toasts().length).toBe(1);
       expect(toasts.toasts()[0]?.detail).toBe(DUPLICATE_NAME_MESSAGE);
     });
@@ -136,8 +131,6 @@ describe('ProjectActionsStore (US-903)', () => {
       store.beginEdit(summary);
       TestBed.tick();
 
-      // The listing shape has no `instructions` key at all, so opening the form on it
-      // would let a save PUT `instructions: null` over text the user never saw.
       const fetch = backend.expectOne(`${PROJECTS_URL}/${summary.id}`);
       expect(store.formMode()).toBe('edit');
       expect(store.formLoading()).toBe(true);
@@ -222,9 +215,6 @@ describe('ProjectActionsStore (US-903)', () => {
         (candidate) =>
           candidate.url === `${PROJECTS_URL}/${target.id}` && candidate.method === 'DELETE',
       );
-      // Nothing removed optimistically: the same event releases every conversation the
-      // project held, and undoing that would mean guessing which rows the server
-      // reached.
       expect(deletedId).toBeNull();
       expect(store.isRowPending(target.id)).toBe(true);
 
@@ -251,7 +241,7 @@ describe('ProjectActionsStore (US-903)', () => {
     });
   });
 
-  describe('favourite (US-909/US-910)', () => {
+  describe('favourite', () => {
     function expectFavoritePut(id: string): TestRequest {
       return backend.expectOne(
         (request) => request.url === `${PROJECTS_URL}/${id}/favorite` && request.method === 'PUT',
@@ -269,10 +259,8 @@ describe('ProjectActionsStore (US-903)', () => {
       TestBed.tick();
 
       const request = expectFavoritePut(target.id);
-      // A set, not a toggle: the flag is computed once, at the click, so a retried or
-      // duplicated request cannot land on the opposite value.
+      // A set, not a toggle, so a retried request cannot land on the opposite value.
       expect(request.request.body).toEqual({ isFavorite: true });
-      // Not optimistic: nothing is announced until the 204.
       expect(announced).toBeNull();
       expect(store.isRowPending(target.id)).toBe(true);
 
@@ -317,9 +305,6 @@ describe('ProjectActionsStore (US-903)', () => {
     });
 
     it('refuses a second toggle while the first is in flight', () => {
-      // The pending-id guard is the whole re-entry story here: nothing opens in front of
-      // this action, so a double-click would otherwise send an opposite SET racing the
-      // first to decide the final state.
       const target = projectFixture({ isFavorite: false });
 
       store.toggleFavorite(target);

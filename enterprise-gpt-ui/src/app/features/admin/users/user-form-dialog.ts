@@ -18,25 +18,8 @@ import { PermissionChecklist } from './permission-checklist';
 const EMAIL_MAX_LENGTH = 512;
 
 /**
- * The add-user modal, frame `5b` (US-1202).
- *
- * **A work email and a permission checklist. Nothing else** — no name, role, status,
- * password or confirm-password field, because `CreateUserActionDto` has none of them:
- * the display name and the object id come from Microsoft Graph, and sign-in is Entra's.
- * The row's primary key *is* the directory object id, which is what lets the account the
- * administrator provisions here be the same row the person signs in against later.
- *
- * It copies `ProjectFormDialog`, the app's second Signal Form, including the part that is
- * easy to miss: the server's verdict arrives through a declarative `validate` rule that
- * reports it only while the field still holds the exact address the server rejected. That
- * is what clears the inline message on the next keystroke — Signal Forms has no
- * `setErrors`, so an imperative reset has nothing to reset.
- *
- * Four rejections reach that one field, and only three of them are validation problems.
- * The fourth — the directory has no user with this address — is a **404**, with no
- * `errors` dictionary to read, so it travels beside the validation error rather than
- * through it. A toast would leave the reader guessing which of the two things they filled
- * in was wrong.
+ * Server rejections surface through a `validate` rule keyed to the rejected address, as Signal
+ * Forms has no `setErrors`. A directory 404 has no `errors` map, so it rides alongside.
  */
 @Component({
   selector: 'app-user-form-dialog',
@@ -55,8 +38,7 @@ export class UserFormDialog {
   protected readonly selectedIds = signal<ReadonlySet<string>>(new Set<string>());
 
   protected readonly f = form(this.model, (path) => {
-    // A schema rule rather than a `[disabled]` binding: the `[formField]` directive owns
-    // that attribute (NG8022), exactly as it owns `maxlength`.
+    // A schema rule, not a `[disabled]` binding: `[formField]` owns that attribute (NG8022).
     disabled(path, () => this.actions.formBusy());
     required(path.email, { message: 'A work email address is required.' });
     email(path.email, { message: 'Enter a valid email address.' });
@@ -65,8 +47,7 @@ export class UserFormDialog {
     });
     validate(path.email, ({ value }) => {
       const rejected = this.actions.formRejectedEmail();
-      // Trimmed, because the store submits the trimmed value: the field may hold
-      // surrounding whitespace the server never saw.
+      // Trimmed, as the store submits it: the field may hold whitespace the server never saw.
       if (rejected === null || value().trim() !== rejected) {
         return null;
       }
@@ -86,10 +67,7 @@ export class UserFormDialog {
     () => this.f.email().value().trim() !== '' && !this.f().invalid() && !this.actions.formBusy(),
   );
 
-  /**
-   * Field errors render once the user has interacted — or immediately when they came from
-   * the server, which no amount of prior interaction predicts.
-   */
+  /** After interaction, or at once for a server error, which no prior interaction predicts. */
   protected readonly showEmailErrors = computed(
     () =>
       this.f.email().invalid() &&
@@ -100,11 +78,7 @@ export class UserFormDialog {
 
   protected readonly emailErrors = computed(() => messagesOf(this.f.email().errors()));
 
-  /**
-   * Messages under keys the form does not model — object-level rules, and the per-element
-   * `PermissionIds[n]` key the checklist cannot render under. Shown rather than dropped,
-   * because a server message the user cannot see is a save that silently fails.
-   */
+  /** Messages under keys the form does not model, shown so none silently fails the save. */
   protected readonly unmatched = computed(() =>
     unmatchedServerMessages(this.actions.formError(), ['email']),
   );
@@ -113,11 +87,7 @@ export class UserFormDialog {
     () => this.showEmailErrors() || this.unmatched().length > 0,
   );
 
-  /**
-   * A field rather than a template arrow: `provideCheckNoChangesConfig({ exhaustive:
-   * true })` compares bindings between passes, and a closure allocated in the template
-   * is a new value on every check.
-   */
+  /** A field, not a template arrow: exhaustive no-changes checks see a new closure each pass. */
   protected readonly retryPermissions = (): void => this.actions.retryPermissions();
 
   constructor() {
@@ -129,12 +99,10 @@ export class UserFormDialog {
 
       untracked(() => {
         this.model.set({ email: '' });
-        // Nothing is pre-checked. The server grants every `IsDefault` permission on top
-        // of whatever is sent, so seeding the defaults here would render them as choices
-        // an administrator could take away — which this request cannot do.
+        // Nothing pre-checked: the server adds every `IsDefault` permission anyway, so seeded
+        // defaults would look removable when they are not.
         this.selectedIds.set(new Set<string>());
-        // Clears touched/dirty left over from a previous open — the component is mounted
-        // once and lives as long as the administration area.
+        // Mounted once for the Users tab, so clear touched/dirty left by a previous open.
         this.f().reset();
       });
     });

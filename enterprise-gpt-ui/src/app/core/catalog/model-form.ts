@@ -8,23 +8,14 @@ export const MODEL_FIELD_LENGTHS = {
   description: 1024,
 } as const;
 
-/** One entry of the model form's Provider select (frame `5f`). */
 export interface ProviderOption {
   readonly id: string;
   readonly name: string;
 }
 
 /**
- * The providers a model may be assigned to, in the order the seed defines them.
- *
- * Built here rather than beside `providerMeta` so it stays out of the initial graph:
- * `domain/api/provider.ts` is reached by the chat composer's model menu, and this list
- * has exactly one consumer, on a lazy admin route.
- *
- * `ModelService.EnsureProviderExistsAsync` answers 404 for a provider that is missing
- * *or deactivated*, so an id offered here that a deployment has retired fails the save
- * rather than writing silently — the correct failure, and the only one a client with no
- * `GET api/providers` can know about.
+ * Kept out of `domain/api/provider.ts` so it stays off the initial graph. With no
+ * `GET api/providers`, an id a deployment has retired surfaces only as the save's 404.
  */
 export const PROVIDER_OPTIONS: readonly ProviderOption[] = Object.values(PROVIDER_ID).map((id) => ({
   id,
@@ -32,14 +23,8 @@ export const PROVIDER_OPTIONS: readonly ProviderOption[] = Object.values(PROVIDE
 }));
 
 /**
- * The values the model form collects (frame `5f`).
- *
- * **The four numeric fields are strings, deliberately.** `<input type="number">` hands
- * back `null` for anything the browser cannot parse, which loses the text the reader
- * typed — and frame `5f` draws `400000.5` still sitting in the field beneath its
- * refusal. Keeping the raw text is also the only way to tell "left blank" (a price the
- * deployment has not set) apart from "typed something that is not a number", which the
- * wire distinguishes and a coerced `null` does not.
+ * Numeric fields are strings: `type="number"` yields null for unparsable text, losing what was
+ * typed and conflating "blank" (unpriced) with "not a number".
  */
 export interface ModelFormValue {
   readonly providerId: string;
@@ -56,16 +41,11 @@ export interface ModelFormValue {
   readonly isDefault: boolean;
 }
 
-/** The message frame `5f` words for a token count that is not a whole number. */
 export const WHOLE_TOKENS_MESSAGE = 'Must be a whole number of tokens.';
 
 /**
- * Validates a token count, returning the reason it is unusable or null when it is fine.
- *
- * **The whole-number rule is the client's own.** `ContextWindowSize` and
- * `MaxOutputTokens` are `decimal(18,2)` columns and their validator carries only
- * `GreaterThan(0)`, so the server would accept `400000.5` and store it. Frame `5f` draws
- * the refusal, so it has to live somewhere, and this is the only place it can.
+ * The whole-number rule is the client's own: the server's `decimal(18,2)` columns only check
+ * `GreaterThan(0)`, so it would store `400000.5`.
  */
 export function tokenCountError(raw: string): string | null {
   const trimmed = raw.trim();
@@ -81,12 +61,7 @@ export function tokenCountError(raw: string): string | null {
   return parsed > 0 ? null : 'Must be greater than zero.';
 }
 
-/**
- * Validates an optional price, returning the reason it is unusable or null.
- *
- * Blank is valid and means **unpriced**. Zero is also valid — a genuinely free
- * deployment — which is why blank cannot be normalised to it.
- */
+/** Blank means unpriced and zero means free, so blank cannot be normalised to zero. */
 export function priceError(raw: string): string | null {
   const trimmed = raw.trim();
   if (trimmed === '') {
@@ -101,7 +76,6 @@ export function priceError(raw: string): string | null {
   return parsed >= 0 ? null : 'A price cannot be negative.';
 }
 
-/** Seeds the form from a model, or from nothing when one is being created. */
 export function toModelFormValue(model: ModelDto | null): ModelFormValue {
   if (model === null) {
     return {
@@ -113,11 +87,9 @@ export function toModelFormValue(model: ModelDto | null): ModelFormValue {
       maxOutputTokens: '',
       inputPricePerMillionTokens: '',
       outputPricePerMillionTokens: '',
-      // The server's own column default. A model that cannot call tools is the
-      // exception, so the toggle starts where most models end up.
+      // The server's column default; most models can call tools.
       isToolEnabled: true,
-      // The server's column default too, and the one that matters: a model created with
-      // this off would be invisible in the picker the moment it was saved.
+      // Also the column default: a model created hidden would vanish from the picker on save.
       isUserSelectable: true,
       isReasoningEnabled: false,
       isDefault: false,
@@ -141,12 +113,8 @@ export function toModelFormValue(model: ModelDto | null): ModelFormValue {
 }
 
 /**
- * Builds the request body, or null when a field the wire needs is unusable.
- *
- * Both verbs go through here, so neither can drop a field on a full-representation PUT:
- * `ModelMapper` assigns every property unconditionally, so a body missing a price
- * **clears** the stored one and a body missing `isReasoningEnabled` reads as `false`.
- * The form binds all twelve precisely so that this function never has to guess at one.
+ * Shared by both verbs: `ModelMapper` assigns every property on a PUT, so a missing price clears
+ * the stored one and a missing `isReasoningEnabled` reads as `false`.
  */
 export function toModelBody(value: ModelFormValue): ModelWriteBody | null {
   if (tokenCountError(value.contextWindowSize) !== null) {

@@ -18,11 +18,7 @@ import { AdminModels } from './admin-models';
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models/all`;
 
-/**
- * `SearchInput`'s own 300 ms window, with room for the effect that follows it and for a
- * loaded CI runner — these are real timers, because faking the clock also stalls the
- * scheduler `whenStable()` awaits.
- */
+/** `SearchInput`'s 300 ms plus headroom; real timers, since a fake clock stalls `whenStable()`. */
 const DEBOUNCE_MS = 450;
 
 /** Somewhere to navigate to, so leaving the tab genuinely destroys the screen. */
@@ -33,7 +29,7 @@ const DEBOUNCE_MS = 450;
 })
 class Elsewhere {}
 
-describe('AdminModels (US-1207)', () => {
+describe('AdminModels', () => {
   let backend: HttpTestingController;
   let harness: RouterTestingHarness;
 
@@ -103,7 +99,6 @@ describe('AdminModels (US-1207)', () => {
     expect(rowText()).toContain('GPT-5 Enterprise');
     expect(rowText()).toContain('Azure OpenAI');
     expect(rowText()).toContain('gpt-5-ent-eastus2');
-    // Abbreviated, then thousands-separated — the two treatments frame `5e` uses.
     expect(rowText()).toContain('400k');
     expect(rowText()).toContain('32,768');
     expect(headers.join(' ')).toContain('Provider');
@@ -126,8 +121,6 @@ describe('AdminModels (US-1207)', () => {
       modelFixture({ name: 'Without tools', isToolEnabled: false }),
     ]);
 
-    // WCAG 1.4.1: a tick and a dash in two colours is one channel, and "Tools" over a
-    // bare glyph reads as nothing at all to a screen reader.
     expect(rowText()).toContain('Tools enabled');
     expect(rowText()).toContain('Tools not enabled');
   });
@@ -140,8 +133,7 @@ describe('AdminModels (US-1207)', () => {
 
     expect(rowText()).toContain('Retired');
     expect(element().querySelectorAll('.admin-models__identity--retired')).toHaveLength(1);
-    // There is no reactivate route, so every item would be an affordance that cannot
-    // work — the shown-and-disabled pattern US-203 rejected. One live row, one menu.
+    // One live row, one menu: there is no reactivate route to offer a retired one.
     expect(element().querySelectorAll('app-menu')).toHaveLength(1);
   });
 
@@ -169,11 +161,7 @@ describe('AdminModels (US-1207)', () => {
     expect(items).toEqual(['Edit', 'Delete']);
   });
 
-  /**
-   * Layer two of the guard: a hidden model made the default resolves to nothing on
-   * `GET api/models`, which leaves every composer with no model to start a turn on. The
-   * server refuses the combination; the menu must not offer it in the first place.
-   */
+  /** A hidden default would leave every composer with no model to start a turn on. */
   it('hides Set as default on a row that is hidden from the picker', async () => {
     await open([modelFixture({ name: 'GPT-5', isDefault: false, isUserSelectable: false })]);
 
@@ -192,8 +180,7 @@ describe('AdminModels (US-1207)', () => {
       modelFixture({ name: 'Summarizer', isUserSelectable: false }),
     ]);
 
-    // Not a shade of Active: the row still serves a turn that names it by id, and an
-    // administrator otherwise has to open Edit on every row to learn which are visible.
+    // A third state, not a shade of Active: the row still serves a turn that names it by id.
     expect(rowText()).toContain('Hidden');
     expect(rowText()).toContain('Active');
   });
@@ -206,8 +193,7 @@ describe('AdminModels (US-1207)', () => {
 
     await type('anthropic');
 
-    // Regime C: the whole catalog is already here, so the filter is exact and the server
-    // is never asked again. `backend.verify()` is the second half of that claim.
+    // `backend.verify()` proves the server was not asked again.
     expect(rowText()).toContain('Claude Sonnet 4.5');
     expect(rowText()).not.toContain('GPT-5 Enterprise');
   });
@@ -245,8 +231,7 @@ describe('AdminModels (US-1207)', () => {
       .flush(PROBLEM_FIXTURES.permissionRequired, { status: 403, statusText: 'Forbidden' });
     await harness.fixture.whenStable();
 
-    // The rows on screen would belong to a request that failed, so leaving an empty table
-    // up would show "no models" as if it were the answer.
+    // An empty table would show "no models" as if it were the answer.
     expect(element().querySelector('app-error-panel')).not.toBeNull();
     expect(element().querySelector('app-data-table')).toBeNull();
   });
@@ -254,8 +239,6 @@ describe('AdminModels (US-1207)', () => {
   it('mounts both dialogs once, outside every branch', async () => {
     await open();
 
-    // The dialog is the reader's own state: a re-render of the controls above it must not
-    // destroy the form they are filling in.
     expect(element().querySelectorAll('app-model-form-dialog')).toHaveLength(1);
     expect(element().querySelectorAll('app-deactivate-model-dialog')).toHaveLength(1);
   });
@@ -272,8 +255,7 @@ describe('AdminModels (US-1207)', () => {
     await harness.fixture.whenStable();
     expect(actions.formMode()).toBe('create');
 
-    // Coming back used to re-mount the dialog with `open()` still true, and `Modal` would
-    // `showModal()` a surface the reader never asked for.
+    // Coming back must not re-mount the dialog with `open()` still true.
     await open();
 
     expect(actions.formMode()).toBeNull();
@@ -283,8 +265,6 @@ describe('AdminModels (US-1207)', () => {
   it('renders a provider this build does not know without breaking the row', async () => {
     await open([modelFixture({ name: 'Mystery', providerId: 'not-a-seeded-provider' })]);
 
-    // A provider seeded server-side after this build. There is no `GET api/providers` to
-    // resolve it, so the row names the id rather than showing a blank cell.
     expect(rowText()).toContain('not-a-seeded-provider');
     expect(rowText()).toContain('Mystery');
   });

@@ -9,12 +9,8 @@ const TABBABLE_SELECTOR = [
 ].join(',');
 
 /**
- * The elements inside `root` that keyboard focus can reach, in DOM order.
- *
- * Deliberately does not consult `getComputedStyle`: jsdom performs no layout, so a
- * visibility check would be a lie in every unit test and a per-element style read in
- * the browser. Overlays here hide by unmounting rather than by `visibility`, so there
- * is nothing for it to catch.
+ * The elements inside `root` that keyboard focus can reach, in DOM order. No computed-style
+ * check: jsdom has no layout, and overlays here hide by unmounting.
  */
 export function tabbableWithin(root: Element): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>(TABBABLE_SELECTOR)].filter(isTabbable);

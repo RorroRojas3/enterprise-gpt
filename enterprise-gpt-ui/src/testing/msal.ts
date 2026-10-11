@@ -8,20 +8,8 @@ import {
 import { MSAL_INSTANCE } from '../app/core/auth/msal-instance';
 
 /**
- * A test double for the MSAL application.
- *
- * Built by spreading msal-browser's own `stubbedPublicClientApplication`, which is not
- * usable as a double on its own — every one of its methods rejects. That is exactly
- * what makes it the right base: the spread supplies all of `IPublicClientApplication`
- * so the object typechecks without a cast, and any method the code under test calls
- * that a test did not deliberately stub fails with a *named MSAL error* rather than
- * "undefined is not a function".
- *
- * A real `PublicClientApplication` cannot run here at all — jsdom has no
- * `crypto.subtle` — which is the same conclusion from the other direction. Do not
- * polyfill it; that would only enable a test that should not exist.
- *
- * @param overrides The members this test needs.
+ * Spreads msal-browser's `stubbedPublicClientApplication`, whose methods all reject, so an
+ * unstubbed call fails with a named MSAL error. jsdom cannot run a real one; do not polyfill it.
  */
 export function fakeMsalInstance(
   overrides: Partial<IPublicClientApplication> = {},
@@ -71,11 +59,8 @@ export function fakeAuthResult(
 }
 
 /**
- * An instance with nobody signed in and no redirect outstanding.
- *
- * `setActiveAccount` mutates what `getActiveAccount` and `getAllAccounts` report,
- * because code under test reads live MSAL state back rather than trusting the result
- * it was handed — a no-op stub would make that indistinguishable from a bug.
+ * Nobody signed in and no redirect outstanding. `setActiveAccount` really updates the reads,
+ * since code under test reads live MSAL state back.
  */
 export function signedOutMsal(overrides: Partial<IPublicClientApplication> = {}) {
   let active: AccountInfo | null = null;

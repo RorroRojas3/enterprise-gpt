@@ -6,7 +6,6 @@
   min-height: 0;
 }
 
-// Frame 1a: centred column, 18px gap, 24px gutter.
 .chat-empty {
   display: flex;
   flex: 1;
@@ -29,7 +28,6 @@
   font-weight: 600;
 }
 
-// Frame 1a: four pills, wrapping and centred under the prompt.
 .chat-empty__chips {
   display: flex;
   flex-wrap: wrap;
@@ -66,7 +64,6 @@
   }
 }
 
-// Frame 3g: the same screen at 768–1023px drops to a smaller lockup and heading.
 @include bp.below-desktop {
   .chat-empty {
     gap: 16px;

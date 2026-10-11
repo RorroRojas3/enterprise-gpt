@@ -6,10 +6,7 @@
     </p>
   }
 
-  <!--
-    data-modal-autofocus on Cancel, never on the destructive button: opening a
-    confirmation with focus already on Delete makes a stray Enter destructive.
-  -->
+  <!-- Autofocus on Cancel, never Delete, so a stray Enter on opening destroys nothing. -->
   <button
     modalFooter
     class="btn btn-outline-secondary"

@@ -31,27 +31,15 @@ import { ProjectStore } from '../project-store';
 import { ProjectDocumentsStore } from './project-documents-store';
 
 /**
- * A project's files (US-905, frame `4f`).
- *
- * Two stores, and the split is EP-8's: `UploadStore` owns files that are *in flight*
- * and renders them as chips, `ProjectDocumentsStore` owns files that have *landed* and
- * renders them as rows. Everything under the upload store is already target-agnostic —
- * `UploadTarget` is a discriminated `conversation | project` pair, and the transport,
- * the staged poll and the download all route through it — so this panel adds no upload
- * code at all. It binds `{ kind: 'project', id }` and reuses the lot.
- *
- * The bridge between the two — a chip that reaches `ready` becoming a row — lives on
- * `ProjectDetail`, not here: `UploadStore` is provided there so the composer can upload
- * from any tab, and an effect on this panel would only run while the panel is mounted.
+ * In-flight files are `UploadStore` chips, landed ones `ProjectDocumentsStore` rows. The bridge
+ * between them lives on `ProjectDetail`, since an effect here would only run while mounted.
  */
 @Component({
   selector: 'app-project-files',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AttachmentChip, DropOverlay, ErrorPanel, FileDropTarget, Icon, Modal, Skeleton],
-  // Neither store is provided here. `ProjectDocumentsStore` is on the route, so the tab
-  // strip's count survives a switch to another panel; `UploadStore` is on
-  // `ProjectDetail`, so a file dropped on the composer and one dropped here are the
-  // same set of chips and a tab switch mid-transfer does not cancel it.
+  // Neither store is provided here: `ProjectDocumentsStore` is on the route so the tab count
+  // survives a panel switch, and `UploadStore` on `ProjectDetail` so the composer shares its chips.
   templateUrl: './project-files.html',
   styleUrl: './project-files.scss',
 })
@@ -77,21 +65,12 @@ export class ProjectFiles {
 
   protected readonly trackId = (document: ProjectDocumentDto): string => document.id;
 
-  /**
-   * A field, not a template literal: `provideCheckNoChangesConfig({ exhaustive: true })`
-   * compares bindings between passes, and an array allocated in the template is a new
-   * value every check.
-   */
+  /** A field, not a template literal: exhaustive `checkNoChanges` sees a template array as new. */
   protected readonly skeletonRows = Array.from({ length: 3 });
 
   constructor() {
-    // The picker's `accept` list is deployment-shaped and memoised for the session, so
-    // the first surface to render pays for it and nothing else does. Gated on the
-    // permission for the same reason the composer gates it. Kept here even though the
-    // composer asks too: the composer sits inside the header's `@if`, so while the
-    // project's own request is pending or failed this panel would otherwise render with
-    // an empty `accept` — and `UploadStore.isSupported` answers `true` for everything
-    // while the list is unloaded, which makes US-805's client-side refusal inert.
+    // Loaded here as well as by the composer, which sits inside the header's `@if`: until the
+    // list loads, `UploadStore.isSupported` accepts every file.
     effect(() => {
       if (this.session.canUploadFiles()) {
         void this.extensions.ensureLoaded();
@@ -114,8 +93,7 @@ export class ProjectFiles {
   protected onFileInputChange(event: Event): void {
     const input = event.target as HTMLInputElement;
     this.onFilesChosen(Array.from(input.files ?? []));
-    // Cleared so re-picking the same file fires `change` again — without this,
-    // removing a chip and choosing the identical file is a silent no-op.
+    // Cleared so re-picking the same file fires `change` again.
     input.value = '';
   }
 
@@ -125,13 +103,7 @@ export class ProjectFiles {
     }
   }
 
-  /**
-   * Fetches a document back (US-804's flow, unchanged).
-   *
-   * The signed link is requested here, at the click, and never on render: it is a
-   * bearer credential with a five-minute life, and a list that prefetched one per row
-   * would mint a credential for every file the reader merely looked at.
-   */
+  /** The signed link is requested at the click, never on render: it is a bearer credential. */
   protected download(document: ProjectDocumentDto): void {
     const projectId = this.project.projectId();
     if (projectId === null) {
@@ -156,14 +128,8 @@ export class ProjectFiles {
   }
 
   /**
-   * The modal closed. Only a confirmed removal runs the focus fixup.
-   *
-   * Driven from here rather than from the request settling, which is a whole round trip
-   * later: the removal is optimistic, so the row and its Remove button are gone in the
-   * next frame, and waiting would fire the fixup on a *failed* removal too — the
-   * pending id clears identically on a 204 and a 500. Closing is also when the browser
-   * has finished its own `<dialog>` focus restoration, so this runs after it rather
-   * than against it.
+   * Fixes focus at close, not when the request settles: the optimistic row is already gone, and by
+   * now the browser has finished its own `<dialog>` focus restoration.
    */
   protected onRemoveClosed(): void {
     this.removeTarget.set(null);
@@ -179,19 +145,10 @@ export class ProjectFiles {
   /** Set on confirm, so only that close path runs the focus fallback. */
   private _confirming = false;
 
-  /**
-   * Puts focus somewhere real after a confirmed removal.
-   *
-   * The browse control if there is one, the first surviving row's download button
-   * otherwise, and `#main-content` as the last resort — the one always-present
-   * programmatic target, which the delete-project dialog falls back to for the same
-   * reason. Only when focus actually fell through.
-   */
+  /** Browse, else the first row's action, else `#main-content`; only if focus fell through. */
   private _recoverFocus(): void {
     const active = this._document.activeElement;
-    // No `!contains(active)` clause. The panel — not a closed dialog — is the host
-    // here, so testing for focus *outside* it would pull back a reader who had
-    // deliberately tabbed away, which is the opposite of what this is for.
+    // No `!contains(active)` check: it would pull back a reader who deliberately tabbed away.
     const fellThrough = active === null || active === this._document.body || !active.isConnected;
 
     if (!fellThrough) {

@@ -35,16 +35,10 @@ const DIAGRAM = ['```mermaid', 'graph TD; A-->B', '```'].join('\n');
 const SVG = '<svg data-drawn="yes"><g><text>A</text></g></svg>';
 
 /**
- * US-605. Everything here drives the **real** markdown pipeline and stubs only
- * at the loader boundary, because that boundary is the only one a spec can use:
- * Mermaid's layout needs SVG measurement APIs jsdom does not implement, so no
- * automated test in this repository will ever draw a real diagram. Its own
- * behaviour is covered by the manual pass the story's status records.
- *
- * Structure and classes are asserted, never computed visibility — `_markdown.scss`
- * is a global stylesheet Vitest does not load.
+ * Drives the real markdown pipeline, stubbing only the loader: Mermaid cannot lay out under jsdom.
+ * Asserts structure and classes, never visibility, since Vitest loads no `_markdown.scss`.
  */
-describe('MarkdownExtras (US-605)', () => {
+describe('MarkdownExtras', () => {
   let fixture: ComponentFixture<ExtrasHost>;
   let host: HTMLElement;
   let render: DiagramRenderer['render'] & ReturnType<typeof vi.fn>;
@@ -80,8 +74,7 @@ describe('MarkdownExtras (US-605)', () => {
     fixture.componentInstance.source.set(markdown);
     await fixture.whenStable();
     await rendered;
-    // The directive's own work is asynchronous even once the renderer has
-    // written: it awaits the loader before touching a single wrapper.
+    // The directive still awaits the loader after the markdown has been written.
     await fixture.whenStable();
     await Promise.resolve();
 
@@ -100,9 +93,7 @@ describe('MarkdownExtras (US-605)', () => {
     it('renders a mermaid fence as a plain code block, with no error', async () => {
       const wrapper = await show(DIAGRAM);
 
-      // Criterion 3. There is no disabled branch in the renderer to get wrong:
-      // the block is the same `.md-code` chrome any other fence gets, labelled
-      // with its language and offering US-603's Copy.
+      // No disabled branch: it is the same `.md-code` chrome any other fence gets.
       expect(wrapper.classList.contains('md-code')).toBe(true);
       expect(wrapper.classList.contains('md-diagram--rendered')).toBe(false);
       expect(wrapper.querySelector('svg')).toBeNull();
@@ -129,8 +120,7 @@ describe('MarkdownExtras (US-605)', () => {
       expect(render).toHaveBeenCalledExactlyOnceWith('graph TD; A-->B');
       expect(wrapper.classList.contains('md-diagram--rendered')).toBe(true);
       expect(wrapper.querySelector('.md-diagram__figure svg')).not.toBeNull();
-      // Hidden by the class, not removed: it is the fallback if the theme flips,
-      // and it is what US-603's Copy control still copies.
+      // Hidden by the class, not removed: it is the theme-flip fallback and what Copy copies.
       expect(wrapper.querySelector('pre > code')?.textContent).toContain('graph TD; A-->B');
     });
 
@@ -138,8 +128,7 @@ describe('MarkdownExtras (US-605)', () => {
       render.mockRejectedValue(new Error('Parse error'));
       const wrapper = await show(DIAGRAM);
 
-      // Criterion 4. The source was never removed, so there is nothing to
-      // restore — and the block stays exactly the code block it already was.
+      // The source was never removed, so the block stays the code block it was.
       expect(wrapper.classList.contains('md-diagram--rendered')).toBe(false);
       expect(wrapper.querySelector('svg')).toBeNull();
       expect(wrapper.querySelectorAll('.md-diagram__notice')).toHaveLength(1);
@@ -186,9 +175,8 @@ describe('MarkdownExtras (US-605)', () => {
     it('typesets an expression written mid-sentence', async () => {
       await show('An expression: $$x^2$$ inline.');
 
-      // `$$` is display math wherever it appears, and the paragraph around it
-      // must survive intact — an unanchored block `start` would cut it into
-      // three lines here, which `breaks: true` then joins with `<br>`.
+      // `$$` is display math anywhere; an unanchored block `start` would split this
+      // paragraph, which `breaks: true` then joins with `<br>`.
       expect(typeset).toHaveBeenCalledExactlyOnceWith('x^2', true);
       expect(host.querySelector('.md-math')?.innerHTML).toContain('katex');
       expect(host.querySelector('markdown')?.textContent).toContain('An expression:');
@@ -196,9 +184,8 @@ describe('MarkdownExtras (US-605)', () => {
     });
 
     it('typesets a display expression written across lines', async () => {
-      // The commonest display form there is, and the one a DOM pass cannot see:
-      // `breaks: true` puts a `<br>` between the markers, and auto-render only
-      // joins consecutive *text* nodes.
+      // A DOM pass cannot see this: `breaks: true` puts a `<br>` between the markers, and
+      // auto-render only joins consecutive text nodes.
       await show('Result:\n\n$$\nE = mc^2\n$$\n');
 
       expect(typeset).toHaveBeenCalledExactlyOnceWith('E = mc^2', true);

@@ -48,13 +48,9 @@ describe('ConversationDownloadMenu', () => {
 
   afterEach(() => {
     backend.verify();
-    // The store schedules a ten-second revoke after every success, and it outlives the
-    // test. Real timers cannot be cleared from here — and fake ones are not an option,
-    // because `fixture.whenStable()` never settles under them — so what makes the leak
-    // harmless is the order below: the stub is torn down first, so a timer that fires
-    // later calls jsdom's own `revokeObjectURL` on a token it does not know, and no
-    // recorder is left for it to write into. The delay itself is asserted in
-    // `conversation-export-store.spec.ts`, which drives the store without a fixture.
+    // The store's ten-second revoke outlives the test, and fake timers would stall
+    // `whenStable()`. Tearing the stub down first leaves the late timer nothing to write
+    // into; the delay is asserted in `conversation-export-store.spec.ts`.
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -162,17 +158,12 @@ describe('ConversationDownloadMenu', () => {
     await menu.fixture.whenStable();
 
     expect(menu.panel()).toBeNull();
-    // The panel destroyed the item that had focus. Closing through the two-way model is
-    // the one path that does not go through `Menu.close()`, so without the rescue there
-    // focus lands on <body> and the trigger's keys go dead.
+    // Closing through the two-way model bypasses `Menu.close()`, so without the rescue focus
+    // would land on <body> when the focused item is destroyed.
     expect(document.activeElement).toBe(menu.trigger());
   });
 
-  /**
-   * The store takes one export at a time. A second menu — after moving to another
-   * conversation while the first is still rendering — must say so, or it offers
-   * live-looking items that the store silently drops.
-   */
+  /** The store runs one export at a time and silently drops the rest, so this menu dims too. */
   it('dims every item while another conversation is exporting', async () => {
     const menu = await render();
     await menu.open();
@@ -192,11 +183,7 @@ describe('ConversationDownloadMenu', () => {
     request.flush(new Blob(['x']));
   });
 
-  /**
-   * The busy row is deliberately undimmed, so announcing it as unavailable would
-   * contradict the pixels — and it is the row the reader just chose. Busy is the state
-   * that is true of it.
-   */
+  /** The busy row is undimmed and just chosen, so busy, not unavailable, is true of it. */
   it('marks the working item busy and the rest disabled', async () => {
     const menu = await render();
     await menu.open();
@@ -212,10 +199,7 @@ describe('ConversationDownloadMenu', () => {
     request.flush(new Blob(['x']));
   });
 
-  /**
-   * A screen reader in menu mode visits the `menuitem`s and nothing else, so the caveat
-   * has to reach them as a description or it is visual-only.
-   */
+  /** Menu mode visits only `menuitem`s, so the caveat has to reach them as a description. */
   it('describes every item with the unsaved-answer note', async () => {
     const menu = await render();
     await menu.open();
@@ -265,9 +249,8 @@ describe('ConversationDownloadMenu', () => {
     await menu.fixture.whenStable();
 
     expect(menu.trigger().getAttribute('aria-disabled')).toBe('true');
-    // The reason is in the accessible name as well as in the tooltip: the tooltip is
-    // visual only, and `<app-menu>` carries no role that could hold an aria-label. With
-    // no projected trigger face the name is Menu's own visually-hidden span.
+    // The tooltip is visual only, so the reason is also in the name, which with no projected
+    // trigger face is Menu's own visually-hidden span.
     expect(menu.trigger().textContent).toContain('Available when the response finishes');
   });
 
@@ -289,9 +272,8 @@ describe('ConversationDownloadMenu', () => {
   });
 
   /**
-   * Two menus are mounted at desktop widths — the composer's and the header's — and the
-   * store's outcome is replaced rather than consumed, so an outcome for another
-   * conversation must not close this one.
+   * Both menus can be mounted and the store's outcome is replaced, not consumed, so another
+   * conversation's outcome must not close this one.
    */
   it('ignores an outcome for a different conversation', async () => {
     const menu = await render();

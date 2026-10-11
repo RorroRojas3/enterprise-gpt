@@ -4,7 +4,7 @@ The access log, the server's OpenTelemetry registration, and the browser SDK.
 
 ## The access log
 
-`RequestLoggingMiddleware` writes four source-generated events, so a filtered-out record costs an
+`RequestLoggingMiddleware` writes five source-generated events, so a filtered-out record costs an
 `IsEnabled` check and no allocation.
 
 | Id | Event | Level | When |
@@ -14,6 +14,11 @@ The access log, the server's OpenTelemetry registration, and the browser SDK.
 | 1002 | `HttpRequestPayload` | `Bodies:LogLevel` | Body capture is on and something was captured |
 | 1003 | `HttpRequestPayloadCaptureFailed` | Warning | A body could not be read; the request is unaffected |
 | 1004 | `HttpRequestLoggingFailed` | Warning | The access log itself threw; the request is unaffected |
+
+These ids and names are pinned explicitly in `RequestLogMessages`. Every other log call in the
+codebase is a `[LoggerMessage]` method too, so those records carry a generated `EventId` and
+`EventName` derived from the method name; their message templates and levels are what the KQL in
+[kql-cookbook.md](kql-cookbook.md) matches on, so change one only together with its queries.
 
 ### Fields worth knowing
 
@@ -69,8 +74,8 @@ one that has started returning 500 is not.
 
 ```csharp
 app.UseHttpsRedirection();
-app.UseCors("AllowSpecificOrigins");
-app.UseRequestLogging();      // here
+app.UseEnterpriseGptCors();
+app.UseEnterpriseGptRequestLogging();   // here
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseAuthentication();
@@ -82,7 +87,7 @@ Four consequences, all deliberate:
 1. **Ahead of `UseExceptionHandler`, not inside it.** The handler writes the response and returns
    normally, so by the time `next()` comes back the status the client received is final — which is
    what the completion record should report. Registered inside the handler, every failure would look
-   like an in-flight exception and would duplicate what the exception handlers already log.
+   like an in-flight exception and would duplicate what the exception handler already logs.
 2. **First in the app pipeline**, so it can call `EnableBuffering` before anything reads the body.
 3. **Ahead of `UseAuthentication`**, so the caller is anonymous inbound. That is why `UserId` appears
    only on the completion record.
@@ -119,11 +124,11 @@ one.
 
 ## Server telemetry
 
-`TelemetryRegistration.AddEnterpriseTelemetry` registers the Azure Monitor OpenTelemetry distro,
+`TelemetryRegistration.AddEnterpriseGptTelemetry` registers the Azure Monitor OpenTelemetry distro,
 bound to the `AzureMonitor` section. With no connection string configured the distro is skipped and
 nothing is exported.
 
-Names shared between projects live in `Enterprise.Gpt.Common/Observability/TelemetryNames.cs`.
+Names shared between projects live in `Enterprise.Gpt.Common/Constants/TelemetryNames.cs`.
 `Enterprise.Gpt.Chat` is registered as both an `ActivitySource` and a `Meter`, so `ChatMetrics`
 instruments export with no extra wiring. Instruments are recorded to whether or not anything is
 exporting, which costs nothing and keeps the code path identical between environments.
@@ -164,9 +169,9 @@ telemetry should not be the one handed to browsers.
 | `enterprise-gpt-api/Enterprise.Gpt.Api/Middleware/RequestLogMessages.cs` | Source-generated events |
 | `enterprise-gpt-api/Enterprise.Gpt.Api/Middleware/JsonPropertyRedactor.cs` | Body redaction |
 | `enterprise-gpt-api/Enterprise.Gpt.Api/Observability/TelemetryRegistration.cs` | The Azure Monitor distro |
-| `enterprise-gpt-api/Enterprise.Gpt.Common/Observability/TelemetryNames.cs` | Shared source and meter names |
+| `enterprise-gpt-api/Enterprise.Gpt.Common/Constants/TelemetryNames.cs` | Shared source and meter names |
 | `enterprise-gpt-ui/src/app/core/telemetry/browser-telemetry.ts` | The lazy browser SDK |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/TestInfrastructure/RequestLoggingTestHarness.cs` | Access-log tests |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/TestInfrastructure/RequestLoggingTestHarness.cs` | Access-log tests |
 
 ## Related
 

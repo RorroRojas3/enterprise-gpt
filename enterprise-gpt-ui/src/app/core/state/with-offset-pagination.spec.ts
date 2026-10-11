@@ -110,9 +110,8 @@ describe('withOffsetPagination', () => {
     const store = storeWith(100);
 
     patchState(unprotected(store), setPage(page(100, 200, 100, 1)));
-    // The count query and the page query disagree — rows the count sees that the
-    // page does not. Adopting 200 verbatim would leave hasMore true at a stationary
-    // offset, and a `while (hasMore())` drain would reissue this request forever.
+    // The count and page queries disagree. Adopting 200 verbatim would leave hasMore true at a
+    // stationary offset, so a `while (hasMore())` drain would reissue this request forever.
     patchState(unprotected(store), setPage(page(0, 200, 100, 2)));
 
     expect(store.skip()).toBe(100);

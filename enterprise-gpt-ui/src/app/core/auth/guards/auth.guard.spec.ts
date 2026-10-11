@@ -68,10 +68,8 @@ describe('authGuard', () => {
   });
 
   it('routes to the failure page when the redirect cannot even be started', async () => {
-    // MSAL takes its interaction lock and discovers the authority before navigating,
-    // so this rejects on an unreachable Entra or a lock left by an abandoned attempt.
-    // Unhandled, the guard's promise rejects, no route activates, and the startup
-    // shell is torn down over nothing — a genuinely blank page.
+    // MSAL rejects before navigating on an unreachable Entra or a stale lock; unhandled, that
+    // leaves a blank page.
     const result = await run(
       signedOutMsal({ loginRedirect: () => Promise.reject(new Error('interaction_in_progress')) }),
     );
@@ -91,10 +89,7 @@ describe('authGuard', () => {
   });
 
   it('refuses to sign a departing user back in mid-sign-out', async () => {
-    // The loop this closes: a navigation during teardown finds the handshake memo
-    // already cleared, re-runs handleRedirectPromise — releasing the SIGNOUT lock the
-    // logout still needs — finds no account, and starts a sign-in that sends the browser
-    // to the authorize endpoint, cancelling the sign-out outright.
+    // Otherwise a teardown navigation re-runs the handshake, finds no account and signs in again.
     const loginRedirect = vi.fn((_request: RedirectRequest) => Promise.resolve());
     const handleRedirectPromise = vi.fn(() => Promise.resolve(null));
     const guarded = run(
@@ -107,8 +102,7 @@ describe('authGuard', () => {
       (auth) => void auth.signOut(),
     );
 
-    // Bare false, not a UrlTree: the document is leaving either way, and a UrlTree is
-    // one more navigation re-running these same guards.
+    // Bare false: a UrlTree is one more navigation re-running these same guards.
     await expect(guarded).resolves.toBe(false);
     expect(loginRedirect).not.toHaveBeenCalled();
     expect(handleRedirectPromise).not.toHaveBeenCalled();

@@ -17,8 +17,7 @@
 .ridge--thinking {
   width: 76px;
   height: 16px;
-  // The indicator reads as activity rather than decoration, so its base is a dim
-  // accent instead of --muted.
+  // A dim accent, not --muted: the indicator reads as activity, not decoration.
   stroke: var(--accent);
   opacity: 0.28;
 }
@@ -48,9 +47,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .ridge__dash {
-    // Only the animation goes. Keeping the dash array leaves one brighter segment
-    // frozen on the ridge, which still reads as an indicator; removing it too would
-    // leave a blank gap.
+    // Only the animation goes: a frozen bright segment still reads as an indicator.
     animation: none;
   }
 }

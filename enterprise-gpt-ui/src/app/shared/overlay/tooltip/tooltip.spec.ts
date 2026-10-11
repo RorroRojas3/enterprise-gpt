@@ -51,11 +51,7 @@ describe('Tooltip', () => {
     };
   }
 
-  /**
-   * jsdom lays nothing out, so every box is zero and every viewport read is too — which
-   * would collapse both axes onto the gutter and make one placement indistinguishable
-   * from another. These are the numbers the arithmetic needs to be visible.
-   */
+  /** jsdom lays nothing out, so without these every placement collapses onto the gutter. */
   function stubLayout(anchor: HTMLElement): void {
     vi.spyOn(anchor, 'getBoundingClientRect').mockReturnValue(new DOMRect(400, 300, 28, 28));
     vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(1440);
@@ -81,9 +77,8 @@ describe('Tooltip', () => {
   });
 
   /**
-   * Stubbed rather than focused for real: jsdom has no focus modality — `:focus-visible` is
-   * an alias for `:focus` there — and an ambient inert ancestor left by another spec can make
-   * `focus()` a no-op. The two directions in a real engine are in `shell.a11y.spec.ts`.
+   * Stubbed: jsdom has no focus modality, and a stray inert ancestor can make `focus()` a no-op.
+   * Real-engine coverage is in `shell.a11y.spec.ts`.
    */
   it('shows on focus the browser marks visible, and hides again on blur', async () => {
     const { fixture, nameless } = await render();
@@ -136,10 +131,8 @@ describe('Tooltip', () => {
   });
 
   /**
-   * Placement is measured in a second render phase, and that phase can only be woken by
-   * a signal — the flyout it positions is a plain field. Asserting the coordinates
-   * change, rather than merely that they were written, is what would catch a phase that
-   * stopped re-firing and left a flyout parked where the last placement put it.
+   * Asserts the coordinates change, not merely that they were written, to catch a placement
+   * phase that stopped re-firing.
    */
   it('re-measures a flyout that is already showing', async () => {
     const { fixture, below } = await render();

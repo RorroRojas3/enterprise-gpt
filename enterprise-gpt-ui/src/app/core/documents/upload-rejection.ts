@@ -2,7 +2,7 @@ import { formatBytes } from '@domain/format/bytes';
 import { AppError, AppErrorKind } from '@core/errors/app-error';
 import { traceLine, userMessage } from '@core/errors/error-message';
 
-/** A refused upload, ready to be shown as a toast (US-805, frame `4l`). */
+/** A refused upload, ready to be shown as a toast. */
 export interface UploadRejection {
   readonly title: string;
   readonly detail: string;
@@ -13,18 +13,9 @@ export interface UploadRejection {
 }
 
 /**
- * Which upload failures are worth offering a Retry for.
- *
- * A grant is acquired from an administrator, not by asking again, and a file the
- * validator rejected — empty, misnamed, or whose leading bytes contradict its
- * extension — is wrong in a way a second identical POST cannot fix. Frame `4l` draws
- * its permission toast with no Retry for exactly this reason and its size toast with
- * one: the cap is a deployment setting and the failure can also arrive as a bare 413
- * from a request whose declared length was wrong, neither of which is a property of
- * the bytes.
- *
- * `satisfies` rather than an annotation, so a new arm cannot be added to `AppError`
- * without deciding what it means here.
+ * Retry only failures that aren't a property of the file or the grant: a size cap is
+ * deployment config, and a bare 413 can come from a wrong declared length. `satisfies` forces
+ * a choice for every new arm.
  */
 const RETRYABLE_REJECTIONS = {
   'validation-error': false,
@@ -34,8 +25,7 @@ const RETRYABLE_REJECTIONS = {
   'permission-required': false,
   'conversation-busy': false,
   'mcp-server-unavailable': false,
-  // Unreachable on an upload, and no different from the rest of the tool-server arms
-  // if it ever were: reattaching the file cannot supply an API key.
+  // Unreachable on an upload, and reattaching the file could not supply an API key anyway.
   'mcp-credential-required': false,
   'mcp-credential-rejected': false,
   'provider-not-configured': false,
@@ -48,20 +38,8 @@ const RETRYABLE_REJECTIONS = {
 } as const satisfies Record<AppErrorKind, boolean>;
 
 /**
- * Explains why one file was refused, in the terms the user can act on.
- *
- * Deliberately richer than `userMessage` for the size case: the acceptance criterion
- * and the board both quote *both* numbers — "Files can be up to 50 MB — this one is
- * 212 MB." — and only the caller knows the second one.
- *
- * Four rejection shapes reach here, not the two the story names. Beyond
- * `upload-too-large` and `permission-required` there is `validation-error`, which is
- * what an empty file, an over-long name, or leading bytes that contradict the
- * extension produce, and a bare **413** with no `maxBytes` at all, which is what a
- * chunked upload trips when the server lowers its body-size limit mid-request.
- *
- * @param error The normalized failure.
- * @param file The file that was refused.
+ * Richer than `userMessage` for size, quoting both the cap and the file's size, which only the
+ * caller knows. Also covers `validation-error` and Kestrel's bare 413.
  */
 export function describeUploadRejection(
   error: AppError,
@@ -100,9 +78,7 @@ function headline(
       };
 
     case 'validation-error':
-      // The server's own words: `UploadedFileValidator` writes them for users, and
-      // they name the actual problem where `userMessage` only says "correct the
-      // highlighted fields" — which points at fields this surface does not have.
+      // The server's own words name the problem; `userMessage` points at form fields.
       return { title: refused, detail: firstValidationMessage(error) ?? userMessage(error) };
 
     case 'http':

@@ -6,11 +6,8 @@ const RETRY_ID = 'app-shell-retry';
 const FAILURE_HEADING = 'Enterprise GPT could not start';
 
 /**
- * Switches the startup shell in `index.html` into its failure state.
- *
- * Runs when configuration loading or bootstrap has failed, so it must not depend
- * on Angular, on the stylesheet, or on anything the failed step was going to
- * provide. A blank page is the failure mode this exists to prevent.
+ * Switches `index.html`'s startup shell into its failure state. Runs after config or bootstrap
+ * failed, so it depends on nothing Angular, the stylesheet, or the failed step would provide.
  *
  * @param reason A short, already user-facing explanation. Rendered as text.
  */
@@ -20,8 +17,7 @@ export function showFatalShell(reason: string): void {
 
   const shell = document.getElementById(SHELL_ID);
   if (!shell) {
-    // index.html was replaced by a host that does not carry our markup. Still not
-    // a blank page.
+    // A host replaced index.html without our markup; still avoid a blank page.
     document.body.textContent = `${FAILURE_HEADING}. ${reason}`;
     return;
   }
@@ -31,8 +27,7 @@ export function showFatalShell(reason: string): void {
   const heading = document.getElementById(HEADING_ID);
   if (heading) {
     heading.textContent = FAILURE_HEADING;
-    // Moved before the alert role is applied so the region's content is already
-    // final, and so a keyboard or screen-reader user is told the page changed.
+    // Tells keyboard and screen-reader users the page changed; done before the alert role.
     heading.focus();
   }
 
@@ -43,26 +38,20 @@ export function showFatalShell(reason: string): void {
     detail.textContent = reason;
   }
 
-  // Applied last, so the assistive-technology announcement fires on a region whose
-  // content is already in place. Setting the role up front and mutating afterwards
-  // is the common way this ends up announcing nothing at all.
+  // Applied last: setting the role before the content is in place tends to announce nothing.
   const status = document.getElementById(STATUS_ID);
   status?.setAttribute('role', 'alert');
   status?.setAttribute('aria-live', 'assertive');
 
   document.title = FAILURE_HEADING;
 
-  // Wired here rather than as an inline onclick so the page stays CSP-clean. A
-  // transient 5xx or a cold cache on config.json is the most common real cause,
-  // and a reload fixes it.
+  // Not an inline onclick, so the page stays CSP-clean. A reload fixes the usual cause, a
+  // transient 5xx or cold cache on config.json.
   document
     .getElementById(RETRY_ID)
     ?.addEventListener('click', () => location.reload(), { once: true });
 }
 
-/**
- * Removes the startup shell once the application has rendered.
- */
 export function hideStartupShell(): void {
   clearWatchdog();
   document.getElementById(SHELL_ID)?.remove();

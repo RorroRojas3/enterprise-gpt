@@ -7,8 +7,7 @@
   </p>
 </header>
 
-<!-- Each pane forces its own theme. data-bs-theme is per-subtree, which is what makes a
-     side-by-side comparison possible at all. -->
+<!-- Each pane forces its own theme; `data-bs-theme` is per-subtree. -->
 <div class="kit-split">
   @for (theme of ['light', 'dark']; track theme) {
     <section class="kit-pane" [attr.data-bs-theme]="theme" [attr.aria-label]="theme + ' theme'">
@@ -38,12 +37,8 @@
 
       <section class="kit-group">
         <h3>Brand marks</h3>
-        <!--
-          A second sprite lane, drawn in its owner's colours rather than tinted to
-          `currentColor` (US-418). Sized larger than the glyphs above because these are
-          logos, and the point of showing them here is that they must read against both
-          surfaces without inheriting either one's text colour.
-        -->
+        <!-- Owner-coloured rather than `currentColor`, and sized up so they can be checked
+             against both surfaces. -->
         <div class="kit-row kit-row--brand">
           <app-brand-icon name="brand-azure" />
           <app-brand-icon name="brand-context7" label="Context7" />
@@ -57,12 +52,7 @@
 
       <section class="kit-group">
         <h3>Switch</h3>
-        <!--
-          Decoration only, so it is shown here inside the button that owns its
-          semantics — which is the entire contract (US-417) and the only way it is ever
-          used. A bare `<app-switch>` on this page would model a control that does not
-          exist.
-        -->
+        <!-- Decoration only: shown inside the button that owns its semantics, as in real use. -->
         <div class="kit-row">
           <button
             class="kit-switch"
@@ -116,7 +106,7 @@
       </section>
 
       <section class="kit-group">
-        <h3>Drop zone — US-204</h3>
+        <h3>Drop zone</h3>
         <p class="kit-note">
           Toggle the grant and drag a file over the box. With it off nothing lights up and the
           cursor reads “no drop”; a file dropped on the page background is swallowed either way, so
@@ -308,10 +298,8 @@
 <app-modal [(open)]="modalOpen" heading="Rename conversation" size="sm">
   <label class="form-label" for="kit-rename">Name</label>
   <input id="kit-rename" class="form-control" data-modal-autofocus value="Helios release status" />
-  <!--
-    modalFooter goes on each button, never on a wrapper div: the footer itself is the
-    flex row, and a wrapper collapses its gap once template whitespace is stripped.
-  -->
+  <!-- modalFooter on each button, never a wrapper: the footer is the flex row, and a wrapper
+       collapses its gap once template whitespace is stripped. -->
   <button
     modalFooter
     class="btn btn-outline-secondary"

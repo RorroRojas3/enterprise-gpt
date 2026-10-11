@@ -5,16 +5,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ActivityCard } from './activity-card';
 
 /**
- * The agent's activity subtree, which no route-level audit can reach.
- *
- * Reopening a conversation replays the answer and its files but never the activity tree, so the only
- * transcript a `/chat/:id` audit can flush is one with no cards in it. This mounts the component
- * directly, as the unavailable-panel audit does.
- *
- * The fixture is deliberately wider than what the server sends: it carries `usage`, which the vendored
- * fold never writes today (see `turn-usage.ts`), so that the cost strip is drawn and audited rather
- * than left for whichever story starts populating it. The states are the settled ones — a running
- * card's only distinct element is an `aria-hidden` ring with no text, which no axe rule reaches.
+ * Mounted directly: a reopened conversation never replays the activity tree, so no route audit
+ * reaches it. The fixture carries `usage`, which the fold never writes yet, so the cost strip is
+ * audited too.
  */
 describe('ActivityCard accessibility', () => {
   let fixture: ComponentFixture<ActivityCard> | null = null;
@@ -76,10 +69,8 @@ describe('ActivityCard accessibility', () => {
       document.body.append(fixture.nativeElement as HTMLElement);
       await fixture.whenStable();
 
-      // Open, because the chevron's panel is where its `aria-controls` target lives and a closed one
-      // audits neither the relationship nor the strip's own contrast. Asserted rather than assumed:
-      // `expandable()` is derived from the fixture's own usage and duration, so a fixture change
-      // could quietly leave this auditing a collapsed card and still pass.
+      // Open, so the `aria-controls` target and the strip are audited. Asserted, since a fixture
+      // change could leave this auditing a collapsed card.
       const host = fixture.nativeElement as HTMLElement;
       const toggle = host.querySelector<HTMLButtonElement>('.activity-card__toggle');
 

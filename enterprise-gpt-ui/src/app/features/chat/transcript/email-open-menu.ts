@@ -14,10 +14,8 @@ import { Menu } from '@shared/overlay/menu/menu';
 import { MenuItem } from '@shared/overlay/menu/menu-item';
 
 /**
- * Hands a composed email to a mail client. The primary control is an anchor
- * rather than a button because `mailto:` is a real navigation: middle-click,
- * "copy link address" and the browser's handler prompt all come free, and none
- * survive a scripted `window.open`.
+ * The primary control is an anchor, not a button: `mailto:` is a real navigation, so
+ * middle-click and "copy link address" work, which a scripted `window.open` loses.
  */
 @Component({
   selector: 'app-email-open-menu',
@@ -41,11 +39,8 @@ export class EmailOpenMenu {
   private readonly recipients = computed(() => this.draft().to.join(', '));
 
   /**
-   * Both controls name the recipient, and both spell it the same way: it is the
-   * part of a generated draft a reader most needs before acting on it, and the
-   * compact form shows no address of its own. Null when there is no recipient to
-   * name, so the anchor keeps its visible text as its name rather than restating
-   * it.
+   * Names the recipient, which the compact form does not show, spelled as the menu label does.
+   * Null without one, so the visible text stays the name.
    */
   protected readonly openLabel = computed(() => {
     const to = this.recipients();
@@ -58,11 +53,8 @@ export class EmailOpenMenu {
   });
 
   /**
-   * `mailto:` has no length limit of its own, but the receiving client does, and
-   * Outlook truncates a long body rather than refusing it. The navigation is
-   * deliberately left to proceed — a `mailto:` does not unload the page — and the
-   * warning is raised whether or not the clipboard accepted the copy, because a
-   * refused clipboard is exactly when the reader most needs telling.
+   * Mail clients truncate a long `mailto:` body rather than refusing it, so the navigation
+   * proceeds and the warning is raised even when the copy fails.
    */
   protected async onOpenDefault(): Promise<void> {
     if (!exceedsMailtoLimit(this.mailtoUrl())) {

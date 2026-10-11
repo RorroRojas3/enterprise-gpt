@@ -14,28 +14,8 @@ import { MenuTriggerContent } from '@shared/overlay/menu/menu-trigger-content';
 import { Switch } from '@shared/switch/switch';
 
 /**
- * The composer's Tools pill and its multi-select picker (US-403, frame `2c`).
- *
- * The rows are `menuitemcheckbox` items that toggle in place — the panel stays
- * open while toggling, per the frame's own footnote. The switch they carry is
- * `<app-switch>`, which is deliberately decoration only: a native
- * `<input type="checkbox" role="switch">` is not a valid child of `role="menu"`,
- * so the row's button keeps the state in `aria-checked` and the switch just
- * draws it (US-417).
- *
- * A model that cannot call tools disables the whole pill (frame `2d`) —
- * `aria-disabled` and dimmed, never natively disabled, so keyboard users can
- * still reach it and hear why the composer's warning line names the model.
- *
- * Each row leads with the server's brand mark where an administrator picked one
- * (US-418); everything else gets `bi-plug`, the same glyph the admin area's MCP
- * tab uses.
- *
- * A server that needs the user's own API key renders as a plain `menuitem` that
- * opens the key dialog: it cannot be toggled until a key is stored, and a row
- * announcing a checked state its click does not change would be a lie. The
- * design's mono key column now has something to show — the stored key's last
- * four characters, which double as the control for replacing it.
+ * `<app-switch>` only draws each row's `aria-checked`: a native switch is not a valid `role="menu"`
+ * child. A model without tools leaves the pill `aria-disabled`, so keyboard users still reach it.
  */
 @Component({
   selector: 'app-tools-menu',
@@ -63,14 +43,8 @@ export class ToolsMenu {
   }
 
   /**
-   * Moves focus to the pill before the dialog opens, so closing it returns focus somewhere
-   * that still exists.
-   *
-   * The row would otherwise be the focus origin `Modal` captures, and it does not survive:
-   * the first pointerdown inside the dialog is outside this menu's host, which dismisses the
-   * panel and unmounts the row — leaving `restoreFocus` with a disconnected element and
-   * focus on `<body>`. The pill is the same anchor US-307's "Move to project" hands its
-   * picker.
+   * Focuses the pill first: the row `Modal` would capture as its focus origin unmounts when the
+   * dialog's first pointerdown dismisses the panel, leaving focus on `<body>` at close.
    */
   protected openKeyDialog(server: McpDto): void {
     this.menu().triggerElement().focus();

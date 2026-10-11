@@ -24,7 +24,7 @@ import { DEFAULT_USER_PAGE_SIZE } from './admin-users-route';
 
 const USERS_URL = `${TEST_API_BASE_URL}/api/users`;
 
-describe('Deactivate a user (US-1204)', () => {
+describe('Deactivate a user', () => {
   let backend: HttpTestingController;
   let harness: RouterTestingHarness;
   let sessionUser: ReturnType<typeof signal<UserDto | null>>;
@@ -67,7 +67,7 @@ describe('Deactivate a user (US-1204)', () => {
 
   async function open(users: UserDto[], totalCount = users.length): Promise<void> {
     await harness.navigateByUrl('/admin/users', AdminUsers);
-    // The permission filter's catalog, requested on mount (US-1206).
+    // The permission filter's catalog, requested on mount.
     flushPermissions(backend);
     backend
       .expectOne((request) => request.url === USERS_URL)
@@ -154,7 +154,7 @@ describe('Deactivate a user (US-1204)', () => {
     );
     await harness.fixture.whenStable();
 
-    // Restored, and carrying the board's wording rather than the server's.
+    // Restored, with the app's own wording rather than the server's.
     expect(rows()).toHaveLength(1);
     const refusal = element().querySelector('.admin-users__refusal');
     expect(refusal?.textContent).toContain(SELF_DEACTIVATE_MESSAGE);

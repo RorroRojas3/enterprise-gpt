@@ -6,16 +6,8 @@ import { focusOnRender } from '@shared/a11y/focus-on-render';
 import { AuthPage } from '../auth-page/auth-page';
 
 /**
- * Frame `6e` — signed in, but not an administrator.
- *
- * Reachable by URL only: `adminCanMatch` redirects here, and the shell renders no
- * Admin entry for a user without the grant, so nobody arrives by clicking.
- *
- * Not `UnavailablePanel`, though the shape is close. That component has no action
- * slot **by design** — its signature is what enforces "nothing here is retryable" —
- * and this frame needs exactly one "Back to Chat" action. Adding an action input
- * there to save a small component would weaken the guarantee for every screen that
- * uses it.
+ * Not `UnavailablePanel`: that has no action slot by design, so nothing it shows looks retryable,
+ * and this page needs "Back to Chat".
  */
 @Component({
   selector: 'app-forbidden',

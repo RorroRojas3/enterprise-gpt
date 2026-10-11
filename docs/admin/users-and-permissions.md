@@ -169,12 +169,12 @@ instance rather than a stale report.
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/UserService.cs` | The three paths, the diff, the invariants |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/PermissionService.cs` | Grant, revoke, `EnsurePermissionIsCustom` |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/GraphService.cs` | Directory lookup, filter escaping, `$top=2` |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Users/UserService.cs` | The three paths, the diff, the invariants |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Permissions/PermissionService.cs` | Grant, revoke, `EnsurePermissionIsCustom` |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Users/GraphService.cs` | Directory lookup, filter escaping, `$top=2` |
 | `enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/UserEndpoints.cs` | Sign-in and the admin routes |
 | `enterprise-gpt-ui/src/app/features/admin/` | The four screens and their stores |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Integration.Test/` | Lockout and cascade tests |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Integration.Test/` | Lockout and cascade tests |
 
 ## Related
 

@@ -42,7 +42,7 @@ describe('TurnNoticeCard (frame 1h)', () => {
     return host.querySelector('.notice__title')?.textContent?.trim() ?? '';
   }
 
-  describe('the conversation-busy warning (US-408)', () => {
+  describe('the conversation-busy warning', () => {
     const busy: TurnNotice = { kind: 'error', error: errorFrom(PROBLEM_FIXTURES.conversationBusy) };
 
     it('renders the warning panel as a single hourglass row with the frame copy', async () => {
@@ -57,9 +57,8 @@ describe('TurnNoticeCard (frame 1h)', () => {
     it('shows nothing that implies the app is waiting on something', async () => {
       await render(busy, true);
 
-      // No spinner and no body: nothing is being awaited, and the one sentence
-      // is the whole message. A trace id would frame a busy conversation as a
-      // defect rather than a second tab holding the lock.
+      // No spinner, body or trace: nothing is awaited, and a second tab holding the lock is
+      // not a defect.
       expect(host.querySelector('.spinner-border')).toBeNull();
       expect(host.querySelector('.notice__body')).toBeNull();
       expect(host.querySelector('.notice__trace')).toBeNull();

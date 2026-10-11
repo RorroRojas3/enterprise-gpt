@@ -1,6 +1,4 @@
-// Frame 1g's control: icon and label at 12px with a 5px gap, in --muted like the
-// rest of the footer row. A bare button rather than a `.btn`, because the footer is
-// metadata and the board draws no button chrome around it.
+// A bare button rather than a `.btn`: the footer is metadata.
 .message-copy {
   display: inline-flex;
   align-items: center;
@@ -18,7 +16,6 @@
     color: var(--bs-body-color);
   }
 
-  // The reveal is opacity-based, so the control is focusable before it is visible.
   // Without an offset the ring would sit tight against the glyph.
   &:focus-visible {
     outline: 2px solid var(--focus-ring);

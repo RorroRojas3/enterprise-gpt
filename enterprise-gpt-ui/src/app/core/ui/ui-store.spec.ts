@@ -17,8 +17,7 @@ describe('UiStore', () => {
   });
 
   it('restores a collapsed sidebar from the stored preference', () => {
-    // US-301: the preference has to be in force before the first paint, which is why
-    // it is read during construction rather than in a hook.
+    // Read during construction, not in a hook, so it is in force before the first paint.
     writePreference(PREFERENCE_KEYS.sidebar, 'collapsed');
 
     expect(TestBed.inject(UiStore).sidebarCollapsed()).toBe(true);
@@ -47,9 +46,7 @@ describe('UiStore', () => {
   });
 
   it('keeps the sidebar preference through sign-out', () => {
-    // US-205's second criterion: theme and sidebar survive, everything else goes. This
-    // store deliberately does not compose withResetOnSignOut — the preference is about
-    // the browser, not the person.
+    // Only theme and sidebar survive sign-out: they describe the browser, not the person.
     const store = TestBed.inject(UiStore);
     store.setSidebarCollapsed(true);
 

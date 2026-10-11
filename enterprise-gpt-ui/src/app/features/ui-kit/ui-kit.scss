@@ -64,8 +64,7 @@
   gap: 10px;
 }
 
-// The brand marks are logos rather than glyphs; at the row's default size they read as
-// specks and their colour — the whole reason they are a separate lane — is unreviewable.
+// Logos, not glyphs: at the row's default size their colour would be unreviewable.
 .kit-row--brand {
   font-size: 28px;
 }
@@ -96,7 +95,7 @@
 }
 
 // The overlay is absolutely positioned against its zone, so the zone has to be the
-// containing block. US-801's composer carries the same one line.
+// containing block.
 .kit-dropzone {
   position: relative;
 }

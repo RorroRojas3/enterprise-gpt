@@ -11,15 +11,8 @@ import { UserActionsStore } from '@core/users/user-actions-store';
 import { Modal } from '@shared/overlay/modal/modal';
 
 /**
- * The deactivate-user confirmation (US-1204).
- *
- * Destructive actions always confirm via modal, naming the person, and red lives only on
- * confirmations like this one. Initial focus lands on **Cancel**, so Enter on a freshly
- * opened confirmation revokes nobody's access.
- *
- * The confirm is emitted rather than called on the store, because only the screen can
- * remove the row and hand back the undo — the directory list is scoped to its route and
- * `core/` may not import from `features/`.
+ * Emits the confirm rather than calling the store, because only the route-scoped screen can
+ * remove the row and hand back the undo.
  */
 @Component({
   selector: 'app-deactivate-user-dialog',
@@ -65,9 +58,8 @@ export class DeactivateUserDialog {
     }
     this.confirming = false;
 
-    // Confirming removes the row this was invoked from, so the modal's own focus return
-    // has nothing to restore to. Checked only when focus actually fell through, so a
-    // reader who clicked elsewhere mid-flight is not yanked back.
+    // The invoking row is gone, so the modal's focus return has no target. Only when focus
+    // actually fell through, so a reader who clicked elsewhere is not yanked back.
     const active = this.document.activeElement;
     const fellThrough =
       active === null ||

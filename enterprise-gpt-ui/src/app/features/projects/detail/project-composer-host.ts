@@ -39,24 +39,9 @@ interface ProjectComposerState {
 }
 
 /**
- * What the composer sends into on a project's screen (US-906, frame `4e`).
- *
- * `COMPOSER_HOST` for this route, where `TurnStore` is the one on `/chat`. The
- * difference the token exists for: **this host does not stream.** The criterion is that
- * the turn streams *as it does on the chat route*, and the transcript lives there — so
- * a prompt sent here creates the conversation inside the project, hands the text to
- * `PendingPromptStore`, and navigates. `TurnStore` picks it up on the route binding and
- * runs the ordinary turn, which is how the whole streaming, activity-timeline and
- * markdown path is reused rather than reproduced.
- *
- * Three consequences, all deliberate:
- *
- * - **`inFlight` is the create**, not a turn. It is what turns Send into Stop for the
- *   one round trip this screen owns.
- * - **`stop()` cancels that POST.** There is nothing else to stop, and the prompt goes
- *   back to the composer rather than being lost.
- * - **`turnError` is always null.** A failure here is a toast, because there is no
- *   transcript on this screen for a notice card to sit in.
+ * Does not stream: it creates the conversation, hands the prompt to `PendingPromptStore` and
+ * navigates, so `TurnStore` runs the turn on `/chat`. `inFlight` is the create, `stop()` cancels
+ * that POST, and failures are toasts because there is no transcript here.
  */
 export const ProjectComposerHost = signalStore(
   withState<ProjectComposerState>({ creating: false, composerSeed: null }),
@@ -78,22 +63,13 @@ export const ProjectComposerHost = signalStore(
   })),
   withComputed(({ creating, _project }) => ({
     inFlight: computed(() => creating()),
-    /**
-     * Never a notice. The chat route puts a failed turn in the transcript with a Retry
-     * beside it; this screen has no transcript, so its failures are toasts and this
-     * stays null so the composer's focus fixups behave exactly as they do there.
-     */
+    /** Always null: failures here are toasts, and null keeps the composer's focus fixups intact. */
     turnError: computed<object | null>(() => null),
-    /**
-     * Never a download. This screen has no conversation — a prompt sent here creates one
-     * and navigates — so there is no transcript for the control to act on, and frame `2f`
-     * draws none here (US-1502).
-     */
+    /** Always null: this screen has no conversation to export. */
     exportTarget: computed<ComposerExportTarget | null>(() => null),
     /**
-     * The route's own project (US-307). The `project` arm makes the composer render a
-     * static chip rather than a picker: a conversation created here is created *inside*
-     * this project by definition, and there is nothing yet to move.
+     * The `project` arm renders a static chip rather than a picker: a conversation created here is
+     * inside this project by definition.
      */
     projectTarget: computed<ComposerProjectTarget | null>(() => {
       const projectId = _project.projectId();
@@ -103,8 +79,7 @@ export const ProjectComposerHost = signalStore(
   })),
   withMethods((store) => {
     const _create = rxMethod<string>(
-      // exhaustMap: a second press while the POST is out is a double-click, not a
-      // second conversation — and two would both be created inside the project.
+      // exhaustMap: a second press during the POST is a double-click, not a second conversation.
       exhaustMap((prompt) => {
         patchState(store, { creating: true });
         store._inFlightPrompt.current = prompt;
@@ -112,18 +87,14 @@ export const ProjectComposerHost = signalStore(
         const projectId = store._project.projectId();
 
         return store._http.post<ConversationDto>(url, { projectId }).pipe(
-          // The POST has no abort surface of its own, so Stop and sign-out cancel it
-          // here — before the `next` that would navigate. Unsubscribing is what makes
-          // Stop mean stopped rather than "carry on, but pretend otherwise".
+          // The POST has no abort surface, so Stop and sign-out cancel it here, before `next`.
           takeUntil(merge(store._signedOut$, store._stop$)),
           tapResponse({
             next: (created) => {
-              // Before navigating, so the sidebar row is already there when the chat
-              // route renders — the same ordering US-401's own create uses.
+              // Before navigating, so the sidebar row exists when the chat route renders.
               store._list.prependNewest(created);
-              // Read at the 201, not at `send()`: a chip removed while the create was in
-              // flight must not travel. Both holds precede the navigation, which is what
-              // mounts the screen that claims them.
+              // Read at the 201, so a chip removed mid-create stays behind. Both holds precede
+              // the navigation, which mounts the screen that claims them.
               const files = store._uploads.pendingFiles();
               if (files.length > 0) {
                 store._attachments.hold(created.id, files);
@@ -134,10 +105,7 @@ export const ProjectComposerHost = signalStore(
             error: (cause: unknown) => {
               const error = toAppError(cause, { url });
 
-              // A 404 on create means the project was deleted somewhere else — the
-              // server reports a foreign or deactivated project exactly as it reports
-              // one that never existed. The reader is told, and returned to the grid,
-              // because this URL now names nothing.
+              // A 404 means the project was deleted elsewhere, so this URL now names nothing.
               if (error.kind === 'resource-not-found') {
                 store._toasts.show({
                   tone: 'error',
@@ -150,8 +118,7 @@ export const ProjectComposerHost = signalStore(
                 return;
               }
 
-              // The text goes back to the composer rather than being lost, which is the
-              // same bargain `TurnStore` makes when a create is stopped.
+              // The text goes back to the composer rather than being lost.
               patchState(store, { composerSeed: { text: prompt } });
               store._toasts.fromError(error);
             },
@@ -162,12 +129,7 @@ export const ProjectComposerHost = signalStore(
     );
 
     return {
-      /**
-       * Creates a conversation inside this project and sends the prompt on the chat
-       * route.
-       *
-       * @param prompt The text the composer holds.
-       */
+      /** Creates a conversation inside this project and sends the prompt on the chat route. */
       send(prompt: string): void {
         const text = prompt.trim();
         if (text === '' || store.creating() || store._project.projectId() === null) {
@@ -177,13 +139,7 @@ export const ProjectComposerHost = signalStore(
         _create(text);
       },
 
-      /**
-       * Cancels the create, handing the prompt back to the composer.
-       *
-       * `finalize` clears `creating` on the cancellation, so the send control returns
-       * on its own; this only has to restore the text. Nothing has to be unwound —
-       * the conversation was never created, so there is no row and no navigation.
-       */
+      /** `finalize` clears `creating` on cancellation, so this only hands the text back. */
       stop(): void {
         if (!store.creating()) {
           return;

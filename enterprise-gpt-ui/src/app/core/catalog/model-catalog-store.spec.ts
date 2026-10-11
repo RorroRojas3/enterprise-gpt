@@ -78,7 +78,7 @@ describe('ModelCatalogStore', () => {
     expect(store.models()).toHaveLength(1);
   });
 
-  it('reloads when an administrator changes the catalog (US-1207)', async () => {
+  it('reloads when an administrator changes the catalog', async () => {
     const loaded = store.ensureLoaded();
     backend
       .expectOne(MODELS_URL)
@@ -89,13 +89,9 @@ describe('ModelCatalogStore', () => {
     TestBed.inject(Dispatcher).dispatch(adminEvents.modelCatalogChanged());
     TestBed.tick();
 
-    // `reload()`, not `ensureLoaded()`: the memo is already resolved by the time an
-    // administrator can change anything, so the memoized call would return the stale list.
     backend.expectOne(MODELS_URL).flush([modelFixture({ isDefault: true })]);
     await Promise.resolve();
 
-    // The composer's model menu reads this store. Without the refresh it goes on offering
-    // a model that now answers 404 for the rest of the session.
     expect(store.models().map((model) => model.name)).not.toContain('GPT-4.1 (legacy)');
   });
 
@@ -122,8 +118,6 @@ describe('ModelCatalogStore', () => {
     TestBed.inject(Dispatcher).dispatch(sessionEvents.signedOut());
     await expect(cancelled).resolves.toBe(false);
 
-    // The user's own action is not an error, and the memo is cleared so the
-    // next session can load fresh.
     expect(store.error()).toBeNull();
     expect(store.models()).toEqual([]);
 

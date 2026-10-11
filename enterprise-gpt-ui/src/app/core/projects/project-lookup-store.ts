@@ -54,13 +54,7 @@ import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 import { PROJECT_LOAD_CEILING, PROJECT_PAGE_SIZE } from './project-load';
 
 interface ProjectLookupState {
-  /**
-   * Whether {@link ProjectLookupStore.ensureLoaded} has released the drain. See the
-   * `onInit` hook.
-   *
-   * Private: a release sentinel, not something a surface should render, and
-   * `@ngrx/signals` strips `_`-prefixed members from the public store type.
-   */
+  /** Whether {@link ProjectLookupStore.ensureLoaded} has released the drain; see `onInit`. */
   readonly _started: boolean;
   /** The drain stopped at {@link PROJECT_LOAD_CEILING} with more still on the server. */
   readonly truncated: boolean;
@@ -75,42 +69,9 @@ function shiftCounters(delta: number): PartialStateUpdater<OffsetPaginationState
 }
 
 /**
- * Every project the signed-in user owns, held once at the root (US-307).
- *
- * This is the root project list US-202's fourth criterion asked for and nothing had a
- * use for until now. It serves two things at once, and both need the *whole* set rather
- * than a page:
- *
- * - **The project picker's list**, which filters client-side as the reader types. A
- *   server round trip per keystroke would be the wrong shape for a 320px popover, and a
- *   page in hand is not a stable window to filter either.
- * - **The sidebar's favourite projects** (US-910), which is a filter over the same set
- *   rather than a second request: a dedicated `?isFavorite=true` store would be a second
- *   copy of rows already held here, to be kept in step on every rename, delete and
- *   toggle. Since US-706 the drain asks for `sort=favorite`, so every starred project is
- *   inside {@link PROJECT_LOAD_CEILING} unless the reader has starred more than 500 —
- *   the section is complete rather than best-effort, and only the *naming* of a project
- *   past the ceiling is still out of reach.
- * - **`projectId` → name**, which is the only way a project chip can be rendered:
- *   `ConversationDto` carries the id and no name. This mirrors exactly how the
- *   conversations library resolves a `modelId` against `ModelCatalogStore`, down to
- *   rendering nothing rather than a guess when the id is unknown.
- *
- * It drains for the reason `ProjectListStore` does, with three of the same load-bearing
- * details — `expand` rather than a self-referential `concat`, `_querySuperseded$`
- * cancelling the whole chain, and `truncated` written where the drain stops and never in
- * a `finalize`. What it does *not* have is a term: this list is never filtered on the
- * server, so a page is only ever superseded by a retry or a sign-out.
- *
- * It also differs from the grid on what a mid-drain failure leaves behind. The grid
- * replaces itself with an error panel, because a half-drained set sorted or counted as
- * if it were whole is the failure regime A exists to avoid. Here the pages already
- * loaded are **kept** alongside the error: `nameOf` is a lookup, not a listing, and a
- * chip that can still name 200 of 500 projects is strictly better than one that names
- * none. The picker is what renders the error, and it hides the list behind it.
- *
- * Root-scoped, and therefore on the initial bundle graph, because `SessionBootstrap`
- * releases it — the same cost `ConversationListStore` already pays for the same reason.
+ * Every project the user owns, drained whole for the picker's filter, the sidebar's favourites
+ * (complete, as `sort=favorite` puts starred rows first) and chip names. Unlike the grid, it keeps
+ * pages loaded before a failure, so `nameOf` still answers. Root: `SessionBootstrap` loads it.
  */
 export const ProjectLookupStore = signalStore(
   { providedIn: 'root' },
@@ -123,50 +84,27 @@ export const ProjectLookupStore = signalStore(
     _url: inject(ApiUrl).build('projects'),
     _signedOut$: injectSignedOut(),
     /**
-     * Cancels a drain whose result set no longer exists. `switchMap` cancels the one
-     * request in flight when a retry arrives; the drain is a *chain* of them, and a
-     * page landing after the retry's `setAllEntities` would append rows twice.
+     * Cancels a superseded drain: `switchMap` cancels only the request in flight, and a later
+     * page of the old chain would append rows twice.
      */
     _querySuperseded$: new Subject<void>(),
   })),
   withComputed(({ entities, entityMap, isFulfilled, isPending, totalCount }) => ({
-    /**
-     * Every loaded project, in the drain's order — starred first, then by name.
-     *
-     * Held rather than re-derived, so the order is the one the last drain produced: a
-     * project created or starred since then is patched in place rather than moved, and
-     * settles into position on the next drain.
-     */
+    /** In the last drain's order (starred, then name); later changes patch in place, not move. */
     projects: entities,
-    /**
-     * The starred projects, in the same order (US-910).
-     *
-     * Derived rather than fetched, so a toggle anywhere in the app reaches the sidebar
-     * through the one `favorited` handler below and nothing has to be refetched.
-     */
+    /** Derived, so a toggle anywhere reaches the sidebar through the one `favorited` handler. */
     favorites: computed(() => entities().filter((project) => project.isFavorite)),
     /** Loaded, and this user owns no projects at all. */
     isEmpty: computed(() => isFulfilled() && entities().length === 0),
     /** Nothing loaded yet, so a panel shows skeletons rather than an empty list. */
     isFirstLoad: computed(() => isPending() && entities().length === 0),
-    /**
-     * What the picker states when the drain stopped short. Frame `2e` draws no such
-     * line, but a list that silently omits projects is the failure the grid's own
-     * ceiling notice exists to prevent — and here it would silently omit the project
-     * the reader is looking for.
-     */
+    /** Without it the picker would silently omit the project the reader may be looking for. */
     ceilingNotice: computed(
       () => `Showing the first ${entities().length} of ${totalCount()} projects.`,
     ),
-    /**
-     * Whether anything is starred. The sidebar's whole section is absent when nothing is
-     * — the repo's rule for an affordance with nothing to act on.
-     */
+    /** The sidebar omits its whole favourites section when nothing is starred. */
     hasFavorites: computed(() => entities().some((project) => project.isFavorite)),
-    /**
-     * A project's name by id, or null when it is not held — an unknown id, or one past
-     * the ceiling. Callers render nothing for a null rather than an id nobody can read.
-     */
+    /** Null for an unknown id or one past the ceiling; callers then render nothing. */
     nameOf: computed(() => {
       const byId = entityMap();
 
@@ -177,12 +115,8 @@ export const ProjectLookupStore = signalStore(
   withMethods((store) => {
     function fetchPage(skip: number): Observable<PaginatedResponseDto<ProjectSummaryDto>> {
       return store._http.get<PaginatedResponseDto<ProjectSummaryDto>>(store._url, {
-        // Starred first (US-706's `sort=`), which is what makes {@link favorites} — and
-        // so the sidebar's whole *Favourite projects* section — complete rather than
-        // best-effort: without it a starred project sitting past the 500-row ceiling
-        // simply never appears, and this drain states no ceiling of its own. Names
-        // second, so the picker's list reads alphabetically inside each group instead
-        // of in whatever order the ceiling happened to admit.
+        // Starred first, so the sidebar's favourites are complete despite the 500-row ceiling;
+        // then by name, so the picker reads alphabetically within each group.
         params: new HttpParams()
           .set('skip', String(skip))
           .set('take', String(store.take()))
@@ -207,14 +141,12 @@ export const ProjectLookupStore = signalStore(
       );
     }
 
-    // Takes the release sentinel rather than a void trigger, so the drain is wired
-    // declaratively in `onInit` and `ensureLoaded` only flips a flag — there is no
-    // injection context in `SessionBootstrap` to bind a signal-valued rxMethod to.
+    // Bound to the sentinel in `onInit`, since `SessionBootstrap` has no injection context to
+    // bind a signal-valued rxMethod in; `ensureLoaded` only flips the flag.
     const _load = rxMethod<boolean>(
       pipe(
-        // The sentinel gates the drain, exactly as `ConversationListStore`'s null does:
-        // `onInit` binds a computation over it, so nothing goes out until
-        // `SessionBootstrap` has a token, and `retry()` pushes `true` again on purpose.
+        // Nothing goes out until `SessionBootstrap` has a token; `retry()` pushes `true` again
+        // on purpose.
         filter(Boolean),
         tap(() => {
           store._querySuperseded$.next();
@@ -229,10 +161,7 @@ export const ProjectLookupStore = signalStore(
             takeUntil(merge(store._signedOut$, store._querySuperseded$)),
             tapResponse({
               next: () => undefined,
-              // The pages already drained stay: `setError` writes only `requestStatus`,
-              // and that is deliberate here — see the class doc. The picker renders the
-              // error and hides the partial list; `nameOf` keeps answering for the rows
-              // it does hold.
+              // Drained pages stay: `setError` writes only `requestStatus`, so `nameOf` answers.
               error: (cause: unknown) =>
                 patchState(store, setError(toAppError(cause, { url: store._url }))),
             }),
@@ -244,34 +173,24 @@ export const ProjectLookupStore = signalStore(
     return {
       _load,
 
-      /**
-       * Releases the drain. Idempotent, and called by `SessionBootstrap` after
-       * `POST api/users/me` resolves — never alongside it, because the request would
-       * otherwise go out before a token exists.
-       */
+      /** Idempotent; `SessionBootstrap` calls it after `POST api/users/me`, once a token exists. */
       ensureLoaded(): void {
         if (!store._started()) {
           patchState(store, { _started: true });
         }
       },
 
-      /** Re-runs the drain from the first page, after a failure. */
       retry(): void {
         _load(true);
       },
     };
   }),
   withEventHandlers((store, events = inject(Events)) => [
-    // Server-confirmed facts only, which is the whole contract of this event group.
-    // Without these three the picker would offer a project that has been deleted, or
-    // omit the one the reader just created from the panel they created it in.
+    // Without these the picker would offer deleted projects or miss the one just created.
     events.on(projectEvents.created).pipe(
       tap(({ payload }) => {
-        // The head. Since US-706 this drain asks for `sort=favorite`, so a refetch would
-        // actually file a brand-new project alphabetically inside the non-favourite group
-        // rather than at the top — this is a guess, and deliberately the same guess the
-        // grid makes: the reader just created this project and every surface reading this
-        // store should be able to find it without a re-drain.
+        // Prepended, a deliberate guess shared with the grid: `sort=favorite` would file it
+        // elsewhere, but the reader must find what they just created without a re-drain.
         patchState(
           store,
           setAllEntities([toProjectSummary(payload), ...store.entities()]),
@@ -282,8 +201,7 @@ export const ProjectLookupStore = signalStore(
 
     events.on(projectEvents.updated).pipe(
       tap(({ payload }) => {
-        // No term filters this list, so a rename never evicts a row here — unlike the
-        // grid, where it can fall out of an active search.
+        // No term filters this list, so a rename never evicts a row here.
         if (store.entityMap()[payload.id] !== undefined) {
           patchState(store, updateEntity({ id: payload.id, changes: toProjectSummary(payload) }));
         }
@@ -300,15 +218,8 @@ export const ProjectLookupStore = signalStore(
       }),
     ),
 
-    // Touches `isFavorite` and nothing else: the 204 confirms one field, and the
-    // server does not bump `dateModified` for it, so there is no other value to adopt.
-    //
-    // It *does* change the row's position — favourite is the primary key of this drain's
-    // order since US-706 — and the row still does not move. Re-draining up to five pages
-    // because one star was pressed would rebuild the sidebar under the cursor that pressed
-    // it; `favorites()` filters rather than slices, so the section stays correct either
-    // way and only its internal order waits for the next drain.
-    // A row past the ceiling is not held and is ignored, exactly as `updated` does.
+    // The 204 confirms only `isFavorite`. The row doesn't move: re-draining would rebuild the
+    // sidebar under the cursor, and `favorites()` filters, so only its order waits.
     events.on(projectEvents.favorited).pipe(
       tap(({ payload: { id, isFavorite } }) => {
         if (store.entityMap()[id] !== undefined) {

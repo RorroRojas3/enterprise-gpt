@@ -32,7 +32,7 @@ import {
   toUsageGrouping,
 } from './admin-reports-route';
 
-/** The parameters one report is fetched with. They travel together because they go out together. */
+/** One object because both go out on one request; bound separately, a change would fire twice. */
 export interface UsageReportQuery {
   readonly range: UsageRange;
   readonly grouping: UsageGrouping;
@@ -54,24 +54,10 @@ const initialState: ReportsState = {
 };
 
 /**
- * The administration usage report, from `GET api/reports/usage` (US-1302).
- *
- * **Provided on the screen, never on the layout**, which is what makes FR-41 a property of the
- * dependency graph rather than of any code here: a component-level provider is destroyed and
- * rebuilt on every entry to the route, so a back-navigation gets a new instance holding no report
- * and its constructor-time {@link bindQuery} issues a fresh request. Nothing can serve a cached
- * one because nothing outlives the route to hold it.
- *
- * Three features the sibling admin stores compose are deliberately absent:
- *
- * - **No `withEntities`.** The response is one envelope with five differently-shaped row sets in
- *   it, not a keyed collection, and there is no id to key on.
- * - **No `withOffsetPagination`.** That feature models a running offset for a "Load more" list.
- *   The grouped table is a numbered window over a set already in hand, so the page lives in state
- *   here — the same call `AdminUsersStore` made, and the same reasoning: two stores sharing a
- *   shape is a coincidence, three is a feature.
- * - **No `withEventHandlers`.** Nothing in this application mutates usage, so no event could
- *   invalidate a report; the range and grouping controls are the only things that refetch it.
+ * Provided on the screen, never the layout, so every entry to the route gets a fresh instance and
+ * request, never a cached report. No `withEntities` (one envelope, no ids), no
+ * `withOffsetPagination` (a numbered window over rows in hand), and no event handlers (nothing in
+ * the app mutates usage).
  */
 export const ReportsStore = signalStore(
   withState(initialState),
@@ -88,23 +74,16 @@ export const ReportsStore = signalStore(
     return {
       groups,
       totalPages,
-      /** Nothing on screen yet, so a skeleton is the honest thing to show. */
       isFirstLoad: computed(() => isPending() && report() === null),
       /**
-       * The range genuinely holds nothing.
-       *
-       * A property of the report rather than of the request status. Gated on `isFulfilled` it
-       * would go false the moment a re-range put the store back into `pending`, and the template
-       * would fall through to the dashboard branch and paint four zero tiles, a flat ridgeline and
-       * an arc-less donut for the length of the request — which is exactly the chart-of-zeroes the
-       * empty state exists to prevent. `isFirstLoad` still covers the null case.
+       * Read off the report, not `isFulfilled`, so a re-range in flight keeps the empty state
+       * instead of painting a chart of zeroes.
        */
       isEmpty: computed(() => {
         const loaded = report();
 
         return loaded !== null && loaded.totals.turns === 0;
       }),
-      /** The rows the table shows, as one page of the breakdown. */
       pagedGroups: computed(() => {
         const start = (page() - 1) * USAGE_PAGE_SIZE;
 
@@ -114,17 +93,13 @@ export const ReportsStore = signalStore(
       totalCount: computed(() => groups().length),
       pageSize: computed(() => USAGE_PAGE_SIZE),
       /**
-       * The same sentence `Paginator` renders, handed to `DataTable` for its live region.
-       *
-       * Duplicated deliberately and kept identical: the paginator's copy is visible and this one
-       * is announced, which is why the footer sets `liveSummary` false — two live regions carrying
-       * one string make a screen reader read the count twice on every page.
+       * `Paginator`'s sentence again, for `DataTable`'s live region; the footer sets `liveSummary`
+       * false so a screen reader does not read the count twice.
        */
       countSummary: computed(() => {
         const total = groups().length;
-        // Always the plural, which is what `Paginator.itemLabel` is: it has no count to agree
-        // with, so a singular here would make the two sentences differ on a one-row breakdown —
-        // the visible footer and the announced one saying different things.
+        // Always plural, like `Paginator.itemLabel`, so the announced and visible sentences
+        // match on a one-row breakdown.
         const noun = groupingNoun(toUsageGrouping(report()?.groupBy ?? grouping()), 2);
         if (total === 0) {
           return `No ${noun}`;
@@ -136,11 +111,8 @@ export const ReportsStore = signalStore(
         return `Showing ${first}–${last} of ${total} ${noun}`;
       }),
       /**
-       * Why the breakdown may not add up to the totals above it.
-       *
-       * Rendered as the table's notice rather than folded into the count, because it is a fact
-       * about the *server's* answer rather than about the page on screen — and a reader comparing
-       * the rows against the period totals needs the reason, not a parenthetical.
+       * Why the rows may not sum to the totals: a fact about the server's answer, so a table
+       * notice rather than part of the count.
        */
       truncationNotice: computed(() => {
         const loaded = report();
@@ -150,11 +122,8 @@ export const ReportsStore = signalStore(
           : null;
       }),
       /**
-       * Which grouping the rows on screen belong to, which is not always what the control reads.
-       *
-       * Narrowed through the same transform the URL uses rather than cast: the server echoes a
-       * token it validated, but a response is still input, and a value neither side recognises
-       * would otherwise index the label tables with `undefined`.
+       * The grouping of the rows on screen, which can lag the control. Narrowed, not cast, so an
+       * unrecognised server token cannot index the label tables with `undefined`.
        */
       renderedGrouping: computed(() => toUsageGrouping(report()?.groupBy ?? grouping())),
     };
@@ -164,18 +133,14 @@ export const ReportsStore = signalStore(
       return { range: store.range(), grouping: store.grouping() };
     }
 
-    // No `debounceTime`: neither control is a text field, so every emission is a deliberate
-    // choice. `switchMap` because a reader can change the range and the grouping faster than the
-    // server answers, and only the newest report may reach the screen.
+    // No `debounceTime`: neither control is a text field. `switchMap` so only the newest report
+    // reaches the screen.
     const _load = rxMethod<UsageReportQuery>(
       pipe(
         tap((query) => patchState(store, query, setPending())),
         switchMap(({ range, grouping }) => {
-          // Only `from` goes on the wire. The end of the window is the server's own clock, which
-          // is the clock the rows were written by — sending a `to` from here would let a browser
-          // whose time is wrong decide which of them count. The start is a span back from now
-          // because the URL carries a span, and that is what keeps a shared link meaning the last
-          // 30 days rather than one particular fortnight in August.
+          // Only `from` is sent: the window ends on the server's clock, which wrote the rows, so
+          // a wrong browser clock cannot decide which of them count.
           const params = new HttpParams()
             .set('from', new Date(Date.now() - range * MS_PER_DAY).toISOString())
             .set('groupBy', grouping);
@@ -184,8 +149,7 @@ export const ReportsStore = signalStore(
             takeUntil(store._signedOut$),
             tapResponse({
               next: (report) =>
-                // Back to the first page on every answer: a new range or grouping is a new table,
-                // and page 3 of the old one names rows that are no longer there.
+                // Back to page 1 on every answer: the old page may name rows no longer there.
                 patchState(store, { report, page: 1 }, setFulfilled()),
               error: (cause: unknown) =>
                 patchState(store, setError(toAppError(cause, { url: store._url }))),
@@ -197,12 +161,8 @@ export const ReportsStore = signalStore(
 
     return {
       /**
-       * Binds the screen's `?range=` and `?group=` to the request, once, from its constructor.
-       *
-       * Taking a computation rather than values is what makes a deep link one request: `rxMethod`
-       * subscribes through an effect, so it reads the parameters the router has already bound
-       * instead of firing a default request and then the real one. Both travel in one object
-       * because they go out on one request — bound separately, changing either would fire two.
+       * Called once from the constructor with a computation, not values, so a deep link makes one
+       * request with the router-bound parameters instead of a default one first.
        */
       bindQuery: _load,
 
@@ -212,12 +172,8 @@ export const ReportsStore = signalStore(
       },
 
       /**
-       * Moves the grouped table's window.
-       *
-       * Screen state rather than a URL parameter, unlike the user directory's `?page=`: the table
-       * is one panel of a dashboard whose address already names what it is showing, and a link
-       * that restored page 3 of a breakdown while the charts above it started from scratch would
-       * be restoring half a view.
+       * Screen state, not a URL parameter: a link restoring page 3 while the charts above start
+       * fresh would restore half a view.
        */
       setPage(page: number): void {
         patchState(store, { page: Math.min(Math.max(page, 1), store.totalPages()) });

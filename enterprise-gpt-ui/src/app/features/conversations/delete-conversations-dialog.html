@@ -1,14 +1,8 @@
 <app-modal [heading]="heading()" size="sm" [open]="open()" (closed)="onClosed()">
-  <!-- Counted rather than named: eight quoted titles is not a sentence anyone reads,
-       and the count is the fact that decides whether to go ahead. Messages go,
-       uploaded files stay — the same promise the single-row confirmation makes. -->
+  <!-- Counted rather than named: the count is what decides whether to go ahead. -->
   <p class="delete-conversations__body">{{ body() }}</p>
 
-  <!--
-    modalFooter on each button (not a wrapper): the kit's footer supplies the
-    right-aligned, gapped row. Initial focus lands on Cancel, the non-destructive
-    action — Enter on a freshly opened destructive confirm must not destroy anything.
-  -->
+  <!-- Autofocus on Cancel, so Enter on a freshly opened destructive confirm destroys nothing. -->
   <button
     modalFooter
     class="btn btn-outline-secondary"

@@ -27,13 +27,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { adminRoutes } from './admin.routes';
 
 /**
- * The four administration routes US-1405's first criterion names, in both themes.
- *
- * These run in Chromium through the `test-a11y` target — see `src/testing/a11y.ts` for
- * why jsdom cannot host them. The harness is `admin-layout.spec.ts`'s, deliberately: the
- * point is to audit the screens as they are actually assembled, with their real routes,
- * their real stores and real data in them, rather than a component in isolation with
- * empty state, which is the configuration in which almost nothing is wrong.
+ * Audits the assembled admin routes, with real stores and data, in Chromium via `test-a11y`
+ * (see `src/testing/a11y.ts`); an isolated, empty component would hide almost every defect.
  */
 
 const USERS_URL = `${TEST_API_BASE_URL}/api/users`;
@@ -44,7 +39,7 @@ const REPORTS_URL = `${TEST_API_BASE_URL}/api/reports/usage`;
 @Component({ template: 'chat' })
 class ChatStub {}
 
-describe('administration accessibility (US-1405)', () => {
+describe('administration accessibility', () => {
   let backend: HttpTestingController;
   let harness: RouterTestingHarness;
   let attached: HTMLElement | null = null;
@@ -98,12 +93,10 @@ describe('administration accessibility (US-1405)', () => {
     it(`finds nothing serious on the user directory in the ${theme} theme`, async () => {
       const element = await open('/admin/users', theme);
 
-      // Flushed with rows so the permission filter has options to audit rather than the
-      // single "any" it renders before the catalog lands (US-1206).
+      // With rows, so the permission filter has options to audit rather than a lone "any".
       flushPermissions(backend);
 
-      // Two rows rather than none: an empty table has no cells, no per-row controls and
-      // no permission badges, which is most of the surface worth auditing.
+      // Two rows rather than none: an empty table has no cells, row controls or badges to audit.
       backend
         .expectOne((request) => request.url === USERS_URL)
         .flush(
@@ -135,14 +128,8 @@ describe('administration accessibility (US-1405)', () => {
     });
 
     /**
-     * The model form open (US-1207/US-104, frame `5f`).
-     *
-     * Eight labelled inputs, a select and four switches — none of which the table behind it
-     * exercises. Opened on a hidden, **non**-default model deliberately: a hidden *default*
-     * would render the conflict refusal, and `.model-form__error` is `--fail` on `--surface`,
-     * which is 4.39:1 in the dark theme and so fails AA for normal text. That is an app-wide
-     * token defect (every dialog's inline error sits on `--surface`), not a property of this
-     * form, and auditing it from here would fail this test for a reason it does not own.
+     * Opened on a hidden, non-default model: a hidden default renders `.model-form__error`, whose
+     * 4.39:1 dark-theme contrast is an app-wide token defect this test does not own.
      */
     it(`finds nothing serious with the model form open in the ${theme} theme`, async () => {
       const element = await open('/admin/models', theme);
@@ -177,12 +164,8 @@ describe('administration accessibility (US-1405)', () => {
     });
 
     /**
-     * The MCP form open (US-1208/US-1210, frame `5h`).
-     *
-     * Six labelled controls, two of them selects, plus a `role="alert"` region per field
-     * and a `role="status"` note — none of which the table behind it exercises. Opened on
-     * an **edit** of a row whose icon key this build ships no artwork for, because that is
-     * the one state that renders the note and the icon preview at once.
+     * Opened on an edit whose icon key has no artwork: the one state that renders the note and
+     * the icon preview at once.
      */
     it(`finds nothing serious with the MCP form open in the ${theme} theme`, async () => {
       const element = await open('/admin/mcps', theme);
@@ -202,9 +185,7 @@ describe('administration accessibility (US-1405)', () => {
     });
 
     it(`finds nothing serious on the reports tab in the ${theme} theme`, async () => {
-      // A real report rather than an empty screen. Every mark on this tab is drawn from the
-      // response — the ridgeline, ten bars, three donut arcs and a paged table — and an audit of
-      // the empty state would be an audit of an empty state.
+      // A real report: every mark on this tab is drawn from the response.
       const element = await open('/admin/reports', theme);
       backend.expectOne((request) => request.url === REPORTS_URL).flush(usageReportFixture());
       await harness.fixture.whenStable();
@@ -213,8 +194,7 @@ describe('administration accessibility (US-1405)', () => {
     });
 
     it(`finds nothing serious on an empty reports range in the ${theme} theme`, async () => {
-      // The other half: a named empty state is what this tab shows for a quiet range, and it is
-      // a different tree from the dashboard rather than the same one with zeroes in it.
+      // The empty state is a different tree, not the dashboard with zeroes in it.
       const element = await open('/admin/reports', theme);
       backend.expectOne((request) => request.url === REPORTS_URL).flush(emptyUsageReportFixture());
       await harness.fixture.whenStable();
@@ -224,10 +204,8 @@ describe('administration accessibility (US-1405)', () => {
   }
 
   /**
-   * What the shell keeps for itself at each width, and so never hands the routed screen:
-   * the sidebar is 260px in the flow at desktop, a 60px strip at tablet, and lives in a
-   * drawer below that. Auditing against the bare viewport would give the fitting tests
-   * below room production does not have, which is the wrong direction for a fitting test.
+   * The sidebar's width at each viewport; auditing against the bare viewport would give the
+   * fitting tests room production does not have.
    */
   const SIDEBAR_TRACK: Record<ViewportName, number> = { desktop: 260, tablet: 60, mobile: 0 };
 
@@ -239,10 +217,8 @@ describe('administration accessibility (US-1405)', () => {
     return element;
   }
 
-  // The three list screens at each width. `DataTable` restructures twice — the full table,
-  // the table minus its `hideOnTablet` columns, then cards — and only a real browser can say
-  // whether any of the three fits. Each screen is flushed with the widest values it can
-  // actually hold: an unbounded permission name, a long deployment, a long URL and scope.
+  // `DataTable` restructures twice (full, minus `hideOnTablet` columns, cards), so each list is
+  // flushed with the widest values it can hold and checked at every width.
   for (const width of Object.keys(VIEWPORTS) as ViewportName[]) {
     it(`keeps the user directory inside the viewport at the ${width} width`, async () => {
       const element = await openInShell('/admin/users', width);
@@ -309,10 +285,8 @@ describe('administration accessibility (US-1405)', () => {
     });
   }
 
-  // US-1403's criterion 5, which has been vacuous for two phases: "the reports charts stack into
-  // a single column below 1024px" had nothing to assert while this tab was an unavailable panel.
-  // A real browser is the only thing that can answer it, and overflow is the failure it produces —
-  // a 640-unit chart, a 1.2fr/1fr split and a seven-column table all have to give way.
+  // The charts must stack below 1024px; overflow is the failure, since a 640-unit chart, a
+  // 1.2fr/1fr split and a seven-column table all have to give way.
   for (const width of Object.keys(VIEWPORTS) as ViewportName[]) {
     it(`keeps the dashboard inside the viewport at the ${width} width`, async () => {
       await atViewport(width);

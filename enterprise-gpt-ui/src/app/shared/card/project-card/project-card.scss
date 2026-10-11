@@ -27,8 +27,7 @@
   gap: 9px;
 }
 
-// The same brand-tinted folder the sidebar row and the detail header lead with; the
-// picker and the composer pill tint theirs only for the project in hand.
+// Always brand-tinted, like the sidebar row; the picker and pill tint only the project in hand.
 .project-card__glyph {
   flex: 0 0 auto;
   color: var(--brand);

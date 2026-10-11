@@ -2,7 +2,6 @@
   display: block;
 }
 
-// Frame `Sidebar` line 48: 32px, 8px radius, the row surface washing on hover.
 .project {
   position: relative;
   display: flex;
@@ -60,9 +59,7 @@
   white-space: nowrap;
 }
 
-// Always visible, unlike the kebab beside it: the chevron is the board's own affordance
-// for the node's state, and a disclosure that appears on hover cannot be found without
-// a pointer.
+// Always visible, unlike the kebab: a disclosure shown on hover is unfindable without a pointer.
 .project__disclosure {
   display: flex;
   flex: 0 0 auto;
@@ -87,9 +84,7 @@
   }
 }
 
-// Revealed rather than inserted, exactly as `conversation-row.scss` does it: opacity
-// keeps the trigger in the tab order and the accessibility tree, and :focus-within is
-// what reveals it when the keyboard reaches it.
+// Opacity, not display, so the trigger stays focusable; :focus-within reveals it.
 .project__menu {
   flex: 0 0 auto;
   margin-right: 2px;

@@ -144,10 +144,8 @@ describe('Menu', () => {
   });
 
   it('survives the pointerdown that precedes a real mouse click on an item', async () => {
-    // The regression this exists for: outside-dismiss was anchored to the trigger,
-    // and the panel is the trigger's sibling — so a pointerdown on a menu item read
-    // as "outside", the panel was removed before the click could be dispatched, and
-    // every consumer's action silently did nothing. `.click()` alone never sees it.
+    // An item pointerdown must not read as outside and remove the panel before the click;
+    // `.click()` alone never exercises that.
     const menu = await render();
     await menu.open();
     const item = menu.panel()?.querySelector('#rename') as HTMLButtonElement;
@@ -204,12 +202,8 @@ describe('Menu', () => {
     expect(menu.panel()).toBeNull();
   });
 
-  describe('the trigger hint (US-1502)', () => {
-    /**
-     * The tooltip is on the trigger and not on `<app-menu>`, which carries no role: the
-     * directive names an unnamed host with `aria-label`, and axe reports that on a
-     * role-less element as a serious `aria-prohibited-attr`.
-     */
+  describe('the trigger hint', () => {
+    /** On the trigger, not the role-less host, where axe would report `aria-prohibited-attr`. */
     it('renders a tooltip on the trigger when a hint is set', async () => {
       const menu = await render();
       menu.fixture.componentInstance.hint.set('Available when the response finishes');
@@ -222,10 +216,7 @@ describe('Menu', () => {
       expect(flyout?.textContent).toBe('Available when the response finishes');
     });
 
-    /**
-     * A `down` trigger is typically in a top bar with nothing above it, where a `top`
-     * flyout gets clamped back over the control it is describing.
-     */
+    /** A `down` trigger usually has nothing above it, where a `top` flyout would be clamped. */
     it('places the hint on the side the panel opens to', async () => {
       const menu = await render();
       menu.fixture.componentInstance.hint.set('Available when the response finishes');
@@ -239,11 +230,7 @@ describe('Menu', () => {
       );
     });
 
-    /**
-     * No consumer changes `direction` while a hint is on screen. This pins the wiring
-     * rather than the geometry: that a live change reaches the flyout at all. The
-     * re-measurement it triggers is covered in the directive.
-     */
+    /** Pins the wiring, not the geometry; the re-measurement is covered in the directive. */
     it('follows a direction change made while the hint is showing', async () => {
       const menu = await render();
       menu.fixture.componentInstance.hint.set('Available when the response finishes');
@@ -259,17 +246,10 @@ describe('Menu', () => {
       );
     });
 
-    /**
-     * Every menu in the application binds this input, and almost none passes a hint. A
-     * tooltip that rendered for an empty one would put an empty box under every kebab —
-     * and, before the guard, do a signal write and register a document listener per hover.
-     */
+    /** Almost no menu passes a hint, so an absent one must render nothing and do no work. */
     it('renders nothing, and does no work at all, without one', async () => {
       const menu = await render();
-      // The cost is the point: `Menu` binds this directive on every trigger in the app and
-      // passes a hint on almost none, so a hover that still wrote a signal and registered a
-      // document listener would do that on every kebab in a fifty-row sidebar. Asserting the
-      // absent flyout alone would pass with or without the guard, because the render-phase
+      // Spied because the absent flyout alone would pass without the guard: the render-phase
       // check removes it either way.
       const addEventListener = vi.spyOn(document, 'addEventListener');
 
@@ -284,9 +264,8 @@ describe('Menu', () => {
   });
 
   /**
-   * The one close path that does not go through `close()`: a consumer clearing the
-   * two-way model. It destroys the panel holding the focused item, so without a rescue
-   * focus lands on `<body>` and every key the trigger handles goes dead (WCAG 2.4.3).
+   * The one close path that bypasses `close()`; it destroys the panel holding focus, which would
+   * otherwise land on `<body>` (WCAG 2.4.3).
    */
   it('returns focus to the trigger when a consumer closes it through the model', async () => {
     const menu = await render();
@@ -457,9 +436,8 @@ describe('Menu with a projected trigger and checked items', () => {
   });
 
   it('anchors an upward panel by its bottom edge, so content growth extends up', async () => {
-    // Top-anchoring was the bug: the pickers swap panel content while open
-    // (retry → loading → rows), and a fixed top made the taller panel grow
-    // *down* over the trigger and composer.
+    // The pickers swap content while open, and a top-anchored panel would grow down over the
+    // trigger.
     const menu = await render();
     await menu.open();
 
@@ -490,9 +468,8 @@ describe('Menu with a projected trigger and checked items', () => {
     await menu.open();
     expect(document.activeElement?.id).toBe('first');
 
-    // Simulate the retry flow: the focused node goes away while the panel
-    // stays open, dropping focus to <body> — always alongside a re-render,
-    // which is what carries the fixup in zoneless.
+    // Simulates the retry flow dropping focus to <body>; the signal write supplies the re-render
+    // that carries the fixup in zoneless.
     (document.activeElement as HTMLElement).blur();
     menu.component.firstChecked.set(true);
     await menu.fixture.whenStable();

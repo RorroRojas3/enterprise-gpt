@@ -1,0 +1,108 @@
+using Enterprise.Gpt.Api.Startup;
+using Enterprise.Gpt.Common.Constants;
+using Enterprise.Gpt.Entity.ChatModels;
+using Enterprise.Gpt.Service.Conversations.Chat;
+using Enterprise.Gpt.Service.Conversations.Chat.Exceptions;
+using Enterprise.Gpt.Service.Documents.Summarization;
+using Enterprise.Gpt.Service.Documents.Summarization.Exceptions;
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
+using Xunit;
+
+namespace Enterprise.Gpt.Unit.Test.Api.Startup;
+
+public sealed class SummarizerBootstrapperTests : IDisposable
+{
+    private readonly SqliteDbContextFixture _fixture = new();
+    private readonly IChatClientResolver _chatClientResolver = Substitute.For<IChatClientResolver>();
+
+    public SummarizerBootstrapperTests()
+    {
+        _chatClientResolver.Resolve(Arg.Any<Guid>()).Returns(Substitute.For<IChatClient>());
+    }
+
+    public void Dispose()
+    {
+        _fixture.Dispose();
+    }
+
+    private ServiceProvider CreateServices(Guid modelId)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(_chatClientResolver);
+        services.AddSingleton<ISummarizerModelResolver>(_ => new SummarizerModelResolver(
+            _fixture.Context, Microsoft.Extensions.Options.Options.Create(new SummarizationOptions { ModelId = modelId })));
+
+        return services.BuildServiceProvider();
+    }
+
+    private async Task<Model> AddModelAsync(Guid providerId)
+    {
+        var date = DateTimeOffset.UtcNow;
+        var model = new Model
+        {
+            Id = Guid.NewGuid(),
+            ProviderId = providerId,
+            Name = "bootstrapper-under-test",
+            DeploymentName = "bootstrapper-under-test-deployment",
+            Description = "A summarizer under test.",
+            ContextWindowSize = 1_000m,
+            MaxOutputTokens = 100m,
+            IsUserSelectable = false,
+            DateCreated = date,
+            DateModified = date,
+            CreatedById = KnownIds.SeedUserId,
+            ModifiedById = KnownIds.SeedUserId
+        };
+
+        using var ctx = _fixture.CreateContext();
+        ctx.Models.Add(model);
+        await ctx.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return model;
+    }
+
+    [Fact]
+    public async Task ValidateAsync_SeededSummarizerAndRegisteredProvider_Succeeds()
+    {
+        using var services = CreateServices(KnownIds.SeedModelId);
+
+        await SummarizerBootstrapper.ValidateAsync(
+            services, NullLogger.Instance, TestContext.Current.CancellationToken);
+
+        _chatClientResolver.Received(1).Resolve(Providers.AzureOpenAI);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_UnknownModelId_ThrowsNamingTheConfiguredId()
+    {
+        var missingId = Guid.NewGuid();
+        using var services = CreateServices(missingId);
+
+        var exception = await Assert.ThrowsAsync<SummarizerNotConfiguredException>(
+            () => SummarizerBootstrapper.ValidateAsync(
+                services, NullLogger.Instance, TestContext.Current.CancellationToken));
+
+        Assert.Equal(missingId, exception.ModelId);
+    }
+
+    /// <summary>Without this, the bootstrapper's chat client resolution could be deleted unnoticed.</summary>
+    [Fact]
+    public async Task ValidateAsync_ProviderWithNoChatClient_ThrowsProviderNotConfigured()
+    {
+        var model = await AddModelAsync(Providers.AmazonBedrock);
+        _chatClientResolver.Resolve(Providers.AmazonBedrock)
+            .Returns(_ => throw new ProviderNotConfiguredException(Providers.AmazonBedrock));
+        using var services = CreateServices(model.Id);
+
+        var exception = await Assert.ThrowsAsync<ProviderNotConfiguredException>(
+            () => SummarizerBootstrapper.ValidateAsync(
+                services, NullLogger.Instance, TestContext.Current.CancellationToken));
+
+        Assert.Equal(Providers.AmazonBedrock, exception.ProviderId);
+    }
+}

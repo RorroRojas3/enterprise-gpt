@@ -1,6 +1,5 @@
 @if (turn.historyPending()) {
-  <!-- US-410: the stored messages are on their way. The host's aria-busy
-       covers the wait, which is why the skeleton itself is aria-hidden. -->
+  <!-- The host's aria-busy covers the wait, which is why the skeleton is aria-hidden. -->
   <div class="transcript__history-skeleton">
     <app-skeleton [lines]="2" width="60%" />
     <app-skeleton [lines]="4" />
@@ -8,9 +7,7 @@
 }
 
 @if (turn.historyError(); as historyError) {
-  <!-- The composer stays live beneath this: failing to read the past does not
-       stop the user taking a new turn, it only means they cannot see what
-       came before. -->
+  <!-- The composer stays live beneath this: failing to read history does not block a new turn. -->
   <app-error-panel
     class="transcript__history-error"
     [error]="historyError"
@@ -25,16 +22,15 @@
     @case ('user') {
       <div class="transcript__user-row">
         <div class="transcript__bubble">{{ entry.text }}</div>
-        <!-- US-607. Only the settled prompt gets one: the optimistic bubble
-             below is mid-turn, and the criterion is about a completed turn. -->
+        <!-- Only the settled prompt gets one: the optimistic bubble below is mid-turn. -->
         <div class="transcript__user-footer">
           <app-message-copy [text]="entry.text" subject="prompt" />
         </div>
       </div>
     }
     @case ('assistant') {
-      <!-- US-1103. Only this arm: a cut-off turn was never sent a `Finished`, so it holds
-           no message id and there is nothing to address a rating to. -->
+      <!-- Only this arm can be rated: a cut-off turn was never sent a `Finished`, so it holds
+           no message id. -->
       <app-assistant-turn
         [snapshot]="entry.snapshot"
         [timeline]="entry.timeline"
@@ -68,16 +64,14 @@
 @if (turn.pendingUserText(); as pending) {
   <div class="transcript__user-row">
     <div class="transcript__bubble">{{ pending }}</div>
-    <!-- Empty, and deliberately not a Copy control: the turn is not complete.
-         It is here so the row is the same height it will be once it settles,
-         rather than growing under the reader at the moment the answer lands. -->
+    <!-- Empty, not a Copy control: it holds the row at its settled height, so nothing shifts
+         when the answer lands. -->
     <div class="transcript__user-footer"></div>
   </div>
 }
 
 @if (turn.showThinking()) {
-  <!-- Frame 1e: the gap before the first activity or text is an animated
-       ridgeline — never a fabricated status line. -->
+  <!-- The gap before the first activity or text is a ridgeline, never a fabricated status. -->
   <div class="transcript__thinking">
     <div class="transcript__avatar">
       <app-brand-logo variant="mark" />
@@ -113,8 +107,5 @@
      abnormally, so the announcement is reliable. -->
 <p class="visually-hidden" role="status">{{ announcement() }}</p>
 
-<!-- US-603's copy confirmation. Separate from the region above, which is
-     deliberately emptied for the length of a turn — a copy can happen mid-turn,
-     and sharing the region would either be swallowed by that or break its own
-     rule. -->
+<!-- Separate from the region above, which is emptied for the turn; copies happen mid-turn. -->
 <p class="visually-hidden transcript__copy-status" role="status">{{ copyAnnouncement() }}</p>

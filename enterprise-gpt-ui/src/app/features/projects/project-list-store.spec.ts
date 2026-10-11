@@ -20,7 +20,7 @@ import { DEFAULT_PROJECT_SORT, PROJECT_SORTS, ProjectSortOption } from './projec
 
 const PROJECTS_URL = `${TEST_API_BASE_URL}/api/projects`;
 
-describe('ProjectListStore (US-901)', () => {
+describe('ProjectListStore', () => {
   let backend: HttpTestingController;
   let store: InstanceType<typeof ProjectListStore>;
   let term: ReturnType<typeof signal<string>>;
@@ -87,8 +87,7 @@ describe('ProjectListStore (US-901)', () => {
     const request = expectRequest();
     expect(request.request.params.get('take')).toBe(String(PROJECT_LIST_PAGE_SIZE));
     expect(request.request.params.get('skip')).toBe('0');
-    // Omitted, never sent empty: a blank `name=` still takes the server down its LIKE
-    // branch.
+    // Omitted, never sent empty: a blank `name=` still takes the server's LIKE branch.
     expect(request.request.params.has('name')).toBe(false);
 
     request.flush(projectPage([projectFixture()]));
@@ -107,7 +106,7 @@ describe('ProjectListStore (US-901)', () => {
   it('fetches only the first page, leaving the rest behind the control', () => {
     loadFirstPage(250);
 
-    // One request, not the five a drain would fire before the reader asked for anything.
+    // One request until the reader asks for more.
     backend.verify();
     expect(store.entities().length).toBe(PROJECT_LIST_PAGE_SIZE);
     expect(store.hasMore()).toBe(true);
@@ -164,8 +163,7 @@ describe('ProjectListStore (US-901)', () => {
 
     store.loadMore();
     TestBed.tick();
-    // `skip` has not moved yet, so a second request would fetch the same window twice
-    // and `addEntities` would silently no-op on every id.
+    // `skip` has not moved yet, so a second request would fetch the same window twice.
     backend.expectNone(() => true);
 
     inFlight.flush(projectPage([], { totalCount: 60, pageSize: PROJECT_LIST_PAGE_SIZE, skip: 25 }));
@@ -197,8 +195,6 @@ describe('ProjectListStore (US-901)', () => {
     TestBed.tick();
     await Promise.resolve();
 
-    // The cards already on screen belong to a query that succeeded, so swapping the grid
-    // for an error panel would throw away a usable result set.
     expect(store.entities().length).toBe(PROJECT_LIST_PAGE_SIZE);
     expect(store.error()).toBeNull();
     expect(store.loadingMore()).toBe(false);
@@ -215,8 +211,7 @@ describe('ProjectListStore (US-901)', () => {
     term.set('helios');
     TestBed.tick();
 
-    // Without `_querySuperseded$` this page would land after the new query's
-    // `setAllEntities` and append a window from a grid that no longer exists.
+    // Otherwise it lands after the new query's `setAllEntities` and appends a stale window.
     expect(page.cancelled).toBe(true);
     expect(store.loadingMore()).toBe(false);
 
@@ -242,8 +237,7 @@ describe('ProjectListStore (US-901)', () => {
     TestBed.inject(Dispatcher).dispatch(projectEvents.deleted(doomed?.id ?? ''));
     TestBed.tick();
 
-    // The page's URL was built against the pre-removal offset, so letting it land would
-    // skip the card that slid into the gap — a hole the reader could never scroll to.
+    // Built on the pre-removal offset, it would skip the card that slid into the gap.
     expect(page.cancelled).toBe(true);
     expect(store.loadingMore()).toBe(false);
     expect(store.skip()).toBe(PROJECT_LIST_PAGE_SIZE - 1);
@@ -280,8 +274,7 @@ describe('ProjectListStore (US-901)', () => {
 
       expect(store.entities()[0]?.id).toBe(created.id);
       expect(store.totalCount()).toBe(2);
-      // The listing shape, not the detail one: `instructions` must not ride into a
-      // list entity, where the next reader would take it for authoritative.
+      // The listing shape: `instructions` must not ride into a list entity.
       expect('instructions' in (store.entities()[0] ?? {})).toBe(false);
     });
 
@@ -329,14 +322,13 @@ describe('ProjectListStore (US-901)', () => {
     });
   });
 
-  describe('the order (US-902)', () => {
+  describe('the order', () => {
     it('sends the default order even when the URL names none', () => {
       bind();
 
       const request = expectRequest();
-      // Spelled out on the wire rather than left to the server's own default: the grid's
-      // default is "Last updated", and `GET api/projects` with no parameters answers
-      // most recently *created* first.
+      // Explicit: the grid defaults to "Last updated", but the bare endpoint answers
+      // newest-created first.
       expect(request.request.params.get('sort')).toBe('updated');
       expect(request.request.params.get('dir')).toBe('desc');
 
@@ -361,8 +353,7 @@ describe('ProjectListStore (US-901)', () => {
       store.loadMore();
       TestBed.tick();
 
-      // A page fetched without it would splice a differently-ordered run underneath the
-      // first, which is the failure the control was refused over until US-706.
+      // Without it the page would splice a differently-ordered run under the first.
       const second = expectRequest();
       expect(second.request.params.get('sort')).toBe('favorite');
       expect(second.request.params.get('dir')).toBe('desc');
@@ -402,8 +393,8 @@ describe('ProjectListStore (US-901)', () => {
     });
 
     it('leaves a starred card where it is, rather than re-draining to move one row', () => {
-      // Under Favourites first a star does change the server's order. Re-draining up to
-      // five pages would rearrange the grid under the cursor that pressed the star.
+      // A star does change the server's order here, but refetching would rearrange the grid
+      // under the cursor that pressed it.
       sort.set(option('favorites'));
       bind();
       const first = projectFixture({ isFavorite: true });
@@ -431,8 +422,7 @@ describe('ProjectListStore (US-901)', () => {
     TestBed.inject(Dispatcher).dispatch(sessionEvents.signedOut());
     TestBed.tick();
 
-    // Clearing state is not cancelling work: `withResetOnSignOut` empties the store and
-    // the response would write the previous user's cards straight back over it.
+    // The reset cancels nothing, so the response would write the previous user's cards back.
     expect(inFlight.cancelled).toBe(true);
     expect(store.entities()).toEqual([]);
     expect(store.loadingMore()).toBe(false);

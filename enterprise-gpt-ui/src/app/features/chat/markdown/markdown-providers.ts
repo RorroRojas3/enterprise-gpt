@@ -13,14 +13,8 @@ import { mathExtension } from './math-extension';
 import './prism';
 
 /**
- * The elements model-authored markdown is allowed to become (US-601).
- *
- * Every entry is something marked emits from markdown syntax; the list is the
- * closed set, so a tag that is not here cannot reach the DOM however it was
- * spelled in the source. `img` is deliberately absent: FR-51 says the client
- * issues no third-party requests at run time, and a remote image in a model
- * answer — or in a tool result the model is repeating — is both such a request
- * and a way to signal an external host that the answer was read.
+ * The closed set of elements model markdown may become. `img` is absent: a remote image is a
+ * third-party request and a beacon telling its host the answer was read.
  */
 export const CHAT_ALLOWED_TAGS: readonly string[] = [
   'p',
@@ -49,55 +43,17 @@ export const CHAT_ALLOWED_TAGS: readonly string[] = [
   'em',
   'del',
   'input',
-  // US-603's code-block chrome, and the only two entries here that markdown
-  // syntax does not produce: `renderer.code` emits them. Model text cannot,
-  // because raw HTML never becomes markup at all — `renderer.html` drops it at
-  // the parser.
-  //
-  // Note what that costs: these two are the one place the layers stop being
-  // independent. Everything else here is safe whether or not the parser layer
-  // holds; `div` and `button` are safe *because* it holds. A regression there —
-  // a marked upgrade routing a token kind past `renderer.html`, or someone
-  // relaxing the override — would let model text mint a `.md-code` wrapper that
-  // the transcript's delegated copy listener would then serve. The
-  // markdown-security spec drives a raw `<button>` through the real pipeline for
-  // exactly that reason, so the regression fails a test rather than shipping.
-  //
-  // `span` stays out for the reason it always was: Prism highlights the DOM
-  // *after* sanitizing, so it needs no allowance and a `<span>` in the source has
-  // no business surviving.
+  // `renderer.code`'s chrome, which markdown syntax cannot produce. Safe only while
+  // `renderer.html` drops raw HTML; markdown-security.spec drives a raw `<button>` to pin that.
+  // `span` stays out: Prism highlights after sanitizing.
   'div',
   'button',
 ];
 
 /**
- * The attributes those elements may keep.
- *
- * Each one is traceable to a specific thing marked renders: `href`/`title` to
- * links, `class` to the `language-*` marker on a fenced block, `type`/`checked`/
- * `disabled` to GFM task lists, `start` to an ordered list that does not begin at
- * one, and `align` to a table column. Prism's own `span.token` markup needs no
- * allowance here — highlighting runs on the DOM *after* sanitizing, which is also
- * why `span` is not in {@link CHAT_ALLOWED_TAGS}.
- *
- * `href` being allowed is not the same as any href being allowed: DOMPurify's
- * default URI test still rejects `javascript:` and friends, dropping the attribute
- * and leaving the link text inert.
- *
- * ARIA attributes are deliberately absent from this list and survive anyway,
- * through DOMPurify's `ALLOW_ARIA_ATTR` default — which the task-list checkbox
- * below depends on for its label. Turning that default off would strip the label
- * silently, so the checkbox spec asserts it rather than trusting it.
- *
- * `tabindex` is the one entry markdown syntax cannot produce, and it is here for
- * the same reason `div` and `button` are in {@link CHAT_ALLOWED_TAGS}: US-603's
- * chrome and US-1401's scrollable `<pre>` are emitted by `renderer.code`, and
- * model text cannot mint either, because `renderer.html` drops raw HTML at the
- * parser. Note what that costs — a regression there would let model text mint a
- * focusable element — and note what it does *not* cost: `tabindex` is not a
- * script vector, and `role` is deliberately still absent, so nothing here can
- * claim a semantic it does not have. `markdown-security.spec.ts` drives a raw
- * `<pre tabindex="0">` through the real pipeline for exactly this.
+ * Each traces to something marked renders; DOMPurify still rejects `javascript:` hrefs, and ARIA
+ * survives through its `ALLOW_ARIA_ATTR` default. `tabindex` is for `renderer.code`'s scrollable
+ * `<pre>` and, like `div`/`button`, is safe only while `renderer.html` drops raw HTML.
  */
 export const CHAT_ALLOWED_ATTR: readonly string[] = [
   'href',
@@ -111,13 +67,7 @@ export const CHAT_ALLOWED_ATTR: readonly string[] = [
   'tabindex',
 ];
 
-/**
- * The second of US-601's two layers: whatever HTML survives parsing is filtered
- * against the profile above before it is written to the DOM.
- *
- * Configuration is passed per call rather than through `DOMPurify.setConfig`, so
- * this profile cannot leak onto — or be widened by — any other caller.
- */
+/** The DOM-boundary layer; config is per call, not `setConfig`, so no other caller widens it. */
 export function sanitizeChatMarkdown(html: string): string {
   return DOMPurify.sanitize(html, {
     ALLOWED_TAGS: [...CHAT_ALLOWED_TAGS],
@@ -131,108 +81,54 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/**
- * What a fence's info string may contribute to a `language-*` class. Anything
- * else — including the rest of an info string after the first token — is not a
- * language and is dropped rather than escaped into an attribute.
- */
+/** The language token of a fence's info string; the rest is dropped, never escaped into markup. */
 const LANGUAGE = /^[\w+#.-]+/;
 
-/** The fence info string `MarkdownExtras` renders as a diagram (US-605). */
+/** The fence info string `MarkdownExtras` renders as a diagram. */
 export const DIAGRAM_LANGUAGE = 'mermaid';
 
 /**
- * The first of the two layers, and the reason the second is never asked to carry
- * the boundary alone.
- *
- * marked has no `html: false` switch, so raw HTML in the source is suppressed at
- * the parser instead: `html` is the one renderer marked routes both block-level
- * and inline raw-HTML tokens through, and returning an empty string drops them
- * outright. `<script>alert(1)</script>` never becomes markup at all, and an inline
- * `<em>x</em>` degrades to its text.
- *
- * The override has to be an *own* property of the renderer — `ngx-markdown` hands
- * marked a spread of the instance, which copies own properties and leaves the
- * prototype's defaults in place for every token kind not named here.
+ * The parser layer. marked has no `html: false`, so `renderer.html` drops block and inline raw
+ * HTML. Overrides must be own properties: `ngx-markdown` hands marked a spread of the renderer.
  */
 export function chatMarkedOptionsFactory(): MarkedOptions {
   const renderer = new MarkedRenderer();
   renderer.html = () => '';
 
-  // A task-list checkbox is a real, if disabled, form control, and a control with
-  // no label is a failure however inert it is. It is named rather than hidden:
-  // the checkbox is the *only* thing carrying done-ness — the text beside it
-  // reads the same either way — so hiding it would take the state away from a
-  // screen reader entirely.
+  // Named rather than hidden: a disabled control still needs a label, and the checkbox alone
+  // carries done-ness.
   renderer.checkbox = ({ checked }) =>
     `<input aria-label="${checked ? 'Completed' : 'Not completed'}" disabled="" type="checkbox"${
       checked ? ' checked=""' : ''
     }>`;
 
-  // Headings inside an answer are not headings of the page: the conversation
-  // title is the h1, so a model's `#` would open a second one. Shifting by one
-  // slots the answer's own hierarchy directly beneath the title without leaving
-  // a gap — a jump from h1 straight to h3 is itself a heading-order failure.
-  //
-  // A `function`, not an arrow: marked binds the live renderer as `this`, and
-  // `this.parser` is the parser carrying *these* options. The static
-  // `Parser.parseInline` would build a fresh one with marked's defaults, quietly
-  // exempting everything inside a heading from the raw-HTML suppression below.
+  // The conversation title is the page's h1, so answer headings shift down one level.
+  // A `function`: `this.parser` carries these options, whereas the static `Parser.parseInline`
+  // would use marked's defaults and skip the raw-HTML suppression inside headings.
   renderer.heading = function (this: MarkedRenderer, { tokens, depth }) {
     const level = Math.min(depth + 1, 6);
     return `<h${level}>${this.parser.parseInline(tokens)}</h${level}>\n`;
   };
 
-  // Images are dropped by the sanitizer so the client issues no third-party
-  // request (FR-51). Rendering the alt text keeps the description the model
-  // wrote, instead of leaving an empty paragraph where content used to be — but
-  // that text is raw source, so it is escaped here rather than handed to the
-  // sanitizer as markup to judge.
+  // The sanitizer drops `img`; the alt text keeps the model's description, escaped as raw source.
   renderer.image = ({ text, title }) => escapeHtml(text || title || '');
 
-  // A fenced block becomes frame 1b's chrome — a `--code-head` bar carrying the
-  // language and a Copy control — rather than a bare `<pre>` (US-603). It is
-  // emitted *here* rather than grafted onto the rendered DOM afterwards, which
-  // is what keeps it out of the streaming tail's per-flush re-render path and
-  // is what the story's first criterion requires.
-  //
-  // The `language-*` class goes on the `<pre>` as well as the `<code>`: that is
-  // Prism's canonical markup, and `_prism.scss` matches on it.
+  // The code chrome is emitted here, not grafted onto the DOM, so it stays off the streaming
+  // tail's per-flush path. `language-*` goes on `<pre>` too: `_prism.scss` matches on it.
   renderer.code = ({ text, lang, escaped }) => {
-    // A language identifier, or nothing. Restricting the character set rather
-    // than escaping it means the info string can never reach an attribute at
-    // all — ` ```a"onload=… ` is simply not a language.
+    // A restricted character set, not escaping, so ` ```a"onload=… ` never reaches an attribute.
     const language = LANGUAGE.exec(lang ?? '')?.[0] ?? '';
     const marker = language === '' ? '' : ` class="language-${language}"`;
     const body = escaped ? text : escapeHtml(text);
     const label = language === '' ? '' : `<code class="md-code__lang">${language}</code>`;
-    // An answer with six code blocks otherwise offers six controls all called
-    // "Copy" — indistinguishable in a screen reader's list of buttons. The
-    // language is the only thing that tells them apart, and ARIA attributes
-    // survive the sanitizer through its `ALLOW_ARIA_ATTR` default.
+    // Several "Copy" buttons are indistinguishable to a screen reader without the language.
     const name = language === '' ? 'Copy code block' : `Copy ${language} code block`;
-    // A mermaid fence is marked and otherwise left exactly as any other block
-    // (US-605). That is the whole of this renderer's involvement: it reads no
-    // configuration and renders no diagram, so with the flag off — or before
-    // `MarkdownExtras` has loaded anything — the block *is* a code block, with
-    // no disabled branch to get wrong and no error to report. It is also why a
-    // diagram that fails to parse can show its source: the source never left.
+    // Only marked: with the flag off or before `MarkdownExtras` loads it stays a code block, and
+    // a diagram that fails to parse still shows its source.
     const diagram = language === DIAGRAM_LANGUAGE ? ' md-diagram' : '';
-    // US-1401 / WCAG 2.1.1. `_markdown.scss` gives the `<pre>` `overflow: auto`,
-    // so a block wider than the column scrolls — and without `tabindex` a
-    // keyboard user cannot reach the rest of a long line at all. This is the
-    // only reason `tabindex` is in `CHAT_ALLOWED_ATTR`.
-    //
-    // **Focusable and unnamed, deliberately.** The obvious next move — an
-    // `aria-label` saying "ts code block" — is invalid: HTML-AAM maps `<pre>` to
-    // `role="generic"`, whose name is *prohibited* in ARIA 1.2, and axe's
-    // `aria-prohibited-attr` rule fails it. The two ways to name it are both
-    // worse here: `role="region"` makes every code block a landmark, and
-    // `role="group"` would put a second entry in the sanitizer profile to
-    // announce a scroll box. Nothing is lost — `tabindex` alone is what SC 2.1.1
-    // and axe's `scrollable-region-focusable` ask for, the block's own content is
-    // what a reader hears on arrival, and the Copy control beside it already
-    // carries "Copy ts code block" as its name.
+    // A wide block scrolls, so the `<pre>` takes `tabindex` for keyboard users (SC 2.1.1). It
+    // stays unnamed: ARIA 1.2 prohibits naming its generic role, a `region` would make every
+    // block a landmark, and the Copy control already carries the name.
     return (
       `<div class="md-code${diagram}"><div class="md-code__head">${label}` +
       `<button class="md-code__copy" type="button" aria-label="${name}">Copy</button></div>` +
@@ -244,39 +140,26 @@ export function chatMarkedOptionsFactory(): MarkedOptions {
   return {
     renderer,
     gfm: true,
-    // Model output leans on single newlines for structure far more than prose
-    // markdown does, and the transcript rendered them literally before US-601;
-    // collapsing them now would silently reflow answers users had already read.
+    // Model output leans on single newlines for structure far more than prose markdown does.
     breaks: true,
     pedantic: false,
   };
 }
 
 /**
- * Markdown rendering for the chat transcript, sanitized both at the parser and at
- * the DOM boundary (US-601).
- *
- * This is attached to the `Chat` component rather than to the application config
- * on purpose. `ngx-markdown`, marked, Prism and DOMPurify together are a
- * substantial dependency, the initial bundle has little headroom left under its
- * 720 kB ceiling, and only the chat route ever renders markdown — so the whole
- * renderer rides the lazy chat chunk. `scripts/check-initial-chunk.mjs` fails the
- * build if any of it is ever reachable from `main.ts` by a static import.
+ * Chat markdown, sanitized at the parser and the DOM. Provided on `Chat`, not app config, so the
+ * whole stack rides the lazy chunk; `scripts/check-initial-chunk.mjs` fails a static import.
  */
 export function provideChatMarkdown(): Provider[] {
   return [
     ...provideMarkdown({
       markedOptions: { provide: MARKED_OPTIONS, useFactory: chatMarkedOptionsFactory },
-      // Math has to be captured before marked's own rules rewrite it, which only a
-      // tokenizer can do — see `math-extension.ts`. It runs unconditionally: the
-      // placeholder it emits renders as ordinary text when the flag is off, and
-      // KaTeX itself is still behind the dynamic import.
+      // Only a tokenizer captures math before marked rewrites it. Unconditional: with the flag
+      // off its placeholder renders as plain text, and KaTeX stays behind the dynamic import.
       markedExtensions: [{ provide: MARKED_EXTENSIONS, multi: true, useFactory: mathExtension }],
       sanitize: { provide: SANITIZE, useValue: sanitizeChatMarkdown },
     }),
-    // US-605's deferred renderers ride the same route for the same reason, and
-    // folding them in here means a surface that renders answers cannot acquire
-    // one without the other.
+    // Bundled so a surface that renders answers cannot get one without the other.
     LazyRendererLoader,
   ];
 }

@@ -17,7 +17,7 @@ import { ModelFormDialog } from './model-form-dialog';
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
 const BAD_REQUEST = { status: 400, statusText: 'Bad Request' };
 
-describe('ModelFormDialog (US-1207)', () => {
+describe('ModelFormDialog', () => {
   let backend: HttpTestingController;
   let fixture: ComponentFixture<ModelFormDialog>;
   let actions: InstanceType<typeof ModelActionsStore>;
@@ -129,8 +129,7 @@ describe('ModelFormDialog (US-1207)', () => {
       'model-form-tools',
       'model-form-default',
       'model-form-selectable',
-      // Not on the board, but on both request DTOs — and `ModelMapper` assigns them
-      // unconditionally, so a form without them clears or falsifies stored values.
+      // Not in the design, but `ModelMapper` assigns them unconditionally on both verbs.
       'model-form-reasoning',
       'model-form-input-price',
       'model-form-output-price',
@@ -142,7 +141,7 @@ describe('ModelFormDialog (US-1207)', () => {
   it('has no API key, endpoint URL or “available to” field', async () => {
     await openCreate();
 
-    // Frame `5f`'s caption: none of the three exists in this system.
+    // None of the three exists in this system.
     const text = host().textContent ?? '';
     expect(text).not.toMatch(/API key/i);
     expect(text).not.toMatch(/endpoint/i);
@@ -170,14 +169,10 @@ describe('ModelFormDialog (US-1207)', () => {
     await type('model-form-context', '400000.5');
     await blur('model-form-context');
 
-    // The server would accept this: the column is decimal(18,2) and the validator carries
-    // only GreaterThan(0). The rule is the client's, and `backend.verify()` proves the
-    // request never went out.
+    // A client-only rule the server would not enforce; `backend.verify()` proves nothing went out.
     expect(errors()).toContain('Must be a whole number of tokens.');
-    // The rejected text is still in the field, as frame `5f` draws it — which is why the
-    // numeric fields are bound as text: `type="number"` would have discarded it.
+    // Still in the field, which `type="number"` would have discarded.
     expect(field('model-form-context').value).toBe('400000.5');
-    // And Save cannot send it.
     expect(submitButton().disabled).toBe(true);
   });
 
@@ -189,8 +184,7 @@ describe('ModelFormDialog (US-1207)', () => {
     await blur('model-form-input-price');
     expect(errors()).toContain('A price cannot be negative.');
 
-    // Zero is a real price — a genuinely free deployment — which is why blank cannot be
-    // normalised to it.
+    // Zero is a real price, which is why blank cannot be normalised to it.
     await type('model-form-input-price', '0');
     expect(errors()).not.toContain('A price cannot be negative.');
     expect(submitButton().disabled).toBe(false);
@@ -234,8 +228,7 @@ describe('ModelFormDialog (US-1207)', () => {
     await type('model-form-name', 'Renamed');
     const request = await submit();
 
-    // The PUT is a full representation: `ModelMapper` assigns every field, so a body
-    // without these three would clear the prices and read reasoning as false.
+    // A full-representation PUT: omitting these would clear the prices and reasoning.
     expect(request.request.body).toMatchObject({
       name: 'Renamed',
       isReasoningEnabled: true,
@@ -247,9 +240,8 @@ describe('ModelFormDialog (US-1207)', () => {
   });
 
   /**
-   * US-104's own acceptance criterion, and the only test that exercises the binding: the
-   * existence and role assertions above pass just as well against a switch wired to
-   * `isToolEnabled`, which also defaults on.
+   * The only test of this binding: the assertions above also pass against a switch wired to
+   * `isToolEnabled`, which defaults on too.
    */
   it('sends the picker toggle as the reader left it', async () => {
     const target = modelFixture({ isUserSelectable: false });
@@ -278,11 +270,7 @@ describe('ModelFormDialog (US-1207)', () => {
     await fixture.whenStable();
   });
 
-  /**
-   * `GET api/models` filters a hidden row out, so a hidden default resolves to no default at
-   * all and every composer refuses to send. Both server validators refuse the combination;
-   * this keeps it from being a save that leaves and comes back as a banner.
-   */
+  /** A hidden default resolves to no default on `GET api/models`, so no composer could send. */
   it('refuses to save a default model that is hidden from the picker', async () => {
     await openEdit(modelFixture({ isDefault: true, isUserSelectable: true }));
     await check('model-form-selectable', false);
@@ -325,8 +313,7 @@ describe('ModelFormDialog (US-1207)', () => {
     // The message belongs to `deploymentName`, so no other field wears it.
     expect(field('model-form-name').classList).not.toContain('is-invalid');
 
-    // Signal Forms has no `setErrors`, so the message is reported by a rule that only
-    // fires while the field still holds the exact value that was sent.
+    // The rule only fires while the field holds the exact value that was sent.
     await type('model-form-deployment', 'claude-sonnet-4-5-v2');
     expect(errors()).not.toContain('That deployment name is already in use.');
   });
@@ -358,9 +345,7 @@ describe('ModelFormDialog (US-1207)', () => {
     );
     await fixture.whenStable();
 
-    // `EnsureProviderExistsAsync` throws this for a provider the deployment has
-    // deactivated since this build's list was written. It carries no `errors` dictionary,
-    // so it cannot travel the `serverMessagesFor` path — but it is about this field.
+    // A deactivated provider's 404 has no `errors` dictionary, but it is about this field.
     expect(errors()).toContain('Provider not found.');
     expect(field('model-form-provider').classList).toContain('is-invalid');
   });
@@ -373,8 +358,7 @@ describe('ModelFormDialog (US-1207)', () => {
     request.error(new ProgressEvent('error'));
     await fixture.whenStable();
 
-    // Twelve fields behind a dialog that used to close on any non-validation failure, and
-    // `retryInterceptor` does not retry a POST. The reader keeps what they typed.
+    // `retryInterceptor` does not retry a POST, so the reader must keep what they typed.
     expect(field('model-form-name').value).toBe('Claude Sonnet 4.5');
     expect(field('model-form-description').value).toBe('A description worth not retyping.');
     expect(submitButton().disabled).toBe(false);
@@ -393,8 +377,7 @@ describe('ModelFormDialog (US-1207)', () => {
     );
     await fixture.whenStable();
 
-    // The four toggles are bound but have no `fieldErrors()` entry, so treating them as
-    // "modelled" would mark this matched and render it nowhere.
+    // The toggles have no `fieldErrors()` entry, so this must stay unmatched to render at all.
     expect(errors()).toContain('A default model must have tools enabled.');
   });
 
@@ -406,8 +389,7 @@ describe('ModelFormDialog (US-1207)', () => {
     await fixture.whenStable();
     await openCreate();
 
-    // The component is mounted once and lives as long as the tab, so a second open has
-    // to reseed rather than inherit.
+    // Mounted once for the tab, so a second open must reseed rather than inherit.
     expect(field('model-form-name').value).toBe('');
     expect(field('model-form-deployment').value).toBe('');
     // The column's own default: a model that cannot call tools is the exception.
@@ -433,7 +415,7 @@ describe('ModelFormDialog (US-1207)', () => {
     const options = [...host().querySelectorAll('#model-form-provider option')].map((node) =>
       node.textContent?.trim(),
     );
-    // There is no `GET api/providers`, so this list is the only source there is.
+    // No endpoint lists providers, so this list is the only source.
     expect(options).toContain('Azure AI Foundry');
     expect(options).toContain('Anthropic');
   });

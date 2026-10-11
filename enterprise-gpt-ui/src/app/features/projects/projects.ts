@@ -43,28 +43,9 @@ import {
 const SKELETON_CARDS = 6;
 
 /**
- * The projects grid, frame `4c` (US-901).
- *
- * **The URL is the source of truth for the query**, on exactly the contract the
- * conversations library set: `withComponentInputBinding()` binds `?name=` to
- * {@link name}, which drives the store; the `searched` handler is the only writer; and
- * the loop cannot feed itself because a navigation re-seeds `SearchInput`'s
- * `linkedSignal`, whose debounce then finds the text unchanged and emits nothing. Two
- * rules keep that true: bind `[value]` one-way, never `[(value)]`, and never navigate
- * from an effect over `name()` — only from the user's own gesture.
- *
- * **The sort is a second URL parameter on the same contract (US-902).** `?sort=` names
- * one of {@link PROJECT_SORTS} and the store turns it into the API's `sort=`/`dir=` pair.
- * History follows the search term's rule rather than pushing unconditionally: turning an
- * order **on** or **off** pushes, so Back returns the reader to the grid as it was, while
- * moving between two orders replaces — which matters because a closed `<select>` fires
- * `change` on every arrow key, and three pushes for one gesture would bury the unsorted
- * grid under entries nobody chose.
- *
- * Two departures from frame `4c` and `4d` are deliberate, and both are the board being
- * older than the API: the select is **never disabled**, since US-706 made the order the
- * server's rather than a comparator over a partial set; and the fourth option reads
- * "Favourites first" where the board says "Pinned".
+ * The URL is the query's source of truth: `?name=` and `?sort=` bind to inputs that drive the
+ * store, and only user gestures navigate. The loop cannot feed itself while `SearchInput`'s
+ * `[value]` stays one-way and nothing navigates from an effect over `name()`.
  */
 @Component({
   selector: 'app-projects',
@@ -85,22 +66,12 @@ const SKELETON_CARDS = 6;
   styleUrl: './projects.scss',
 })
 export class Projects {
-  /**
-   * Bound from `?name=` by `withComponentInputBinding()`.
-   *
-   * Trimmed in the transform because the router writes `undefined` when the key leaves
-   * the URL, and a hand-edited `?name=%20%20` has to mean unfiltered.
-   */
+  /** Trimmed: the router writes `undefined` when the key leaves, and `?name=%20` is unfiltered. */
   readonly name = input('', {
     transform: (value: string | undefined) => value?.trim() ?? '',
   });
 
-  /**
-   * Bound from `?sort=` by `withComponentInputBinding()`.
-   *
-   * Resolved to an option rather than kept as a string, so the select and the request
-   * cannot disagree about what a hand-edited value means.
-   */
+  /** Resolved to an option, so the select and the request agree on a hand-edited value. */
   readonly sort = input(DEFAULT_PROJECT_SORT, { transform: toProjectSort });
 
   protected readonly projects = inject(ProjectListStore);
@@ -118,26 +89,14 @@ export class Projects {
 
   protected readonly skeletonCards = Array.from({ length: SKELETON_CARDS });
 
-  /** Frame `4c`'s four options, rendered in the order the board lists them. */
   protected readonly sortOptions = PROJECT_SORTS;
 
-  /**
-   * Frame `4b`'s heading, naming the term.
-   *
-   * Read from the **store**, not from {@link name}: the store's copy is the one the
-   * rendered cards belong to, so the heading cannot name a term whose results have not
-   * arrived yet.
-   */
+  /** Names the store's term, which the rendered cards belong to, not {@link name}'s. */
   protected readonly noMatchHeading = computed(() => `No projects match “${this.projects.name()}”`);
 
   /**
-   * One "Updated …" label per card, computed once per result set.
-   *
-   * A `Date.now()` read from a template binding would be a fresh value on every change
-   * detection pass, which `provideCheckNoChangesConfig({ exhaustive: true })` compares
-   * between passes — and would recompute every label on every unrelated render. The
-   * clock is sampled once per result set instead; labels are minute-granular at their
-   * finest, so nothing visible is lost.
+   * The clock is sampled once per result set: a template `Date.now()` changes every pass, which
+   * exhaustive checkNoChanges rejects. Labels are minute-granular, so nothing visible is lost.
    */
   private readonly _updatedLabels = computed(() => {
     const now = Date.now();
@@ -156,24 +115,16 @@ export class Projects {
   }
 
   /**
-   * The card's link, as a string rather than a commands array.
-   *
-   * `ProjectCard.link` is a signal `input()`, so a fresh `[route, id]` literal fails
-   * `Object.is` on every change-detection pass — writing the input, marking every card
-   * dirty and re-running `RouterLink`'s href update, which is OnPush defeated across the
-   * whole grid.
+   * A string, not a commands array: a fresh array literal fails the signal input's `Object.is`
+   * every pass and dirties every card in the grid.
    */
   protected linkFor(project: ProjectSummaryDto): string {
     return `${PROJECTS_ROUTE}/${project.id}`;
   }
 
   /**
-   * A delete the reader confirmed, so focus can be caught if its card was the last one.
-   *
-   * Armed at the gesture rather than inferred from the grid emptying: the removal is
-   * confirmed elsewhere — `ProjectActionsStore.confirmDelete` announces it as
-   * `projectEvents.deleted` — so by the time the card goes there is nothing left to
-   * tell this screen that the reader was the cause.
+   * Armed at the gesture: the removal arrives later as `projectEvents.deleted`, with nothing to
+   * say the reader caused it.
    */
   private readonly _focusAfterEmptied = signal(false);
 
@@ -181,22 +132,16 @@ export class Projects {
   private readonly _focusAfterPage = signal(false);
 
   constructor() {
-    // The constructor is an injection context, which a signal-valued reactive method
-    // requires: it binds the subscription to this screen rather than to the injector
-    // that outlives it. Handing over a computation — not the value — is what makes a
-    // deep link one drain rather than an unfiltered one followed by a filtered one.
+    // A computation, so a deep link fires one request rather than unfiltered then filtered.
     this.projects.bindQuery(() => ({ name: this.name(), sort: this.sort() }));
 
-    // Focus, not state — the one thing a signal cannot express declaratively. A card
-    // removed by a delete can be the node the reader was standing on, and an emptied
-    // grid leaves focus on `<body>`; the search field is the only control outside every
-    // branch of the template.
+    // An emptied grid leaves focus on `<body>`; the search field is the only control outside
+    // every branch of the template.
     effect(() => {
       const emptied = this.projects.entities().length === 0;
 
-      // Disarmed as soon as the grid is not empty, which is what stops a flag left over
-      // from a cancelled or failed delete from firing against some later, unrelated
-      // emptying — a search with no matches, or another tab's delete.
+      // Disarmed once non-empty, so a flag left by a cancelled delete cannot fire on a later,
+      // unrelated emptying.
       if (!emptied) {
         this._focusAfterEmptied.set(false);
 
@@ -211,13 +156,10 @@ export class Projects {
       afterNextRender(() => this._focusField(), { injector: this._injector });
     });
 
-    // The other control on this screen that removes itself: Load more goes when the last
-    // page lands, leaving the reader who pressed it standing on a node that no longer
-    // exists and focus on `<body>`.
+    // Load more removes itself when the last page lands, dropping focus on `<body>`.
     effect(() => {
       const settled = !this.projects.loadingMore();
-      // Untracked, so clearing the request below cannot re-enter this effect, and so the
-      // only thing it waits on is the page.
+      // Untracked, so clearing it below cannot re-enter and only the page is awaited.
       const requested = untracked(this._focusAfterPage);
 
       if (!settled || !requested) {
@@ -226,8 +168,7 @@ export class Projects {
 
       this._focusAfterPage.set(false);
 
-      // Still there and still focused: the reader is paging through, and moving focus off
-      // the control they are pressing would be the worse defect.
+      // Still there: moving focus off the control being pressed would be the worse defect.
       if (untracked(this.projects.hasMore)) {
         return;
       }
@@ -238,28 +179,18 @@ export class Projects {
 
   protected onLoadMore(): void {
     this.projects.loadMore();
-    // Only when a page actually started. The control carries `aria-disabled` rather than
-    // `disabled`, so a press during a narrowing search still reaches this — and
-    // `loadMore()` no-ops there, leaving a flag that would never be cleared.
+    // Only if a page started: `aria-disabled` lets a press through mid-search, where
+    // `loadMore()` no-ops and the flag would never clear.
     this._focusAfterPage.set(this.projects.loadingMore());
   }
 
-  /**
-   * Opens the delete confirmation, arming the focus fixup in case this is the last card.
-   */
+  /** Arms the focus fixup in case this is the last card. */
   protected beginDelete(project: ProjectSummaryDto): void {
     this._focusAfterEmptied.set(this.projects.entities().length === 1);
     this.actions.beginDelete(project);
   }
 
-  /**
-   * Opens the edit dialog, arming the same fixup when a rename could evict the card.
-   *
-   * It can: under an active search the store drops a row renamed out of the term, so
-   * renaming the last matching project empties the grid and leaves focus on the kebab
-   * item inside a card that no longer exists. Without a term nothing can leave, so the
-   * flag stays down.
-   */
+  /** Under an active search a rename can evict the last card, stranding focus in its kebab. */
   protected beginEdit(project: ProjectSummaryDto): void {
     this._focusAfterEmptied.set(this.projects.hasTerm() && this.projects.entities().length === 1);
     this.actions.beginEdit(project);
@@ -275,14 +206,7 @@ export class Projects {
     );
   }
 
-  /**
-   * Records the chosen order in the URL, which is what re-runs the query.
-   *
-   * The value is checked against the offered set rather than trusted: a `change` event
-   * carrying anything else can only come from a tampered DOM, and sending it would take
-   * a 400 the reader could not explain. `Paginator` guards its page-size select the same
-   * way.
-   */
+  /** Checked against the offered set: anything else is a tampered DOM and would earn a 400. */
   protected onSorted(event: Event): void {
     const value = (event.target as HTMLSelectElement).value;
     const next = this.sortOptions.find((option) => option.value === value);
@@ -291,40 +215,27 @@ export class Projects {
       return;
     }
 
-    // `null` removes the key rather than spelling out the default the reader gets from a
-    // bare `/projects`, so the rule below reads the two values the URL will actually hold.
+    // The default's key is removed, so the rule below compares the values the URL will hold.
     const previousKey = sortKey(this.sort());
     const nextKey = sortKey(next);
 
     this._applyQuery(
       { [SORT_PARAM]: nextKey === '' ? null : nextKey },
-      // The search term's rule, for the same reason: a closed `<select>` fires `change`
-      // on every arrow key, so pushing unconditionally would bury the unsorted grid under
-      // three entries nobody chose. Turning an order **on** or **off** pushes — Back
-      // returns to the list as it was — while moving between two orders replaces.
+      // A closed `<select>` fires `change` per arrow key, so only turning an order on or off
+      // pushes; moving between two orders replaces.
       shouldReplaceHistory(previousKey, nextKey),
     );
   }
 
   protected clearSearch(): void {
     this.onSearched('');
-    // The button removes itself the moment cards come back, and focus would fall to
-    // `<body>` inside a grid the reader then has to find again. The field is outside
-    // every branch of the template, so it is always connected.
+    // The button vanishes once cards return; the field is outside every template branch.
     this._search().focusField();
   }
 
-  /**
-   * Puts focus on the last card after the final page, since the control that was holding
-   * it has gone.
-   *
-   * The card's name link rather than its kebab: it is the card's own heading, so a screen
-   * reader lands on something that names where the reader now is. The field is the
-   * fallback because it is the only control outside every branch of the template.
-   */
+  /** The name link, not the kebab: it is the card's heading, so a screen reader hears where. */
   private _focusLastCard(): void {
-    // Only when focus actually fell through. A reader who clicked into the search field
-    // while the page was on the wire must not be yanked out of it.
+    // Only if focus fell through: a reader who clicked into search mid-page keeps it.
     const active = this._document.activeElement;
     const fellThrough = active === null || active === this._document.body || !active.isConnected;
 
@@ -358,11 +269,7 @@ export class Projects {
     }
   }
 
-  /**
-   * The single writer. Every query change is a navigation and nothing writes the store
-   * directly, which is what keeps the URL authoritative and the back button working
-   * without a line of code.
-   */
+  /** The single writer: every query change is a navigation, so the URL stays authoritative. */
   private _applyQuery(queryParams: Params, replaceUrl: boolean): void {
     void this._router.navigate([], {
       relativeTo: this._route,

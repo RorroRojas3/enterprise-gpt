@@ -41,14 +41,8 @@ interface DemoRow {
 }
 
 /**
- * Every kit component, in both themes side by side.
- *
- * It exists because the kit has no consumer until EP-3, and two of its properties
- * cannot be checked by a unit test: that a component reads correctly in dark as well
- * as light, and that motion stops under `prefers-reduced-motion`. `data-bs-theme` is
- * per-subtree, so a split view shows both at once.
- *
- * Development only. Delete it once the real screens exercise the kit.
+ * Both themes side by side, for what unit tests cannot check: dark-theme legibility and motion
+ * stopping under `prefers-reduced-motion`. Development only.
  */
 @Component({
   selector: 'app-ui-kit',
@@ -97,8 +91,8 @@ export class UiKit {
   protected readonly search = signal('');
   protected readonly page = signal(7);
 
-  /** Stands in for `SessionStore.canUploadFiles()`, which no dev session can toggle. */
   protected readonly switchOn = signal(true);
+  /** Stands in for `SessionStore.canUploadFiles()`, which no dev session can toggle. */
   protected readonly canUpload = signal(true);
   protected readonly lastDrop = signal('Nothing dropped yet.');
 

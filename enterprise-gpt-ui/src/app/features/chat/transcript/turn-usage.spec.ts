@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatActivityUsage, formatDurationSeconds, formatTurnUsage } from './turn-usage';
 
-/**
- * US-504. The formatting rule that matters is the one about absence: every
- * count on the wire is optional because a provider may report only some, and a
- * count that was not reported is not a count of zero.
- */
+/** The rule that matters is absence: a count a provider did not report is not a zero. */
 describe('formatTurnUsage', () => {
   it('writes the footer line frames 1f and 1g draw', () => {
     expect(formatTurnUsage({ inputTokens: 1842, outputTokens: 512, totalTokens: 2354 })).toBe(

@@ -1,33 +1,23 @@
 using System.Diagnostics;
-using Enterprise.Gpt.Common.Observability;
+using Enterprise.Gpt.Common.Constants;
 
 namespace Enterprise.Gpt.Service.Observability;
 
-/// <summary>
-/// The span one File Agent run produces.
-/// </summary>
+/// <summary>The span one File Agent run produces.</summary>
 /// <remarks>
-/// Named with <see cref="TelemetryNames.ChatSource"/> so the exporter registration that already adds
-/// that source picks it up with no wiring change, and so a run sits under the turn that caused it in
-/// the same trace. No tag carries prompt content, a tool argument, generated source, a file name or a
-/// signed URL — the outcome and the elapsed time are what a slow or failing run is diagnosed from.
+/// On <see cref="TelemetryNames.ChatSource"/> so it is exported and nests under the turn's trace. No tag
+/// carries prompt content, tool arguments, generated source, file names or signed URLs.
 /// </remarks>
 public static class FileAgentTracing
 {
     private static readonly ActivitySource Source = new(TelemetryNames.ChatSource);
 
-    /// <summary>
-    /// Starts the span covering one <c>file_agent</c> invocation.
-    /// </summary>
-    /// <returns>
-    /// The span, or <see langword="null"/> when nothing is listening — the caller null-conditionally
-    /// tags it, so an unsampled run costs nothing.
-    /// </returns>
+    #region Public static methods
+
+    /// <summary>Starts the span covering one <c>file_agent</c> invocation.</summary>
     public static Activity? StartRun() => Source.StartActivity("file_agent.run", ActivityKind.Internal);
 
-    /// <summary>
-    /// Records how a run ended on its span.
-    /// </summary>
+    /// <summary>Records how a run ended on its span.</summary>
     /// <param name="activity">The span, or <see langword="null"/> when the run was not sampled.</param>
     /// <param name="outcome">One of <see cref="Agents.FileAgentOutcomes"/>.</param>
     public static void Complete(Activity? activity, string outcome)
@@ -39,11 +29,12 @@ public static class FileAgentTracing
 
         activity.SetTag("file_agent.outcome", outcome);
 
-        // A refusal is a correct answer, not an error: only the outcomes that leave the user without
-        // the file they asked for set the error status.
+        // A refusal is a correct answer: only outcomes that leave the user without the file are errors.
         activity.SetStatus(
             outcome is Agents.FileAgentOutcomes.Created || Agents.FileAgentOutcomes.IsRefusal(outcome)
                 ? ActivityStatusCode.Ok
                 : ActivityStatusCode.Error);
     }
+
+    #endregion
 }

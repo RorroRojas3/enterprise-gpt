@@ -24,8 +24,8 @@ A model whose provider has no registered client fails the turn with 503
 
 | Piece | Where |
 | --- | --- |
-| Provider id (a guid) | `Enterprise.Gpt.Dto/Enums/Providers.cs` |
-| DI key | `Enterprise.Gpt.Dto/Enums/ChatClientKeys.cs` |
+| Provider id (a guid) | `Enterprise.Gpt.Common/Constants/Providers.cs` |
+| DI key | `Enterprise.Gpt.Common/Constants/ChatClientKeys.cs` |
 | The map between them | `Providers.ServiceKeys` |
 
 Provider rows are seeded in `Core.Ref.Provider` by `HasData`, which the `Initial` migration emits,
@@ -100,7 +100,7 @@ consequences are relied on:
   `ConversationId`, so telemetry keeps a correlation the wire deliberately loses.
 - `FunctionInvokingChatClient` sits **above** the callback.
 
-Each provider's `*ChatDefaults` class is kept out of `Program.cs` on purpose: confining the SDK's
+Each provider's `*ChatDefaults` class is kept out of the registration code on purpose: confining the SDK's
 request types to one file keeps them out of the provider-agnostic `ChatOptions` that
 `ConversationService` builds.
 
@@ -161,12 +161,12 @@ See [../operations/configuration.md](../operations/configuration.md) for the ful
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-api/Enterprise.Gpt.Api/Program.cs` | The four keyed registrations and their builder chains |
-| `enterprise-gpt-api/Enterprise.Gpt.Api/Chat/` | Per-provider `ChatOptions` defaults |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Chat/ChatClientResolver.cs` | Provider id to keyed client |
-| `enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/Providers.cs` | Provider ids and the DI-key map |
-| `enterprise-gpt-api/Enterprise.Gpt.Dto/Enums/ChatRequestProperties.cs` | The reasoning channel's key |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Chat/` | Resolver and defaults tests |
+| `enterprise-gpt-api/Enterprise.Gpt.Api/Configuration/Providers/` | The four keyed registrations (`*ProviderConfiguration`), their builder chains and per-provider `ChatOptions` defaults (`*Defaults`) |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Conversations/Chat/ChatClientResolver.cs` | Provider id to keyed client |
+| `enterprise-gpt-api/Enterprise.Gpt.Common/Constants/Providers.cs` | Provider ids and the DI-key map |
+| `enterprise-gpt-api/Enterprise.Gpt.Common/Constants/ChatRequestProperties.cs` | The reasoning channel's key |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Api/Configuration/Providers/` | Defaults tests |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Service/Conversations/Chat/ChatClientResolverTests.cs` | Resolver tests |
 
 ## Related
 

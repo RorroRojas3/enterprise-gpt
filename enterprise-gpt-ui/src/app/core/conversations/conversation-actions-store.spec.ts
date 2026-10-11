@@ -26,7 +26,6 @@ describe('ConversationActionsStore', () => {
   let list: InstanceType<typeof ConversationListStore>;
   let backend: HttpTestingController;
 
-  /** The `updated` / `deleted` events observed during a test, in dispatch order. */
   let updates: ConversationDto[];
   let deletions: string[];
   let eventsSubscription: Subscription;
@@ -43,9 +42,7 @@ describe('ConversationActionsStore', () => {
 
     updates = [];
     deletions = [];
-    // Explicitly unsubscribed in afterEach: `Events` is platform-scoped, so it
-    // outlives `resetTestingModule` and a leaked subscription from one test would
-    // keep pushing into every later test's array.
+    // `Events` is platform-scoped and outlives resetTestingModule; afterEach unsubscribes.
     const events = TestBed.inject(Events);
     eventsSubscription = events
       .on(conversationEvents.updated)
@@ -68,7 +65,6 @@ describe('ConversationActionsStore', () => {
     TestBed.inject(Dispatcher).dispatch(sessionEvents.signedOut());
   }
 
-  /** Puts rows into the sidebar list, since the flows patch it optimistically. */
   function loadList(items: ConversationDto[]): void {
     list.ensureLoaded();
     flush();
@@ -82,8 +78,7 @@ describe('ConversationActionsStore', () => {
 
   describe('rename', () => {
     it('sends the full-representation body with the current projectId echoed, trimmed', () => {
-      // The load-bearing criterion: this PUT replaces the whole representation, so a
-      // body without the project id would silently unlink the conversation.
+      // The PUT replaces the whole representation; omitting projectId would unlink it.
       const target = conversationFixture({
         projectId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
       });
@@ -131,7 +126,6 @@ describe('ConversationActionsStore', () => {
       };
       expectPut().flush(fromServer);
 
-      // The server's dateModified, not a local guess.
       expect(list.entities()[0]?.dateModified).toBe('2026-08-11T12:34:56+00:00');
       expect(store.renameTarget()).toBeNull();
       expect(store.renameBusy()).toBe(false);
@@ -225,16 +219,14 @@ describe('ConversationActionsStore', () => {
       expect(request.cancelled).toBe(true);
       expect(store.renameTarget()).toBeNull();
       expect(store.renameBusy()).toBe(false);
-      // finalize runs on cancellation too — without it the id would stay pending
-      // for the next user.
+      // finalize runs on cancellation too, or the id would stay pending for the next user.
       expect(list.isRowPending(target.id)).toBe(false);
       expect(toasts.assertiveToasts()).toHaveLength(0);
     });
 
     it('degrades a validation rejection to a toast when the dialog closed mid-flight', () => {
-      // A second Escape is uncancelable in Chromium, so a busy dialog can be
-      // force-closed with the PUT still on the wire. A validation problem landing
-      // then has no field to render under — it must surface as a toast, not vanish.
+      // A second Escape is uncancelable in Chromium, so a busy dialog can be force-closed
+      // with the PUT still on the wire.
       const target = conversationFixture({ name: 'Before' });
       loadList([target]);
       const toasts = TestBed.inject(ToastStore);
@@ -258,8 +250,7 @@ describe('ConversationActionsStore', () => {
     });
 
     it('renames a conversation the list does not hold and still announces it', () => {
-      // The deep-link case: /chat/{id} beyond the first page. The list has nothing
-      // to patch, but the header still needs the confirmed rename.
+      // A deep link beyond the first page: nothing to patch, but the header needs the rename.
       const target = conversationFixture({ name: 'Unlisted' });
       loadList([conversationFixture({ name: 'Someone else' })]);
 
@@ -299,8 +290,7 @@ describe('ConversationActionsStore', () => {
 
       expect(store.deleteTarget()).toBeNull();
       expect(list.entities().some((c) => c.id === target.id)).toBe(false);
-      // Pending outlives the vanished row: it is what keeps the header kebab
-      // disabled while the request is on the wire.
+      // Pending outlives the removed row; it keeps the header kebab disabled in flight.
       expect(list.isRowPending(target.id)).toBe(true);
 
       backend
@@ -316,8 +306,7 @@ describe('ConversationActionsStore', () => {
       store.beginDelete(target);
       store.confirmDelete();
 
-      // Nothing announced before the server confirms — navigation must not be
-      // optimistic even though the row removal is.
+      // Navigation waits for the server even though the row removal is optimistic.
       expect(deletions).toHaveLength(0);
 
       backend
@@ -351,8 +340,6 @@ describe('ConversationActionsStore', () => {
     });
 
     it('lets deletes of different conversations overlap', () => {
-      // mergeMap, not exhaustMap: deleting B while A is still on the wire is legal
-      // and must issue both requests.
       const [a, b] = [conversationFixture(), conversationFixture()];
       loadList([a, b]);
 
@@ -370,8 +357,8 @@ describe('ConversationActionsStore', () => {
     });
 
     it('deletes a conversation the list does not hold', () => {
-      // The deep-link case: nothing to remove locally, but the DELETE still goes
-      // out and the completion is still announced so the open screen can leave.
+      // A deep link: nothing to remove locally, but the deletion is announced so the open
+      // screen can leave.
       const target = conversationFixture();
       loadList([conversationFixture()]);
 
@@ -436,8 +423,7 @@ describe('ConversationActionsStore', () => {
 
       expect(list.entities()[0]?.isFavorite).toBe(true);
       expect(list.isRowPending(target.id)).toBe(true);
-      // The server does not bump dateModified for a favourite, so neither does the
-      // optimistic patch — the two would diverge on the next fetch.
+      // The server does not bump dateModified for a favourite, so neither does the patch.
       expect(list.entities()[0]?.dateModified).toBe(target.dateModified);
 
       const request = expectFavorite(target.id);
@@ -447,8 +433,7 @@ describe('ConversationActionsStore', () => {
       flush204(request);
 
       expect(list.isRowPending(target.id)).toBe(false);
-      // The 204 carries no DTO, so the announcement is the target plus the flag the
-      // server accepted.
+      // The 204 carries no DTO, so the event is the target plus the accepted flag.
       expect(updates).toEqual([{ ...target, isFavorite: true }]);
     });
 
@@ -488,10 +473,8 @@ describe('ConversationActionsStore', () => {
     });
 
     it('re-asserts the flag over a row a concurrent refresh clobbered mid-flight', () => {
-      // ConversationStore's detail request ends in refreshRow, and it is in flight for
-      // exactly as long as the header star is clickable — so the server's pre-PUT
-      // isFavorite can land on top of the optimistic patch. Without the re-assert the
-      // list would keep saying false while the server and the detail copy say true.
+      // The detail request's refreshRow can land the server's pre-PUT flag over the
+      // optimistic patch while the header star is clickable.
       const target = conversationFixture();
       loadList([target]);
 
@@ -513,8 +496,7 @@ describe('ConversationActionsStore', () => {
       store.toggleFavorite(target);
       store.toggleFavorite(target);
 
-      // The pending id is set synchronously inside the pipeline, so the second call
-      // finds it — expectOne would throw on the opposite PUT it would otherwise send.
+      // The pending id is set synchronously; otherwise expectOne would throw on an opposite PUT.
       const request = expectFavorite(target.id);
       expect(request.request.body).toEqual({ isFavorite: true });
       flush204(request);
@@ -534,8 +516,6 @@ describe('ConversationActionsStore', () => {
     });
 
     it('lets favourites of different conversations overlap', () => {
-      // mergeMap, not exhaustMap: favouriting B while A is on the wire is legal and
-      // must issue both requests.
       const [a, b] = [conversationFixture(), conversationFixture()];
       loadList([a, b]);
 
@@ -554,8 +534,7 @@ describe('ConversationActionsStore', () => {
     });
 
     it('favourites a conversation the list does not hold and still announces it', () => {
-      // The deep-link case: nothing to patch locally, but the header still needs the
-      // confirmed flag.
+      // A deep link: nothing to patch locally, but the header still needs the confirmed flag.
       const target = conversationFixture();
       loadList([conversationFixture()]);
 
@@ -580,15 +559,14 @@ describe('ConversationActionsStore', () => {
       signOut();
 
       expect(request.cancelled).toBe(true);
-      // finalize runs on cancellation too — without it the id would stay pending for
-      // the next user.
+      // finalize runs on cancellation too, or the id would stay pending for the next user.
       expect(list.isRowPending(target.id)).toBe(false);
       expect(updates).toHaveLength(0);
       expect(toasts.assertiveToasts()).toHaveLength(0);
     });
   });
 
-  describe('move to project (US-307)', () => {
+  describe('move to project', () => {
     const PROJECT_A = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
     const PROJECT_B = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
 
@@ -609,8 +587,7 @@ describe('ConversationActionsStore', () => {
     });
 
     it('sends an explicit null when the conversation is removed from its project', () => {
-      // The criterion `toUpdateBody` exists for: an undefined here would echo the
-      // current project, and "remove from project" would silently do nothing.
+      // An undefined would echo the current project, making "remove from project" a no-op.
       const target = conversationFixture({ projectId: PROJECT_A });
       loadList([target]);
 
@@ -625,13 +602,11 @@ describe('ConversationActionsStore', () => {
     });
 
     it('leaves A and appears under B in one round trip', () => {
-      // US-307's third criterion, verbatim: no unlink-then-link pair.
       const target = conversationFixture({ projectId: PROJECT_A });
       loadList([target]);
 
       store.moveToProject(target, PROJECT_B);
 
-      // Optimistic, and already B before the server answers.
       expect(list.entityMap()[target.id]?.projectId).toBe(PROJECT_B);
       expect(list.isRowPending(target.id)).toBe(true);
 
@@ -641,7 +616,7 @@ describe('ConversationActionsStore', () => {
 
       backend.expectNone(PUT_URL);
       expect(list.entityMap()[target.id]?.projectId).toBe(PROJECT_B);
-      // The server's DTO is adopted, not the local guess — a move bumps dateModified.
+      // Adopted from the server's DTO: a move bumps dateModified.
       expect(list.entityMap()[target.id]?.dateModified).toBe('2026-08-15T10:00:00+00:00');
       expect(list.isRowPending(target.id)).toBe(false);
       expect(updates).toEqual([expect.objectContaining({ id: target.id, projectId: PROJECT_B })]);
@@ -667,8 +642,7 @@ describe('ConversationActionsStore', () => {
     });
 
     it('refuses a second move while the row’s own action is in flight', () => {
-      // No dialog in front of it, so this guard is the whole re-entry story: two
-      // opposite moves racing would decide the final project by arrival order.
+      // Without the guard, two racing moves would settle the project by arrival order.
       const target = conversationFixture({ projectId: null });
       loadList([target]);
 
@@ -690,8 +664,7 @@ describe('ConversationActionsStore', () => {
     });
 
     it('moves a row the sidebar does not hold, with nothing to patch', () => {
-      // A deep link past the first 50: the request still goes out, and the event is
-      // what carries the change to the open conversation.
+      // A deep link past the first 50: the event carries the change to the open conversation.
       const target = conversationFixture({ projectId: null });
       loadList([]);
 

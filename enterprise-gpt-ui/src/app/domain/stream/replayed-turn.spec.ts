@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createInitialSnapshot } from './andes/assistant-ui.contract';
 import { replayAssistantText } from './replayed-turn';
 
-describe('replayAssistantText (US-410)', () => {
+describe('replayAssistantText', () => {
   it('puts the stored answer where the transcript reads a live one from', () => {
     const { snapshot, timeline } = replayAssistantText('It is sunny.');
 
@@ -16,10 +16,7 @@ describe('replayAssistantText (US-410)', () => {
   it('claims no activities and no completion, because the message records none', () => {
     const { snapshot } = replayAssistantText('It is sunny.');
 
-    // The stream that produced the activity timeline was never persisted
-    // (streaming contract §6.2). Inventing a Completed phase or an empty
-    // activity list with a duration would be a claim the stored message
-    // cannot support.
+    // The stream is never persisted, so the stored message supports no phase or usage claim.
     expect(snapshot.activities).toEqual([]);
     expect(snapshot.phase).toBe(createInitialSnapshot().phase);
     expect(snapshot.usage).toEqual(createInitialSnapshot().usage);

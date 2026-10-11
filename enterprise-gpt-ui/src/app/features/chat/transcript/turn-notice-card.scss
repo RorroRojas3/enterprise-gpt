@@ -2,7 +2,7 @@
   display: block;
 }
 
-// Frame 1h: the plain-surface card; `--warn` swaps in the warning panel skin.
+// The plain-surface card; `--warn` swaps in the warning panel skin.
 .notice {
   padding: 12px 14px;
   border: 1px solid var(--bs-border-color);
@@ -14,8 +14,8 @@
     background: var(--warn-bg);
   }
 
-  // Frame 1h's one-line form (US-408): the message takes the free space and
-  // the action sits at the far right, on the same baseline as the icon.
+  // The one-line form: the message takes the free space and the action sits at the far
+  // right, on the icon's baseline.
   &--row {
     display: flex;
     align-items: center;
@@ -35,8 +35,7 @@
       margin: 0;
     }
 
-    // The row's message is a sentence, not a heading — frame 1h draws it at
-    // the body weight, unlike the stacked cards' titles.
+    // A sentence, not a heading, so body weight unlike the stacked cards' titles.
     .notice__title {
       font-weight: 400;
     }
@@ -76,8 +75,7 @@
   }
 }
 
-// Frame 1h splits these by panel: the warning panels dim the body colour, the
-// plain cards move it to --muted outright.
+// The warning panels dim the body colour; the plain cards move it to --muted outright.
 .notice__body {
   margin: 6px 0 0 24px;
   color: var(--muted);

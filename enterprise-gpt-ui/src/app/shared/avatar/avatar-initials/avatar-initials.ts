@@ -2,11 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import { avatarTone, initialsOf } from '../initials';
 
 /**
- * The initials circle of frames `5a` and `5c`.
- *
- * `aria-hidden`, always: it abbreviates a name that is rendered beside it, so
- * announcing both would read the person twice — once spelled out letter by letter.
- * A caller that does *not* render the name beside it is misusing this.
+ * Always `aria-hidden`, or the name rendered beside it would be read twice. A caller must render
+ * that name.
  */
 @Component({
   selector: 'app-avatar-initials',
@@ -21,16 +18,12 @@ import { avatarTone, initialsOf } from '../initials';
   styleUrl: './avatar-initials.scss',
 })
 export class AvatarInitials {
-  /** The display name to abbreviate. */
   readonly name = input.required<string>();
 
-  /** Abbreviated instead when {@link name} carries no letters — an email address. */
+  /** Abbreviated instead when {@link name} carries no letters, e.g. an email address. */
   readonly fallback = input<string>('');
 
-  /**
-   * What the colour is derived from. Defaults to the name, but a caller holding a
-   * stable id should pass it: a rename should not recolour the row.
-   */
+  /** Colour seed, defaulting to the name; pass a stable id so a rename does not recolour. */
   readonly seed = input<string>('');
 
   /** Diameter in pixels: 30 in the table, 40 in the detail panel. */

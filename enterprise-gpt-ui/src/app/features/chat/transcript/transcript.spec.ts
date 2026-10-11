@@ -52,9 +52,8 @@ describe('Transcript', () => {
 
     TestBed.configureTestingModule({
       providers: [
-        // Pinned off rather than inherited from `public/config.json`: these specs
-        // render fences and answers, and a deployment that switches diagrams or
-        // math on would otherwise have them reach for a library jsdom cannot run.
+        // Pinned off rather than read from `public/config.json`: diagrams or math switched
+        // on would reach for a library jsdom cannot run.
         provideTestAppConfig({ features: { diagrams: false, math: false, rawStreamCodec: false } }),
         provideHttpClient(),
         provideHttpClientTesting(),
@@ -68,8 +67,8 @@ describe('Transcript', () => {
         UploadStore,
         ConversationStore,
         TurnStore,
-        // US-601: the transcript renders markdown, so its specs need the same
-        // sanitized pipeline the lazy chat route provides in the application.
+        // The transcript renders markdown, so it needs the sanitized pipeline the chat
+        // route provides.
         provideChatMarkdown(),
       ],
     });
@@ -92,9 +91,8 @@ describe('Transcript', () => {
   });
 
   /**
-   * Advances fake time, then waits the zoneless scheduler out. `whenStable`
-   * is started *before* the second advance because the scheduler notifies
-   * through rAF/setTimeout, which the fake clock holds until advanced.
+   * `whenStable` starts before the second advance because the scheduler notifies through
+   * timers the fake clock holds until advanced.
    */
   async function settle(ms = 0): Promise<void> {
     await vi.advanceTimersByTimeAsync(ms);
@@ -109,9 +107,8 @@ describe('Transcript', () => {
       return Promise.resolve(handle.response);
     });
     store.bindRoute(CONVERSATION_ID);
-    // Opening a conversation reads its stored messages (US-410); an empty
-    // transcript is what these specs are about, and the read has to be
-    // answered or the region stays aria-busy for the rest of the test.
+    // Opening a conversation reads its stored messages; the read must be answered or the
+    // region stays aria-busy for the rest of the test.
     backend
       .expectOne(`${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages`)
       .flush({ id: CONVERSATION_ID, name: 'Conversation', messages: [] });
@@ -133,18 +130,15 @@ describe('Transcript', () => {
     );
   }
 
-  describe('the activity timeline (US-501)', () => {
+  describe('the activity timeline', () => {
     it('renders cards and text in exact arrival order, nested work included', async () => {
       await streamFullTurn();
 
       // The recorded turn: mcp-1, then its child agent-1, then fn-1, then text.
       expect(cardNames()).toEqual(['Get forecast', 'Forecast Agent', 'Search Documents']);
 
-      // agent-1 is mcp-1's child, so the timeline opens two top-level nodes
-      // for three cards (US-502); the third card is inside the first.
-      // US-504's footer closes the column; everything before it is a timeline
-      // node. No reasoning region: the recorded turn's single `ReasoningDelta`
-      // is the server's seed, which US-503 does not render.
+      // agent-1 is mcp-1's child, so three cards open two top-level nodes. No reasoning
+      // region: the turn's single `ReasoningDelta` is the server's seed, which is not rendered.
       const content = host.querySelector('.assistant-turn__content');
       const sequence = [...(content?.children ?? [])].map((child) =>
         child.classList.contains('assistant-turn__footer') ? 'footer' : child.tagName.toLowerCase(),
@@ -220,7 +214,7 @@ describe('Transcript', () => {
     });
   });
 
-  describe('nested activity work (US-502)', () => {
+  describe('nested activity work', () => {
     /** Top-level cards only — the ones the timeline opened a node for. */
     function topLevelCards(): HTMLElement[] {
       return [
@@ -294,14 +288,13 @@ describe('Transcript', () => {
         '',
         'activity-card--depth-1',
         'activity-card--depth-2',
-        // The design draws three levels; a fourth reuses the third rather than
-        // shrinking away, because an agent tree can nest arbitrarily.
+        // A fourth level reuses the third, because an agent tree can nest arbitrarily.
         'activity-card--depth-2',
       ]);
     });
   });
 
-  describe('copying a code block (US-603)', () => {
+  describe('copying a code block', () => {
     async function streamCode(source: string): Promise<void> {
       const handle = await startTurn();
       handle.enqueue(
@@ -383,10 +376,8 @@ describe('Transcript', () => {
       buttons[0]?.click();
       await settle();
 
-      // A live region announces a *transition*, not a value, so this watches the
-      // DOM rather than reading it: clearing and re-setting the signal in one
-      // task leaves the binding's previous value in place, nothing is written,
-      // and a screen-reader user hears the first copy and nothing after it.
+      // A live region announces a transition, not a value, so this counts DOM writes: a
+      // clear and re-set in one task would write nothing and the second copy would be silent.
       let writes = 0;
       const observer = new MutationObserver((records) => {
         writes += records.length;
@@ -466,7 +457,7 @@ describe('Transcript', () => {
     });
   });
 
-  describe('copying a prompt (US-607)', () => {
+  describe('copying a prompt', () => {
     it('puts the prompt on the clipboard from the settled user bubble', async () => {
       await streamFullTurn();
 
@@ -481,10 +472,7 @@ describe('Transcript', () => {
     it('offers nothing on the optimistic bubble, which is mid-turn', async () => {
       await startTurn();
 
-      // The prompt is on screen but the turn is not complete, so the row is the
-      // pending bubble rather than a settled entry — and the criterion is about
-      // a completed turn. The footer element is there and empty, holding the
-      // height the row will keep once it settles.
+      // The pending bubble, not a settled entry; its empty footer holds the settled height.
       expect(host.querySelector('.transcript__bubble')?.textContent).toBe('What is the weather?');
       expect(host.querySelector('.transcript__user-footer')).not.toBeNull();
       expect(host.querySelector('.transcript__user-footer app-message-copy')).toBeNull();
@@ -493,10 +481,8 @@ describe('Transcript', () => {
     it('serves the prompt control itself, not the delegated code listener', async () => {
       await streamFullTurn();
 
-      // Both live inside the transcript host, and the delegated listener matches
-      // on `.md-code__copy`. A prompt control reaching it would copy nothing —
-      // there is no `.md-code` wrapper above it to read a block from — and a
-      // control served by both would copy twice and announce a code block.
+      // The delegated listener matches only `.md-code__copy`; a control served by both
+      // would copy twice and announce a code block.
       const button = host.querySelector<HTMLButtonElement>('.transcript__user-footer button');
       expect(button).not.toBeNull();
       button?.click();
@@ -507,8 +493,8 @@ describe('Transcript', () => {
     });
   });
 
-  describe('the reasoning region (US-503)', () => {
-    /** The opening pair every turn carries (streaming contract §4.3). */
+  describe('the reasoning region', () => {
+    /** The opening pair every turn carries. */
     const SEED = 'Reviewing the request and preparing a response.\n\n';
 
     it('shows the region while reasoning streams, before any answer text', async () => {
@@ -547,8 +533,7 @@ describe('Transcript', () => {
       expect(region?.querySelector('.reasoning__duration')?.textContent?.trim()).toBe('4.2s');
       // Collapsed: the summary is not in the document until it is asked for.
       expect(region?.querySelector('.reasoning__body')).toBeNull();
-      // Mid-stream the growing block is US-602's head/tail pair, and text this
-      // short has no boundary yet — so it is the tail that carries it.
+      // Text this short has no block boundary yet, so the tail carries it.
       expect(host.querySelector('.assistant-turn__content')?.textContent).toContain('The answer.');
     });
 
@@ -593,8 +578,7 @@ describe('Transcript', () => {
       );
       await settle(STREAM_BATCH_WINDOW_MS);
 
-      // The seed is a server-authored status line, and US-406 already decided
-      // this app renders none of those.
+      // The seed is a server-authored status line, which this app never renders.
       expect(host.querySelector('app-reasoning-region')).toBeNull();
     });
 
@@ -626,7 +610,7 @@ describe('Transcript', () => {
     });
   });
 
-  describe('rating an answer (US-1103)', () => {
+  describe('rating an answer', () => {
     const MESSAGE_ID = 'aaaaaaaa-1111-4222-8333-444444444444';
 
     function feedbackUrl(): string {
@@ -686,10 +670,7 @@ describe('Transcript', () => {
       expect(thumbs()[0]?.getAttribute('aria-pressed')).toBe('true');
     });
 
-    /**
-     * A cut-off turn was never sent a `Finished`, so it claims no message id — there is
-     * nothing to address a rating to, and the cut-off arm binds none.
-     */
+    /** A cut-off turn was never sent a `Finished`, so it claims no message id. */
     it('withholds them from a cut-off turn', async () => {
       const handle = await startTurn();
       handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Partial answer' })));
@@ -713,7 +694,7 @@ describe('Transcript', () => {
     });
   });
 
-  describe('what a turn cost (US-504)', () => {
+  describe('what a turn cost', () => {
     it('shows the turn total in the message footer once Finished arrives', async () => {
       await streamFullTurn();
 
@@ -766,10 +747,8 @@ describe('Transcript', () => {
       expect(host.querySelector('.activity-card__usage')).toBeNull();
     });
 
-    // WCAG 2.5.3: the chevron's accessible name has to contain the label a user
-    // can see, or a voice-control user saying what is on screen cannot reach it.
-    // Naming it from the raw `displayName` would say "Cost of Weather_get_forecast"
-    // beside a card that reads "Get forecast".
+    // SC 2.5.3: the raw `displayName` would name it "Cost of Weather_get_forecast" beside a
+    // card that reads "Get forecast".
     it('names the chevron with the label the card actually shows', async () => {
       const handle = await startTurn();
       handle.enqueue(
@@ -800,7 +779,7 @@ describe('Transcript', () => {
     });
   });
 
-  describe('an activity that failed (US-505)', () => {
+  describe('an activity that failed', () => {
     /** The state glyph in a card's *own* header, ignoring any nested card's. */
     function ownState(card: Element): string | null {
       const state = card.querySelector(
@@ -867,7 +846,7 @@ describe('Transcript', () => {
     });
   });
 
-  describe('watching the answer arrive (US-406)', () => {
+  describe('watching the answer arrive', () => {
     it('shows the thinking ridgeline until renderable content arrives', async () => {
       const handle = await startTurn();
 
@@ -880,8 +859,7 @@ describe('Transcript', () => {
       await settle(STREAM_BATCH_WINDOW_MS);
 
       expect(host.querySelector('app-ridgeline')).toBeNull();
-      // Mid-stream the growing block is a head/tail pair (US-602), and text this
-      // short has no block boundary yet — so it is the tail that carries it.
+      // Text this short has no block boundary yet, so the tail carries it.
       expect(host.querySelector('.assistant-turn__content')?.textContent).toContain('Hello');
       expect(host.querySelector('.assistant-turn__md--caret')).not.toBeNull();
     });
@@ -893,7 +871,7 @@ describe('Transcript', () => {
       expect(host.querySelector('.assistant-turn__md--caret')).toBeNull();
     });
 
-    it('leaves the settled turn out of the live region, so the answer is read once (US-1402)', async () => {
+    it('leaves the settled turn out of the live region, so the answer is read once', async () => {
       const handle = await startTurn();
       handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Hello.' })));
       await settle(STREAM_BATCH_WINDOW_MS);
@@ -906,19 +884,14 @@ describe('Transcript', () => {
       handle.close();
       await settle(STREAM_BATCH_WINDOW_MS);
 
-      // The settled entry is a different instance, rendered by this template
-      // without `[streaming]`. Passing it there would announce every answer
-      // twice, which is the regression this pins — the component's own spec
-      // cannot, because it flips the input on one instance.
+      // The settled entry is a different instance; passing it `[streaming]` would announce
+      // every answer twice, which the component's own spec cannot catch.
       expect(host.querySelector('.assistant-turn__content')?.getAttribute('aria-live')).toBeNull();
       expect(host.querySelector('.assistant-turn__content')?.getAttribute('aria-busy')).toBeNull();
     });
 
-    it('keeps the activity cards out of what the answer region announces (US-1402)', async () => {
-      // Mid-turn, because that is the only time the region exists: each card
-      // carries a state label, a kind, a source and a growing sub-status list,
-      // and flushing all of that when the answer is released is the unusable
-      // live region the third criterion forbids.
+    it('keeps the activity cards out of what the answer region announces', async () => {
+      // Mid-turn, the only time the region exists.
       const handle = await startTurn();
       handle.enqueue(frame(assistantEvent('ActivityStarted', { scopeId: 'mcp-1' })));
       handle.enqueue(
@@ -938,9 +911,8 @@ describe('Transcript', () => {
       const region = host.querySelector('.assistant-turn__content[aria-live="polite"]');
       expect(region).not.toBeNull();
 
-      // More than one, so the nested card exercises the inheritance rather than
-      // its own attribute — a live region covers all of its descendants, and the
-      // recursive card carries no `aria-live` of its own.
+      // More than one, so the nested card, which carries no `aria-live` of its own, exercises
+      // the inheritance.
       const cards = [...host.querySelectorAll('app-activity-card')];
       expect(cards.length).toBeGreaterThan(1);
       for (const card of cards) {
@@ -949,7 +921,7 @@ describe('Transcript', () => {
       }
     });
 
-    it('releases aria-busy on the Finished frame rather than on the closing body (US-1402)', async () => {
+    it('releases aria-busy on the Finished frame rather than on the closing body', async () => {
       const handle = await startTurn();
       handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Hello.' })));
       await settle(STREAM_BATCH_WINDOW_MS);
@@ -958,9 +930,7 @@ describe('Transcript', () => {
       handle.enqueue(frame(assistantEvent('Finished')));
       await settle(STREAM_BATCH_WINDOW_MS);
 
-      // The body is still open and the turn is still live, but the answer is
-      // complete — which is the moment the criterion names, and the moment the
-      // deferred live region beneath is released.
+      // The body is still open but the answer is complete, which is when the region is released.
       expect(host.getAttribute('aria-busy')).toBeNull();
       expect(host.querySelector('app-assistant-turn')).not.toBeNull();
 
@@ -999,7 +969,7 @@ describe('Transcript', () => {
       await settle();
     }
 
-    it('renders the 409 as the busy row with a Retry (US-408)', async () => {
+    it('renders the 409 as the busy row with a Retry', async () => {
       await failWith(PROBLEM_FIXTURES.conversationBusy, 409);
 
       const notice = host.querySelector('app-turn-notice-card .notice');
@@ -1009,15 +979,14 @@ describe('Transcript', () => {
       expect(notice?.querySelector('.notice__retry')).not.toBeNull();
     });
 
-    it('re-sends on Retry and hands the control back when it fails again (US-408)', async () => {
+    it('re-sends on Retry and hands the control back when it fails again', async () => {
       await failWith(PROBLEM_FIXTURES.conversationBusy, 409);
 
       host.querySelector<HTMLButtonElement>('.notice__retry')?.click();
       await settle();
 
-      // The other tab is still holding the conversation, so the same 409 comes
-      // back — and the replacement Retry takes the focus its destroyed
-      // predecessor left on <body>, so the loop stays operable by keyboard.
+      // The same 409 comes back, and the replacement Retry takes the focus its destroyed
+      // predecessor left on <body>.
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(document.activeElement).toBe(host.querySelector('.notice__retry'));
     });
@@ -1038,7 +1007,7 @@ describe('Transcript', () => {
     });
   });
 
-  describe('stopping a turn (US-407)', () => {
+  describe('stopping a turn', () => {
     async function stopMidStream(): Promise<void> {
       const handle = await startTurn();
       handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Partial ans' })));

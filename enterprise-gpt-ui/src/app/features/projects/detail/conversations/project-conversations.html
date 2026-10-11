@@ -1,7 +1,5 @@
 @if (conversations.error(); as error) {
-  <!-- The panel replaces the list rather than sitting beside it: the rows on screen
-       belong to a query that failed, so leaving them up would present a stale set as
-       the answer. -->
+  <!-- Replaces the list: the rows on screen belong to the query that failed. -->
   <app-error-panel
     heading="Conversations could not be loaded"
     [headingLevel]="null"
@@ -30,11 +28,8 @@
 
     <ng-template appTableCell="favorite" [appTableCellFor]="conversations.entities()" let-row>
       <!--
-        `aria-disabled`, never the native attribute, and no `aria-pressed`: the label
-        already carries the direction, and a control that both names its action and
-        reports a pressed state is announced twice over. Confirm-then-render, as on the
-        library: this store owns its own entities and `ConversationActionsStore` cannot
-        patch them, so an optimistic flip here would have no rollback behind it.
+        No `aria-pressed`: the label carries the direction. Not optimistic: this store owns its
+        entities, so `ConversationActionsStore` could not roll a flip back.
       -->
       <button
         class="project-conversations__star"
@@ -79,11 +74,7 @@
           <span class="project-conversations__menu-label">Move to another project</span>
           <app-icon class="project-conversations__menu-chevron" name="bi-chevron-right" />
         </button>
-        <!--
-          Always present here, unlike the sidebar and the library: every row on this
-          panel is in a project by construction, so the action always has something to
-          act on.
-        -->
+        <!-- Always present: every row on this panel is in a project. -->
         <button
           appMenuItem
           type="button"
@@ -109,12 +100,8 @@
 
     <div tableEmpty>
       <!--
-        Frame 4g's caption: the empty state points at the project composer above. No
-        projected action, unlike every other empty state in the app — the call to action
-        is a control that is already on screen and *earlier in reading order*, so a
-        button here would be a second way to reach something one Shift+Tab away rather
-        than the only way. Level 2, because this screen's header renders the project name
-        as a button rather than a heading, so there is no level-2 ancestor to sit under.
+        No projected action: the composer it points at is one Shift+Tab away. Level 2, as the
+        header renders the project name as a button, not a heading.
       -->
       <app-empty-state
         heading="No conversations in this project yet"
@@ -124,18 +111,14 @@
     </div>
 
     <!--
-      The `@if` sits *inside* the projected div, never around it: content projection
-      matches static nodes, and an `@if` around this element compiles to an `ng-template`
-      carrying no `tableFooter` attribute, which `DataTable` drops silently.
+      The `@if` stays inside the projected div: around it, the `tableFooter` attribute would land on
+      an `ng-template`, which `DataTable` drops silently.
     -->
     <div tableFooter class="project-conversations__more">
       @if (conversations.hasMore()) {
         <!--
-          Both halves of `loadMore`'s own guard, so the control cannot look operable
-          while a press would be a silent no-op: `isPending()` covers the window where a
-          project switch is on the wire and this list still holds the previous one's rows.
-          The label swaps rather than only the spinner appearing, because the spinner is
-          aria-hidden and a screen reader would otherwise hear nothing change.
+          Mirrors `loadMore`'s guard so a no-op press never looks operable. The label swaps
+          because the spinner is aria-hidden.
         -->
         <button
           type="button"

@@ -30,24 +30,9 @@ import { StoppedCard } from './stopped-card';
 import { TurnNoticeCard, TurnNotice } from './turn-notice-card';
 
 /**
- * The conversation column (US-406): settled entries first, then whichever of
- * the live regions applies — the thinking ridgeline, the streaming turn, a
- * failure notice, or the stopped card. All of it is session state on
- * `TurnStore`; history replay is US-410.
- *
- * `aria-busy` rides the host — the transcript container — for the length of a
- * turn, so assistive tech treats the region as settling rather than
- * announcing every re-render (US-406). US-1402 made it release on the folded
- * `Finished` and gave the streaming answer its own polite live region beneath
- * it; the in-flight announcements a reader actually hears are `Chat`'s, because
- * anything inside this host is deferred along with the answer.
- *
- * The host also carries **one** click listener for every code block's Copy
- * control (US-603). The controls themselves are part of the rendered markdown,
- * which is written as `innerHTML` and has no template position to bind to; one
- * delegated listener here is the alternative to a listener per `<pre>`, and it
- * survives the tail's re-render on every flush because it is not attached to
- * anything the renderer replaces.
+ * `aria-busy` on the host defers everything inside it for the turn, so the in-flight commentary
+ * a reader hears is `Chat`'s. One delegated host listener serves every code block's Copy, which
+ * lives in `innerHTML` and is replaced on every flush.
  */
 @Component({
   selector: 'app-transcript',
@@ -64,14 +49,8 @@ import { TurnNoticeCard, TurnNotice } from './turn-notice-card';
   ],
   templateUrl: './transcript.html',
   styleUrl: './transcript.scss',
-  // Reading the stored messages counts as busy too (US-410): the skeleton is
-  // aria-hidden, so without this the region is silently empty and then
-  // silently full.
-  //
-  // `answerComplete` rather than `inFlight` alone (US-1402): the criterion says
-  // the region settles when `Finished` *arrives*, and the fold sets that a step
-  // before the settle clears `phase`. Reading the frame is also what leaves the
-  // live turn mounted at the moment its deferred live region is released.
+  // Busy while history loads, since the skeleton is aria-hidden. `answerComplete` releases it
+  // when `Finished` arrives, a step before the settle, so the live turn is still mounted.
   host: {
     '[attr.aria-busy]':
       "turn.historyPending() || (turn.inFlight() && !turn.answerComplete()) ? 'true' : null",
@@ -90,11 +69,7 @@ export class Transcript {
   private _copiedName: string | null = null;
   private _copiedTimer: ReturnType<typeof setTimeout> | null = null;
 
-  /**
-   * Its own live region rather than a second string in {@link announcement}:
-   * that one is emptied for the length of a turn so an abnormal ending always
-   * transitions, and a copy can happen mid-turn.
-   */
+  /** Its own region: {@link announcement} is emptied for the turn, and copies happen mid-turn. */
   protected readonly copyAnnouncement = signal('');
 
   protected readonly cutOffNotice: TurnNotice = { kind: 'cut-off' };
@@ -108,7 +83,7 @@ export class Transcript {
     return notice === null ? null : { kind: 'error', error: notice.error };
   });
 
-  /** Retry is the store's offer (null for a create failure) gated by the arm's own retryability. */
+  /** The store's offer (null for a create failure), gated by the error's own retryability. */
   protected readonly errorRetryable = computed(() => {
     const notice = this.turn.turnError();
 
@@ -123,13 +98,8 @@ export class Transcript {
   }
 
   /**
-   * US-1103's two bindings, narrowing the entry's nullable id for the template.
-   *
-   * `strictTemplates` will not let a `string | null` reach a `string` parameter, and the
-   * alternative is a non-null assertion in the template — which would be a claim the
-   * template cannot back, since the same entry type carries a null id for every turn that
-   * never became a persisted message. The controls are not rendered in that case, so
-   * neither of these is reachable with null; both refuse anyway rather than assert.
+   * These narrow the entry's nullable id instead of a non-null assertion in the template. The
+   * controls never render for a null id, but both refuse it anyway.
    */
   protected isRatingPending(messageId: string | null): boolean {
     return messageId !== null && this.turn.isRowPending(messageId);
@@ -141,12 +111,7 @@ export class Transcript {
     }
   }
 
-  /**
-   * The delegated half of US-603: one listener for every code block's Copy
-   * control. Anything else clicked in the transcript — including
-   * `StoppedCard`'s own Copy, which is a real component with its own handler —
-   * does not match and falls straight through.
-   */
+  /** Anything but a code block's Copy, `StoppedCard`'s included, falls straight through. */
   protected onClick(event: MouseEvent): void {
     const target = event.target;
     const button = target instanceof Element ? target.closest('.md-code__copy') : null;
@@ -156,9 +121,8 @@ export class Transcript {
   }
 
   private async copyCodeBlock(button: HTMLButtonElement): Promise<void> {
-    // The block's own text, read back off the DOM. Prism's highlighting adds
-    // elements but no characters, so `textContent` is the source marked was
-    // given — less the newline marked appends to close the block.
+    // Prism adds elements but no characters, so `textContent` is the source, less the
+    // newline marked appends to close the block.
     const source = button
       .closest('.md-code')
       ?.querySelector('pre > code')
@@ -173,34 +137,20 @@ export class Transcript {
       return;
     }
 
-    // Two channels, because neither serves both audiences. The visible label
-    // swap is written straight to the DOM, since the button lives inside
-    // rendered `innerHTML` where Angular has nothing to bind — and it is *not*
-    // the accessible name, which the renderer fixes with an `aria-label` so six
-    // code blocks do not offer six identical "Copy" buttons. A name that no
-    // longer changes announces nothing, so the confirmation goes through a live
-    // region instead; that also survives the streaming tail's re-render, which
-    // replaces the button and its label within a flush.
-    //
-    // Copying a second block ends the first one's confirmation rather than
-    // leaving two "Copied" labels claiming the clipboard at once.
+    // The label is written to the DOM, since `innerHTML` has nothing to bind, and the live
+    // region announces it because the tail can replace the button mid-flush. A second copy
+    // ends the first confirmation.
     this.endConfirmation();
     this._copiedName = button.getAttribute('aria-label');
     button.textContent = COPIED_LABEL;
-    // The accessible name follows the visible one, or SC 2.5.3 fails for the
-    // two seconds it differs and a speech-input user saying "click Copied" has
-    // nothing to activate. Announcing is the live region's job now, so a name
-    // that also changes is at worst a duplicate rather than the only channel.
+    // The name follows the visible label (SC 2.5.3), so "click Copied" has a target.
     button.setAttribute('aria-label', COPIED_LABEL);
     button.classList.add('is-copied');
     this._copiedButton = button;
     this._copiedTimer = setTimeout(() => this.endConfirmation(), COPY_CONFIRMATION_MS);
 
-    // Deferred one render on purpose. `endConfirmation` has just cleared the
-    // region, but change detection is scheduled rather than synchronous, so
-    // setting the message in the same task would leave the binding's previous
-    // value untouched — and a live region that never mutates announces nothing.
-    // Without this, copying a second block inside the first's window is silent.
+    // Deferred a render: `endConfirmation` just cleared the region, and setting it in the
+    // same task would never mutate it, so a second copy inside the window would be silent.
     afterNextRender(
       { write: () => this.copyAnnouncement.set(COPIED_ANNOUNCEMENT) },
       {
@@ -209,7 +159,6 @@ export class Transcript {
     );
   }
 
-  /** Restores the confirming button, if there is one, and cancels its timer. */
   private endConfirmation(): void {
     this.copyAnnouncement.set('');
 
@@ -236,15 +185,8 @@ export class Transcript {
     // a detached button.
     inject(DestroyRef).onDestroy(() => this.endConfirmation());
 
-    // Retrying destroys the button that was pressed — the send clears the
-    // notice — so focus falls to <body> for the length of the turn. When the
-    // turn fails again, which is US-408's whole loop while the other tab holds
-    // the conversation, the replacement Retry takes the focus back rather than
-    // making a keyboard user re-traverse the page on every attempt.
-    //
-    // The condition is "focus is nowhere", not "the user retried": a notice
-    // raised while the user is somewhere real never steals from them, and the
-    // composer stands down for the same reason (see its own fixup).
+    // Retrying destroys the pressed button, so when the turn fails again the new Retry takes
+    // focus back. Only while focus is nowhere: a notice never steals it from somewhere real.
     effect(() => {
       const card = this.errorCard();
       if (card === undefined || !this.errorRetryable()) {
@@ -259,16 +201,11 @@ export class Transcript {
   }
 
   /**
-   * The persistent live region's content — the cards themselves are not live
-   * regions, because a region created together with its content is not
-   * reliably announced (the composer's note documents the same rule). Only
-   * abnormal endings are announced here; the full streaming-answer live
-   * region treatment is US-1402's.
+   * Abnormal endings, announced from a persistent region: the cards are not live regions, since
+   * one created together with its content is not reliably announced.
    */
   protected readonly announcement = computed(() => {
-    // Empty for the whole of a turn, so every settle transitions the region's
-    // content — without this, a retry that cuts off again would repeat the
-    // previous string and announce nothing the second time.
+    // Empty while in flight, so a retry that cuts off again still changes the content.
     if (this.turn.inFlight()) {
       return '';
     }

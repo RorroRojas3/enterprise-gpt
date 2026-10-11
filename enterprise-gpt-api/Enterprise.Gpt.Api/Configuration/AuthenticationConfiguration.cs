@@ -1,0 +1,32 @@
+using Enterprise.Gpt.Api.Options;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Identity.Web;
+
+namespace Enterprise.Gpt.Api.Configuration;
+
+internal static class AuthenticationConfiguration
+{
+    #region Public static methods
+
+    internal static IServiceCollection AddEnterpriseGptAuthentication(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddMicrosoftIdentityWebApi(
+                options =>
+                {
+                    configuration.Bind(AzureAdOptions.SectionName, options);
+
+                    // Explicit, so a token issued for another application is rejected.
+                    var clientId = configuration[$"{AzureAdOptions.SectionName}:{nameof(AzureAdOptions.ClientId)}"];
+                    options.TokenValidationParameters.ValidateAudience = true;
+                    options.TokenValidationParameters.ValidAudiences = [clientId, $"api://{clientId}"];
+                },
+                options => configuration.Bind(AzureAdOptions.SectionName, options))
+            .EnableTokenAcquisitionToCallDownstreamApi(options => configuration.Bind(AzureAdOptions.SectionName, options))
+            .AddInMemoryTokenCaches();
+
+        return services;
+    }
+
+    #endregion
+}

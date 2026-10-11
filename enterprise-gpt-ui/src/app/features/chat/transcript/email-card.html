@@ -7,10 +7,7 @@
     <app-email-open-menu [draft]="draft()" />
   </div>
 
-  <!--
-    A description list, not a table: three optional name/value pairs where a
-    table would promise rows and columns that are not there.
-  -->
+  <!-- A description list, not a table: optional name/value pairs, not rows and columns. -->
   <dl class="email-card__fields">
     @if (draft().to.length > 0) {
       <dt>To</dt>

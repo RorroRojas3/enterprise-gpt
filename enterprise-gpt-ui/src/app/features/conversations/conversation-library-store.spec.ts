@@ -25,7 +25,7 @@ import {
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
 const BULK_URL = `${TEST_API_BASE_URL}/api/conversations/bulk`;
 
-describe('ConversationLibraryStore (US-701)', () => {
+describe('ConversationLibraryStore', () => {
   let backend: HttpTestingController;
   let store: InstanceType<typeof ConversationLibraryStore>;
   let term: ReturnType<typeof signal<string>>;
@@ -53,7 +53,7 @@ describe('ConversationLibraryStore (US-701)', () => {
     backend.verify();
   });
 
-  /** Wires the query the way the screen's constructor does — one computation, every input. */
+  /** Binds the query the way the screen's constructor does. */
   function bind(): void {
     TestBed.runInInjectionContext(() =>
       store.bindQuery(() => ({ name: term(), favorites: favorites(), sort: sort() })),
@@ -61,7 +61,6 @@ describe('ConversationLibraryStore (US-701)', () => {
     TestBed.tick();
   }
 
-  /** The option a test names, by its `?sort=` value. */
   function option(value: string): ConversationSortOption {
     const found = CONVERSATION_SORTS.find((candidate) => candidate.value === value);
 
@@ -81,7 +80,7 @@ describe('ConversationLibraryStore (US-701)', () => {
     await Promise.resolve();
   }
 
-  describe('the order (US-706)', () => {
+  describe('the order', () => {
     it('sends the default order rather than relying on the server having one', async () => {
       bind();
 
@@ -94,8 +93,6 @@ describe('ConversationLibraryStore (US-701)', () => {
     });
 
     it('maps an option onto the API pair rather than sending its own vocabulary', async () => {
-      // `?sort=oldest` is what the reader chose; `sort=created&dir=asc` is what the
-      // request needs. The URL is a contract with the reader, not a proxy for the wire.
       sort.set(option('oldest'));
       bind();
 
@@ -140,9 +137,7 @@ describe('ConversationLibraryStore (US-701)', () => {
     expect(request.request.params.get('take')).toBe(String(LIBRARY_PAGE_SIZE));
     expect(request.request.params.has('name')).toBe(false);
     expect(request.request.params.has('filter')).toBe(false);
-    // The fixture echoes the clamped `take`, as the server does — its default of
-    // 50 would otherwise be adopted by `setFirstPage` and every later request in
-    // the suite would ask for a page size this store never chose.
+    // Echoes the clamped `take` as the server does, or `setFirstPage` adopts the fixture's 50.
     request.flush(conversationPage([conversationFixture()], { pageSize: LIBRARY_PAGE_SIZE }));
     await settle();
 
@@ -158,8 +153,6 @@ describe('ConversationLibraryStore (US-701)', () => {
     term.set('quarterly');
     TestBed.tick();
 
-    // switchMap, because typing drives this: a slow response to "quar" must not
-    // paint over a fast one to "quarterly".
     expect(first.cancelled).toBe(true);
     const second = expectSearch();
     expect(second.request.params.get('name')).toBe('quarterly');
@@ -175,8 +168,7 @@ describe('ConversationLibraryStore (US-701)', () => {
     term.set('quarterly');
     TestBed.tick();
 
-    // Written when the request starts, so frame 4b's heading cannot name a term
-    // whose results have not arrived.
+    // Written when the request starts, not when it settles.
     expect(store.name()).toBe('quarterly');
     expectSearch().flush(conversationPage([]));
     await settle();
@@ -212,7 +204,7 @@ describe('ConversationLibraryStore (US-701)', () => {
     expect(store.entities()).toHaveLength(1);
   });
 
-  describe('paging through the list (US-702)', () => {
+  describe('paging through the list', () => {
     /** A first page that leaves more behind, so `hasMore()` is true. */
     async function loadFirstPage(totalCount = 60): Promise<ConversationDto[]> {
       const items = Array.from({ length: LIBRARY_PAGE_SIZE }, () => conversationFixture());
@@ -249,8 +241,6 @@ describe('ConversationLibraryStore (US-701)', () => {
       );
       await settle();
 
-      // Appended, not merged or re-sorted: the combined set is page one's server
-      // order followed by page two's (US-705's second criterion).
       expect(store.entities().map((row) => row.id)).toEqual(
         [...first, ...second].map((row) => row.id),
       );
@@ -259,9 +249,7 @@ describe('ConversationLibraryStore (US-701)', () => {
 
     it('never asks for more than the server clamps to, whatever the envelope echoes', async () => {
       bind();
-      // `setFirstPage` adopts the server's `pageSize`, so a rogue or future envelope
-      // is the one path that could push `take` past 100 — the clamp inside
-      // `withOffsetPagination` is what US-702's fourth criterion actually rests on.
+      // `setFirstPage` adopts the envelope's `pageSize`, the one way `take` could exceed 100.
       expectSearch().flush(
         conversationPage(
           Array.from({ length: LIBRARY_PAGE_SIZE }, () => conversationFixture()),
@@ -291,10 +279,7 @@ describe('ConversationLibraryStore (US-701)', () => {
       TestBed.inject(Dispatcher).dispatch(conversationEvents.deleted(items[0]!.id));
       await settle();
 
-      // The page's URL was built against the pre-removal offset. Letting it land once
-      // `skip` has moved down would append the *next* window, and the row that slid
-      // into the gap would be fetched by neither request — a permanent hole, with the
-      // counter reading as though nothing were missing.
+      // Built against the pre-removal offset, it would skip the row that slid into the gap.
       expect(page.cancelled).toBe(true);
       expect(store.loadingMore()).toBe(false);
     });
@@ -309,8 +294,7 @@ describe('ConversationLibraryStore (US-701)', () => {
       TestBed.inject(Dispatcher).dispatch(sessionEvents.signedOut());
       await settle();
 
-      // `takeUntil(merge(...))` has two arms and only one of them is exercised by the
-      // superseded-query case; this is the other.
+      // The sign-out arm of `takeUntil(merge(...))`; the superseded-query test covers the other.
       expect(page.cancelled).toBe(true);
       expect(store.entities()).toHaveLength(0);
     });
@@ -321,8 +305,7 @@ describe('ConversationLibraryStore (US-701)', () => {
       expect(store.hasMore()).toBe(false);
       expect(store.isFullyLoaded()).toBe(true);
 
-      // The guard, not just the template: a stale click cannot fetch a page that
-      // does not exist.
+      // The store guards too, not just the template.
       store.loadMore();
       TestBed.tick();
       backend.expectNone(() => true);
@@ -338,8 +321,6 @@ describe('ConversationLibraryStore (US-701)', () => {
 
       store.loadMore();
       TestBed.tick();
-      // `skip` has not moved yet, so a second request would fetch the same window
-      // twice and `addEntities` would silently no-op on every id.
       backend.expectNone(() => true);
 
       inFlight.flush(
@@ -361,8 +342,6 @@ describe('ConversationLibraryStore (US-701)', () => {
       });
       await settle();
 
-      // The rows already on screen belong to a query that succeeded, so swapping
-      // the table for an error panel would throw away a usable result set.
       expect(store.entities()).toHaveLength(LIBRARY_PAGE_SIZE);
       expect(store.error()).toBeNull();
       expect(store.loadingMore()).toBe(false);
@@ -379,8 +358,6 @@ describe('ConversationLibraryStore (US-701)', () => {
       term.set('quarterly');
       TestBed.tick();
 
-      // Without `_querySuperseded$` this page would land after the new query's
-      // `setAllEntities` and append a window from a list that no longer exists.
       expect(page.cancelled).toBe(true);
       expect(store.loadingMore()).toBe(false);
 
@@ -389,7 +366,7 @@ describe('ConversationLibraryStore (US-701)', () => {
     });
   });
 
-  describe('filtering to favourites (US-703)', () => {
+  describe('filtering to favourites', () => {
     it('sends isFavorite=true, and never isFavorite=false', async () => {
       bind();
       const unfiltered = expectSearch();
@@ -407,8 +384,7 @@ describe('ConversationLibraryStore (US-701)', () => {
       favorites.set(false);
       TestBed.tick();
       const off = expectSearch();
-      // `isFavorite=false` would mean "only the ones I have not starred" — a third
-      // state the screen has no control for.
+      // `isFavorite=false` means "only unstarred", a state the screen has no control for.
       expect(off.request.params.has('isFavorite')).toBe(false);
       off.flush(conversationPage([], { pageSize: LIBRARY_PAGE_SIZE }));
       await settle();
@@ -441,8 +417,6 @@ describe('ConversationLibraryStore (US-701)', () => {
       TestBed.tick();
 
       const request = expectSearch();
-      // A page fetched unfiltered would append rows the filter excludes, right
-      // underneath rows it included.
       expect(request.request.params.get('isFavorite')).toBe('true');
       request.flush(conversationPage([], { totalCount: 40, pageSize: LIBRARY_PAGE_SIZE, skip: 1 }));
       await settle();
@@ -463,8 +437,6 @@ describe('ConversationLibraryStore (US-701)', () => {
       );
       await settle();
 
-      // It no longer matches the query that produced it, so it leaves rather than
-      // sitting in a favourites-only list with a hollow star.
       expect(store.entities()).toHaveLength(0);
       expect(store.totalCount()).toBe(11);
       expect(store.skip()).toBe(skip - 1);
@@ -496,13 +468,13 @@ describe('ConversationLibraryStore (US-701)', () => {
       await settle();
 
       expect(store.hasNoFavorites()).toBe(true);
-      // Frame 4b's heading quotes a term, and there is none to quote.
+      // The no-matches state quotes a term, and there is none.
       expect(store.hasNoMatches()).toBe(false);
       expect(store.hasQuery()).toBe(true);
     });
   });
 
-  describe('deleting several at once (US-704)', () => {
+  describe('deleting several at once', () => {
     async function loadRows(count = 3, totalCount = 12): Promise<ConversationDto[]> {
       const items = Array.from({ length: count }, () => conversationFixture());
       bind();
@@ -523,8 +495,7 @@ describe('ConversationLibraryStore (US-701)', () => {
 
       expect(store.selectedCount()).toBe(items.length);
       expect(store.allLoadedSelected()).toBe(true);
-      // The endpoint takes ids, not a query — there is no way to delete a whole
-      // search, so the bar states the reach rather than letting it be assumed.
+      // The endpoint takes ids, not a query, so the bar states select-all's reach.
       expect(store.selectAllNote()).toBe('Select-all covers the 3 loaded rows only');
 
       store.toggleSelectAll();
@@ -569,17 +540,14 @@ describe('ConversationLibraryStore (US-701)', () => {
       store.deleteSelected();
       await settle();
 
-      // Nothing announced yet: the sidebar and an open chat react to server-confirmed
-      // facts, and navigating away from a conversation that is still there would be a
-      // lie the optimistic removal cannot back up.
+      // Nothing announced yet: listeners react to server-confirmed facts only.
       expect(seen).toEqual([]);
 
       expectBulk().flush(null, { status: 204, statusText: 'No Content' });
       await settle();
 
       expect(seen).toEqual(items.map((row) => row.id));
-      // The store's own `deleted` handler sees rows it no longer holds and returns,
-      // so its optimistic removal is not counted a second time.
+      // The store's own `deleted` handler skips rows it no longer holds, so none count twice.
       expect(store.totalCount()).toBe(10);
     });
 
@@ -597,13 +565,9 @@ describe('ConversationLibraryStore (US-701)', () => {
       });
       await settle();
 
-      // Restored in place, not appended: the reader's list order is not a casualty of
-      // a failed request.
       expect(store.entities().map((row) => row.id)).toEqual(items.map((row) => row.id));
       expect(store.totalCount()).toBe(12);
-      // Re-selected, so Retry is one press rather than three.
       expect([...store.selectedIds()]).toEqual([items[0]!.id, items[2]!.id]);
-      // One toast for the batch, not one per row.
       expect(toasts.toasts()).toHaveLength(1);
     });
 
@@ -630,8 +594,6 @@ describe('ConversationLibraryStore (US-701)', () => {
       });
       await settle();
 
-      // Splicing the old query's rows into the new one's result set would show rows
-      // that do not match the search that is on screen.
       expect(store.entities().map((row) => row.name)).toEqual(['Quarterly']);
       expect(store.entities().map((row) => row.id)).not.toContain(items[0]!.id);
     });
@@ -641,8 +603,6 @@ describe('ConversationLibraryStore (US-701)', () => {
       store.toggleSelectAll();
       await settle();
 
-      // A row deleted from the sidebar drops out of the selection with no second
-      // call site to remember — the whole reason the set is linked to the ids.
       TestBed.inject(Dispatcher).dispatch(conversationEvents.deleted(items[0]!.id));
       await settle();
       expect(store.selectedCount()).toBe(2);
@@ -680,8 +640,7 @@ describe('ConversationLibraryStore (US-701)', () => {
       store.deleteSelected();
       await settle();
 
-      // An empty id list is a 400 from the validator, so the guard is what keeps a
-      // stray press off the wire.
+      // An empty id list is a 400 from the validator.
       backend.expectNone(() => true);
     });
   });
@@ -726,9 +685,8 @@ describe('ConversationLibraryStore (US-701)', () => {
       await settle();
 
       expect(store.entities()).toHaveLength(0);
-      // US-702's "Showing N of M" would otherwise claim a row that is gone…
       expect(store.totalCount()).toBe(11);
-      // …and its next page would start one row late, leaving a permanent hole.
+      // Or the next page would start one row late and skip a row.
       expect(store.skip()).toBe(skip - 1);
     });
 
@@ -750,8 +708,7 @@ describe('ConversationLibraryStore (US-701)', () => {
 
   it('empties on sign-out and drops a response already on the wire', async () => {
     bind();
-    // A first page has to land, or "empties" is asserted against a store that was
-    // already empty and the reset itself goes untested.
+    // Land a first page, or "empties" would pass against a store that was never filled.
     expectSearch().flush(conversationPage([conversationFixture()], { totalCount: 12 }));
     await settle();
 
@@ -766,9 +723,8 @@ describe('ConversationLibraryStore (US-701)', () => {
     expect(store.entities()).toHaveLength(0);
     expect(store.name()).toBe('');
     expect(store.totalCount()).toBe(0);
-    // `withResetOnSignOut` clears state and does not cancel work, which is why the
-    // inner request carries its own `takeUntil` — without it this response would
-    // write the previous user's rows back over an emptied store.
+    // The reset clears state but cancels nothing; without its own `takeUntil` this response
+    // would write the previous user's rows back.
     expect(inFlight.cancelled).toBe(true);
   });
 });

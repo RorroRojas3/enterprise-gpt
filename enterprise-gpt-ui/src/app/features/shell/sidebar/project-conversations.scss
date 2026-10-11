@@ -2,7 +2,6 @@
   display: block;
 }
 
-// Frame `Sidebar` line 53: the nested block is indented 22px from the project row.
 .nested {
   display: flex;
   flex-direction: column;
@@ -22,8 +21,7 @@
   font-size: 11.5px;
 }
 
-// 30px rows against the project row's 32px, which is how the board separates the two
-// levels without a rule between them.
+// 30px against the project row's 32px separates the two levels without a rule.
 .nested__link {
   display: flex;
   gap: 8px;

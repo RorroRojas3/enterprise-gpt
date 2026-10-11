@@ -31,12 +31,8 @@ export interface BrowserTelemetry {
 export type TelemetryLoader = (config: IConfiguration & IConfig) => Promise<BrowserTelemetry>;
 
 /**
- * The dynamic import itself, behind a token so a spec can swap it.
- *
- * The literal `import()` has to stay in a real module for esbuild to split a chunk for it,
- * and `scripts/check-initial-chunk.mjs` fails the build if the SDK ever becomes statically
- * reachable: it is an order of magnitude more than the initial graph's headroom, and most
- * deployments configure no `telemetry` block at all.
+ * A token so specs can swap it. The SDK must stay a lazy chunk: `check-initial-chunk.mjs` fails
+ * the build if it becomes statically reachable.
  */
 export const TELEMETRY_LOADER = new InjectionToken<TelemetryLoader>('TELEMETRY_LOADER', {
   providedIn: 'root',
@@ -50,23 +46,14 @@ export const TELEMETRY_LOADER = new InjectionToken<TelemetryLoader>('TELEMETRY_L
 });
 
 /**
- * Starts browser telemetry when `config.json` carries a `telemetry` block.
- *
- * Provided in the root injector rather than under the signed-in shell, because the failures
- * worth seeing are the ones that never reach it: a guard or handshake terminating on
- * `/login-failed` or `/session-error` renders no shell and reaches no server, so nothing
- * else in this system can observe it.
- *
- * Everything before the chunk resolves is uninstrumented by construction — `config.json`,
- * the icon sprite and MSAL's token exchange all complete before the SDK patches `fetch`.
- * That is the price of keeping it off the initial graph, not a defect to chase.
+ * Root-provided, not under the shell, so failures ending on `/login-failed` or `/session-error`
+ * are still seen. Requests made before the chunk loads (config, sprite, MSAL) go uninstrumented.
  */
 export function provideBrowserTelemetry(): EnvironmentProviders {
   return provideAppInitializer(() => {
     const config = inject(APP_CONFIG);
 
-    // Ahead of every other injection, so a deployment with no telemetry block constructs
-    // nothing on this provider's account.
+    // Before any other injection, so a deployment without telemetry constructs nothing.
     if (!config.telemetry) {
       return;
     }
@@ -85,14 +72,11 @@ export function provideBrowserTelemetry(): EnvironmentProviders {
 
     const currentPage = (): string => withoutQueryOrFragment(document.location.href);
 
-    // Deliberately not awaited. An app initializer that returns this promise holds the first
-    // paint on a CDN fetch, and telemetry must never be able to keep the application from
-    // starting.
+    // Not awaited: returning it would hold the first paint on a CDN fetch.
     void load(buildConfig(config.telemetry, config.apiBaseUrl))
       .then((insights) => {
-        // The load can outlive the injector — a rejected bootstrap, or a spec resetting
-        // TestBed. The SDK patches fetch, XHR, history and the global error handlers, so an
-        // instance nobody owns keeps them patched and a second bootstrap doubles them.
+        // The load can outlive the injector; an unowned SDK keeps fetch, XHR and history
+        // patched, and a second bootstrap doubles them.
         if (!live) {
           insights.unload();
 
@@ -102,9 +86,7 @@ export function provideBrowserTelemetry(): EnvironmentProviders {
         destroyRef.onDestroy(() => insights.unload());
 
         insights.addTelemetryInitializer((item) => {
-          // Read per item rather than through setAuthenticatedUserContext: sign-in resolves
-          // asynchronously and sign-out is a redirect, so a one-shot call races the account
-          // it is meant to read.
+          // Per item, not setAuthenticatedUserContext: a one-shot call races async sign-in.
           const objectId = auth.account?.localAccountId;
 
           if (objectId) {
@@ -115,8 +97,7 @@ export function provideBrowserTelemetry(): EnvironmentProviders {
           scrubUrls(item);
         });
 
-        // The SDK emits no page view of its own on load, and the chunk resolves after the
-        // first navigation has already happened — so the landing page is only counted here.
+        // The SDK emits no initial page view, and the first NavigationEnd predates the chunk.
         insights.trackPageView({ uri: currentPage() });
         navigations.subscribe(() => insights.trackPageView({ uri: currentPage() }));
       })
@@ -127,39 +108,20 @@ export function provideBrowserTelemetry(): EnvironmentProviders {
 function buildConfig(telemetry: TelemetryConfig, apiBaseUrl: string): IConfiguration & IConfig {
   return {
     connectionString: telemetry.connectionString,
-    // Off, with page views raised from NavigationEnd instead. The SDK's hook fires once per
-    // history mutation with no dedupe, and one arrival on the sign-in path mutates history
-    // three times — the router's initial navigation, MSAL clearing the hash, then the
-    // redirect onward. It also reports location.href verbatim, which at that moment still
-    // carries the authorization code in its fragment. One completed navigation is one page
-    // view, its URL is this application's to scrub, and raising it by hand resets the
-    // operation id exactly as the SDK's own hook would.
+    // Off: the SDK hook fires per history mutation (three on one sign-in arrival) and reports
+    // the raw URL, authorization-code fragment included.
     enableAutoRouteTracking: false,
     enableUnhandledPromiseRejectionTracking: true,
-    // No ai_user/ai_session cookies. Session grouping is worth less here than not handing an
-    // enterprise deployment a consent decision it did not make: every signed-in item already
-    // carries the Entra object id, which groups by the identity that matters.
+    // No cookies, so no consent decision: the Entra object id already groups signed-in items.
     disableCookiesUsage: true,
-    // Correlation headers on cross-origin calls, restricted to the API. An allow-list rather
-    // than the blanket switch: the same fetch layer talks to Entra, and an unexpected
-    // Request-Id on a token request is a sign-in failure nobody would connect to telemetry.
-    // The API accepts them because its CORS policy allows any header.
-    //
-    // Anchored, because the SDK compiles each entry to an unanchored regular expression, and
-    // a bare host also matches `<host>.attacker.example`.
+    // Allow-listed to the API: an unexpected Request-Id on an Entra token request breaks sign-in.
+    // Anchored, because the SDK compiles each entry to an unanchored regex.
     enableCorsCorrelation: true,
     correlationHeaderDomains: [`^${new URL(apiBaseUrl).host}$`],
   };
 }
 
-/**
- * Strips the query string and fragment from every URL an item carries.
- *
- * Two things ride those here: the MSAL redirect fragment, which holds the authorization code
- * and `client_info`, and the search and filter terms the conversation, user and report
- * screens keep in the query string. The ingestion resource is named by a connection string
- * that ships in `config.json`, so neither may reach it.
- */
+/** The fragment holds the MSAL authorization code; the query holds users' search terms. */
 function scrubUrls(item: ITelemetryItem): void {
   const data: Record<string, unknown> | undefined = item.baseData;
 

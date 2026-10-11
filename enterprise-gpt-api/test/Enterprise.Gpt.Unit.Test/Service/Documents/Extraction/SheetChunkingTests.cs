@@ -1,0 +1,141 @@
+using System.Globalization;
+using Enterprise.Gpt.Dto.Documents;
+using Enterprise.Gpt.Service.Documents.Extraction;
+using Enterprise.Gpt.Service.Options;
+using Enterprise.Gpt.Unit.Test.TestInfrastructure;
+using Microsoft.Extensions.Logging.Abstractions;
+using Xunit;
+using SheetSpec = Enterprise.Gpt.Unit.Test.TestInfrastructure.WorkbookBuilder.SheetSpec;
+
+namespace Enterprise.Gpt.Unit.Test.Service.Documents.Extraction;
+
+public sealed class SheetChunkingTests
+{
+    private const string HeaderLine = "SKU | Region | Revenue | Quarter";
+
+    [Fact]
+    public async Task Chunk_SheetSpanningManyWindows_KeepsTheHeaderInAlmostEveryChunk()
+    {
+        var segments = await ExtractAsync(2_000);
+
+        var chunks = TestChunker.Default.Chunk(segments, TestContext.Current.CancellationToken);
+        var withHeader = chunks.Count(chunk => chunk.Text.Contains(HeaderLine, StringComparison.Ordinal));
+
+        Assert.True(chunks.Count > 20, $"Expected a corpus of many chunks, got {chunks.Count}.");
+        Assert.True(
+            withHeader >= chunks.Count * 0.95,
+            $"Only {withHeader} of {chunks.Count} chunks carried the header line.");
+    }
+
+    [Fact]
+    public async Task Chunk_WindowLargerThanTheChunkBudget_BreaksOnRowBoundaries()
+    {
+        // A smaller budget forces the degraded path, where only the chunker's newline boundary keeps a row's
+        // cells together. Overlap is off: its token-level tail splitting a row is accepted by design.
+        var segments = await ExtractAsync(200);
+        var rows = Rows(segments);
+
+        var chunks = TestChunker.Create(maxTokens: 128, overlapTokens: 0)
+            .Chunk(segments, TestContext.Current.CancellationToken);
+
+        var lines = chunks.SelectMany(chunk => chunk.Text.Split('\n')).ToList();
+
+        Assert.NotEmpty(lines);
+        Assert.All(lines, line => Assert.True(
+            line.StartsWith("Sheet: ", StringComparison.Ordinal) || rows.Contains(line),
+            $"'{line}' is not a whole row."));
+    }
+
+    /// <summary>
+    /// Every window of every sheet opens with its own sheet name, so a workbook's chunks stay
+    /// attributable to the sheet they came from however many sheets it holds.
+    /// </summary>
+    [Fact]
+    public async Task Chunk_MultiSheetWorkbook_KeepsEachSheetsOwnHeaderInItsOwnChunks()
+    {
+        var extractor = new SpreadsheetTextExtractor(
+            NullLogger<SpreadsheetTextExtractor>.Instance, Microsoft.Extensions.Options.Options.Create(new SheetOptions()), TestChunker.Default);
+
+        var content = WorkbookBuilder.Create(
+        [
+            new SheetSpec("Regional Revenue", DataRows(400)),
+            new SheetSpec("Headcount", DataRows(400))
+        ]);
+
+        var file = new FileDto
+        {
+            FileName = "budget.xlsx",
+            ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            Length = content.Length,
+            Content = content
+        };
+
+        var segments = await extractor.ExtractAsync(file, progress: null, TestContext.Current.CancellationToken);
+        var chunks = TestChunker.Default.Chunk(segments, TestContext.Current.CancellationToken);
+
+        string[] sheetNames = ["Regional Revenue", "Headcount"];
+
+        foreach (var sheetName in sheetNames)
+        {
+            var forSheet = chunks
+                .Where(chunk => chunk.Text.Contains($"Sheet: {sheetName}", StringComparison.Ordinal))
+                .ToList();
+
+            Assert.NotEmpty(forSheet);
+            Assert.True(
+                forSheet.Count(chunk => chunk.Text.Contains(HeaderLine, StringComparison.Ordinal)) >= forSheet.Count * 0.95,
+                $"Sheet '{sheetName}' lost its header in more than one chunk in twenty.");
+        }
+    }
+
+    private static List<object?[]> DataRows(int dataRows)
+    {
+        List<object?[]> rows = [["SKU", "Region", "Revenue", "Quarter"]];
+        rows.AddRange(Enumerable.Range(1, dataRows).Select(i => new object?[]
+        {
+            string.Create(CultureInfo.InvariantCulture, $"SKU-{i:0000}"),
+            "East",
+            (double)(i * 137),
+            "Q3"
+        }));
+
+        return rows;
+    }
+
+    private static HashSet<string> Rows(IReadOnlyList<DocumentSegmentDto> segments)
+    {
+        return
+        [
+            .. segments
+                .SelectMany(segment => segment.Text.Split('\n'))
+                .Where(line => !line.StartsWith("Sheet: ", StringComparison.Ordinal))
+        ];
+    }
+
+    private static Task<IReadOnlyList<DocumentSegmentDto>> ExtractAsync(int dataRows)
+    {
+        var options = Microsoft.Extensions.Options.Options.Create(new SheetOptions());
+        var extractor = new SpreadsheetTextExtractor(
+            NullLogger<SpreadsheetTextExtractor>.Instance, options, TestChunker.Default);
+
+        List<object?[]> rows = [["SKU", "Region", "Revenue", "Quarter"]];
+        rows.AddRange(Enumerable.Range(1, dataRows).Select(i => new object?[]
+        {
+            string.Create(CultureInfo.InvariantCulture, $"SKU-{i:0000}"),
+            "East",
+            (double)(i * 137),
+            "Q3"
+        }));
+
+        var content = WorkbookBuilder.Create([new SheetSpec("Regional Revenue", rows)]);
+        var file = new FileDto
+        {
+            FileName = "budget.xlsx",
+            ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            Length = content.Length,
+            Content = content
+        };
+
+        return extractor.ExtractAsync(file, progress: null, TestContext.Current.CancellationToken);
+    }
+}

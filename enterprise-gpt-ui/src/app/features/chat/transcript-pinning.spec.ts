@@ -29,12 +29,8 @@ import { Chat } from './chat';
 import { chatMatcher } from './chat-route';
 import { TurnStore } from './turn-store';
 
-/**
- * US-606. jsdom has no layout, so the scroll geometry is stubbed outright and the
- * assertions are about what the directive *did* — whether it wrote a scroll
- * position — rather than about where a real viewport would have ended up.
- */
-describe('transcript pinning (US-606)', () => {
+/** jsdom has no layout, so these assert the scroll writes the directive makes, not positions. */
+describe('transcript pinning', () => {
   let backend: HttpTestingController;
   let harness: RouterTestingHarness;
   let streamFetch: ReturnType<typeof vi.fn>;
@@ -42,11 +38,7 @@ describe('transcript pinning (US-606)', () => {
 
   const conversation = conversationFixture({ name: 'Helios 2.4 release status' });
 
-  /**
-   * Grows with each batch, so a pin taken before the new content was laid out
-   * would record the *previous* height and fail the assertion — the defect a
-   * constant stub cannot see.
-   */
+  /** Grows per batch, so a pin taken before layout records the old height and fails. */
   let contentHeight = 1000;
 
   beforeEach(async () => {
@@ -116,12 +108,7 @@ describe('transcript pinning (US-606)', () => {
     });
   }
 
-  /**
-   * What the browser does after a batch renders: the content gets taller, and the
-   * resize observer reports it. Deliberately separate from the batch itself —
-   * the markdown renderer writes its output after change detection returns, so
-   * anything that pinned during the render would have measured the old height.
-   */
+  /** Separate from the batch: markdown lays out after change detection, as in the browser. */
   function layOutTallerContent(): void {
     contentHeight += 250;
     resizeElement(element().querySelector('.chat__content') as HTMLElement);
@@ -154,8 +141,7 @@ describe('transcript pinning (US-606)', () => {
     backend
       .expectOne(`${TEST_API_BASE_URL}/api/conversations/${conversation.id}`)
       .flush(conversationDetailFixture({ ...conversation }));
-    // A conversation with nothing said in it yet (US-410): the empty state is
-    // what a reader sees, which is the swap this spec is about.
+    // Nothing said yet, so the empty state shows until the turn starts.
     backend
       .expectOne(`${TEST_API_BASE_URL}/api/conversations/${conversation.id}/messages`)
       .flush({ id: conversation.id, name: conversation.name, messages: [] });
@@ -242,8 +228,6 @@ describe('transcript pinning (US-606)', () => {
     button?.click();
     await settle();
 
-    // The control unmounts on this same pass, so focus must have been moved
-    // somewhere deliberate rather than falling back to <body>.
     expect(jump()).toBeNull();
     expect(document.activeElement).toBe(body());
   });
@@ -257,8 +241,7 @@ describe('transcript pinning (US-606)', () => {
     handle.enqueue(fullTurnEvents().map(frame).join(''));
     handle.close();
     await settle(STREAM_BATCH_WINDOW_MS);
-    // Settling swaps the live turn for a transcript entry, which is the largest
-    // height change of the turn — and still must not move the view.
+    // Settling is the turn's largest height change, and still must not move the view.
     layOutTallerContent();
 
     expect(scrollWrites).toHaveLength(0);
@@ -273,8 +256,7 @@ describe('transcript pinning (US-606)', () => {
     backend
       .expectOne(`${TEST_API_BASE_URL}/api/conversations/${conversation.id}`)
       .flush(conversationDetailFixture({ ...conversation }));
-    // A conversation with nothing said in it yet (US-410): the empty state is
-    // what a reader sees, which is the swap this spec is about.
+    // Nothing said yet, so the body starts on the empty state this test swaps away from.
     backend
       .expectOne(`${TEST_API_BASE_URL}/api/conversations/${conversation.id}/messages`)
       .flush({ id: conversation.id, name: conversation.name, messages: [] });

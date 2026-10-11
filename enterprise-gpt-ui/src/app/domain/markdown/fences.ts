@@ -1,7 +1,4 @@
-/**
- * A line-start code fence. CommonMark allows up to three spaces of indent before
- * a fence stops being a fence, and allows either marker character.
- */
+/** A line-start fence: CommonMark allows up to three spaces of indent and either marker. */
 const FENCE = /^ {0,3}(`{3,}|~{3,})([^\n]*)$/gm;
 
 export interface Fence {
@@ -16,12 +13,7 @@ export interface ClosedFence {
   readonly start: number;
   readonly end: number;
   readonly info: string;
-  /**
-   * The info string on the line that closed it, which CommonMark requires to be
-   * empty. Anything else means the block was closed by what was meant to be a
-   * nested opener, so the pair is a parse of malformed input rather than the
-   * block the author intended.
-   */
+  /** CommonMark requires an empty closer; anything else means a nested opener closed it. */
   readonly closerInfo: string;
   /** Half-open span of the content between the two fence lines. */
   readonly contentStart: number;
@@ -35,10 +27,8 @@ export interface FenceScan {
 }
 
 /**
- * Pairs fences the way CommonMark does: a block is closed only by a later fence
- * of the *same* character that is at least as long. Anything else on a fence line
- * is content — which is exactly how a four-backtick block quotes a three-backtick
- * one without the inner pair being mistaken for its terminator.
+ * A block closes only on a later fence of the same character, at least as long, so a
+ * four-backtick block can quote a three-backtick one.
  */
 export function scanFences(text: string): FenceScan {
   const closed: ClosedFence[] = [];

@@ -26,14 +26,8 @@ import { chatMatcher } from './chat-route';
 const RATED_AT = '2026-08-21T09:30:00+00:00';
 
 /**
- * The chat route in both themes — the empty screen of frame `1a` and an open
- * conversation with its header, composer and pickers.
- *
- * The composer is the densest control surface in the application: seven controls, two
- * anchored panels, a file input that is off-screen rather than hidden, and a send/stop
- * button that swaps identity mid-turn. It is also the surface US-1401 found two of its
- * defects on, which is why it is worth auditing with the catalogues actually loaded
- * rather than in its empty state.
+ * Audited with the catalogues loaded: the composer is the densest control surface in the app,
+ * and most of it is absent without them.
  */
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
@@ -42,7 +36,7 @@ const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps`;
 @Component({ template: '' })
 class Blank {}
 
-describe('chat accessibility (US-1405)', () => {
+describe('chat accessibility', () => {
   let backend: HttpTestingController;
   let harness: RouterTestingHarness;
   let attached: HTMLElement | null = null;
@@ -51,8 +45,7 @@ describe('chat accessibility (US-1405)', () => {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       providers: [
-        // Both flags off: this audit is about the screen's own semantics, and a
-        // deployment with diagrams on would have it reach for a library over the network.
+        // Diagrams on would fetch a library over the network mid-audit.
         provideTestAppConfig({ features: { diagrams: false, math: false, rawStreamCodec: false } }),
         provideHttpClient(),
         provideHttpClientTesting(),
@@ -77,8 +70,7 @@ describe('chat accessibility (US-1405)', () => {
     attached?.remove();
     attached = null;
     clearTheme();
-    // The transcript replay (US-410) is not what this spec is about; taking those reads
-    // off the queue rather than answering them mirrors `chat.spec.ts`.
+    // Transcript replay reads are not under test here; drain them unanswered.
     backend.match((request) => request.url.endsWith('/messages'));
     backend.verify();
   });
@@ -93,12 +85,7 @@ describe('chat accessibility (US-1405)', () => {
     return element;
   }
 
-  /**
-   * The composer's two pickers render nothing until their catalogues land.
-   *
-   * Both stores are root-scoped and load on demand, so the request only exists once
-   * something asks — at runtime that is `SessionBootstrap`, and here it is this.
-   */
+  /** The pickers render nothing without catalogues, which only `SessionBootstrap` requests. */
   async function loadCatalogues(): Promise<void> {
     const models = TestBed.inject(ModelCatalogStore).ensureLoaded();
     const mcps = TestBed.inject(McpCatalogStore).ensureLoaded();
@@ -106,14 +93,11 @@ describe('chat accessibility (US-1405)', () => {
     backend.expectOne((request) => request.url === MODELS_URL).flush([modelFixture()]);
     backend
       .expectOne((request) => request.url === MCPS_URL)
-      // One row with a brand mark and one without, so the audit covers both arms of the
-      // picker's icon slot rather than only the generic glyph.
+      // With and without a brand mark: both arms of the picker's icon slot.
       .flush([
         mcpFixture({ name: 'Microsoft Learn', iconKey: 'microsoft' }),
         mcpFixture({ name: 'Jira Cloud', iconKey: null }),
-        // Both arms of the per-user key state. The configured one puts two menu items
-        // on one line, which is what `aria-required-children` and `nested-interactive`
-        // are for; the pending one is the row that is a plain `menuitem`.
+        // Both per-user key states; the configured one puts two menu items on one line.
         mcpFixture({ name: 'GitHub', iconKey: 'github', requiresUserApiKey: true }),
         mcpFixture({
           name: 'GitLab',
@@ -147,15 +131,7 @@ describe('chat accessibility (US-1405)', () => {
       await expectNoSeriousViolations(element, `/chat/:id (${theme})`);
     });
 
-    /**
-     * The download menu open (US-1502, frame `2f`).
-     *
-     * Audited open rather than closed because the panel is where its semantics live: a
-     * `role="menu"` whose children must all be `menuitem`, one of which the note beside
-     * them is deliberately not. The trigger is `<app-menu>`'s, which carries a tooltip
-     * only while disabled — the case that would otherwise put an `aria-label` on a
-     * role-less element, which axe reports as serious.
-     */
+    /** Audited open: the menu holds a note that is deliberately not a `menuitem`. */
     it(`finds nothing serious with the download menu open in the ${theme} theme`, async () => {
       const conversation = conversationFixture({ name: 'Helios 2.4 release status' });
       const element = await open(`/chat/${conversation.id}`, theme);
@@ -184,13 +160,8 @@ describe('chat accessibility (US-1405)', () => {
     });
 
     /**
-     * The Tools picker open (US-403/US-417/US-418, frame `2c`).
-     *
-     * Audited open for the reason the download menu is, and one more: its rows are
-     * `menuitemcheckbox` carrying an `aria-hidden` switch that is not a `role="switch"`,
-     * because that role is not an allowed owned element of `role="menu"`. That is exactly
-     * what `aria-required-children` and `aria-hidden-focus` are for, and the closed pill
-     * exercises neither.
+     * Audited open: each `menuitemcheckbox` row carries an `aria-hidden` switch, which the closed
+     * pill never exercises.
      */
     it(`finds nothing serious with the tools picker open in the ${theme} theme`, async () => {
       const element = await open('/chat', theme);
@@ -204,15 +175,8 @@ describe('chat accessibility (US-1405)', () => {
     });
 
     /**
-     * US-1103's thumbs, which no other audit reaches: the transcript above flushes a
-     * message with no `id`, so the controls are correctly absent there and would stay
-     * silently unaudited for ever.
-     *
-     * The answer is flushed **already rated**, and that is what makes the audit run at
-     * all. The footer is `opacity: 0` at rest and axe skips a zero-opacity subtree for
-     * every visibility-dependent rule — colour contrast and target size among them, which
-     * are the two an icon-only toggle pair is most likely to fail. A rated turn is the one
-     * state that forces the row visible without a synthetic hover.
+     * Flushed already rated: the footer is `opacity: 0` at rest, and axe skips zero-opacity
+     * subtrees for contrast and target size. A rated turn shows it without a synthetic hover.
      */
     it(`finds nothing serious with a rated answer in the ${theme} theme`, async () => {
       const conversation = conversationFixture({ name: 'Helios 2.4 release status' });
@@ -238,10 +202,7 @@ describe('chat accessibility (US-1405)', () => {
       await loadCatalogues();
       await harness.fixture.whenStable();
 
-      // Not merely present: *revealed*. Axe skips a zero-opacity subtree for every
-      // visibility-dependent rule — target size and colour contrast among them, which are
-      // the two this audit exists to measure — so a regression in the `--rated` reveal
-      // would quietly turn this into a green no-op rather than a failure.
+      // Revealed, not merely present: a hidden footer would turn this audit into a silent pass.
       const footer = element.querySelector('.assistant-turn__footer');
       expect(footer?.querySelector('app-message-feedback')).not.toBeNull();
       expect(getComputedStyle(footer as Element).opacity).toBe('1');
@@ -249,14 +210,7 @@ describe('chat accessibility (US-1405)', () => {
       await expectNoSeriousViolations(element, `/chat/:id rated answer (${theme})`);
     });
 
-    /**
-     * A file the assistant made, replayed under its answer (US-601/US-602/US-606).
-     *
-     * Its own case because nothing else reaches the surface: every other transcript here
-     * flushes messages with no attachments, so the chip, its download control and the
-     * list that names them would stay unaudited. Unlike the footer above, this row is
-     * visible at rest, so every visibility-dependent rule actually runs on it.
-     */
+    /** The only transcript here with attachments, so the only audit of the generated-file chips. */
     it(`finds nothing serious on a generated file in the ${theme} theme`, async () => {
       const conversation = conversationFixture({ name: 'Helios 2.4 release status' });
       const element = await open(`/chat/${conversation.id}`, theme);
@@ -274,9 +228,7 @@ describe('chat accessibility (US-1405)', () => {
             messageFixture({
               text: 'Here is the workbook.',
               role: CHAT_ROLE.assistant,
-              // Two, because that is what a run producing more than one file looks like, and one chip
-              // audits neither the wrapped row nor a second glyph tone. It does not tighten the
-              // target-spacing case: the flex gap keeps the two controls far apart either way.
+              // Two, so the audit covers the wrapped row and a second glyph tone.
               attachments: [
                 {
                   id: '9c8b7a65-4321-4fed-8cba-0987654321fe',
@@ -300,8 +252,7 @@ describe('chat accessibility (US-1405)', () => {
       await loadCatalogues();
       await harness.fixture.whenStable();
 
-      // Rendered *and* visible: this file has already been burned once by a zero-opacity subtree
-      // turning an audit into a green no-op, and a chip axe cannot see is one it cannot fail.
+      // Visible as well as rendered: axe cannot fail a chip it cannot see.
       const chips = element.querySelectorAll<HTMLElement>('app-generated-files .chip');
 
       expect(chips).toHaveLength(2);

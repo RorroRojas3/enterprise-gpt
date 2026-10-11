@@ -1,9 +1,6 @@
 <!--
-  The drop target wraps the whole card, not just the textarea: frame `2a` draws the
-  overlay at `inset: 4px` of the prompt box, and a zone the size of the visible box is
-  the one a user aims at. Bound to the permission, so without `Upload File` the card
-  binds no listeners at all and a drop does nothing (US-204, frame `2h`) — and to the
-  same in-flight condition as the paperclip, so a drop cannot do what a click cannot.
+  The whole card is the drop zone, as that is the box a user aims at. Gated on the permission and
+  on the paperclip's in-flight condition, so a drop cannot do what a click cannot.
 -->
 <div
   class="composer"
@@ -17,10 +14,8 @@
   }
 
   <!--
-    A chip appearing is otherwise announced to nobody: each chip's own `role="status"`
-    is inserted together with its content, which is not reliably read out. This region
-    exists from first render and carries a summary rather than per-file progress, so it
-    does not re-read on every percentage.
+    Exists from first render, since each chip's own `role="status"` arrives with its content and
+    is not reliably read. A summary, so it does not re-read on every percentage.
   -->
   <p class="visually-hidden" role="status">{{ uploads.attachmentSummary() }}</p>
 
@@ -30,10 +25,8 @@
     <ul class="composer__chips" role="list" aria-label="Attached files">
       @for (attachment of uploads.attachments(); track attachment.id) {
         <li>
-          <!-- Stop owns the cancel while a file is on its way: two controls for one
-               action read as two different outcomes, and only one of them exists. A file
-               still waiting for a conversation to exist keeps its own, because nothing is
-               in flight for Stop to take over. -->
+          <!-- Stop owns the cancel while a file is in flight, so one action has one control.
+               A file still waiting for a conversation keeps its own. -->
           <app-attachment-chip
             [attachment]="attachment"
             [removable]="!attachment.busy"
@@ -59,10 +52,7 @@
     (input)="onPromptInput($event)"
   ></textarea>
 
-  <!--
-    The live region exists from first render and the @if toggles its content:
-    a region created together with its content is not reliably announced.
-  -->
+  <!-- Exists from first render: a region created with its content is not reliably announced. -->
   <p class="composer__note" [class.composer__note--visible]="note() !== null" role="status">
     @if (note(); as note) {
       <app-icon name="bi-exclamation-triangle-fill" />
@@ -72,8 +62,7 @@
 
   <div class="composer__controls">
     @if (session.canUploadFiles()) {
-      <!-- Absent rather than disabled without the grant, which is why this is an
-           `@if` and not a `[disabled]` — frame `2h`. -->
+      <!-- Absent rather than disabled without the grant. -->
       <button
         type="button"
         class="composer__aux composer__icon-button"
@@ -84,11 +73,8 @@
         <app-icon name="bi-paperclip" />
       </button>
       <!--
-        Off-screen rather than `display: none`: a hidden input is not focusable, and
-        the button above is the accessible control that opens it. `accept` narrows the
-        picker to what this deployment can actually read, and is empty — meaning "any
-        file" — until that list loads, because refusing everything on a failed side
-        request would be worse than the round trip it saves.
+        Off-screen, not `display: none`, which is unfocusable. `accept` is empty, meaning any
+        file, until the list loads: refusing everything on a failed side request would be worse.
       -->
       <input
         #filePicker
@@ -103,19 +89,9 @@
     }
 
     <!--
-      The project pill, between the paperclip and the model pill. Absent, not
-      disabled, when the host has nothing to act on — empty /chat, and
-      a deep link for the round trip before its row lands.
-
-      Two shapes, because the two arms differ in kind: on the chat route the project is
-      a property of the conversation and the pill opens frame 2e's picker; on a project's
-      own screen it is the route, so the same pill renders as a static chip with nothing
-      to open.
-
-      Natively disabled while a turn runs, like the attach control beside it and unlike
-      the microphone, whose Stop must stay reachable: `composer__aux` already dims it to
-      40%, and a control that looks unavailable and still opens a popover reads as
-      broken. It sits outside any roving-focus panel, so the native attribute is safe.
+      Absent when the host has nothing to act on. A picker where the project belongs to the
+      conversation; a static chip on a project screen, where it is the route. Natively disabled
+      mid-turn: a dimmed control that still opens a popover reads as broken.
     -->
     @if (turn.projectTarget(); as target) {
       @if (target.kind === 'conversation') {
@@ -159,12 +135,8 @@
     <app-tools-menu />
 
     @if (dictation.supported()) {
-      <!-- Frame 2i draws the recording pill in the microphone's place, and one
-           persistent button morphs into it for the same reason the send control
-           morphs into Stop: swapping elements would destroy the control the user
-           just pressed and drop focus to <body>. The changing aria-label is also
-           what announces the state change on the still-focused button.
-           Stop stays operable while a turn streams — only starting is blocked. -->
+      <!-- One button morphs into the recording pill, as Send does into Stop, so focus survives
+           and the changing aria-label announces it. Stop stays operable while a turn streams. -->
       <button
         type="button"
         [class.composer__aux]="!dictation.recording()"
@@ -184,14 +156,8 @@
     }
 
     <!--
-      US-1502. Absent, not disabled, when there is nothing to download — empty `/chat`, a
-      conversation whose transcript is still empty, and every project screen — which is
-      this repo's pattern for an affordance with nothing behind it.
-
-      `composer__aux` is what US-407's in-flight dimming keys on, so this dims with the
-      paperclip and the project pill and needs no rule of its own. The control itself is
-      *disabled* rather than absent while a turn runs (frame `2g`), because there is
-      something to download, just not yet.
+      Absent when there is nothing to download, as on every project screen. Disabled rather than
+      absent mid-turn, because there is something to download, just not yet.
     -->
     @if (turn.exportTarget(); as target) {
       <app-conversation-download-menu
@@ -204,9 +170,8 @@
     }
 
     <span class="composer__spacer"></span>
-    <!-- One persistent button morphs between Send and Stop (frames 1b/2g):
-         swapping elements with @if would destroy the control mid-press and
-         drop keyboard focus to <body> on the app's primary interaction. -->
+    <!-- One persistent button morphs between Send and Stop: swapping elements would destroy
+         the control mid-press and drop focus to <body>. -->
     <button
       #actionButton
       type="button"

@@ -1,17 +1,6 @@
 /**
- * The four providers that exist at deployment time, mirroring
- * `Enterprise.Gpt.Dto.Enums.Providers` — whose ids are documented as matching
- * the seeded `Core.Ref.Provider` rows verbatim, which is what makes a
- * client-side mirror safe.
- *
- * A mirror rather than a fetch because **there is no `GET api/providers`**: no
- * endpoint exposes provider names to any caller, administrator included. This map is
- * how the model picker renders a provider's display name and colour dot (frame `2b`),
- * and how the admin catalog offers the Provider select (frame `5f`, US-1207).
- *
- * The seeded rows spell their names `AzureOpenAI`, `AzureAIFoundry`, `AmazonBedrock`
- * and `Anthropic` — `nameof(...)` values, not display copy — which is the other half
- * of why the labels live here.
+ * Mirrors `Enterprise.Gpt.Dto.Enums.Providers`, whose ids match the seeded rows. A client-side
+ * mirror because no endpoint exposes provider names, and the seeded ones are `nameof` values.
  */
 export const PROVIDER_ID = {
   azureOpenAi: '3f2a91b5-9e5a-4a0a-a57a-ec70b540bbf0',
@@ -31,19 +20,14 @@ export interface ProviderMeta {
 
 const PROVIDERS: Readonly<Record<string, ProviderMeta>> = {
   [PROVIDER_ID.azureOpenAi]: { name: 'Azure OpenAI', tone: 'provider-azure-openai' },
-  // Shares Azure OpenAI's tone: the palette carries three provider hues, not four.
-  // The provider *name* renders in the same cell, and the dot groups the two Azure
-  // providers.
+  // Shares Azure OpenAI's tone: the palette has three provider hues, and the dot groups the
+  // two Azure providers.
   [PROVIDER_ID.azureAiFoundry]: { name: 'Azure AI Foundry', tone: 'provider-azure-openai' },
   [PROVIDER_ID.amazonBedrock]: { name: 'Amazon Bedrock', tone: 'provider-bedrock' },
   [PROVIDER_ID.anthropic]: { name: 'Anthropic', tone: 'provider-anthropic' },
 };
 
-/**
- * Resolves a provider's presentation, or null for an id this build does not
- * know — a new provider seeded server-side must degrade to a muted dot and a
- * caption without the provider segment, not break the picker.
- */
+/** Null for an unknown id: a newly seeded provider must degrade, not break the picker. */
 export function providerMeta(providerId: string): ProviderMeta | null {
   return PROVIDERS[providerId] ?? null;
 }

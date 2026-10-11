@@ -28,28 +28,17 @@ import {
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 import { DEFAULT_USER_PAGE_SIZE } from './admin-users-route';
 
-/** Everything the URL says about which page of the directory to fetch (US-1201). */
+/** Everything the URL says about which page of the directory to fetch. */
 export interface AdminUsersQuery {
   readonly name: string;
   readonly page: number;
   readonly pageSize: number;
-  /**
-   * The permission every returned user must hold, or `null` for the whole directory
-   * (US-1206).
-   *
-   * Already vouched for by the caller. The store sends what it is given; deciding that an
-   * id names a permission that exists needs the catalog, which is the screen's to hold.
-   */
+  /** Already checked against the catalog by the caller; `null` for the whole directory. */
   readonly permissionId: string | null;
 }
 
 interface AdminUsersState {
-  /**
-   * The `name=` filter the rows on screen belong to.
-   *
-   * Written when the request starts rather than when it commits, so the empty state
-   * names the term that produced it and not the one still being typed.
-   */
+  /** Written when the request starts, so the empty state names the term that produced it. */
   readonly name: string;
   /** The 1-based page those rows belong to, on the same terms. */
   readonly page: number;
@@ -57,11 +46,7 @@ interface AdminUsersState {
   /** The `permissionId=` filter those rows belong to, on the same terms. */
   readonly permissionId: string | null;
   readonly totalCount: number;
-  /**
-   * Bumped by every query, so an optimistic removal knows which result set it came out
-   * of. Restoring a row into a page the reader has since replaced would splice one
-   * search's row into another's.
-   */
+  /** Bumped per query, so an undo never splices one search's row into another's results. */
   readonly _queryGeneration: number;
 }
 
@@ -73,30 +58,8 @@ export interface RemovedUserRow {
 }
 
 /**
- * The administration user directory, from `GET api/users` (US-1201).
- *
- * **It does not compose `withOffsetPagination`, and that is the store's one structural
- * decision.** That feature models a running offset — `skip` is how many rows have been
- * loaded, `setPage` advances it by what came back, and `hasMore` compares the two — which
- * is the shape a "Load more" list needs. A numbered pager is a different model: `skip` is
- * `(page − 1) × pageSize`, and a page *replaces* the rows rather than appending to them.
- * Reinterpreting `skip` to mean the request offset would break `hasMore` and
- * `isFullyLoaded` for the four stores that read them as the feature defines them, so the
- * page window lives here instead — inline rather than as a sixth `core/state/` feature,
- * on the rule `ConversationListStore` already states: two stores sharing a shape is a
- * coincidence, three is a feature. This is the first.
- *
- * Everything else copies `ConversationLibraryStore`, including the reasons: `rxMethod` +
- * `switchMap` because typing drives it and a slow `"an"` must not paint over a fast
- * `"anders"`; no `debounceTime`, because `SearchInput` already debounces and emits only
- * committed values; and `takeUntil(signedOut$)` on the inner request, because
- * `withResetOnSignOut` clears state and does not cancel work.
- *
- * Rows keep the server's order — last name, then first name. No sort control is offered
- * here, but that is now the screen's own gap rather than the API's: US-706 put `sort=` and
- * `dir=` on `GET api/users`, so wiring one is a route-and-template change on this tab.
- * The permission filter frame `5a` also draws is no longer among those gaps — US-1205 put
- * `permissionId=` on the endpoint and US-1206 wired the control to it.
+ * Not `withOffsetPagination`, which models a "Load more" running offset; a numbered pager
+ * replaces the rows per page. No `debounceTime`: `SearchInput` already emits committed values.
  */
 export const AdminUsersStore = signalStore(
   withState<AdminUsersState>({
@@ -121,45 +84,25 @@ export const AdminUsersStore = signalStore(
       return {
         /** Loaded, and there is genuinely nothing — distinct from "not loaded yet". */
         isEmpty,
-        /**
-         * Loaded, nothing matched, and a filter is why — the empty state that can name it.
-         *
-         * Either filter counts. Reading the term alone would let a directory narrowed to a
-         * permission nobody holds render "No users match" over an empty search box.
-         */
+        /** Loaded, nothing matched, and either filter is why, so the empty state can name it. */
         hasNoMatches: computed(
           () => isEmpty() && (name().trim() !== '' || permissionId() !== null),
         ),
         /**
-         * Loaded, nothing on this page, but there are rows on an earlier one.
-         *
-         * A deep link to `?page=99`, or a page emptied by deactivations since the link was
-         * shared. It is its own state because the way out of it is a page change, not a
-         * cleared search — and it is tested **before** `hasNoMatches` in the template, so a
-         * filtered link past the end explains the page rather than blaming the term.
-         *
-         * `page() > 1` is what keeps the two apart: page 1 of a search with no results is a
-         * failed search, whatever the unfiltered directory holds.
+         * An empty page past the end, whose way out is a page change; the template tests it
+         * before `hasNoMatches`. An empty page 1 is a failed search instead.
          */
         isPastEnd: computed(() => isEmpty() && totalCount() > 0 && page() > 1),
-        /**
-         * Nothing on screen yet, so a skeleton is the honest thing to show. A search that
-         * narrows an existing list keeps its rows and marks the field busy instead.
-         */
+        /** Nothing on screen yet; a search over existing rows keeps them and marks busy. */
         isFirstLoad: computed(() => isPending() && entities().length === 0),
         /**
-         * Derived rather than read from `PaginatedResponseDto.totalPages`.
-         *
-         * The server computes the same figure, but from the page size *it* used; deriving
-         * it from the size this store is about to request next keeps the pager and the
-         * request in step in the gap between a size change and its response.
+         * Derived rather than the server's `totalPages`, so the pager follows a size change
+         * before its response arrives.
          */
         totalPages: computed(() => Math.max(1, Math.ceil(totalCount() / pageSize()))),
         /**
-         * Frame `5a`'s footer count, in the wording `Paginator` composes it in.
-         *
-         * Handed to `DataTable.summary` as well, which is why the paginator's own copy is
-         * told not to announce: two live regions carrying one sentence read it twice.
+         * Also handed to `DataTable.summary`, which is why the paginator's own copy does not
+         * announce: two live regions would read it twice.
          */
         countSummary: computed(() => {
           const total = totalCount();
@@ -170,9 +113,7 @@ export const AdminUsersStore = signalStore(
 
           const first = (page() - 1) * pageSize() + 1;
 
-          // A page past the end has no range to state. Left unclamped this reads "Showing
-          // 2451–312 of 312 users" — visibly, and in the table's live region, right beside
-          // the empty state explaining that the page does not exist.
+          // A page past the end has no range; unclamped it would read "Showing 2451–312 of 312".
           if (first > total) {
             return `No users on this page — ${total} ${noun} in total`;
           }
@@ -198,9 +139,7 @@ export const AdminUsersStore = signalStore(
         params = params.set('name', trimmed);
       }
 
-      // `permissionId`, the API's own spelling — unlike `size`/`take`, which the URL
-      // renames for the reader. This is the wire, and the server keys its validation
-      // problem on this name.
+      // The API's own spelling, which its validation problem is keyed on; only the URL renames.
       if (permissionId !== null) {
         params = params.set('permissionId', permissionId);
       }
@@ -222,10 +161,8 @@ export const AdminUsersStore = signalStore(
     // `retry()` pushes the same query again on purpose.
     const _runQuery = rxMethod<AdminUsersQuery | null>(
       pipe(
-        // `null` means the screen cannot yet say what to ask for — a link naming a
-        // permission whose existence only the catalog can confirm. Dropped rather than
-        // sent unfiltered and corrected afterwards, which would put the whole directory
-        // on screen for a moment before narrowing it to the page that was linked to.
+        // `null` means "not yet": sending unfiltered first would flash the whole directory
+        // before narrowing it to the linked permission.
         filter((query): query is AdminUsersQuery => query !== null),
         tap((query) =>
           patchState(
@@ -241,10 +178,8 @@ export const AdminUsersStore = signalStore(
           return store._http.get<PaginatedResponseDto<UserDto>>(url, { params }).pipe(
             takeUntil(store._signedOut$),
             tapResponse({
-              // The envelope's `pageSize` is deliberately not adopted back into state.
-              // Every size this screen can ask for is inside the server's 1–100 clamp,
-              // so the echo is always what was sent — and adopting it would let a
-              // response overwrite a size the URL has since changed.
+              // The echoed `pageSize` is not adopted: every size sent is inside the clamp, and
+              // adopting it could overwrite a size the URL has since changed.
               next: (response) =>
                 patchState(
                   store,
@@ -260,30 +195,14 @@ export const AdminUsersStore = signalStore(
     );
 
     return {
-      /**
-       * Re-reads the page on screen.
-       *
-       * What a creation does to this list, rather than an insertion: rows are ordered by
-       * last name then first name, so the new user's slot is the server's to decide — and
-       * on any page but the one it belongs to, it must not appear at all.
-       */
+      /** Re-reads the page; a created user's slot and page are the server's to decide. */
       refresh(): void {
         _runQuery(currentQuery());
       },
 
       /**
-       * Binds the screen's `?name=`, `?page=`, `?size=` and `?permission=` to the query,
-       * once, from its constructor.
-       *
-       * Taking a computation rather than a value is what makes a deep link one request:
-       * `rxMethod` subscribes through an effect, so it reads the parameters the router
-       * has already bound instead of firing unfiltered first and filtered second. All
-       * four travel in one object because they go out on one request — binding them
-       * separately would fire a second query for every change to any of them.
-       *
-       * The computation may answer `null`, which means "not yet" rather than "everything":
-       * `?permission=` cannot be turned into a request until the permission catalog says
-       * whether the id exists, and a query withheld is one fewer wrong page on screen.
+       * Bound once to one computed query, so a deep link is one request. `null` withholds the
+       * query until the permission catalog confirms `?permission=`.
        */
       bindQuery: _runQuery,
 
@@ -293,11 +212,8 @@ export const AdminUsersStore = signalStore(
       },
 
       /**
-       * Removes a row optimistically, keeping enough to put it back where it was.
-       *
-       * The page is left one row short rather than refetched. A refetch would repaint a
-       * table the administrator is looking at and pull an unrelated row up from the next
-       * page, which reads as if the deactivation had touched two people.
+       * Leaves the page one row short rather than refetching, which would pull up an unrelated
+       * row and read as if the deactivation touched two people.
        */
       takeRow(id: string): RemovedUserRow | null {
         const index = store.entities().findIndex((user) => user.id === id);
@@ -329,13 +245,9 @@ export const AdminUsersStore = signalStore(
     };
   }),
   withEventHandlers((store, events = inject(Events)) => [
-    // Server-confirmed facts only, which is the whole contract of this event group. The
-    // flows themselves live in the root `UserActionsStore`, which outlives this route and
-    // cannot reach into it — `core/` may not import from `features/`.
     events.on(adminEvents.userCreated).pipe(tap(() => store.refresh())),
 
-    // Patched in place rather than refetched: frame `5c` edits permissions only, so the
-    // sort key — last name, then first name — cannot have moved.
+    // Patched in place: the edit panel changes permissions only, so the sort key cannot move.
     events.on(adminEvents.userUpdated).pipe(
       tap(({ payload }) => {
         if (store.entityMap()[payload.id] === undefined) {
@@ -346,9 +258,7 @@ export const AdminUsersStore = signalStore(
       }),
     ),
 
-    // The row is already gone — this screen removed it optimistically and handed the undo
-    // to the request. What this covers is a deactivation performed from anywhere else,
-    // and it is idempotent by the guard above.
+    // This screen's own removal was optimistic; this covers a deactivation made elsewhere.
     events.on(adminEvents.userDeactivated).pipe(
       tap(({ payload: id }) => {
         if (store.entityMap()[id] === undefined) {

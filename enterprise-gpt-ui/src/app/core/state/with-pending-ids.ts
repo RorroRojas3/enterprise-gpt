@@ -8,22 +8,13 @@ import {
 } from '@ngrx/signals';
 
 export interface PendingIdsState {
-  /**
-   * Ids whose own action is in flight. A `Set` rather than an array because the
-   * lookup happens once per row per render.
-   */
+  /** Ids whose own action is in flight; a `Set` because every row looks itself up per render. */
   readonly pendingIds: ReadonlySet<string>;
 }
 
 /**
- * Per-row in-flight tracking, so a rename on one conversation does not disable
- * the other forty.
- *
- * Every updater replaces the set rather than mutating it, and that is load-bearing
- * rather than stylistic: `patchState` compares each key by reference before
- * writing, so an updater that mutates the existing `Set` and returns the same
- * reference performs **no signal write at all**. Nothing re-renders and nothing
- * fails — the list simply stops updating.
+ * Per-row in-flight tracking. Updaters must replace the `Set`: a mutated one keeps its
+ * reference, so no signal write happens and the list silently stops updating.
  */
 export function withPendingIds() {
   return signalStoreFeature(
@@ -33,12 +24,7 @@ export function withPendingIds() {
       pendingIdCount: computed(() => pendingIds().size),
     })),
     withMethods(({ pendingIds }) => ({
-      /**
-       * Whether this row's own action is in flight.
-       *
-       * Reads the signal on every call, so a template binding tracks it and
-       * re-renders when the set changes.
-       */
+      /** Whether this row's own action is in flight. */
       isRowPending(id: string): boolean {
         return pendingIds().has(id);
       },

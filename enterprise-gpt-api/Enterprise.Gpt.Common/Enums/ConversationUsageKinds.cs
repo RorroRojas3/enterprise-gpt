@@ -21,10 +21,8 @@ public enum ConversationUsageKinds
     /// a run over a project document, which no conversation owns.
     /// </summary>
     /// <remarks>
-    /// One row per run rather than per model call, matching how a chat turn is recorded: a run's
-    /// map, collapse and reduce calls roll into one row the way a turn's iterations do, and the
-    /// call count itself is persisted on the summary row. The row always carries the pinned
-    /// summarizer's own model, deployment and prices, never the conversation's selected chat model.
+    /// One row per run, as for a chat turn (the call count lives on the summary row). It carries the
+    /// pinned summarizer's model and prices, never the conversation's selected chat model.
     /// </remarks>
     Summarization = 3
 }

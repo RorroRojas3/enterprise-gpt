@@ -11,7 +11,7 @@ import { AdminMcpsStore } from './admin-mcps-store';
 
 const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps/all`;
 
-describe('AdminMcpsStore (US-1208)', () => {
+describe('AdminMcpsStore', () => {
   let store: InstanceType<typeof AdminMcpsStore>;
   let backend: HttpTestingController;
 
@@ -52,7 +52,7 @@ describe('AdminMcpsStore (US-1208)', () => {
 
     const request = backend.expectOne(MCPS_URL);
     expect(request.request.method).toBe('GET');
-    // Unpaginated: no skip, no take, no name. That is what makes regime C honest.
+    // Unpaginated: no skip, no take, no name, so a client-side filter is exact.
     expect(request.request.params.keys()).toEqual([]);
     request.flush([
       mcpServerFixture(),
@@ -107,7 +107,7 @@ describe('AdminMcpsStore (US-1208)', () => {
     store.search('nothing matches this');
     await settle();
 
-    // Regime C: no second request, ever. `backend.verify()` is the assertion.
+    // No second request, ever: `backend.verify()` is the assertion.
     expect(store.results()).toHaveLength(0);
     expect(store.hasNoMatches()).toBe(true);
   });
@@ -140,8 +140,7 @@ describe('AdminMcpsStore (US-1208)', () => {
   it('offers sort only over a set it holds in full', async () => {
     await loadWith([mcpServerFixture()]);
 
-    // Regime C's whole premise: one request is the complete set, so there is no
-    // pagination to be partway through.
+    // One request is the complete set, so there is no pagination to be partway through.
     expect(store.canSort()).toBe(true);
     expect(store.sortUnavailableReason()).toBeNull();
   });

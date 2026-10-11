@@ -40,8 +40,7 @@ describe('sessionGuard', () => {
     backend
       .expectOne((request) => request.url === CONVERSATIONS_URL)
       .flush({ items: [], totalCount: 0, pageSize: 50, currentPage: 1, totalPages: 0 });
-    // US-307's root project list, the last of US-202's four post-bootstrap loads. One
-    // page with nothing beyond it, so the drain stops here.
+    // One page with nothing beyond it, so the drain stops here.
     backend
       .expectOne((request) => request.url === PROJECTS_URL)
       .flush({ items: [], totalCount: 0, pageSize: 100, currentPage: 1, totalPages: 0 });
@@ -81,8 +80,8 @@ describe('sessionGuard', () => {
   });
 
   it('requests the catalogs only after the bootstrap has returned', async () => {
-    // US-202: the bootstrap self-provisions the user and warms the API's permission
-    // cache, so a catalog request racing it could be answered before either happened.
+    // The bootstrap self-provisions the user and warms the API's permission cache, so a catalog
+    // request racing it could be answered before either happened.
     const activated = run();
     await settle();
 
@@ -127,8 +126,7 @@ describe('sessionGuard', () => {
   });
 
   it('does not repopulate the store for the user who just signed out', async () => {
-    // SessionStore drops its bootstrap memo on sign-out, so an unlatched run here would
-    // issue a fresh POST api/users/me and refill the store this teardown just emptied.
+    // SessionStore drops its memo on sign-out, so an unlatched run would re-issue the bootstrap.
     const first = run();
     await settle();
     backend.expectOne(ME_URL).flush(userFixture());

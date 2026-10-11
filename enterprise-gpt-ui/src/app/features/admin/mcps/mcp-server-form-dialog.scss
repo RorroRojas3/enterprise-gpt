@@ -7,8 +7,7 @@
 .mcp-form__grid {
   display: grid;
   gap: 12px 14px;
-  // Frame `5h`'s two columns, collapsing to one below the modal's narrow width — every
-  // field here is a labelled control and none of them reads across a 320px viewport.
+  // One column when narrow: none of these labelled controls reads across a 320px viewport.
   grid-template-columns: 1fr 1fr;
   font-size: 12.5px;
 
@@ -36,8 +35,6 @@
   font-size: 20px;
 }
 
-// Frame `5h`'s `--fail` panel: the failure names the server, and the form never clears
-// what the reader typed.
 .mcp-form__summary {
   display: flex;
   flex-direction: column;

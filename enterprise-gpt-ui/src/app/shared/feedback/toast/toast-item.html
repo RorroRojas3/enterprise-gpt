@@ -29,9 +29,8 @@
   </button>
 
   @if (toast().dismissAfterMs > 0) {
-    <!-- The draining indicator is a CSS transition driven by one custom property set
-         once, not a timer writing a width sixty times a second. Decorative: the toast
-         disappearing is the only thing that matters, and it is announced. -->
+    <!-- A CSS transition from one property set once, not a timer. Decorative: the dismissal
+         itself is what is announced. -->
     <span
       class="toast__drain"
       aria-hidden="true"

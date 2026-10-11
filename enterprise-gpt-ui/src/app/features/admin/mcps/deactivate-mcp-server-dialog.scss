@@ -11,8 +11,7 @@
   line-height: 1.5;
 }
 
-// The permission-and-grants cascade is a fact about other people's access after this
-// action, not an aside, so it carries the warning surface rather than the muted one.
+// The warning surface, not the muted one: the cascade changes other people's access.
 .deactivate-mcp__note--warn {
   padding: 8px 10px;
   border-radius: 8px;

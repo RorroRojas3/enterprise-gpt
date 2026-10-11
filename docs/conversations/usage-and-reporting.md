@@ -50,10 +50,15 @@ points at the catalog row, so a report can group either way — by what the mode
 
 ### Append-only
 
-`ConversationUsage` derives from `BaseEntity`, not `BaseModifiedEntity`: no `DateModified`, nothing
-updates a row after it is written, and `DateDeactivated` stays null forever. A usage record that can
-be edited or hidden is not an audit trail. `DateCreated` is the moment the call *finished*, and it
-is the timestamp every report groups by.
+`ConversationUsage` derives from `BaseCreatedEntity`, not `BaseModifiedEntity`: no `DateModified`,
+no rowversion, nothing updates a row after it is written, and `DateDeactivated` stays null forever.
+A usage record that can be edited or hidden is not an audit trail. `DateCreated` is the moment the
+row was *saved*, stamped by the audit interceptor, and it is the timestamp every report groups by.
+The `ConversationUsage*` children follow the same shape.
+
+The rows outlive their conversation. A turn that finishes after its conversation was deleted skips
+the conversation's running counters, because the soft-delete filter applies to the `ExecuteUpdate`
+that moves them, but its usage row is still written and billed.
 
 ### Attachment is not invocation
 
@@ -113,7 +118,7 @@ Search accepts `?isFavorite=` and `?projectId=` filters and `?sort=` / `?dir=` o
 ## Reporting
 
 `GET api/reports/usage` is admin-only. `ReportService` groups over `ConversationUsage` and its
-children, bucketed by time, with the grouping keys in `Service/Reports/UsageGroupKeys.cs`.
+children, bucketed by time, with the grouping keys in `Common/Enums/UsageGroupKeys.cs` and their names in `Service/Reports/UsageGroupKeyNames.cs`.
 
 `IX_ConversationUsage_DateCreated` exists because this is the fastest-growing table in the schema;
 it was built offline inside the migration for the same reason.
@@ -130,13 +135,13 @@ The report screen is described in [../admin/users-and-permissions.md](../admin/u
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationUsage.cs` | The row and its computed totals |
-| `enterprise-gpt-api/Enterprise.Gpt.Entity/ConversationUsageToolCall.cs` | The tool-call tree |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Chat/ChatUsageObserver.cs` | Collects provider usage during a turn |
-| `enterprise-gpt-api/Enterprise.Gpt.Service/Chat/UsageReportTranslator.cs` | Provider usage to row columns |
+| `enterprise-gpt-api/Enterprise.Gpt.Entity/Usage/ConversationUsage.cs` | The row and its computed totals |
+| `enterprise-gpt-api/Enterprise.Gpt.Entity/Usage/ConversationUsageToolCall.cs` | The tool-call tree |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Conversations/Chat/ChatUsageObserver.cs` | Collects provider usage during a turn |
+| `enterprise-gpt-api/Enterprise.Gpt.Service/Conversations/Chat/UsageReportTranslator.cs` | Provider usage to row columns |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Reports/ReportService.cs` | Grouping and bucketing |
 | `enterprise-gpt-api/Enterprise.Gpt.Common/Enums/ConversationUsageKinds.cs` | Kind and status catalogs |
-| `enterprise-gpt-api/tests/Enterprise.Gpt.Unit.Test/Chat/` | Usage translation tests |
+| `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Service/Conversations/Chat/` | Usage translation tests |
 
 ## Related
 

@@ -36,11 +36,7 @@ describe('ConversationListStore', () => {
     backend.verify();
   });
 
-  /**
-   * Flushes the effect behind the wired query. The load is declarative — a signal
-   * computation drives `rxMethod` — so state changes reach the network only after a
-   * change-detection pass.
-   */
+  /** The query is signal-driven, so state changes reach the network only after a tick. */
   function flush(): void {
     TestBed.tick();
   }
@@ -49,12 +45,10 @@ describe('ConversationListStore', () => {
     TestBed.inject(Dispatcher).dispatch(sessionEvents.signedOut());
   }
 
-  /** The one outstanding search request, whatever its query string. */
   function expectSearch(): TestRequest {
     return backend.expectOne((request) => request.url === SEARCH_URL);
   }
 
-  /** Gets the store past its first page so a test can start from a loaded list. */
   function load(items = [conversationFixture(), conversationFixture()], totalCount?: number) {
     store.ensureLoaded();
     flush();
@@ -70,8 +64,7 @@ describe('ConversationListStore', () => {
 
     const request = expectSearch();
 
-    // US-302: `name=` omitted, not sent empty. An empty value still takes the server
-    // down its LIKE branch.
+    // An empty `name=` would still take the server down its LIKE branch.
     expect(request.request.params.has('name')).toBe(false);
     expect(request.request.params.get('skip')).toBe('0');
     expect(request.request.params.get('take')).toBe('50');
@@ -81,8 +74,7 @@ describe('ConversationListStore', () => {
   });
 
   it('issues nothing until the session bootstrap releases it', () => {
-    // The store is constructed by the injector; the request must wait for
-    // `ensureLoaded`, or it goes out before `POST api/users/me` has produced a token.
+    // The request must wait for `ensureLoaded`, or it goes out before a token exists.
     flush();
     backend.expectNone(() => true);
   });
@@ -94,8 +86,7 @@ describe('ConversationListStore', () => {
     ];
     load([first, second]);
 
-    // Server order is `dateCreated` descending and no endpoint accepts a sort
-    // parameter, so the client must not re-sort.
+    // The server orders by `dateCreated` descending; the client must not re-sort.
     expect(store.entities().map((c) => c.name)).toEqual(['Newest', 'Older']);
   });
 
@@ -107,8 +98,7 @@ describe('ConversationListStore', () => {
 
     const request = expectSearch();
 
-    // The named regression from the old client, which sent `filter=` and matched
-    // nothing server-side.
+    // The old client sent `filter=`, which matches nothing server-side.
     expect(request.request.params.get('name')).toBe('helios');
     expect(request.request.params.has('filter')).toBe(false);
 
@@ -137,8 +127,6 @@ describe('ConversationListStore', () => {
   });
 
   it('lets the newest query win over one still in flight', () => {
-    // switchMap is why this store uses rxMethod at all: a slow response to "hel" must
-    // not paint over a fast response to "helios".
     load();
 
     store.search('hel');
@@ -166,8 +154,7 @@ describe('ConversationListStore', () => {
     flush();
 
     expect(store.entities()).toHaveLength(1);
-    // setFirstPage, not setPage: carrying the old offset forward is how a narrowed
-    // search comes back empty until the user pages backwards.
+    // The offset resets with the result set, or a narrowed search would come back empty.
     expect(store.skip()).toBe(1);
     expect(store.hasMore()).toBe(false);
   });
@@ -200,9 +187,7 @@ describe('ConversationListStore', () => {
   });
 
   it('refuses Load more while the result set beneath it is being replaced', () => {
-    // The page would carry the *old* offset against the *new* result set: landing
-    // after the query's setFirstPage it appends a window from the middle of a list
-    // that no longer exists, leaving a hole no scroll can reach and hasMore() false.
+    // A page with the old offset would land after setFirstPage and leave an unreachable hole.
     load([conversationFixture(), conversationFixture()], 120);
 
     store.search('helios');
@@ -223,10 +208,8 @@ describe('ConversationListStore', () => {
   });
 
   it('drops a page that a fresh search has already superseded', () => {
-    // switchMap cancels the query pipeline's own request but never reaches the second
-    // pipeline behind Load more. Left running, its rows — from the previous result set
-    // — land under the new one and its setPage advances skip past a window that no
-    // longer exists.
+    // switchMap never reaches the Load more pipeline, whose stale rows would land under the
+    // new result set.
     load([conversationFixture({ name: 'Unfiltered' })], 40);
 
     store.loadMore();
@@ -253,8 +236,7 @@ describe('ConversationListStore', () => {
     expectSearch().flush('', { status: 503, statusText: 'Service Unavailable' });
     flush();
 
-    // Swapping a page of valid rows for an error panel would lose them; the failure is
-    // announced instead.
+    // An error panel would discard valid rows, so the failure is toasted instead.
     expect(store.entities()).toHaveLength(1);
     expect(store.error()).toBeNull();
     expect(toasts.assertiveToasts()).toHaveLength(1);
@@ -310,15 +292,13 @@ describe('ConversationListStore', () => {
     store.refreshRow({ ...first!, name: 'Renamed by the server' });
     expect(store.entities()[0]?.name).toBe('Renamed by the server');
 
-    // Rows are in the server's order; inserting one the list never asked for would put
-    // it in the wrong place and desynchronise `skip` from the window it describes.
+    // Inserting an unrequested row would misplace it and desync `skip` from its window.
     store.refreshRow(conversationFixture({ id: 'deadbeef-0000-4000-8000-000000000000' }));
     expect(store.entities()).toHaveLength(2);
   });
 
   it('puts a just-created conversation at the head and keeps the window in step', () => {
-    // Correct only because the server orders by dateCreated descending: a row created
-    // a moment ago is at server position 0 by construction. US-401 calls this.
+    // The server orders by dateCreated descending, so a new row is at position 0.
     load([conversationFixture({ name: 'Older' })], 10);
 
     const created = conversationFixture({ name: 'Brand new' });
@@ -328,7 +308,6 @@ describe('ConversationListStore', () => {
     expect(store.skip()).toBe(2);
     expect(store.totalCount()).toBe(11);
 
-    // Idempotent: a second call for a row already held changes nothing.
     store.prependNewest(created);
     expect(store.entities()).toHaveLength(2);
     expect(store.totalCount()).toBe(11);
@@ -339,8 +318,7 @@ describe('ConversationListStore', () => {
 
     store.renameRow(first!.id, 'Renamed locally');
     expect(store.entities()[0]?.name).toBe('Renamed locally');
-    // dateModified stays put: the server's own value arrives via refreshRow on
-    // success, and a local bump would diverge from it on the next fetch.
+    // The server's dateModified arrives via refreshRow, so there is no local bump.
     expect(store.entities()[0]?.dateModified).toBe(first!.dateModified);
 
     store.renameRow('deadbeef-0000-4000-8000-000000000000', 'Nope');
@@ -353,8 +331,7 @@ describe('ConversationListStore', () => {
 
     store.favoriteRow(first!.id, true);
     expect(store.entities()[0]?.isFavorite).toBe(true);
-    // dateModified stays put: the server does not bump it for a favourite, so there is
-    // no later value to adopt and a local bump would be pure divergence.
+    // The server does not bump dateModified for a favourite.
     expect(store.entities()[0]?.dateModified).toBe(first!.dateModified);
 
     store.favoriteRow(first!.id, false);
@@ -389,8 +366,7 @@ describe('ConversationListStore', () => {
     expect(removal?.conversation.id).toBe(first!.id);
     expect(removal?.index).toBe(0);
     expect(store.entities().map((c) => c.id)).toEqual([second!.id]);
-    // The inverse of prependNewest: the server no longer counts the row, so the next
-    // "Load more" window must not skip a survivor.
+    // The server no longer counts the row, so the next window must not skip a survivor.
     expect(store.skip()).toBe(1);
     expect(store.totalCount()).toBe(9);
     expect(store.hasMore()).toBe(true);
@@ -441,9 +417,8 @@ describe('ConversationListStore', () => {
   });
 
   it('refuses to restore into a result set the removal never touched', () => {
-    // The user searched while the delete was in flight; the failed delete's row may
-    // not even match the query on screen, and the counter bump would starve a
-    // genuine row out of the next Load-more window.
+    // A search replaced the result set mid-delete: the row may not match it, and the counter
+    // bump would starve a genuine row out of the next window.
     const [first] = load([conversationFixture({ name: 'Doomed' })], 10);
 
     const removal = store.removeRow(first!.id);
@@ -476,8 +451,7 @@ describe('ConversationListStore', () => {
   });
 
   it('keeps detail-only fields out of the list entities', () => {
-    // ConversationStore hands this store a ConversationDetailDto; letting mcpServerIds
-    // through would leave entities() non-uniformly shaped.
+    // ConversationStore passes a ConversationDetailDto in.
     const [first] = load();
 
     store.refreshRow({ ...first!, name: 'Renamed', mcpServerIds: ['x'] } as ConversationDto);
@@ -501,7 +475,7 @@ describe('ConversationListStore', () => {
     expect(store.isIdle()).toBe(true);
   });
 
-  it('releases held rows when their project is deleted (US-903)', () => {
+  it('releases held rows when their project is deleted', () => {
     const held = conversationFixture({ projectId: 'p-1' });
     const other = conversationFixture({ projectId: 'p-2' });
     load([held, other]);
@@ -509,14 +483,12 @@ describe('ConversationListStore', () => {
     TestBed.inject(Dispatcher).dispatch(projectEvents.deleted('p-1'));
     flush();
 
-    // Not cosmetic: `toUpdateBody` echoes `projectId` on every rename, so a row left
-    // holding a deleted project id would PUT it and take a 404 on the next rename —
-    // a failure with nothing to do with projects.
+    // `toUpdateBody` echoes `projectId`, so a dead id would 404 the next rename.
     expect(store.entities().find((c) => c.id === held.id)?.projectId).toBeNull();
     expect(store.entities().find((c) => c.id === other.id)?.projectId).toBe('p-2');
   });
 
-  it('moves a held row into a project and back out again (US-307)', () => {
+  it('moves a held row into a project and back out again', () => {
     const held = conversationFixture({ projectId: null });
     const other = conversationFixture({ projectId: 'p-2' });
     load([held, other]);
@@ -524,16 +496,14 @@ describe('ConversationListStore', () => {
     store.moveRow(held.id, 'p-1');
     expect(store.entities().find((c) => c.id === held.id)?.projectId).toBe('p-1');
 
-    // Null is a value here, not an absence: it is how a removal is expressed, and it
-    // must reach the entity rather than being read as "leave it alone".
+    // Null is the removal value and must reach the entity, not read as "leave it alone".
     store.moveRow(held.id, null);
     expect(store.entities().find((c) => c.id === held.id)?.projectId).toBeNull();
     expect(store.entities().find((c) => c.id === other.id)?.projectId).toBe('p-2');
   });
 
   it('ignores a move for a row it does not hold', () => {
-    // The deep-link case: the actions store still sends the PUT, and the `updated`
-    // event is what carries the change to whoever is showing that conversation.
+    // A deep link: the `updated` event carries the change to whoever shows the conversation.
     load([conversationFixture({ projectId: null })]);
 
     store.moveRow('not-in-the-list', 'p-1');

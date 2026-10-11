@@ -10,17 +10,9 @@ function sanitize(svg: string): string {
   return host.innerHTML;
 }
 
-/**
- * US-605. Mermaid's output is not markdown and never meets the markdown profile
- * — it is written after that profile has had its say, at the same point Prism's
- * own markup is. So it gets a profile of its own, and the first thing worth
- * pinning is that the two stayed separate.
- */
-describe('diagram SVG sanitizing (US-605)', () => {
+describe('diagram SVG sanitizing', () => {
   it('leaves the markdown profile untouched', () => {
-    // `svg` in `CHAT_ALLOWED_TAGS` would mean model text could mint one, and the
-    // whole reason a diagram may carry an `<svg>` at all is that Mermaid — not
-    // the model — produced it.
+    // Only Mermaid, never model text, may produce an `<svg>`.
     for (const tag of ['svg', 'g', 'path', 'foreignObject', 'math', 'span']) {
       expect(CHAT_ALLOWED_TAGS).not.toContain(tag);
     }
@@ -36,8 +28,7 @@ describe('diagram SVG sanitizing (US-605)', () => {
     expect(html).toContain('<svg');
     expect(html).toContain('<marker');
     expect(html).toContain('<text');
-    // Mermaid scopes its CSS to the render id and emits it inline; without the
-    // `<style>` every diagram renders unstyled.
+    // Mermaid emits its render-scoped CSS inline; without it every diagram is unstyled.
     expect(html).toContain('<style');
     expect(html).toContain('Start');
   });
@@ -56,10 +47,8 @@ describe('diagram SVG sanitizing (US-605)', () => {
   });
 
   it('strips CSS that would reach off this origin', () => {
-    // DOMPurify has no CSS parser: it passes a `<style>` body and a `style`
-    // attribute through verbatim, and a `<style>` inside *inline* SVG is
-    // document-scoped. Mermaid's `themeCSS` is directive-settable, so a
-    // `%%{init}%%` in a model-authored fence reaches this text.
+    // DOMPurify passes CSS through verbatim, and a model-authored `%%{init}%%` can set
+    // Mermaid's `themeCSS`.
     const html = sanitize(
       '<svg><style>@import url("https://evil.test/x.css"); .n{background:url(https://evil.test/p)}' +
         '</style><rect style="fill:red;mask-image:url(https://evil.test/beacon)"/></svg>',
@@ -76,8 +65,7 @@ describe('diagram SVG sanitizing (US-605)', () => {
   });
 
   it('leaves the markdown profile’s own behaviour untouched afterwards', () => {
-    // The hooks are global to the DOMPurify instance `sanitizeChatMarkdown`
-    // shares, so they have to come off again however this returns.
+    // The hooks are global to the DOMPurify instance `sanitizeChatMarkdown` shares.
     sanitize('<svg><style>@import url("https://evil.test/x.css")</style></svg>');
 
     expect(sanitizeChatMarkdown('<p style="background:url(https://example.test/x)">x</p>')).toBe(
@@ -86,8 +74,7 @@ describe('diagram SVG sanitizing (US-605)', () => {
   });
 
   it('refuses links, however they are spelled', () => {
-    // Mermaid's `click A "https://…"` syntax would otherwise mint a link the
-    // user never wrote to an origin FR-51 says this client never contacts.
+    // Mermaid's `click A "https://…"` would otherwise mint a link the user never wrote.
     const html = sanitize(
       '<svg><a href="https://example.test"><text>go</text></a>' +
         '<a xlink:href="javascript:alert(1)"><text>run</text></a></svg>',

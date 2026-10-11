@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { toCamelCase } from './camel-case';
 
 describe('toCamelCase', () => {
-  // Every expectation is what System.Text.Json's JsonNamingPolicy.CamelCase
-  // produces, which is what the server used to name the JSON the form binds to.
+  // Every expectation is what System.Text.Json's JsonNamingPolicy.CamelCase produces.
   it.each([
     ['Name', 'name'],
     ['ContextWindowSize', 'contextWindowSize'],
@@ -17,8 +16,7 @@ describe('toCamelCase', () => {
     ['lowercase', 'lowercase'],
     ['', ''],
     ['_Private', '_Private'],
-    // Unreachable through FluentValidation property paths, but .NET's space
-    // branch is mirrored so the two implementations cannot diverge silently.
+    // Unreachable through property paths; pins the mirrored .NET space branch.
     ['AB C', 'ab C'],
   ])('converts %s to %s', (input, expected) => {
     expect(toCamelCase(input)).toBe(expected);

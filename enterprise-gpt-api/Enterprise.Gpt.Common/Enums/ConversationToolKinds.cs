@@ -4,10 +4,8 @@ namespace Enterprise.Gpt.Common.Enums;
 /// Specifies which category of tool a <c>ConversationUsageToolCall</c> row accounts for.
 /// </summary>
 /// <remarks>
-/// Mirrors <c>Andes.Extensions.AI.ToolKind</c> value for value, deliberately rather than storing
-/// the library's enum directly: the persisted numbers are an on-disk contract that must not move
-/// when the package is upgraded, and the entity layer does not otherwise depend on the tracking
-/// middleware.
+/// Mirrors <c>Andes.Extensions.AI.ToolKind</c> value for value so the persisted numbers survive package
+/// upgrades and the entity layer takes no dependency on the tracking middleware.
 /// </remarks>
 public enum ConversationToolKinds
 {

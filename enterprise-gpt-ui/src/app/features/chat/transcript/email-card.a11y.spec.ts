@@ -5,12 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { EmailCard } from './email-card';
 
 /**
- * The email card, which no route-level audit can reach: a `/chat/:id` audit
- * replays a transcript, and none of the fixtures it replays is an email.
- *
- * Audited with the menu open, because the panel is where the trigger's
- * `aria-controls` target lives and a closed one audits neither that relationship
- * nor the rows' own contrast.
+ * Mounted directly, since no replayed route fixture is an email. Audited with the menu open so
+ * the `aria-controls` target and the rows' contrast are covered.
  */
 describe('EmailCard accessibility', () => {
   let fixture: ComponentFixture<EmailCard> | null = null;

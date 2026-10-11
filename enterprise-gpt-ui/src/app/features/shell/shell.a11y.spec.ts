@@ -29,25 +29,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Shell } from './shell';
 
 /**
- * The application frame at all three of US-1403's widths, in both themes.
- *
- * This is the one audit that renders the **whole** chrome — the skip link, the `<nav>`
- * landmark, `<main>` — rather than a routed screen in isolation, which is why it is also
- * the only one that leaves axe's `region` rule enabled. Every other `*.a11y.spec.ts`
- * disables it, because a screen mounted into a bare fixture host has no landmarks around
- * it and the rule would fire on the harness rather than on anything a user meets. Here it
- * fires on the real structure, so it is worth having.
- *
- * It also carries US-1403's last criterion. No horizontal overflow at three breakpoints
- * is not assertable in jsdom at all — there is no layout — and it is the reason that
- * criterion shipped verified by hand and gated here.
+ * The one audit of the whole chrome, so the only one leaving axe's `region` rule on: the others
+ * mount screens in a bare host, where it would fire on the harness. Also gates horizontal
+ * overflow, which jsdom cannot measure.
  */
 
 const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
 const PROJECTS_URL = `${TEST_API_BASE_URL}/api/projects`;
 
-/** The one starred project every render in this file puts in the sidebar (US-910). */
+/** The one starred project every render in this file puts in the sidebar. */
 const FAVORITE = projectFixture({ name: 'Data Platform Migration', isFavorite: true });
 
 @Component({
@@ -57,7 +48,7 @@ const FAVORITE = projectFixture({ name: 'Data Platform Migration', isFavorite: t
 })
 class Blank {}
 
-describe('application frame accessibility (US-1403, US-1405)', () => {
+describe('application frame accessibility', () => {
   let backend: HttpTestingController;
   let attached: HTMLElement | null = null;
 
@@ -113,9 +104,7 @@ describe('application frame accessibility (US-1403, US-1405)', () => {
       );
     await fixture.whenStable();
 
-    // US-910's section, with a node **expanded**: a collapsed one hides the disclosure's
-    // panel, its nested links and the `aria-controls` reference, so an audit that never
-    // opened one would report on markup no reader ever reaches.
+    // With a node expanded, or the audit would miss its panel, nested links and `aria-controls`.
     TestBed.inject(ProjectLookupStore).ensureLoaded();
     TestBed.tick();
     backend
@@ -146,8 +135,7 @@ describe('application frame accessibility (US-1403, US-1405)', () => {
         await atViewport(width);
         const element = await renderShell(theme);
 
-        // `region` left enabled here, unlike every other audit in the suite: this is the
-        // frame that owns the landmarks, so the rule has something real to judge.
+        // `region` left on: this frame owns the landmarks, so the rule has something real to judge.
         await expectNoSeriousViolations(element, `shell ${width} (${theme})`, { rules: {} });
       });
 
@@ -164,8 +152,7 @@ describe('application frame accessibility (US-1403, US-1405)', () => {
     const element = await renderShell('light');
 
     const disclosure = element.querySelector('.project__disclosure');
-    // The tree is a disclosure, so both halves have to hold: a name that does not repeat
-    // the state `aria-expanded` already carries, and a reference axe can resolve.
+    // A name that doesn't repeat `aria-expanded`'s state, and a reference axe can resolve.
     expect(disclosure?.getAttribute('aria-label')).toBe(`Conversations in ${FAVORITE.name}`);
     expect(disclosure?.getAttribute('aria-expanded')).toBe('true');
     const panelId = disclosure?.getAttribute('aria-controls');
@@ -174,10 +161,8 @@ describe('application frame accessibility (US-1403, US-1405)', () => {
   });
 
   /**
-   * Toggling destroys the chevron that was pressed and moves focus to the one that replaced
-   * it, which the pointer never entered and so will never see `mouseleave`. Both directions
-   * need trusted input: the engine reads focus modality off that alone, and jsdom has no
-   * modality at all.
+   * Toggling moves focus to a replacement chevron the pointer never entered, so it never sees
+   * `mouseleave`. Trusted input throughout: the engine reads focus modality from it alone.
    */
   describe('the tooltip on the chevron focus follows to', () => {
     async function collapseSidebar(element: HTMLElement): Promise<HTMLButtonElement | null> {
@@ -207,9 +192,8 @@ describe('application frame accessibility (US-1403, US-1405)', () => {
       const collapse = element.querySelector<HTMLButtonElement>('.sidebar__collapse');
       expect(collapse).not.toBeNull();
 
-      // Tab for the modality, then focus the chevron directly rather than counting stops to
-      // it; scripted focus carries the keyboard modality forward, which is the whole reason
-      // the restored focus still names its control.
+      // Tab for the modality, then focus the chevron directly; scripted focus carries the
+      // keyboard modality forward.
       await userEvent.keyboard('{Tab}');
       (collapse as HTMLButtonElement).focus();
       await userEvent.keyboard('{Enter}');
@@ -221,8 +205,7 @@ describe('application frame accessibility (US-1403, US-1405)', () => {
   });
 
   it('renders one navigation landmark, whatever the width', async () => {
-    // The structural invariant `shell-responsive.spec.ts` asserts in jsdom, re-checked
-    // here where the media queries are real rather than driven by a fake.
+    // Re-checks `shell-responsive.spec.ts`'s invariant with real media queries.
     await atViewport('mobile');
     const element = await renderShell('light');
 

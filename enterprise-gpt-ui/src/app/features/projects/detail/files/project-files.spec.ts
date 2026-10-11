@@ -19,7 +19,7 @@ const PROJECT_URL = `${TEST_API_BASE_URL}/api/projects/${PROJECT.id}`;
 const DOCUMENTS_URL = `${PROJECT_URL}/documents`;
 const EXTENSIONS_URL = `${TEST_API_BASE_URL}/api/documents/file-extensions`;
 
-describe('ProjectFiles (US-905)', () => {
+describe('ProjectFiles', () => {
   let backend: HttpTestingController;
   let fixture: ComponentFixture<ProjectFiles>;
   let canUploadFiles: ReturnType<typeof signal<boolean>>;
@@ -60,18 +60,14 @@ describe('ProjectFiles (US-905)', () => {
     backend.expectOne(DOCUMENTS_URL).flush([projectDocumentFixture({ name: 'plan.pdf' })]);
     TestBed.tick();
 
-    // `ProjectDetail` binds this in the application, so both the composer above the
-    // tab strip and this panel share one set of chips; here the panel is rendered on
-    // its own, so the spec plays that part.
+    // `ProjectDetail` binds this in the app; with the panel rendered alone, the spec does.
     TestBed.inject(UploadStore).bindProject(PROJECT.id);
 
     fixture = TestBed.createComponent(ProjectFiles);
     await fixture.whenStable();
 
-    // The panel's own lazy read of the deployment's supported set. Gated on the
-    // permission, so it exists only in the granted case — and asserted rather than
-    // matched loosely, because a loop over `match` silently covers nothing if the
-    // request stops being made.
+    // Gated on the permission, and counted because a loop over `match` alone would silently
+    // cover nothing if the request stopped being made.
     const extensions = backend.match(EXTENSIONS_URL);
     expect(extensions.length).toBe(canUploadFiles() ? 1 : 0);
     for (const request of extensions) {
@@ -107,13 +103,11 @@ describe('ProjectFiles (US-905)', () => {
   it('withholds every add affordance without the grant, and keeps files downloadable', async () => {
     await render({ canUpload: false });
 
-    // US-204: absent, not disabled. Both mechanisms — the visible affordance is gone,
-    // and with it the directive that would have made a drop do anything.
+    // Absent, not disabled, and the drop directive goes with it.
     expect(host().querySelector('.files__dropzone')).toBeNull();
     expect(host().querySelector('.files__browse')).toBeNull();
     expect(host().querySelector('input[type="file"]')).toBeNull();
 
-    // Frame 4f's own caption: the files stay listed and downloadable.
     expect(host().querySelector('.files__row')).not.toBeNull();
     expect(host().querySelector('[aria-label^="Download"]')).not.toBeNull();
     // Removing is an upload-permission action, so that control goes with the rest.
@@ -157,7 +151,7 @@ describe('ProjectFiles (US-905)', () => {
     xhr?.respond(202, { id: 'job-1' });
     await fixture.whenStable();
 
-    // The staged poll takes over from here; it is EP-8's and already covered.
+    // The staged poll takes over from here; its own specs cover it.
     for (const request of backend.match((candidate) => candidate.url.includes('upload-status'))) {
       request.flush({
         id: 'job-1',

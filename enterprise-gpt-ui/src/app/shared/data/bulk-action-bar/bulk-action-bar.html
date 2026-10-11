@@ -1,8 +1,6 @@
 <!--
-  Permanently mounted, and empty until something is selected. A live region inserted
-  with its text already in place is not announced, so wrapping this in the @if below
-  would silence the 0 → 1 transition — the one announcement that matters, and the
-  reason this component deliberately does not take focus.
+  Always mounted: a live region inserted with its text in place is not announced, so inside
+  the @if below the 0 → 1 change would be silent.
 -->
 <p class="visually-hidden" aria-live="polite">{{ count() > 0 ? summary() : '' }}</p>
 
