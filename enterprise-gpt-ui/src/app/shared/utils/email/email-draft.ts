@@ -1,4 +1,4 @@
-import { scanFences } from '../markdown/fences';
+import { scanFences } from '@shared/utils/markdown/fences';
 import { markdownToPlainText } from './plain-text';
 
 /** An email the assistant composed, ready to hand to a mail client. */

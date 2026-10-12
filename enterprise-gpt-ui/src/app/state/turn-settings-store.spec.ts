@@ -3,13 +3,13 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
-import { mcpFixture, modelFixture } from '@testing/catalog';
-import { McpDto } from '@domain/api/mcp';
-import { ModelDto } from '@domain/api/model';
+import { ModelDto } from '@shared/models/api/chat-model.model';
+import { McpDto } from '@shared/models/api/mcp.model';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { sessionEvents } from '@core/events/session-events';
+import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { mcpFixture, modelFixture } from '@testing/catalog';
 import { TurnSettingsStore } from './turn-settings-store';
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;

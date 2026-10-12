@@ -3,14 +3,14 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, timeout } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { JobStatusDto } from '@shared/models/api/document.model';
+import { TokenService } from '@core/auth/token-service';
+import { ToastStore } from '@core/notifications/toast-store';
+import { SupportedExtensionsStore } from '@state/supported-extensions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { textFile } from '@testing/drag';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
-import { JobStatusDto } from '@domain/api/document';
-import { TokenService } from '@core/auth/token-service';
-import { SupportedExtensionsStore } from '@core/documents/supported-extensions-store';
-import { ToastStore } from '@core/notifications/toast-store';
 import { UploadStore } from './upload-store';
 
 const CONVERSATION_ID = '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b';

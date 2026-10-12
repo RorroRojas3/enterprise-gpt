@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { assistantEvent, fullTurnEvents } from '@testing/stream-frames';
 import {
   AssistantUiEvent,
   createInitialSnapshot,
   foldAssistantEvents,
-} from './andes/assistant-ui.contract';
+} from '@shared/models/andes/assistant-ui.contract';
+import { assistantEvent, fullTurnEvents } from '@testing/stream-frames';
 import { turnAnnouncement } from './turn-announcement';
 
 /** Folds real events to pin that status changes are announced and individual deltas are not. */

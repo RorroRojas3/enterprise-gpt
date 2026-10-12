@@ -20,4 +20,4 @@ export const SOURCE_PARAM = 'source';
 export const SOURCE_GENERATED = 'generated';
 
 /** Re-exported so this screen's route contract reads from one file. */
-export { shouldReplaceHistory } from '@core/navigation/search-history';
+export { shouldReplaceHistory } from '@shared/utils/navigation/search-history';

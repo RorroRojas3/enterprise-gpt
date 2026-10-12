@@ -1,26 +1,26 @@
+import { Location } from '@angular/common';
 import { provideHttpClient } from '@angular/common/http';
 import {
   HttpTestingController,
   TestRequest,
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
-import { Location } from '@angular/common';
 import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
-import { TABLET_VIEWPORT_QUERY, resetMediaQueries, setMediaQuery } from '@testing/media-query';
-import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
-import { emptyUsageReportFixture, usageGroupFixture, usageReportFixture } from '@testing/reports';
-import { AdminReports } from './admin-reports';
 import {
   DEFAULT_USAGE_GROUPING,
   DEFAULT_USAGE_RANGE,
   toUsageGrouping,
   toUsageRange,
-} from './admin-reports-route';
+} from '@shared/utils/navigation/admin-reports-route';
+import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { TABLET_VIEWPORT_QUERY, resetMediaQueries, setMediaQuery } from '@testing/media-query';
+import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
+import { emptyUsageReportFixture, usageGroupFixture, usageReportFixture } from '@testing/reports';
+import { AdminReports } from './admin-reports';
 
 const REPORTS_URL = `${TEST_API_BASE_URL}/api/reports/usage`;
 

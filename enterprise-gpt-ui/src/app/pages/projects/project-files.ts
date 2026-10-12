@@ -11,24 +11,24 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { ProjectDocumentDto } from '@domain/api/project';
-import { formatBytes } from '@domain/format/bytes';
-import { formatShortDate } from '@domain/format/relative-time';
-import { DocumentDownloadStore } from '@core/documents/document-download-store';
-import { SupportedExtensionsStore } from '@core/documents/supported-extensions-store';
-import { UploadStore } from '@core/documents/upload-store';
+import { ProjectDocumentDto } from '@shared/models/api/project.model';
+import { fileGlyph } from '@shared/utils/documents/file-glyph';
+import { formatBytes } from '@shared/utils/format/bytes';
+import { formatShortDate } from '@shared/utils/format/relative-time';
 import { canRetry } from '@core/errors/error-message';
 import { SessionStore } from '@core/session/session-store';
-import { AttachmentChip } from '@shared/chip/attachment-chip/attachment-chip';
-import { fileGlyph } from '@shared/chip/attachment-chip/attachment.model';
-import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
-import { Skeleton } from '@shared/feedback/skeleton/skeleton';
-import { Icon } from '@shared/icon/icon';
-import { Modal } from '@shared/overlay/modal/modal';
-import { DropOverlay } from '@shared/upload/drop-overlay';
-import { FileDropTarget } from '@shared/upload/file-drop-target';
-import { ProjectStore } from '../project-store';
-import { ProjectDocumentsStore } from './project-documents-store';
+import { DocumentDownloadStore } from '@state/document-download-store';
+import { UploadStore } from '@state/documents/upload-store';
+import { ProjectDocumentsStore } from '@state/projects/project-documents-store';
+import { ProjectStore } from '@state/projects/project-store';
+import { SupportedExtensionsStore } from '@state/supported-extensions-store';
+import { AttachmentChip } from '@shared/components/attachment-chip/attachment-chip';
+import { DropOverlay } from '@shared/components/drop-overlay/drop-overlay';
+import { ErrorPanel } from '@shared/components/error-panel/error-panel';
+import { Icon } from '@shared/components/icon/icon';
+import { Modal } from '@shared/components/modal/modal';
+import { Skeleton } from '@shared/components/skeleton/skeleton';
+import { FileDropTarget } from '@shared/directives/file-drop-target';
 
 /**
  * In-flight files are `UploadStore` chips, landed ones `ProjectDocumentsStore` rows. The bridge

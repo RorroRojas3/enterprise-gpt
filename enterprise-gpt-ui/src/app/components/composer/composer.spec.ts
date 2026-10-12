@@ -1,35 +1,38 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { Router } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ModelDto } from '@shared/models/api/chat-model.model';
+import { PermissionDto } from '@shared/models/api/user.model';
+import { tabbableWithin } from '@shared/utils/a11y/tabbable';
+import { TokenService } from '@core/auth/token-service';
+import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
+import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
+import { provideComposerHost } from '@core/chat/composer-host.token';
+import { ConversationListStore } from '@core/conversations/conversation-list-store';
+import { ProjectLookupStore } from '@core/projects/project-lookup-store';
+import { SessionStore } from '@core/session/session-store';
+import { STREAM_FETCH } from '@services/conversations/stream-fetch.token';
+import { ConversationStore } from '@state/chat/conversation-store';
+import { TurnStore } from '@state/chat/turn-store';
+import {
+  SPEECH_RECOGNITION,
+  SpeechRecognitionLike,
+} from '@state/composer/speech-recognition.token';
+import { provideSharedComposerUploads } from '@state/documents/composer-uploads.token';
+import { UploadStore } from '@state/documents/upload-store';
+import { SupportedExtensionsStore } from '@state/supported-extensions-store';
+import { TurnSettingsStore } from '@state/turn-settings-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpFixture, modelFixture } from '@testing/catalog';
 import { conversationFixture } from '@testing/conversations';
 import { dispatchDrag, fileDrag, textFile } from '@testing/drag';
+import { projectFixture, projectPage } from '@testing/projects';
 import { UPLOAD_FILE_GRANT, userFixture } from '@testing/session';
 import { FakeRecognition } from '@testing/speech';
 import { assistantEvent, frame, streamingResponse } from '@testing/stream-frames';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
-import { tabbableWithin } from '@shared/a11y/tabbable';
-import { ModelDto } from '@domain/api/model';
-import { PermissionDto } from '@domain/api/user';
-import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
-import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
-import { TurnSettingsStore } from '@core/chat/turn-settings-store';
-import { TokenService } from '@core/auth/token-service';
-import { SupportedExtensionsStore } from '@core/documents/supported-extensions-store';
-import { SessionStore } from '@core/session/session-store';
-import { SPEECH_RECOGNITION, SpeechRecognitionLike } from '@core/speech/speech-recognition';
-import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
-import { provideComposerHost } from '@core/chat/composer-host';
-import { ConversationListStore } from '@core/conversations/conversation-list-store';
-import { ProjectLookupStore } from '@core/projects/project-lookup-store';
-import { projectFixture, projectPage } from '@testing/projects';
-import { ConversationStore } from '@features/chat/conversation-store';
-import { TurnStore } from '@features/chat/turn-store';
-import { provideSharedComposerUploads } from '@core/documents/composer-uploads';
-import { UploadStore } from '@core/documents/upload-store';
 import { Composer } from './composer';
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;

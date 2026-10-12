@@ -1,14 +1,17 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideLocationMocks } from '@angular/common/testing';
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideLocationMocks } from '@angular/common/testing';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CHAT_ROLE, MESSAGE_FEEDBACK_RATING } from '@shared/models/api/conversation.model';
 import { TokenService } from '@core/auth/token-service';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
-import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
+import { chatMatcher } from '@core/navigation/chat-matcher';
+import { STREAM_FETCH } from '@services/conversations/stream-fetch.token';
 import { THEMES, applyTheme, clearTheme, expectNoSeriousViolations } from '@testing/a11y';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpFixture, modelFixture } from '@testing/catalog';
@@ -17,10 +20,7 @@ import {
   conversationFixture,
   messageFixture,
 } from '@testing/conversations';
-import { CHAT_ROLE, MESSAGE_FEEDBACK_RATING } from '@domain/api/conversation';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Chat } from './chat';
-import { chatMatcher } from './chat-route';
 
 /** ISO 8601 with offset, as the transcript response carries it. */
 const RATED_AT = '2026-08-21T09:30:00+00:00';

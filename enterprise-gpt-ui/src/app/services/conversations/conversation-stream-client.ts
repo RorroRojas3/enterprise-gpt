@@ -1,17 +1,17 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, Subscriber, bufferTime, filter } from 'rxjs';
-import { AssistantUiEvent } from '@domain/stream/andes/assistant-ui.contract';
-import { createRawTextCodec } from '@domain/stream/raw-text-codec';
-import { createSseFrameCodec } from '@domain/stream/sse-frame-codec';
-import { StreamCodec } from '@domain/stream/stream-codec';
-import { APP_CONFIG } from '../config/app-config.token';
-import { AppError } from '../errors/app-error';
-import { authErrorDecision } from '../errors/retry-policy';
-import { toAppError } from '../errors/to-app-error';
-import { toAppErrorFromResponse } from '../errors/to-app-error-from-response';
-import { injectSignedOutAbort } from '../events/session-events';
-import { ApiUrl } from '../http/api-url';
-import { TokenService } from '../auth/token-service';
+import { AssistantUiEvent } from '@shared/models/andes/assistant-ui.contract';
+import { createRawTextCodec } from '@shared/utils/stream/raw-text-codec';
+import { createSseFrameCodec } from '@shared/utils/stream/sse-frame-codec';
+import { StreamCodec } from '@shared/utils/stream/stream-codec';
+import { TokenService } from '@core/auth/token-service';
+import { APP_CONFIG } from '@core/config/app-config.token';
+import { AppError } from '@core/errors/app-error';
+import { authErrorDecision } from '@core/errors/retry-policy';
+import { toAppError } from '@core/errors/to-app-error';
+import { toAppErrorFromResponse } from '@core/errors/to-app-error-from-response';
+import { injectSignedOutAbort } from '@core/events/session-events';
+import { ApiUrl } from '@core/http/api-url-service';
 import { STREAM_FETCH } from './stream-fetch.token';
 
 /** One streamed turn against `POST api/conversations/{id}/stream`. */

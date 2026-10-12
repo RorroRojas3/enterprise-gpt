@@ -3,8 +3,8 @@ import { TestBed } from '@angular/core/testing';
 import { patchState, signalStore, withState } from '@ngrx/signals';
 import { unprotected } from '@ngrx/signals/testing';
 import { describe, expect, it } from 'vitest';
+import { toAppError } from '@core/errors/to-app-error';
 import { PROBLEM_FIXTURES, TRACE_ID } from '@testing/problem-fixtures';
-import { toAppError } from '../errors/to-app-error';
 import {
   setError,
   setFulfilled,

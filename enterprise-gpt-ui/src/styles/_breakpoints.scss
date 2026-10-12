@@ -1,6 +1,6 @@
 // The app's two layout breakpoints. NOTHING HERE MAY EMIT CSS: that is what makes it safe to
 // `@use` from component stylesheets, unlike `_tokens.scss`. Mixins so no call site writes
-// `- 1px`; values match `shared/layout/breakpoints.ts`. Never reuse these numbers locally.
+// `- 1px`; values match `shared/utils/layout/breakpoints.ts`. Never reuse these numbers locally.
 
 $bp-tablet-min: 768px; // at or above this, the sidebar is in the flow
 $bp-desktop-min: 1024px; // at or above this, the sidebar is persistent

@@ -1,5 +1,9 @@
 import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
-import { PREFERENCE_KEYS, readPreference, writePreference } from '@core/storage/local-preferences';
+import {
+  PREFERENCE_KEYS,
+  readPreference,
+  writePreference,
+} from '@shared/utils/storage/local-preferences';
 
 const COLLAPSED = 'collapsed';
 const EXPANDED = 'expanded';

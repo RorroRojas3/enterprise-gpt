@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { APP_CONFIG } from '../config/app-config.token';
+import { APP_CONFIG } from '@core/config/app-config.token';
 
 /**
  * A service rather than a function calling `inject()`, because URLs are mostly built in store

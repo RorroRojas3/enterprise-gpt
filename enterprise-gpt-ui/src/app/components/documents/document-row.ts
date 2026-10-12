@@ -1,13 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { DocumentType, UserDocumentDto } from '@domain/api/document';
-import { formatBytes } from '@domain/format/bytes';
-import { formatShortDate } from '@domain/format/relative-time';
-import { CHAT_ROUTE } from '@core/auth/auth-routes';
-import { DocumentDownloadStore } from '@core/documents/document-download-store';
-import { DocumentSource, SourceBadge } from '@shared/badge/source-badge/source-badge';
-import { fileGlyph } from '@shared/chip/attachment-chip/attachment.model';
-import { Icon } from '@shared/icon/icon';
+import { DocumentType, UserDocumentDto } from '@shared/models/api/document.model';
+import { fileGlyph } from '@shared/utils/documents/file-glyph';
+import { formatBytes } from '@shared/utils/format/bytes';
+import { formatShortDate } from '@shared/utils/format/relative-time';
+import { CHAT_ROUTE } from '@core/navigation/route-paths';
+import { DocumentDownloadStore } from '@state/document-download-store';
+import { Icon } from '@shared/components/icon/icon';
+import { DocumentSource, SourceBadge } from '@shared/components/source-badge/source-badge';
 
 const BADGE_SOURCES = {
   Uploaded: 'uploaded',
@@ -38,7 +38,7 @@ export class DocumentRow {
   protected readonly glyph = fileGlyph;
   protected readonly chatRoute = CHAT_ROUTE;
 
-  /** The badge's own vocabulary, which `domain/` cannot name without reaching into `shared/`. */
+  /** The badge's own vocabulary, which `shared/models` cannot name without importing a component. */
   // Defaulted: the wire could add a type before the union does.
   protected readonly source = computed<DocumentSource>(
     () => BADGE_SOURCES[this.document().type] ?? 'uploaded',

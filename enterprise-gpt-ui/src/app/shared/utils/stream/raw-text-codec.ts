@@ -1,4 +1,4 @@
-import { AssistantUiEvent } from './andes/assistant-ui.contract';
+import { AssistantUiEvent } from '@shared/models/andes/assistant-ui.contract';
 import { StreamCodec, textDeltaEvent } from './stream-codec';
 
 /**

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { avatarTone, initialsOf } from '../initials';
+import { avatarTone, initialsOf } from '@shared/utils/text/initials';
 
 /**
  * Always `aria-hidden`, or the name rendered beside it would be read twice. A caller must render

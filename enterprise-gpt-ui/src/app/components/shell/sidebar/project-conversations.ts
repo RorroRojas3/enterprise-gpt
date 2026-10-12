@@ -1,17 +1,17 @@
 import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import { CHAT_ROUTE } from '@core/auth/auth-routes';
 import { canRetry } from '@core/errors/error-message';
-import { ProjectConversationsStore } from '@core/projects/project-conversations-store';
-import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
-import { Skeleton } from '@shared/feedback/skeleton/skeleton';
-import { Icon } from '@shared/icon/icon';
+import { CHAT_ROUTE } from '@core/navigation/route-paths';
+import { ProjectConversationsStore } from '@state/projects/project-conversations-store';
+import { ErrorPanel } from '@shared/components/error-panel/error-panel';
+import { Icon } from '@shared/components/icon/icon';
+import { Skeleton } from '@shared/components/skeleton/skeleton';
 
 const SKELETON_ROWS = 2;
 
 /**
  * Provides its own store, created on expand and destroyed on collapse, so each open node has
- * its own query and re-opening re-reads. The store is in `core/` as the project screen shares it.
+ * its own query and re-opening re-reads. The store is in `state/projects/` as the project screen shares it.
  */
 @Component({
   selector: 'app-sidebar-project-conversations',

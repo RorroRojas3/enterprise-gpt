@@ -1,5 +1,5 @@
-import { conversationFixture } from '@testing/conversations';
 import { describe, expect, it } from 'vitest';
+import { conversationFixture } from '@testing/conversations';
 import { toUpdateBody } from './conversation-update';
 
 describe('toUpdateBody', () => {

@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
+import { tapResponse } from '@ngrx/operators';
 import {
   patchState,
   signalStore,
@@ -10,17 +11,15 @@ import {
 } from '@ngrx/signals';
 import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { tapResponse } from '@ngrx/operators';
 import { EMPTY, pipe, switchMap, takeUntil, tap } from 'rxjs';
-import { ConversationDetailDto, ConversationDto } from '@domain/api/conversation';
-import { TurnSettingsStore } from '@core/chat/turn-settings-store';
+import { ConversationDetailDto, ConversationDto } from '@shared/models/api/conversation.model';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { toAppError } from '@core/errors/to-app-error';
 import { conversationEvents } from '@core/events/conversation-events';
 import { projectEvents } from '@core/events/project-events';
 import { injectSignedOut } from '@core/events/session-events';
 import { turnEvents } from '@core/events/turn-events';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
 import {
   setError,
   setFulfilled,
@@ -29,6 +28,7 @@ import {
   withRequestStatus,
 } from '@core/state/with-request-status';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+import { TurnSettingsStore } from '@state/turn-settings-store';
 
 interface ConversationState {
   /** The conversation the chat route is showing. Null on the empty `/chat` route. */

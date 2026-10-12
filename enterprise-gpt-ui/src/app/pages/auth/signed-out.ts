@@ -6,13 +6,13 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { focusOnRender } from '@core/a11y/focus-on-render';
 import { AuthService } from '@core/auth/auth-service';
-import { CHAT_ROUTE } from '@core/auth/auth-routes';
-import { HardNavigation } from '@core/navigation/hard-navigation';
-import { BrandLogo } from '@shared/brand-logo/brand-logo';
-import { Ridgeline } from '@shared/ridgeline/ridgeline';
-import { focusOnRender } from '@shared/a11y/focus-on-render';
-import { AuthPage } from '../auth-page/auth-page';
+import { HardNavigation } from '@core/navigation/hard-navigation-service';
+import { CHAT_ROUTE } from '@core/navigation/route-paths';
+import { BrandLogo } from '@shared/components/brand-logo/brand-logo';
+import { Ridgeline } from '@shared/components/ridgeline/ridgeline';
+import { AuthPage } from '@components/auth/auth-page';
 
 /**
  * Unguarded: after a failed sign-out the Entra cookie is still live, so `authGuard` would silently

@@ -1,8 +1,8 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  DestroyRef,
   DOCUMENT,
+  DestroyRef,
   Injector,
   afterNextRender,
   computed,
@@ -11,23 +11,23 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { MessageFeedbackRating } from '@shared/models/api/conversation.model';
 import {
   COPIED_LABEL,
   COPY_CONFIRMATION_MS,
   COPY_LABEL,
   copyText,
-} from '@core/clipboard/copy-text';
-import { MessageFeedbackRating } from '@domain/api/conversation';
+} from '@shared/utils/clipboard/copy-text';
 import { canRetry, userMessage } from '@core/errors/error-message';
-import { BrandLogo } from '@shared/brand-logo/brand-logo';
-import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
-import { Ridgeline } from '@shared/ridgeline/ridgeline';
-import { Skeleton } from '@shared/feedback/skeleton/skeleton';
-import { TurnErrorNotice, TurnStore } from '../turn-store';
+import { TurnErrorNotice, TurnStore } from '@state/chat/turn-store';
+import { BrandLogo } from '@shared/components/brand-logo/brand-logo';
+import { ErrorPanel } from '@shared/components/error-panel/error-panel';
+import { Ridgeline } from '@shared/components/ridgeline/ridgeline';
+import { Skeleton } from '@shared/components/skeleton/skeleton';
 import { AssistantTurn } from './assistant-turn';
 import { MessageCopy } from './message-copy';
 import { StoppedCard } from './stopped-card';
-import { TurnNoticeCard, TurnNotice } from './turn-notice-card';
+import { TurnNotice, TurnNoticeCard } from './turn-notice-card';
 
 /**
  * `aria-busy` on the host defers everything inside it for the turn, so the in-flight commentary

@@ -1,8 +1,8 @@
 import { Routes } from '@angular/router';
-import { ProjectConversationsStore } from '@core/projects/project-conversations-store';
-import { ProjectDocumentsStore } from './files/project-documents-store';
-import { ProjectStore } from './project-store';
-import { unsavedInstructionsGuard } from './instructions/unsaved-instructions.guard';
+import { ProjectConversationsStore } from '@state/projects/project-conversations-store';
+import { ProjectDocumentsStore } from '@state/projects/project-documents-store';
+import { ProjectStore } from '@state/projects/project-store';
+import { unsavedInstructionsGuard } from './unsaved-instructions.guard';
 
 /**
  * Tabs are real routes, not a local index, so the open panel survives a refresh and can be linked,
@@ -20,17 +20,15 @@ const routes: Routes = [
       {
         path: 'instructions',
         canDeactivate: [unsavedInstructionsGuard],
-        loadComponent: () =>
-          import('./instructions/instructions-panel').then((m) => m.InstructionsPanel),
+        loadComponent: () => import('./instructions-panel').then((m) => m.InstructionsPanel),
       },
       {
         path: 'files',
-        loadComponent: () => import('./files/project-files').then((m) => m.ProjectFiles),
+        loadComponent: () => import('./project-files').then((m) => m.ProjectFiles),
       },
       {
         path: 'conversations',
-        loadComponent: () =>
-          import('./conversations/project-conversations').then((m) => m.ProjectConversations),
+        loadComponent: () => import('./project-conversations').then((m) => m.ProjectConversations),
       },
     ],
   },

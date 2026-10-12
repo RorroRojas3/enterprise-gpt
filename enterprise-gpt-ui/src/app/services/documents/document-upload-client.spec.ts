@@ -1,13 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { Subscription } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { UploadTarget } from '@shared/models/api/document.model';
+import { TokenService } from '@core/auth/token-service';
+import { AppError } from '@core/errors/app-error';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { textFile } from '@testing/drag';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
-import { UploadTarget } from '@domain/api/document';
-import { TokenService } from '@core/auth/token-service';
-import { AppError } from '@core/errors/app-error';
 import { DocumentUploadClient, UploadEvent } from './document-upload-client';
 
 const CONVERSATION: UploadTarget = {

@@ -11,10 +11,10 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { ProjectSummaryDto } from '@domain/api/project';
-import { ProjectActionsStore } from '@core/projects/project-actions-store';
+import { ProjectSummaryDto } from '@shared/models/api/project.model';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
-import { Icon } from '@shared/icon/icon';
+import { ProjectActionsStore } from '@state/project-actions-store';
+import { Icon } from '@shared/components/icon/icon';
 import { SidebarProjectRow } from './project-row';
 
 /**

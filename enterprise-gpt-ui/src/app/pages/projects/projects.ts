@@ -14,21 +14,8 @@ import {
   viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Params, Router } from '@angular/router';
-import { ProjectSummaryDto } from '@domain/api/project';
-import { formatRelativeTime } from '@domain/format/relative-time';
-import { PROJECTS_ROUTE } from '@core/auth/auth-routes';
-import { canRetry } from '@core/errors/error-message';
-import { ProjectActionsStore } from '@core/projects/project-actions-store';
-import { ProjectCard } from '@shared/card/project-card/project-card';
-import { EmptyState } from '@shared/feedback/empty-state/empty-state';
-import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
-import { Skeleton } from '@shared/feedback/skeleton/skeleton';
-import { SearchInput } from '@shared/form/search-input/search-input';
-import { Icon } from '@shared/icon/icon';
-import { Menu } from '@shared/overlay/menu/menu';
-import { MenuItem } from '@shared/overlay/menu/menu-item';
-import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
-import { ProjectListStore } from './project-list-store';
+import { ProjectSummaryDto } from '@shared/models/api/project.model';
+import { formatRelativeTime } from '@shared/utils/format/relative-time';
 import {
   DEFAULT_PROJECT_SORT,
   NAME_PARAM,
@@ -37,7 +24,20 @@ import {
   shouldReplaceHistory,
   sortKey,
   toProjectSort,
-} from './projects-route';
+} from '@shared/utils/navigation/projects-route';
+import { canRetry } from '@core/errors/error-message';
+import { PROJECTS_ROUTE } from '@core/navigation/route-paths';
+import { ProjectActionsStore } from '@state/project-actions-store';
+import { ProjectListStore } from '@state/projects/project-list-store';
+import { EmptyState } from '@shared/components/empty-state/empty-state';
+import { ErrorPanel } from '@shared/components/error-panel/error-panel';
+import { Icon } from '@shared/components/icon/icon';
+import { Menu } from '@shared/components/menu/menu';
+import { SearchInput } from '@shared/components/search-input/search-input';
+import { Skeleton } from '@shared/components/skeleton/skeleton';
+import { MenuItem } from '@shared/directives/menu-item';
+import { MenuSeparator } from '@shared/directives/menu-separator';
+import { ProjectCard } from '@components/projects/project-card';
 
 /** How many skeleton cards stand in for the grid while the first page loads. */
 const SKELETON_CARDS = 6;

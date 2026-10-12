@@ -2,9 +2,9 @@ import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MarkdownComponent } from 'ngx-markdown';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { provideTestAppConfig } from '@testing/app-config';
 import { ThemeService } from '@core/theme/theme-service';
-import { DiagramRenderer, LazyRendererLoader, MathRenderer } from './lazy-renderer-loader';
+import { provideTestAppConfig } from '@testing/app-config';
+import { DiagramRenderer, LazyRendererLoader, MathRenderer } from './lazy-renderer-loader-service';
 import { MarkdownExtras } from './markdown-extras';
 import { provideChatMarkdown } from './markdown-providers';
 

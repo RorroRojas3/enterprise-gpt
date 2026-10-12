@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { UsageSeriesPointDto } from '@domain/api/usage-report';
+import { UsageSeriesPointDto } from '@shared/models/api/usage-report.model';
 import { usageSeriesFixture } from '@testing/reports';
 import { UsageAreaChart } from './usage-area-chart';
 

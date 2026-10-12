@@ -1,14 +1,14 @@
 import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
 import { DOCUMENT, inject } from '@angular/core';
+import { tapResponse } from '@ngrx/operators';
 import { patchState, signalStore, withMethods, withProps, withState } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { tapResponse } from '@ngrx/operators';
 import { exhaustMap, takeUntil } from 'rxjs';
-import { EXPORT_FORMAT_LABELS, ExportFormat } from '@domain/api/conversation-export';
-import { saveWithAnchor } from '@core/downloads/anchor-download';
+import { EXPORT_FORMAT_LABELS, ExportFormat } from '@shared/models/api/conversation-export.model';
+import { saveWithAnchor } from '@shared/utils/downloads/anchor-download';
 import { toAppErrorFromBlobError } from '@core/errors/to-app-error-from-blob';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
 import { skipRetry } from '@core/http/interceptors/retry.interceptor';
 import { ToastStore } from '@core/notifications/toast-store';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';

@@ -10,4 +10,4 @@ out-tsc
 public/fonts
 public/icons
 
-src/app/domain/stream/andes/assistant-ui.contract.ts
+src/app/shared/models/andes/assistant-ui.contract.ts

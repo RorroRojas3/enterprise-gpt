@@ -16,7 +16,6 @@ import {
   required,
   validate,
 } from '@angular/forms/signals';
-import { McpServerActionsStore } from '@core/catalog/mcp-server-actions-store';
 import {
   AUTH_TYPE_OPTIONS,
   MCP_HEADER_LIMITS,
@@ -28,11 +27,12 @@ import {
   scopeError,
   toMcpServerFormValue,
   urlError,
-} from '@core/catalog/mcp-server-form';
+} from '@shared/utils/catalog/mcp-server-form';
+import { MCP_ICON_OPTIONS, mcpBrandIcon } from '@shared/utils/icons/mcp-icon';
 import { serverMessagesFor, unmatchedServerMessages } from '@core/errors/server-messages';
-import { BrandIcon } from '@shared/icon/brand-icon';
-import { MCP_ICON_OPTIONS, mcpBrandIcon } from '@shared/icon/mcp-icon';
-import { Modal } from '@shared/overlay/modal/modal';
+import { McpServerActionsStore } from '@state/mcp-server-actions-store';
+import { BrandIcon } from '@shared/components/brand-icon/brand-icon';
+import { Modal } from '@shared/components/modal/modal';
 
 /**
  * No permission control: the server creates and renames the linked permission with the server.

@@ -1,9 +1,9 @@
 import { inject } from '@angular/core';
 import { CanMatchFn, Router } from '@angular/router';
-import { SessionBootstrap } from '@core/session/session-bootstrap';
+import { AuthService } from '@core/auth/auth-service';
+import { CHAT_ROUTE, FORBIDDEN_ROUTE, SESSION_ERROR_ROUTE } from '@core/navigation/route-paths';
+import { SessionBootstrap } from '@core/session/session-bootstrap-service';
 import { SessionStore } from '@core/session/session-store';
-import { AuthService } from '../auth-service';
-import { CHAT_ROUTE, FORBIDDEN_ROUTE, SESSION_ERROR_ROUTE } from '../auth-routes';
 
 /**
  * `canMatch`, on the route carrying `loadChildren`: only it runs before the chunk is fetched. Every

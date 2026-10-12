@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { initialsOf } from '@shared/utils/text/initials';
 import { AuthService } from '@core/auth/auth-service';
 import { SessionStore } from '@core/session/session-store';
-import { initialsOf } from '@shared/avatar/initials';
-import { Icon } from '@shared/icon/icon';
-import { ThemeToggle } from '@shared/theme-toggle/theme-toggle';
+import { Icon } from '@shared/components/icon/icon';
+import { ThemeToggle } from '@shared/components/theme-toggle/theme-toggle';
 
 /**
  * Injects its stores rather than taking inputs: it is a singleton, so every host would only

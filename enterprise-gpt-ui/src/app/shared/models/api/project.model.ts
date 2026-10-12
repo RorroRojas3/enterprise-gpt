@@ -26,21 +26,6 @@ export interface ProjectDto extends ProjectSummaryDto {
 }
 
 /**
- * Keeps `instructions` out of list-store rows, where nothing could tell it from a stale
- * leftover. Explicit fields, so a new listing field is a compile error here.
- */
-export function toProjectSummary(project: ProjectDto): ProjectSummaryDto {
-  return {
-    id: project.id,
-    name: project.name,
-    description: project.description,
-    isFavorite: project.isFavorite,
-    dateCreated: project.dateCreated,
-    dateModified: project.dateModified,
-  };
-}
-
-/**
  * Mirrors the server's `MaximumLength` rules. `instructions` is capped despite an
  * `nvarchar(max)` column because it is sent to the model on every turn.
  */

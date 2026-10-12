@@ -1,4 +1,4 @@
-import { formatBytes } from '@domain/format/bytes';
+import { formatBytes } from '@shared/utils/format/bytes';
 import { AppError, AppErrorKind } from '@core/errors/app-error';
 import { traceLine, userMessage } from '@core/errors/error-message';
 

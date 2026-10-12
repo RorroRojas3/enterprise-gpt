@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, output } from '@angular/core';
 import { ToastStore } from '@core/notifications/toast-store';
-import { ToastItem } from './toast-item';
+import { ToastItem } from '@shared/components/toast-item/toast-item';
 
 /**
  * Mounted in `App`, not `Shell`, so chrome-free routes get toasts too. Both live regions exist

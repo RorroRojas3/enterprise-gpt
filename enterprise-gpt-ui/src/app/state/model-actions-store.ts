@@ -1,21 +1,21 @@
 import { HttpClient } from '@angular/common/http';
 import { inject } from '@angular/core';
+import { tapResponse } from '@ngrx/operators';
 import { patchState, signalStore, withMethods, withProps, withState } from '@ngrx/signals';
 import { Dispatcher } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { tapResponse } from '@ngrx/operators';
 import { exhaustMap, mergeMap, takeUntil } from 'rxjs';
-import { ModelDto, ModelWriteBody } from '@domain/api/model';
+import { ModelDto, ModelWriteBody } from '@shared/models/api/chat-model.model';
+import { ModelFormValue, toModelBody } from '@shared/utils/catalog/model-form';
 import { ValidationAppError } from '@core/errors/app-error';
 import { traceLine } from '@core/errors/error-message';
 import { toAppError } from '@core/errors/to-app-error';
 import { adminEvents } from '@core/events/admin-events';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
 import { ToastStore } from '@core/notifications/toast-store';
 import { addPendingId, removePendingId, withPendingIds } from '@core/state/with-pending-ids';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
-import { ModelFormValue, toModelBody } from './model-form';
 
 export type ModelFormMode = 'create' | 'edit';
 
@@ -59,8 +59,8 @@ const initialState: ModelActionsState = {
 };
 
 /**
- * Root-scoped so a request outlives the screen that started it; import it only from
- * `features/admin/models/`, since `check-initial-chunk.mjs` guards `features/admin/`, not `core/`.
+ * Root-scoped so a request outlives the screen that started it; import it only from the admin
+ * screens, since `check-initial-chunk.mjs` guards `{pages,components,state}/admin/`, not `state/`.
  * Validation renders inline; other failures toast without closing the dialog.
  */
 export const ModelActionsStore = signalStore(

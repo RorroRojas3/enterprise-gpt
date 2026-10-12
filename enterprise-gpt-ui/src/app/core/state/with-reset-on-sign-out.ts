@@ -9,7 +9,7 @@ import {
 } from '@ngrx/signals';
 import { withEventHandlers } from '@ngrx/signals/events';
 import { tap } from 'rxjs';
-import { injectSignedOut, sessionEvents } from '../events/session-events';
+import { injectSignedOut, sessionEvents } from '@core/events/session-events';
 
 /**
  * Resets the store on {@link sessionEvents} sign-out; an event, since a root service cannot

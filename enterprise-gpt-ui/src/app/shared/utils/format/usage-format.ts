@@ -1,4 +1,4 @@
-import { UsageGrouping, GROUPING_NOUNS } from './admin-reports-route';
+import { GROUPING_NOUNS, UsageGrouping } from '@shared/utils/navigation/admin-reports-route';
 
 /**
  * A fixed locale: the app ships no `LOCALE_ID` or i18n, so one consistent grouping beats a

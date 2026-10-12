@@ -6,11 +6,11 @@ import {
 } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ProjectActionsStore } from '@core/projects/project-actions-store';
+import { ProjectActionsStore } from '@state/project-actions-store';
+import { ProjectStore } from '@state/projects/project-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { projectDetailFixture } from '@testing/projects';
-import { ProjectStore } from '../project-store';
 import { InstructionsPanel } from './instructions-panel';
 
 const PROJECT = projectDetailFixture({

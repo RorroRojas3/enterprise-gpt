@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { ModelActionsStore } from '@core/catalog/model-actions-store';
-import { Modal } from '@shared/overlay/modal/modal';
+import { ModelActionsStore } from '@state/model-actions-store';
+import { Modal } from '@shared/components/modal/modal';
 
 /**
  * Initial focus is on Cancel, so Enter retires nothing. Confirms on the store rather than

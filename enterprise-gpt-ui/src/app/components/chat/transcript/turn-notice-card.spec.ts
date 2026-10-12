@@ -1,9 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { AppError } from '@core/errors/app-error';
-import { AnyProblemDetails } from '@core/errors/problem-details';
 import { buildAppError } from '@core/errors/build-app-error';
+import { AnyProblemDetails } from '@core/errors/problem-details';
+import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { TurnNotice, TurnNoticeCard } from './turn-notice-card';
 
 const STREAM_URL = 'https://api.test/api/conversations/6f9d1c1e/stream';

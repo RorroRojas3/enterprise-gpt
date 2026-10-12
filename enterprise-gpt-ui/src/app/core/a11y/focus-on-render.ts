@@ -1,4 +1,4 @@
-import { ElementRef, Signal, afterNextRender, inject, Injector } from '@angular/core';
+import { ElementRef, Injector, Signal, afterNextRender, inject } from '@angular/core';
 
 /**
  * Moves focus to an element once, after the view first renders, since Angular moves none on a

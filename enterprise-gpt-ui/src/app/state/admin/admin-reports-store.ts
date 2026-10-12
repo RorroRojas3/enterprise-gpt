@@ -1,5 +1,6 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
+import { tapResponse } from '@ngrx/operators';
 import {
   patchState,
   signalStore,
@@ -9,20 +10,9 @@ import {
   withState,
 } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { tapResponse } from '@ngrx/operators';
 import { pipe, switchMap, takeUntil, tap } from 'rxjs';
-import { UsageReportDto } from '@domain/api/usage-report';
-import { MS_PER_DAY, groupingNoun } from './usage-format';
-import { toAppError } from '@core/errors/to-app-error';
-import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url';
-import {
-  setError,
-  setFulfilled,
-  setPending,
-  withRequestStatus,
-} from '@core/state/with-request-status';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+import { UsageReportDto } from '@shared/models/api/usage-report.model';
+import { MS_PER_DAY, groupingNoun } from '@shared/utils/format/usage-format';
 import {
   DEFAULT_USAGE_GROUPING,
   DEFAULT_USAGE_RANGE,
@@ -30,7 +20,17 @@ import {
   UsageGrouping,
   UsageRange,
   toUsageGrouping,
-} from './admin-reports-route';
+} from '@shared/utils/navigation/admin-reports-route';
+import { toAppError } from '@core/errors/to-app-error';
+import { injectSignedOut } from '@core/events/session-events';
+import { ApiUrl } from '@core/http/api-url-service';
+import {
+  setError,
+  setFulfilled,
+  setPending,
+  withRequestStatus,
+} from '@core/state/with-request-status';
+import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
 
 /** One object because both go out on one request; bound separately, a change would fire twice. */
 export interface UsageReportQuery {

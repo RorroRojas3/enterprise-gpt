@@ -3,6 +3,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { IPublicClientApplication, RedirectRequest } from '@azure/msal-browser';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { HardNavigation } from '@core/navigation/hard-navigation-service';
 import { SessionStore } from '@core/session/session-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
@@ -13,16 +15,14 @@ import {
   signedInMsal,
   signedOutMsal,
 } from '@testing/msal';
-import { HardNavigation } from '@core/navigation/hard-navigation';
 import { FakeNavigation, provideFakeNavigation } from '@testing/navigation';
 import { PROBLEM_FIXTURES, TRACE_ID } from '@testing/problem-fixtures';
 import { userFixture } from '@testing/session';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthCallback } from './auth-callback/auth-callback';
-import { Forbidden } from './forbidden/forbidden';
-import { LoginFailed } from './login-failed/login-failed';
-import { SessionError } from './session-error/session-error';
-import { SignedOut } from './signed-out/signed-out';
+import { AuthCallback } from './auth-callback';
+import { Forbidden } from './forbidden';
+import { LoginFailed } from './login-failed';
+import { SessionError } from './session-error';
+import { SignedOut } from './signed-out';
 
 const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;
 

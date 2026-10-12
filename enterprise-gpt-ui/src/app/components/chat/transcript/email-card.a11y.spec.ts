@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { THEMES, applyTheme, clearTheme, expectNoSeriousViolations } from '@testing/a11y';
-import { EmailDraft } from '@domain/email/email-draft';
 import { afterEach, describe, expect, it } from 'vitest';
+import { EmailDraft } from '@shared/utils/email/email-draft';
+import { THEMES, applyTheme, clearTheme, expectNoSeriousViolations } from '@testing/a11y';
 import { EmailCard } from './email-card';
 
 /**

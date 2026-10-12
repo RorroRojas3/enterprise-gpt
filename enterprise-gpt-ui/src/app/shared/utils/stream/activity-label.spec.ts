@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { AssistantActivity } from '@shared/models/andes/assistant-ui.contract';
 import { activityLabel } from './activity-label';
-import { AssistantActivity } from './andes/assistant-ui.contract';
 
 function activity(
   displayName: string,

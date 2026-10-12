@@ -97,8 +97,3 @@ export interface UserDocumentDto {
 export type UploadTarget =
   | { readonly kind: 'conversation'; readonly id: string }
   | { readonly kind: 'project'; readonly id: string };
-
-/** The `api/`-relative path segment a target's document routes live under. */
-export function documentTargetPath(target: UploadTarget): string {
-  return target.kind === 'conversation' ? 'conversations' : 'projects';
-}

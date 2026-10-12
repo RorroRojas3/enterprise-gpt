@@ -5,22 +5,22 @@ import {
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { provideLocationMocks } from '@angular/common/testing';
-import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserDto } from '@domain/api/user';
+import { UserDto } from '@shared/models/api/user.model';
+import { DEFAULT_USER_PAGE_SIZE } from '@shared/utils/navigation/admin-users-route';
 import { ToastStore } from '@core/notifications/toast-store';
 import { SessionStore } from '@core/session/session-store';
 import { SELF_DEACTIVATE_MESSAGE } from '@core/users/self-action-messages';
-import { UserActionsStore } from '@core/users/user-actions-store';
+import { UserActionsStore } from '@state/user-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { directoryUserFixture, flushPermissions, userPage } from '@testing/users';
 import { AdminUsers } from './admin-users';
-import { DEFAULT_USER_PAGE_SIZE } from './admin-users-route';
 
 const USERS_URL = `${TEST_API_BASE_URL}/api/users`;
 

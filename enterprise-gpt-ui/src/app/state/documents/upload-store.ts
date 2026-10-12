@@ -12,20 +12,24 @@ import {
   withState,
 } from '@ngrx/signals';
 import { Observable, Subject, Subscription, of, take, takeUntil } from 'rxjs';
-import { JOB_STATE, UploadTarget } from '@domain/api/document';
-import { subStatusOf } from '@domain/documents/upload-schedule';
-import { formatBytes } from '@domain/format/bytes';
+import { JOB_STATE, UploadTarget } from '@shared/models/api/document.model';
+import {
+  Attachment,
+  AttachmentRemoveAction,
+  AttachmentState,
+} from '@shared/models/attachment.model';
+import { subStatusOf } from '@shared/utils/documents/upload-schedule';
+import { formatBytes } from '@shared/utils/format/bytes';
+import { describeUploadRejection } from '@core/documents/upload-rejection';
 import { AppError } from '@core/errors/app-error';
 import { injectSignedOut } from '@core/events/session-events';
 import { ToastStore } from '@core/notifications/toast-store';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
-import { Attachment, AttachmentRemoveAction, AttachmentState } from '@domain/documents/attachment';
-import { DocumentDownloadStore } from './document-download-store';
-import { DocumentUploadClient } from './document-upload-client';
-import { UploadCancelClient } from './upload-cancel-client';
-import { describeUploadRejection } from './upload-rejection';
-import { UploadStatusClient } from './upload-status-client';
-import { SupportedExtensionsStore, extensionOf } from './supported-extensions-store';
+import { DocumentUploadClient } from '@services/documents/document-upload-client';
+import { UploadCancelClient } from '@services/documents/upload-cancel-client';
+import { UploadStatusClient } from '@services/documents/upload-status-client';
+import { DocumentDownloadStore } from '@state/document-download-store';
+import { SupportedExtensionsStore, extensionOf } from '@state/supported-extensions-store';
 
 /**
  * `attachment` is what the chip renders; the rest is plumbing. Replaced on every transition,

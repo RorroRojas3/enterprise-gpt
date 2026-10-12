@@ -1,4 +1,4 @@
-import { ProjectDto, ProjectWriteBody } from '@domain/api/project';
+import { ProjectDto, ProjectWriteBody } from '@shared/models/api/project.model';
 
 /** The fields a caller may change on an existing project. */
 export interface ProjectChanges {

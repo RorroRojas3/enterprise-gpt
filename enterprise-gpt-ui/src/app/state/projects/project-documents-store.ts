@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
+import { tapResponse } from '@ngrx/operators';
 import {
   patchState,
   signalStore,
@@ -9,12 +10,11 @@ import {
   withState,
 } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { tapResponse } from '@ngrx/operators';
 import { filter, mergeMap, pipe, switchMap, takeUntil, tap } from 'rxjs';
-import { ProjectDocumentDto } from '@domain/api/project';
+import { ProjectDocumentDto } from '@shared/models/api/project.model';
 import { toAppError } from '@core/errors/to-app-error';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
 import { ToastStore } from '@core/notifications/toast-store';
 import { addPendingId, removePendingId, withPendingIds } from '@core/state/with-pending-ids';
 import {

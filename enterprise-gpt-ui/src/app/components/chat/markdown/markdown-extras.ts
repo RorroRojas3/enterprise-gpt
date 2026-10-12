@@ -1,9 +1,9 @@
 import { DestroyRef, Directive, ElementRef, afterRenderEffect, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ThemeService } from '@core/theme/theme-service';
 import { MarkdownComponent } from 'ngx-markdown';
+import { ThemeService } from '@core/theme/theme-service';
 import { sanitizeDiagramSvg } from './diagram-svg';
-import { LazyRendererLoader } from './lazy-renderer-loader';
+import { LazyRendererLoader } from './lazy-renderer-loader-service';
 import { MATH_CLASS, MATH_DISPLAY_CLASS } from './math-extension';
 
 /** Marks a wrapper whose diagram has been drawn, so a re-render never redraws it. */

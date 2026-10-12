@@ -1,4 +1,4 @@
-import { AssistantUiEvent, AssistantUiEventKind } from './andes/assistant-ui.contract';
+import { AssistantUiEvent, AssistantUiEventKind } from '@shared/models/andes/assistant-ui.contract';
 import { StreamCodec } from './stream-codec';
 
 /** Exhaustive via `satisfies`, so a contract upgrade that adds a kind fails to compile here. */

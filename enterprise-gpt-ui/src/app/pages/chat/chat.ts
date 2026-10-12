@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -13,34 +14,33 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { NgTemplateOutlet } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { Events } from '@ngrx/signals/events';
-import { provideComposerHost } from '@core/chat/composer-host';
-import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
+import { MOBILE_VIEWPORT } from '@shared/utils/layout/breakpoints';
+import { provideComposerHost } from '@core/chat/composer-host.token';
 import { canRetry } from '@core/errors/error-message';
-import { ShellChrome } from '@core/ui/shell-chrome';
 import { conversationEvents } from '@core/events/conversation-events';
-import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
-import { Skeleton } from '@shared/feedback/skeleton/skeleton';
-import { Icon } from '@shared/icon/icon';
-import { MOBILE_VIEWPORT } from '@shared/layout/breakpoints';
-import { injectMediaQuery } from '@shared/layout/media-query';
-import { Menu } from '@shared/overlay/menu/menu';
-import { MenuItem } from '@shared/overlay/menu/menu-item';
-import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
-import { ProjectPicker } from '@shared/projects/project-picker/project-picker';
-import { ConversationDownloadMenu } from '@shared/conversations/conversation-download-menu/conversation-download-menu';
-import { ChatEmptyState } from './chat-empty-state';
-import { Composer } from '@shared/composer/composer';
-import { ConversationStore } from './conversation-store';
-import { provideChatMarkdown } from './markdown/markdown-providers';
-import { TranscriptPinning } from './transcript-pinning';
-import { Transcript } from './transcript/transcript';
-import { TurnStore } from './turn-store';
-import { provideSharedComposerUploads } from '@core/documents/composer-uploads';
-import { UploadStore } from '@core/documents/upload-store';
+import { injectMediaQuery } from '@core/ui/media-query';
+import { ShellChrome } from '@core/ui/shell-chrome-service';
+import { ConversationStore } from '@state/chat/conversation-store';
+import { TurnStore } from '@state/chat/turn-store';
+import { ConversationActionsStore } from '@state/conversation-actions-store';
+import { provideSharedComposerUploads } from '@state/documents/composer-uploads.token';
+import { UploadStore } from '@state/documents/upload-store';
+import { ConversationDownloadMenu } from '@shared/components/conversation-download-menu/conversation-download-menu';
+import { ErrorPanel } from '@shared/components/error-panel/error-panel';
+import { Icon } from '@shared/components/icon/icon';
+import { Menu } from '@shared/components/menu/menu';
+import { ProjectPicker } from '@shared/components/project-picker/project-picker';
+import { Skeleton } from '@shared/components/skeleton/skeleton';
+import { MenuItem } from '@shared/directives/menu-item';
+import { MenuSeparator } from '@shared/directives/menu-separator';
+import { ChatEmptyState } from '@components/chat/chat-empty-state';
+import { provideChatMarkdown } from '@components/chat/markdown/markdown-providers';
+import { TranscriptPinning } from '@components/chat/transcript-pinning';
+import { Transcript } from '@components/chat/transcript/transcript';
+import { Composer } from '@components/composer/composer';
 
 /** One route serves `/chat` and `/chat/{id}`, so switching conversations never remounts this. */
 @Component({

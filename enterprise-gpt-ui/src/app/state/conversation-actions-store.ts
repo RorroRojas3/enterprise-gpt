@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
+import { tapResponse } from '@ngrx/operators';
 import {
   patchState,
   signalStore,
@@ -10,19 +11,18 @@ import {
 } from '@ngrx/signals';
 import { Dispatcher } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { tapResponse } from '@ngrx/operators';
 import { exhaustMap, mergeMap, takeUntil } from 'rxjs';
-import { ConversationDto } from '@domain/api/conversation';
+import { ConversationDto } from '@shared/models/api/conversation.model';
+import { toUpdateBody } from '@shared/utils/conversations/conversation-update';
+import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { ValidationAppError } from '@core/errors/app-error';
 import { traceLine } from '@core/errors/error-message';
 import { toAppError } from '@core/errors/to-app-error';
 import { conversationEvents } from '@core/events/conversation-events';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
 import { ToastStore } from '@core/notifications/toast-store';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
-import { ConversationListStore } from './conversation-list-store';
-import { toUpdateBody } from './conversation-update';
 
 interface ConversationActionsState {
   /** The conversation the rename dialog is editing. Null keeps the dialog closed. */
@@ -52,8 +52,8 @@ const initialState: ConversationActionsState = {
 };
 
 /**
- * Conversation flows shared by `features/shell` and `features/chat`, which must not import each
- * other; the dialogs mount once in the shell. Row writes go through `ConversationListStore`
+ * Conversation flows shared by the shell and chat screens, which must not import each other; the
+ * dialogs mount once in the shell. Row writes go through `ConversationListStore`
  * methods, and the route-scoped `ConversationStore` hears outcomes as `conversationEvents`.
  */
 export const ConversationActionsStore = signalStore(

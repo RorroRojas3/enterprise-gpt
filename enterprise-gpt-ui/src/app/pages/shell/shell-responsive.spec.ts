@@ -1,13 +1,14 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideLocationMocks } from '@angular/common/testing';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideLocationMocks } from '@angular/common/testing';
 import { provideRouter } from '@angular/router';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PREFERENCE_KEYS, writePreference } from '@shared/utils/storage/local-preferences';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { SessionStore } from '@core/session/session-store';
-import { PREFERENCE_KEYS, writePreference } from '@core/storage/local-preferences';
-import { UiStore } from '@core/ui/ui-store';
+import { UiStore } from '@state/ui-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
 import { conversationFixture, conversationPage } from '@testing/conversations';
@@ -22,7 +23,6 @@ import {
 import { provideFakeMsal, signedInMsal } from '@testing/msal';
 import { provideFakeNavigation } from '@testing/navigation';
 import { userFixture } from '@testing/session';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Shell } from './shell';
 
 /**

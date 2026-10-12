@@ -16,7 +16,7 @@ const routes: Routes = [
       },
       {
         path: ':projectId',
-        loadChildren: () => import('./detail/project-detail.routes'),
+        loadChildren: () => import('./project-detail.routes'),
       },
     ],
   },

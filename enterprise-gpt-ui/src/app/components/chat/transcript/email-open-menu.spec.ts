@@ -1,8 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MAILTO_SAFE_LENGTH } from '@shared/utils/email/compose-url';
+import { EmailDraft } from '@shared/utils/email/email-draft';
 import { ToastStore } from '@core/notifications/toast-store';
-import { MAILTO_SAFE_LENGTH } from '@domain/email/compose-url';
-import { EmailDraft } from '@domain/email/email-draft';
 import { EmailOpenMenu } from './email-open-menu';
 
 const draft = (over: Partial<EmailDraft> = {}): EmailDraft => ({

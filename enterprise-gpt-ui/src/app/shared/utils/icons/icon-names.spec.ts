@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { BRAND_ICON_NAMES, BRAND_ICON_NAME_SET } from './brand-icon-names';
 import { ICON_NAMES, ICON_NAME_SET } from './icon-names';
 
-const UI_ROOT = resolve(import.meta.dirname, '../../../..');
+const UI_ROOT = resolve(import.meta.dirname, '../../../../..');
 const SPRITE = join(UI_ROOT, 'public/icons/sprite.svg');
 
 describe('icon manifest', () => {

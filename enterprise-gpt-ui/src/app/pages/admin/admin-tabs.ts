@@ -1,6 +1,6 @@
-import { ADMIN_ROUTE } from '@core/auth/auth-routes';
-import { IconName } from '@shared/icon/icon-names';
-import { PillItem } from '@shared/nav/pill-subnav/pill-subnav';
+import { IconName } from '@shared/utils/icons/icon-names';
+import { ADMIN_ROUTE } from '@core/navigation/route-paths';
+import { PillItem } from '@shared/components/pill-subnav/pill-subnav';
 
 /** One entry of the administration rail, or of its pill strip below 768px. */
 export interface AdminTab {

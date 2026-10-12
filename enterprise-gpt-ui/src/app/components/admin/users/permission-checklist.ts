@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, model } from '@angular/core';
-import { PermissionDto } from '@domain/api/user';
+import { PermissionDto } from '@shared/models/api/user.model';
 import { AppError } from '@core/errors/app-error';
-import { Icon } from '@shared/icon/icon';
+import { Icon } from '@shared/components/icon/icon';
 
 let nextId = 0;
 

@@ -4,13 +4,13 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { PROJECT_LIST_PAGE_SIZE } from '@state/projects/project-list-store';
+import { Conversations } from '@pages/conversations/conversations';
 import { THEMES, applyTheme, clearTheme, expectNoSeriousViolations } from '@testing/a11y';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { projectFixture, projectPage } from '@testing/projects';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Conversations } from '../conversations/conversations';
-import { PROJECT_LIST_PAGE_SIZE } from './project-list-store';
 import { Projects } from './projects';
 
 /**

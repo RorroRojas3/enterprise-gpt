@@ -1,8 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Attachment, AttachmentState } from '@shared/models/attachment.model';
+import { fileGlyph } from '@shared/utils/documents/file-glyph';
 import { AttachmentChip } from './attachment-chip';
-import { Attachment, AttachmentState } from '@domain/documents/attachment';
-import { fileGlyph } from './attachment.model';
 
 function attachment(state: AttachmentState): Attachment {
   return { id: 'a1', fileName: 'q3-report.pdf', sizeLabel: '2.4 MB', state };

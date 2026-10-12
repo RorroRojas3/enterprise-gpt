@@ -7,14 +7,14 @@ import {
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PendingPromptStore } from '@core/chat/pending-prompt-store';
 import { ToastStore } from '@core/notifications/toast-store';
-import { PendingAttachmentsStore } from '@core/chat/pending-attachments-store';
-import { COMPOSER_UPLOADS, ComposerUploads } from '@core/documents/composer-uploads';
+import { COMPOSER_UPLOADS, ComposerUploads } from '@state/documents/composer-uploads.token';
+import { PendingAttachmentsStore } from '@state/pending-attachments-store';
+import { PendingPromptStore } from '@state/pending-prompt-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture } from '@testing/conversations';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
-import { ProjectComposerHost } from './project-composer-host';
+import { ProjectComposerHost } from './project-composer-host-store';
 import { ProjectStore } from './project-store';
 
 const CREATE_URL = `${TEST_API_BASE_URL}/api/conversations`;

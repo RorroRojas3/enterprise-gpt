@@ -8,12 +8,12 @@ import {
   untracked,
 } from '@angular/core';
 import { FormField, disabled, form, required, validate } from '@angular/forms/signals';
-import { apiKeyError } from '@core/catalog/mcp-credential-form';
-import { McpCredentialStore } from '@core/catalog/mcp-credential-store';
-import { McpDto } from '@domain/api/mcp';
+import { McpDto } from '@shared/models/api/mcp.model';
 import { traceLine, userMessage } from '@core/errors/error-message';
 import { serverMessagesFor } from '@core/errors/server-messages';
-import { Modal } from '@shared/overlay/modal/modal';
+import { McpCredentialStore } from '@state/mcp-credential-store';
+import { Modal } from '@shared/components/modal/modal';
+import { apiKeyError } from './mcp-credential-form';
 
 /**
  * Mounted once in the shell: the composer that opens it renders on both the chat and

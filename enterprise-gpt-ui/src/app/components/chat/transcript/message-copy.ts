@@ -12,8 +12,8 @@ import {
   COPY_CONFIRMATION_MS,
   COPY_LABEL,
   copyText,
-} from '@core/clipboard/copy-text';
-import { Icon } from '@shared/icon/icon';
+} from '@shared/utils/clipboard/copy-text';
+import { Icon } from '@shared/components/icon/icon';
 
 /** What the control copies, for the part of its accessible name that tells it apart. */
 export type CopySubject = 'prompt' | 'response';

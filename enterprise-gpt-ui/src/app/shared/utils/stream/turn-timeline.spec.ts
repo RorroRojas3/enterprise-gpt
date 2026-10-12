@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { assistantEvent, fullTurnEvents } from '@testing/stream-frames';
 import {
   AssistantStatusSnapshot,
   createInitialSnapshot,
   foldAssistantEvents,
-} from './andes/assistant-ui.contract';
+} from '@shared/models/andes/assistant-ui.contract';
+import { assistantEvent, fullTurnEvents } from '@testing/stream-frames';
 import { TurnTimeline, createInitialTimeline, foldTimeline } from './turn-timeline';
 
 /** The fold owns activity state; the timeline owns only the order things arrived in. */

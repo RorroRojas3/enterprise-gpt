@@ -33,7 +33,7 @@ export interface ToastInput {
   readonly dismissAfterMs?: number;
 }
 
-/** In `core/`: interceptors, guards and feature stores write it, and `shared/` holds no store. */
+/** In `core/`: core stores and services inject it, and `core/` may not import `state/`. */
 export const ToastStore = signalStore(
   { providedIn: 'root' },
   withState(initialState),

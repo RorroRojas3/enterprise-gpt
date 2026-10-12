@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { UsageSeriesPointDto } from '@domain/api/usage-report';
-import { formatDay, formatTokens } from './usage-format';
+import { UsageSeriesPointDto } from '@shared/models/api/usage-report.model';
+import { formatDay, formatTokens } from '@shared/utils/format/usage-format';
 
 /** A fixed viewBox: the chart scales to its column, the coordinates never change. */
 const VIEW_WIDTH = 640;

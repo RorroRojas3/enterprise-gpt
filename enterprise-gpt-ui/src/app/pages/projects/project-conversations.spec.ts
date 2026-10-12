@@ -3,15 +3,15 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ConversationDto } from '@domain/api/conversation';
-import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
-import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
-import { conversationFixture, conversationPage } from '@testing/conversations';
-import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
+import { ConversationDto } from '@shared/models/api/conversation.model';
+import { ConversationActionsStore } from '@state/conversation-actions-store';
 import {
   PROJECT_CONVERSATIONS_PAGE_SIZE,
   ProjectConversationsStore,
-} from '@core/projects/project-conversations-store';
+} from '@state/projects/project-conversations-store';
+import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { conversationFixture, conversationPage } from '@testing/conversations';
+import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { ProjectConversations } from './project-conversations';
 
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;

@@ -1,7 +1,7 @@
 /**
  * The brand marks: the source of truth for their sprite symbols and `BrandIconName`. A lane
  * apart from {@link ICON_NAMES} because brand marks keep their owner's fills. A new name needs
- * `brand/<name>.svg` and `npm run assets:icons`, or it is typed but renders blank.
+ * `src/icons/brand/<name>.svg` and `npm run assets:icons`, or it is typed but renders blank.
  */
 export const BRAND_ICON_NAMES = [
   'brand-azure',

@@ -1,8 +1,17 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { Router } from '@angular/router';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CHAT_ROLE } from '@shared/models/api/conversation.model';
+import { TokenService } from '@core/auth/token-service';
+import { STREAM_BATCH_WINDOW_MS } from '@services/conversations/conversation-stream-client';
+import { STREAM_FETCH } from '@services/conversations/stream-fetch.token';
+import { ConversationStore } from '@state/chat/conversation-store';
+import { TurnStore } from '@state/chat/turn-store';
+import { UploadStore } from '@state/documents/upload-store';
+import { TurnSelection, TurnSettingsStore } from '@state/turn-settings-store';
+import { provideChatMarkdown } from '@components/chat/markdown/markdown-providers';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { messageFixture } from '@testing/conversations';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
@@ -14,15 +23,6 @@ import {
   problemResponse,
   streamingResponse,
 } from '@testing/stream-frames';
-import { CHAT_ROLE } from '@domain/api/conversation';
-import { TurnSelection, TurnSettingsStore } from '@core/chat/turn-settings-store';
-import { TokenService } from '@core/auth/token-service';
-import { STREAM_BATCH_WINDOW_MS } from '@core/stream/conversation-stream-client';
-import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
-import { provideChatMarkdown } from '../markdown/markdown-providers';
-import { ConversationStore } from '../conversation-store';
-import { TurnStore } from '../turn-store';
-import { UploadStore } from '@core/documents/upload-store';
 import { Transcript } from './transcript';
 
 const CONVERSATION_ID = '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b';

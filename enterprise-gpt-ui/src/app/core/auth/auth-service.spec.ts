@@ -2,8 +2,14 @@ import { TestBed } from '@angular/core/testing';
 import {
   EndSessionRequest,
   HandleRedirectPromiseOptions,
+  IPublicClientApplication,
   RedirectRequest,
 } from '@azure/msal-browser';
+import { Dispatcher, Events } from '@ngrx/signals/events';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { sessionEvents } from '@core/events/session-events';
+import { HardNavigation } from '@core/navigation/hard-navigation-service';
+import { SIGNED_OUT_ROUTE } from '@core/navigation/route-paths';
 import { provideTestAppConfig, testAppConfig } from '@testing/app-config';
 import {
   fakeAccount,
@@ -12,14 +18,8 @@ import {
   signedInMsal,
   signedOutMsal,
 } from '@testing/msal';
-import { IPublicClientApplication } from '@azure/msal-browser';
-import { Dispatcher, Events } from '@ngrx/signals/events';
-import { sessionEvents } from '@core/events/session-events';
 import { FakeNavigation, provideFakeNavigation } from '@testing/navigation';
-import { HardNavigation } from '@core/navigation/hard-navigation';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthService } from './auth-service';
-import { SIGNED_OUT_ROUTE } from './auth-routes';
 
 describe('AuthService', () => {
   function service(instance: IPublicClientApplication): AuthService {

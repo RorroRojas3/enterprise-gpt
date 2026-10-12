@@ -7,11 +7,18 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { FormField, disabled, email, form, maxLength, required } from '@angular/forms/signals';
-import { validate } from '@angular/forms/signals';
+import {
+  FormField,
+  disabled,
+  email,
+  form,
+  maxLength,
+  required,
+  validate,
+} from '@angular/forms/signals';
 import { serverMessagesFor, unmatchedServerMessages } from '@core/errors/server-messages';
-import { UserActionsStore } from '@core/users/user-actions-store';
-import { Modal } from '@shared/overlay/modal/modal';
+import { UserActionsStore } from '@state/user-actions-store';
+import { Modal } from '@shared/components/modal/modal';
 import { PermissionChecklist } from './permission-checklist';
 
 /** Mirrors `CreateUserActionDtoValidator`, so a rejection is the exception. */

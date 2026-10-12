@@ -1,9 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
+import { AppConfig, assertAppConfig, normalizeAppConfig } from '@core/config/app-config';
+import { provideAppConfig } from '@core/config/app-config.token';
 import devConfig from '../../../../public/config.json';
-import { AppConfig, assertAppConfig, normalizeAppConfig } from '../config/app-config';
-import { provideAppConfig } from '../config/app-config.token';
-import { ApiUrl } from './api-url';
+import { ApiUrl } from './api-url-service';
 
 function configWith(apiBaseUrl: string): AppConfig {
   const raw = { ...structuredClone(devConfig), apiBaseUrl } as unknown;

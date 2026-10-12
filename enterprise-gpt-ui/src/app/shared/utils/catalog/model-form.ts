@@ -1,5 +1,6 @@
-import { ModelDto, ModelWriteBody } from '@domain/api/model';
-import { PROVIDER_ID, providerMeta } from '@domain/api/provider';
+import { ModelDto, ModelWriteBody } from '@shared/models/api/chat-model.model';
+import { PROVIDER_ID } from '@shared/models/api/provider.model';
+import { providerMeta } from './provider-meta';
 
 /** Mirrors `CreateModelActionDtoValidator`, so a rejection is the exception. */
 export const MODEL_FIELD_LENGTHS = {
@@ -14,7 +15,7 @@ export interface ProviderOption {
 }
 
 /**
- * Kept out of `domain/api/provider.ts` so it stays off the initial graph. With no
+ * Kept out of `provider.model.ts` so it stays off the initial graph. With no
  * `GET api/providers`, an id a deployment has retired surfaces only as the save's 404.
  */
 export const PROVIDER_OPTIONS: readonly ProviderOption[] = Object.values(PROVIDER_ID).map((id) => ({

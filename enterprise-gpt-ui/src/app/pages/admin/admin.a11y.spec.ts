@@ -5,10 +5,10 @@ import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { McpServerActionsStore } from '@core/catalog/mcp-server-actions-store';
-import { ModelActionsStore } from '@core/catalog/model-actions-store';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SessionStore } from '@core/session/session-store';
-import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { McpServerActionsStore } from '@state/mcp-server-actions-store';
+import { ModelActionsStore } from '@state/model-actions-store';
 import {
   THEMES,
   VIEWPORTS,
@@ -19,11 +19,11 @@ import {
   expectNoHorizontalOverflow,
   expectNoSeriousViolations,
 } from '@testing/a11y';
+import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpServerFixture, modelFixture } from '@testing/catalog';
 import { emptyUsageReportFixture, usageReportFixture } from '@testing/reports';
 import { UPLOAD_FILE_GRANT } from '@testing/session';
 import { directoryUserFixture, flushPermissions, userPage } from '@testing/users';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { adminRoutes } from './admin.routes';
 
 /**

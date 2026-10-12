@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { Icon } from '@shared/icon/icon';
+import { Icon } from '@shared/components/icon/icon';
 
 let nextId = 0;
 

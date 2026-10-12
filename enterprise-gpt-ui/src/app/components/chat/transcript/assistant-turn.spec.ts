@@ -1,6 +1,6 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MarkdownComponent, MarkdownService } from 'ngx-markdown';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,12 +8,16 @@ import {
   AssistantStatusSnapshot,
   createInitialSnapshot,
   foldAssistantEvents,
-} from '@domain/stream/andes/assistant-ui.contract';
-import { TurnTimeline, createInitialTimeline, foldTimeline } from '@domain/stream/turn-timeline';
-import { MESSAGE_FEEDBACK_RATING } from '@domain/api/conversation';
+} from '@shared/models/andes/assistant-ui.contract';
+import { MESSAGE_FEEDBACK_RATING } from '@shared/models/api/conversation.model';
+import {
+  TurnTimeline,
+  createInitialTimeline,
+  foldTimeline,
+} from '@shared/utils/stream/turn-timeline';
+import { provideChatMarkdown } from '@components/chat/markdown/markdown-providers';
 import { provideTestAppConfig } from '@testing/app-config';
 import { assistantEvent } from '@testing/stream-frames';
-import { provideChatMarkdown } from '../markdown/markdown-providers';
 import { AssistantTurn } from './assistant-turn';
 
 /** Renders one source string through the same pipeline, for canonical comparison. */

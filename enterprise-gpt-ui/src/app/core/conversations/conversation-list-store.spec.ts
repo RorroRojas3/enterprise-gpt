@@ -5,15 +5,15 @@ import {
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { Dispatcher } from '@ngrx/signals/events';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { ConversationDto } from '@shared/models/api/conversation.model';
 import { projectEvents } from '@core/events/project-events';
 import { sessionEvents } from '@core/events/session-events';
 import { ToastStore } from '@core/notifications/toast-store';
-import { Dispatcher } from '@ngrx/signals/events';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
-import { ConversationDto } from '@domain/api/conversation';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConversationListStore } from './conversation-list-store';
 
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;

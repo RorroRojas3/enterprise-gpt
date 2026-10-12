@@ -6,12 +6,12 @@ import {
 } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Dispatcher } from '@ngrx/signals/events';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { UsageGrouping, UsageRange } from '@shared/utils/navigation/admin-reports-route';
 import { sessionEvents } from '@core/events/session-events';
-import { provideTestAppConfig, TEST_API_BASE_URL } from '@testing/app-config';
+import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { emptyUsageReportFixture, usageGroupFixture, usageReportFixture } from '@testing/reports';
-import { UsageGrouping, UsageRange } from './admin-reports-route';
 import { ReportsStore } from './admin-reports-store';
 
 const REPORTS_URL = `${TEST_API_BASE_URL}/api/reports/usage`;

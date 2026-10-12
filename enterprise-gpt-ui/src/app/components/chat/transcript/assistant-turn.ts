@@ -1,19 +1,23 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { MessageAttachmentDto, MessageFeedbackRating } from '@domain/api/conversation';
+import { MarkdownComponent } from 'ngx-markdown';
 import {
   AssistantActivity,
   AssistantStatusSnapshot,
-} from '@domain/stream/andes/assistant-ui.contract';
+} from '@shared/models/andes/assistant-ui.contract';
+import { MessageAttachmentDto, MessageFeedbackRating } from '@shared/models/api/conversation.model';
+import {
+  EmailSegment,
+  detectEmailDraft,
+  splitEmailSegments,
+} from '@shared/utils/email/email-draft';
 import {
   StreamSplit,
   splitStreamingMarkdown,
   stripFenceInfo,
-} from '@domain/markdown/streaming-split';
-import { EmailSegment, detectEmailDraft, splitEmailSegments } from '@domain/email/email-draft';
-import { TurnTimeline } from '@domain/stream/turn-timeline';
-import { MarkdownComponent } from 'ngx-markdown';
-import { BrandLogo } from '@shared/brand-logo/brand-logo';
-import { MarkdownExtras } from '../markdown/markdown-extras';
+} from '@shared/utils/markdown/streaming-split';
+import { TurnTimeline } from '@shared/utils/stream/turn-timeline';
+import { BrandLogo } from '@shared/components/brand-logo/brand-logo';
+import { MarkdownExtras } from '@components/chat/markdown/markdown-extras';
 import { ActivityCard } from './activity-card';
 import { EmailCard } from './email-card';
 import { EmailOpenMenu } from './email-open-menu';

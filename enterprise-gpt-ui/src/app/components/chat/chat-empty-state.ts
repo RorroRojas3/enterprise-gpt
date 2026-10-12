@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import { BrandLogo } from '@shared/brand-logo/brand-logo';
-import { Icon } from '@shared/icon/icon';
-import { IconName } from '@shared/icon/icon-names';
+import { IconName } from '@shared/utils/icons/icon-names';
+import { BrandLogo } from '@shared/components/brand-logo/brand-logo';
+import { Icon } from '@shared/components/icon/icon';
 
 /**
  * Creates nothing: `POST api/conversations` waits for the first prompt, so abandoned ideas stay

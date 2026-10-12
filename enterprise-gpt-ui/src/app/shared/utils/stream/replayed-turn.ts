@@ -2,9 +2,9 @@ import {
   AssistantStatusSnapshot,
   createInitialSnapshot,
   foldAssistantEvents,
-} from './andes/assistant-ui.contract';
-import { TurnTimeline, createInitialTimeline, foldTimeline } from './turn-timeline';
+} from '@shared/models/andes/assistant-ui.contract';
 import { textDeltaEvent } from './stream-codec';
+import { TurnTimeline, createInitialTimeline, foldTimeline } from './turn-timeline';
 
 /** A past assistant answer in the shape the transcript renders live turns from. */
 export interface ReplayedTurn {

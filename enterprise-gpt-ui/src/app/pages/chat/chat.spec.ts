@@ -1,8 +1,8 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideLocationMocks } from '@angular/common/testing';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideLocationMocks } from '@angular/common/testing';
 import {
   Router,
   RouterOutlet,
@@ -11,18 +11,21 @@ import {
   withComponentInputBinding,
 } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { ShellChrome } from '@core/ui/shell-chrome';
-import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { Dispatcher } from '@ngrx/signals/events';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CHAT_ROLE, ConversationDetailDto } from '@shared/models/api/conversation.model';
+import { TokenService } from '@core/auth/token-service';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
-import { TurnSettingsStore } from '@core/chat/turn-settings-store';
-import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { conversationEvents } from '@core/events/conversation-events';
 import { turnEvents } from '@core/events/turn-events';
-import { TokenService } from '@core/auth/token-service';
-import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
+import { CONVERSATION_ID_PARAM, chatMatcher } from '@core/navigation/chat-matcher';
+import { ShellChrome } from '@core/ui/shell-chrome-service';
+import { STREAM_FETCH } from '@services/conversations/stream-fetch.token';
+import { ConversationActionsStore } from '@state/conversation-actions-store';
+import { UploadStore } from '@state/documents/upload-store';
+import { TurnSettingsStore } from '@state/turn-settings-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpFixture, modelFixture } from '@testing/catalog';
 import {
@@ -31,14 +34,11 @@ import {
   conversationPage,
   messageFixture,
 } from '@testing/conversations';
-import { CHAT_ROLE, ConversationDetailDto } from '@domain/api/conversation';
+import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { streamingResponse } from '@testing/stream-frames';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UploadStore } from '@core/documents/upload-store';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
 import { Chat } from './chat';
-import { CONVERSATION_ID_PARAM, chatMatcher } from './chat-route';
 
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;

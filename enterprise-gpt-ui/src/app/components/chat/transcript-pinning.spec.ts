@@ -1,16 +1,19 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideLocationMocks } from '@angular/common/testing';
+import { TestBed } from '@angular/core/testing';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TokenService } from '@core/auth/token-service';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
-import { modelFixture } from '@testing/catalog';
-import { STREAM_BATCH_WINDOW_MS } from '@core/stream/conversation-stream-client';
-import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
+import { chatMatcher } from '@core/navigation/chat-matcher';
+import { STREAM_BATCH_WINDOW_MS } from '@services/conversations/conversation-stream-client';
+import { STREAM_FETCH } from '@services/conversations/stream-fetch.token';
+import { TurnStore } from '@state/chat/turn-store';
+import { Chat } from '@pages/chat/chat';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { modelFixture } from '@testing/catalog';
 import { conversationDetailFixture, conversationFixture } from '@testing/conversations';
 import {
   observerFor,
@@ -25,9 +28,6 @@ import {
   fullTurnEvents,
   streamingResponse,
 } from '@testing/stream-frames';
-import { Chat } from './chat';
-import { chatMatcher } from './chat-route';
-import { TurnStore } from './turn-store';
 
 /** jsdom has no layout, so these assert the scroll writes the directive makes, not positions. */
 describe('transcript pinning', () => {

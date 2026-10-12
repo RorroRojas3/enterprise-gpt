@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
 import { Router } from '@angular/router';
+import { tapResponse } from '@ngrx/operators';
 import {
   patchState,
   signalStore,
@@ -11,24 +12,23 @@ import {
   withState,
 } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { tapResponse } from '@ngrx/operators';
 import { Subject, exhaustMap, merge, takeUntil } from 'rxjs';
-import { ConversationDto } from '@domain/api/conversation';
-import { CHAT_ROUTE, PROJECTS_ROUTE } from '@core/auth/auth-routes';
+import { ConversationDto } from '@shared/models/api/conversation.model';
 import {
   ComposerExportTarget,
   ComposerHost,
   ComposerProjectTarget,
-} from '@core/chat/composer-host';
-import { PendingAttachmentsStore } from '@core/chat/pending-attachments-store';
-import { PendingPromptStore } from '@core/chat/pending-prompt-store';
+} from '@core/chat/composer-host.token';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
-import { COMPOSER_UPLOADS } from '@core/documents/composer-uploads';
 import { toAppError } from '@core/errors/to-app-error';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
+import { CHAT_ROUTE, PROJECTS_ROUTE } from '@core/navigation/route-paths';
 import { ToastStore } from '@core/notifications/toast-store';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+import { COMPOSER_UPLOADS } from '@state/documents/composer-uploads.token';
+import { PendingAttachmentsStore } from '@state/pending-attachments-store';
+import { PendingPromptStore } from '@state/pending-prompt-store';
 import { ProjectStore } from './project-store';
 
 interface ProjectComposerState {

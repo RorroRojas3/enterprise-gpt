@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { PROVIDER_ID } from '@shared/models/api/provider.model';
 import { modelFixture } from '@testing/catalog';
-import { PROVIDER_ID } from '@domain/api/provider';
 import {
   ModelFormValue,
   PROVIDER_OPTIONS,

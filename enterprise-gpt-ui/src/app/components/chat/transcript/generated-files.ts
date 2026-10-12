@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import { MessageAttachmentDto } from '@domain/api/conversation';
-import { formatBytes } from '@domain/format/bytes';
-import { DocumentDownloadStore } from '@core/documents/document-download-store';
-import { AttachmentChip } from '@shared/chip/attachment-chip/attachment-chip';
+import { MessageAttachmentDto } from '@shared/models/api/conversation.model';
+import { formatBytes } from '@shared/utils/format/bytes';
+import { DocumentDownloadStore } from '@state/document-download-store';
+import { AttachmentChip } from '@shared/components/attachment-chip/attachment-chip';
 
 @Component({
   selector: 'app-generated-files',

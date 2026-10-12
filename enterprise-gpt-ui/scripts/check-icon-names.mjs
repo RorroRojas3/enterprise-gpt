@@ -8,8 +8,8 @@ import { stripComments, walk } from './lib/source-scan.mjs';
 
 const UI_ROOT = resolve(fileURLToPath(import.meta.url), '../..');
 const SRC = join(UI_ROOT, 'src');
-const MANIFEST = join(SRC, 'app', 'shared', 'icon', 'icon-names.ts');
-const MANIFEST_REL = 'app/shared/icon/icon-names.ts';
+const MANIFEST = join(SRC, 'app', 'shared', 'utils', 'icons', 'icon-names.ts');
+const MANIFEST_REL = 'app/shared/utils/icons/icon-names.ts';
 
 /** Structural Bootstrap-Icons classes that are not glyph names. */
 const NOT_GLYPHS = new Set(['bi']);

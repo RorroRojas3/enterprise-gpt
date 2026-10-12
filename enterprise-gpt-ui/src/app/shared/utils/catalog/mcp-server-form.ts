@@ -4,7 +4,7 @@ import {
   McpServerDto,
   McpServerHeaders,
   McpServerWriteBody,
-} from '@domain/api/mcp';
+} from '@shared/models/api/mcp.model';
 
 /** Mirrors `CreateMcpServerActionDtoValidator`, so a rejection is the exception. */
 export const MCP_SERVER_FIELD_LENGTHS = {
@@ -73,7 +73,7 @@ export interface AuthTypeOption {
 
 /**
  * No shared "Header key" type: one secret in a plain-text column stays refused, unlike per-user
- * keys stored encrypted. Kept out of `domain/api/mcp.ts` so it stays off the initial graph.
+ * keys stored encrypted. Kept out of `mcp.model.ts` so it stays off the initial graph.
  */
 export const AUTH_TYPE_OPTIONS: readonly AuthTypeOption[] = [
   { value: MCP_AUTH_TYPE.none, label: 'None' },

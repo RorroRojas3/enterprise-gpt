@@ -1,17 +1,27 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { Router } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import { Dispatcher, Events } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
-import { conversationFixture, messageFixture } from '@testing/conversations';
 import {
   CHAT_ROLE,
   ConversationMessageDto,
   MESSAGE_FEEDBACK_RATING,
   MessageFeedbackRating,
-} from '@domain/api/conversation';
+} from '@shared/models/api/conversation.model';
+import { TokenService } from '@core/auth/token-service';
+import { ConversationListStore } from '@core/conversations/conversation-list-store';
+import { sessionEvents } from '@core/events/session-events';
+import { TurnCompleted, turnEvents } from '@core/events/turn-events';
+import { ToastStore } from '@core/notifications/toast-store';
+import { STREAM_BATCH_WINDOW_MS } from '@services/conversations/conversation-stream-client';
+import { STREAM_FETCH } from '@services/conversations/stream-fetch.token';
+import { UploadStore } from '@state/documents/upload-store';
+import { PendingAttachmentsStore } from '@state/pending-attachments-store';
+import { TurnSelection, TurnSettingsStore } from '@state/turn-settings-store';
+import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { conversationFixture, messageFixture } from '@testing/conversations';
 import { FRAMEWORK_PROBLEM_FIXTURES, PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import {
   StreamingResponseHandle,
@@ -22,18 +32,8 @@ import {
   streamingResponse,
 } from '@testing/stream-frames';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
-import { TurnSelection, TurnSettingsStore } from '@core/chat/turn-settings-store';
-import { ConversationListStore } from '@core/conversations/conversation-list-store';
-import { sessionEvents } from '@core/events/session-events';
-import { ToastStore } from '@core/notifications/toast-store';
-import { TurnCompleted, turnEvents } from '@core/events/turn-events';
-import { TokenService } from '@core/auth/token-service';
-import { STREAM_BATCH_WINDOW_MS } from '@core/stream/conversation-stream-client';
-import { STREAM_FETCH } from '@core/stream/stream-fetch.token';
 import { ConversationStore } from './conversation-store';
 import { TranscriptEntry, TurnStore } from './turn-store';
-import { PendingAttachmentsStore } from '@core/chat/pending-attachments-store';
-import { UploadStore } from '@core/documents/upload-store';
 
 const CONVERSATION_ID = '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b';
 const CREATE_URL = `${TEST_API_BASE_URL}/api/conversations`;

@@ -19,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The Angular client in `enterprise-gpt-ui/` now follows the Andes `angular-ui-architecture` kind-first
+  layout; behaviour is unchanged. `src/app/` is grouped by kind, then by feature: `pages/<feature>`,
+  `components/<feature>`, `state/` (root stores flat, page- and route-provided stores in
+  `state/<feature>/`), `services/<domain>`, `core/<topic>` and `shared/{components,directives,pipes,models,utils}`.
+  The old `domain/` split into `shared/models` (wire DTOs and the vendored streaming contract) and
+  `shared/utils` (pure functions), and brand SVGs moved to `src/icons/brand/`. Path aliases are now
+  `@pages`, `@components`, `@state`, `@services`, `@core`, `@shared` and `@testing`; `@domain` and
+  `@features` are gone. Non-component files carry a kind suffix (`-store`, `-service`, `.token`,
+  `.model`, `-route` and so on), so several files were renamed. Dependencies run one way
+  (`pages` to `components` to `shared` presentational code to `state` to `services` to `core` to
+  `shared/utils` to `shared/models`), and `npm run lint` now enforces it, including across features,
+  for dynamic `import()`, and for import cycles and `../` imports; Prettier sorts imports in the same
+  order. `check-initial-chunk.mjs` also fails the build if a lazy page, component or feature store
+  reaches the initial bundle. Rebase any open UI branch onto the new paths and aliases.
 - Document summaries (`document_summarize`) are now detailed records instead of short gists: length
   scales with the source, every part of it must be covered, and light markdown structure (headings,
   bullets) is used where the source itself has it. A cross-document digest stays deliberately brief

@@ -1,8 +1,8 @@
-import { ChangeDetectionStrategy, Component, inject, output } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { ShellChrome } from '@core/ui/shell-chrome';
-import { BrandLogo } from '@shared/brand-logo/brand-logo';
-import { Icon } from '@shared/icon/icon';
+import { ChangeDetectionStrategy, Component, inject, output } from '@angular/core';
+import { ShellChrome } from '@core/ui/shell-chrome-service';
+import { BrandLogo } from '@shared/components/brand-logo/brand-logo';
+import { Icon } from '@shared/components/icon/icon';
 
 /**
  * The only chrome above the routed screen below 768px. Its title and trailing controls come

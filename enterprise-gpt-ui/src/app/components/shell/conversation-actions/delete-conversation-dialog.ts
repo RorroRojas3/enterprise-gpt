@@ -6,8 +6,8 @@ import {
   computed,
   inject,
 } from '@angular/core';
-import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
-import { Modal } from '@shared/overlay/modal/modal';
+import { ConversationActionsStore } from '@state/conversation-actions-store';
+import { Modal } from '@shared/components/modal/modal';
 
 /**
  * Mounted once in the shell, driven by `ConversationActionsStore`: its invokers live in features

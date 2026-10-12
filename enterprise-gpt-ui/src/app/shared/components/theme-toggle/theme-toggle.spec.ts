@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
-import { PREFERENCE_KEYS } from '@core/storage/local-preferences';
-import { PREFERS_DARK, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { PREFERENCE_KEYS } from '@shared/utils/storage/local-preferences';
+import { PREFERS_DARK, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { ThemeToggle } from './theme-toggle';
 
 describe('ThemeToggle', () => {

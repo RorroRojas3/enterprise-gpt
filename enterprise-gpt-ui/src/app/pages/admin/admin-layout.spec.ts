@@ -1,9 +1,9 @@
+import { Location } from '@angular/common';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { Location } from '@angular/common';
 import { provideLocationMocks } from '@angular/common/testing';
-import { TestBed } from '@angular/core/testing';
 import { Component, signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';

@@ -13,7 +13,7 @@ import {
 import { firstValueFrom, takeUntil } from 'rxjs';
 import { toAppError } from '@core/errors/to-app-error';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
 import {
   setError,
   setFulfilled,

@@ -2,7 +2,7 @@ import {
   SpeechRecognitionErrorEventLike,
   SpeechRecognitionLike,
   SpeechRecognitionResultEventLike,
-} from '../app/core/speech/speech-recognition';
+} from '../app/state/composer/speech-recognition.token';
 
 /** A `SpeechRecognitionResultList` shaped as the engine hands one over. */
 function resultsOf(phrases: { text: string; isFinal: boolean }[]): SpeechRecognitionResultList {

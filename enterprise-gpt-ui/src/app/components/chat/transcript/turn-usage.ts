@@ -1,4 +1,4 @@
-import { UsageSummary } from '@domain/stream/andes/assistant-ui.contract';
+import { UsageSummary } from '@shared/models/andes/assistant-ui.contract';
 
 /**
  * `en-US` rather than the ambient locale: the design fixes `1,842`, and the host's locale would

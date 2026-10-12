@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
+import { tapResponse } from '@ngrx/operators';
 import {
   patchState,
   signalStore,
@@ -11,13 +12,12 @@ import {
 import { setAllEntities, withEntities } from '@ngrx/signals/entities';
 import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { tapResponse } from '@ngrx/operators';
 import { pipe, switchMap, takeUntil, tap } from 'rxjs';
-import { McpServerDto } from '@domain/api/mcp';
+import { McpServerDto } from '@shared/models/api/mcp.model';
 import { toAppError } from '@core/errors/to-app-error';
 import { adminEvents } from '@core/events/admin-events';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
 import { setQuery, withClientQuery } from '@core/state/with-client-query';
 import {
   setError,

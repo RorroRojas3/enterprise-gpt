@@ -2,15 +2,15 @@ import { Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AccountInfo } from '@azure/msal-browser';
 import { Dispatcher } from '@ngrx/signals/events';
-import { AppError } from '../errors/app-error';
-import { toAppError } from '../errors/to-app-error';
-import { APP_CONFIG } from '../config/app-config.token';
-import { hideStartupShell } from '../config/fatal-shell';
-import { injectSignedOut, sessionEvents } from '../events/session-events';
-import { HardNavigation } from '../navigation/hard-navigation';
-import { SessionChannel } from '../session/session-channel';
-import { CHAT_ROUTE, SIGNED_OUT_ROUTE } from './auth-routes';
-import { MSAL_INSTANCE } from './msal-instance';
+import { APP_CONFIG } from '@core/config/app-config.token';
+import { hideStartupShell } from '@core/config/fatal-shell';
+import { AppError } from '@core/errors/app-error';
+import { toAppError } from '@core/errors/to-app-error';
+import { injectSignedOut, sessionEvents } from '@core/events/session-events';
+import { HardNavigation } from '@core/navigation/hard-navigation-service';
+import { CHAT_ROUTE, SIGNED_OUT_ROUTE } from '@core/navigation/route-paths';
+import { SessionChannel } from '@core/session/session-channel-service';
+import { MSAL_INSTANCE } from './msal-instance.token';
 
 /** Where the sign-in redirect should return the user, across the trip to Entra. */
 const RETURN_URL_KEY = 'egpt.returnUrl';

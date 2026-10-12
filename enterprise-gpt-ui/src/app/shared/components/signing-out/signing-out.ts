@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, ElementRef, viewChild } from '@angular/core';
-import { focusOnRender } from '@shared/a11y/focus-on-render';
-import { Ridgeline } from '@shared/ridgeline/ridgeline';
+import { focusOnRender } from '@core/a11y/focus-on-render';
+import { Ridgeline } from '@shared/components/ridgeline/ridgeline';
 
 /**
  * A component so `focusOnRender` sees a real heading, not inline in `App`. A full page, as it can

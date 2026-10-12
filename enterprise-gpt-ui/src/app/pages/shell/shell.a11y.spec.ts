@@ -4,6 +4,8 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { ApplicationRef, ChangeDetectionStrategy, Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { userEvent } from '@vitest/browser/context';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { SessionStore } from '@core/session/session-store';
@@ -20,12 +22,10 @@ import {
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
 import { conversationFixture, conversationPage } from '@testing/conversations';
-import { projectFixture, projectPage } from '@testing/projects';
 import { provideFakeMsal, signedInMsal } from '@testing/msal';
 import { provideFakeNavigation } from '@testing/navigation';
+import { projectFixture, projectPage } from '@testing/projects';
 import { administratorFixture } from '@testing/session';
-import { userEvent } from '@vitest/browser/context';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Shell } from './shell';
 
 /**

@@ -10,26 +10,8 @@ import {
   viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Params, Router } from '@angular/router';
-import { PermissionDto, UserDto } from '@domain/api/user';
-import { canRetry } from '@core/errors/error-message';
-import { SessionStore } from '@core/session/session-store';
-import { SELF_DEACTIVATE_MESSAGE } from '@core/users/self-action-messages';
-import { UserActionsStore } from '@core/users/user-actions-store';
-import { AvatarInitials } from '@shared/avatar/avatar-initials/avatar-initials';
-import { PermissionBadge } from '@shared/badge/permission-badge/permission-badge';
-import { DataTable } from '@shared/data/data-table/data-table';
-import { TableCell } from '@shared/data/data-table/table-cell';
-import { TableColumn } from '@shared/data/data-table/table-column';
-import { Paginator } from '@shared/data/paginator/paginator';
-import { EmptyState } from '@shared/feedback/empty-state/empty-state';
-import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
-import { SearchInput } from '@shared/form/search-input/search-input';
-import { Icon } from '@shared/icon/icon';
-import { Tooltip } from '@shared/overlay/tooltip/tooltip';
-import { AdminUsersStore } from './admin-users-store';
-import { DeactivateUserDialog } from './deactivate-user-dialog';
-import { UserEditPanel } from './user-edit-panel';
-import { UserFormDialog } from './user-form-dialog';
+import { PermissionDto, UserDto } from '@shared/models/api/user.model';
+import { TableColumn } from '@shared/models/table-column.model';
 import {
   ANY_PERMISSION_LABEL,
   NAME_PARAM,
@@ -42,7 +24,25 @@ import {
   toPage,
   toPageSize,
   toPermissionFilter,
-} from './admin-users-route';
+} from '@shared/utils/navigation/admin-users-route';
+import { canRetry } from '@core/errors/error-message';
+import { SessionStore } from '@core/session/session-store';
+import { SELF_DEACTIVATE_MESSAGE } from '@core/users/self-action-messages';
+import { AdminUsersStore } from '@state/admin/admin-users-store';
+import { UserActionsStore } from '@state/user-actions-store';
+import { AvatarInitials } from '@shared/components/avatar-initials/avatar-initials';
+import { DataTable } from '@shared/components/data-table/data-table';
+import { EmptyState } from '@shared/components/empty-state/empty-state';
+import { ErrorPanel } from '@shared/components/error-panel/error-panel';
+import { Icon } from '@shared/components/icon/icon';
+import { Paginator } from '@shared/components/paginator/paginator';
+import { SearchInput } from '@shared/components/search-input/search-input';
+import { TableCell } from '@shared/directives/table-cell';
+import { Tooltip } from '@shared/directives/tooltip';
+import { PermissionBadge } from '@components/admin/permission-badge';
+import { DeactivateUserDialog } from '@components/admin/users/deactivate-user-dialog';
+import { UserEditPanel } from '@components/admin/users/user-edit-panel';
+import { UserFormDialog } from '@components/admin/users/user-form-dialog';
 
 /**
  * The URL is the query's source of truth and {@link _applyQuery} its only writer. Bind `[value]`
@@ -254,8 +254,8 @@ export class AdminUsers {
   }
 
   /**
-   * Removes the row at once and hands the undo to the root store as a callback, since `core/`
-   * cannot import this route-scoped store.
+   * Removes the row at once and hands the undo to the root store as a callback, since a root
+   * store cannot inject this route-scoped one.
    */
   protected onConfirmDeactivate(): void {
     const target = this.actions.deactivateTarget();

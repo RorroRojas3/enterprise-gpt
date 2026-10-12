@@ -8,11 +8,11 @@ import {
   untracked,
 } from '@angular/core';
 import { FormField, disabled, form, maxLength, required, validate } from '@angular/forms/signals';
-import { PROJECT_FIELD_LENGTHS } from '@domain/api/project';
+import { PROJECT_FIELD_LENGTHS } from '@shared/models/api/project.model';
 import { unmatchedServerMessages } from '@core/errors/server-messages';
 import { projectNameMessages } from '@core/projects/duplicate-name';
-import { ProjectActionsStore } from '@core/projects/project-actions-store';
-import { Modal } from '@shared/overlay/modal/modal';
+import { ProjectActionsStore } from '@state/project-actions-store';
+import { Modal } from '@shared/components/modal/modal';
 
 /**
  * One dialog for every entry point, all of which go through `ProjectActionsStore`. Server

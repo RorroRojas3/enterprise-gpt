@@ -3,9 +3,9 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { sessionEvents } from '@core/events/session-events';
 import { ToastStore } from '@core/notifications/toast-store';
+import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { UploadCancelClient } from './upload-cancel-client';
 
 const JOB_ID = 'b0f2c1a4-1f3e-4b7a-9a2e-5c6d7e8f9a0b';

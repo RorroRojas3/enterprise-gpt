@@ -7,8 +7,9 @@ import {
   withProps,
   withState,
 } from '@ngrx/signals';
-import { McpDto, needsUserApiKey } from '@domain/api/mcp';
-import { ModelDto } from '@domain/api/model';
+import { ModelDto } from '@shared/models/api/chat-model.model';
+import { McpDto } from '@shared/models/api/mcp.model';
+import { needsUserApiKey } from '@shared/utils/catalog/mcp-server';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';

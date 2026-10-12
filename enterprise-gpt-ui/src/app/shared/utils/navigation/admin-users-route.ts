@@ -48,4 +48,4 @@ export function toPageSize(value: string | undefined): number {
   return (USER_PAGE_SIZES as readonly number[]).includes(size) ? size : DEFAULT_USER_PAGE_SIZE;
 }
 
-export { shouldReplaceHistory } from '@core/navigation/search-history';
+export { shouldReplaceHistory } from './search-history';

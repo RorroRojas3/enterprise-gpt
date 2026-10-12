@@ -1,18 +1,18 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideLocationMocks } from '@angular/common/testing';
-import { TestBed } from '@angular/core/testing';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
-import { ModelDto } from '@domain/api/model';
-import { PROVIDER_ID } from '@domain/api/provider';
-import { ModelActionsStore } from '@core/catalog/model-actions-store';
+import { ModelDto } from '@shared/models/api/chat-model.model';
+import { PROVIDER_ID } from '@shared/models/api/provider.model';
+import { ModelActionsStore } from '@state/model-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
+import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { AdminModels } from './admin-models';
 

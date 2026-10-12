@@ -1,8 +1,8 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
-import { SessionBootstrap } from '@core/session/session-bootstrap';
-import { AuthService } from '../auth-service';
-import { SESSION_ERROR_ROUTE } from '../auth-routes';
+import { AuthService } from '@core/auth/auth-service';
+import { SESSION_ERROR_ROUTE } from '@core/navigation/route-paths';
+import { SessionBootstrap } from '@core/session/session-bootstrap-service';
 
 /**
  * Nested inside `authGuard`'s route level so `POST api/users/me` waits for an account. Returns

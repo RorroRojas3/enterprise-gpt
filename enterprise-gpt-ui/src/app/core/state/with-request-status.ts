@@ -1,6 +1,6 @@
 import { computed } from '@angular/core';
 import { signalStoreFeature, withComputed, withState } from '@ngrx/signals';
-import { AppError } from '../errors/app-error';
+import { AppError } from '@core/errors/app-error';
 
 /** One field rather than `isLoading` + `error`, which can be loading and errored at once. */
 export type RequestStatus = 'idle' | 'pending' | 'fulfilled' | { readonly error: AppError };

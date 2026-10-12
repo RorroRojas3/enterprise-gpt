@@ -2,10 +2,10 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DocumentDownloadDto, UploadTarget } from '@shared/models/api/document.model';
+import { ToastStore } from '@core/notifications/toast-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
-import { DocumentDownloadDto, UploadTarget } from '@domain/api/document';
-import { ToastStore } from '@core/notifications/toast-store';
 import { DocumentDownloadStore } from './document-download-store';
 
 const CONVERSATION: UploadTarget = {

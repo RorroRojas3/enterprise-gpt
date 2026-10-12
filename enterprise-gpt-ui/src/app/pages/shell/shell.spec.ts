@@ -4,26 +4,26 @@ import {
   TestRequest,
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
+import { provideLocationMocks } from '@angular/common/testing';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideLocationMocks } from '@angular/common/testing';
 import { Router, provideRouter } from '@angular/router';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PREFERENCE_KEYS } from '@shared/utils/storage/local-preferences';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { SessionStore } from '@core/session/session-store';
-import { PREFERENCE_KEYS } from '@core/storage/local-preferences';
-import { UiStore } from '@core/ui/ui-store';
+import { UiStore } from '@state/ui-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
-import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { conversationFixture, conversationPage } from '@testing/conversations';
-import { projectFixture, projectPage } from '@testing/projects';
+import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { PREFERS_DARK, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { provideFakeMsal, signedInMsal } from '@testing/msal';
 import { provideFakeNavigation } from '@testing/navigation';
-import { administratorFixture, userFixture } from '@testing/session';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { projectFixture, projectPage } from '@testing/projects';
+import { administratorFixture, userFixture } from '@testing/session';
 import { Shell } from './shell';
 
 const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;

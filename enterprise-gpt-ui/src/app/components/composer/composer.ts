@@ -11,25 +11,25 @@ import {
   viewChild,
 } from '@angular/core';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
-import { COMPOSER_HOST } from '@core/chat/composer-host';
-import { TurnSettingsStore } from '@core/chat/turn-settings-store';
-import { COMPOSER_UPLOADS } from '@core/documents/composer-uploads';
-import { SupportedExtensionsStore } from '@core/documents/supported-extensions-store';
+import { COMPOSER_HOST } from '@core/chat/composer-host.token';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { SessionStore } from '@core/session/session-store';
-import { AttachmentChip } from '@shared/chip/attachment-chip/attachment-chip';
-import { ConversationDownloadMenu } from '@shared/conversations/conversation-download-menu/conversation-download-menu';
-import { Icon } from '@shared/icon/icon';
-import { ProjectPicker } from '@shared/projects/project-picker/project-picker';
-import { DropOverlay } from '@shared/upload/drop-overlay';
-import { FileDropTarget } from '@shared/upload/file-drop-target';
-import { DictationStore } from './dictation-store';
+import { DictationStore } from '@state/composer/dictation-store';
+import { COMPOSER_UPLOADS } from '@state/documents/composer-uploads.token';
+import { SupportedExtensionsStore } from '@state/supported-extensions-store';
+import { TurnSettingsStore } from '@state/turn-settings-store';
+import { AttachmentChip } from '@shared/components/attachment-chip/attachment-chip';
+import { ConversationDownloadMenu } from '@shared/components/conversation-download-menu/conversation-download-menu';
+import { DropOverlay } from '@shared/components/drop-overlay/drop-overlay';
+import { Icon } from '@shared/components/icon/icon';
+import { ProjectPicker } from '@shared/components/project-picker/project-picker';
+import { FileDropTarget } from '@shared/directives/file-drop-target';
 import { ModelMenu } from './model-menu';
 import { ToolsMenu } from './tools-menu';
 
 /**
- * A host provides `COMPOSER_HOST`, which executes the prompt, and `COMPOSER_UPLOADS`. In `shared/`
- * because the project screen renders it too and may not import `features/chat`.
+ * A host provides `COMPOSER_HOST`, which executes the prompt, and `COMPOSER_UPLOADS`. A pageless
+ * feature because chat and the project screen both render it.
  */
 @Component({
   selector: 'app-composer',

@@ -1,17 +1,17 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideLocationMocks } from '@angular/common/testing';
-import { TestBed } from '@angular/core/testing';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
-import { MCP_AUTH_TYPE, McpServerDto } from '@domain/api/mcp';
-import { McpServerActionsStore } from '@core/catalog/mcp-server-actions-store';
+import { MCP_AUTH_TYPE, McpServerDto } from '@shared/models/api/mcp.model';
+import { McpServerActionsStore } from '@state/mcp-server-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpServerFixture } from '@testing/catalog';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
+import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { AdminMcps } from './admin-mcps';
 

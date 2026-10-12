@@ -8,25 +8,25 @@ import {
   untracked,
 } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { ProjectDto } from '@domain/api/project';
-import { PROJECTS_ROUTE } from '@core/auth/auth-routes';
-import { provideComposerHost } from '@core/chat/composer-host';
-import { provideComposerUploads } from '@core/documents/composer-uploads';
-import { UploadStore } from '@core/documents/upload-store';
-import { ProjectActionsStore } from '@core/projects/project-actions-store';
-import { Composer } from '@shared/composer/composer';
-import { Icon } from '@shared/icon/icon';
-import { MOBILE_VIEWPORT } from '@shared/layout/breakpoints';
-import { injectMediaQuery } from '@shared/layout/media-query';
-import { PillItem, PillSubnav } from '@shared/nav/pill-subnav/pill-subnav';
-import { Skeleton } from '@shared/feedback/skeleton/skeleton';
-import { Menu } from '@shared/overlay/menu/menu';
-import { MenuItem } from '@shared/overlay/menu/menu-item';
-import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
-import { ProjectComposerHost } from './project-composer-host';
-import { ProjectConversationsStore } from '@core/projects/project-conversations-store';
-import { ProjectDocumentsStore } from './files/project-documents-store';
-import { ProjectStore } from './project-store';
+import { ProjectDto } from '@shared/models/api/project.model';
+import { MOBILE_VIEWPORT } from '@shared/utils/layout/breakpoints';
+import { provideComposerHost } from '@core/chat/composer-host.token';
+import { PROJECTS_ROUTE } from '@core/navigation/route-paths';
+import { injectMediaQuery } from '@core/ui/media-query';
+import { provideComposerUploads } from '@state/documents/composer-uploads.token';
+import { UploadStore } from '@state/documents/upload-store';
+import { ProjectActionsStore } from '@state/project-actions-store';
+import { ProjectComposerHost } from '@state/projects/project-composer-host-store';
+import { ProjectConversationsStore } from '@state/projects/project-conversations-store';
+import { ProjectDocumentsStore } from '@state/projects/project-documents-store';
+import { ProjectStore } from '@state/projects/project-store';
+import { Icon } from '@shared/components/icon/icon';
+import { Menu } from '@shared/components/menu/menu';
+import { PillItem, PillSubnav } from '@shared/components/pill-subnav/pill-subnav';
+import { Skeleton } from '@shared/components/skeleton/skeleton';
+import { MenuItem } from '@shared/directives/menu-item';
+import { MenuSeparator } from '@shared/directives/menu-separator';
+import { Composer } from '@components/composer/composer';
 
 /**
  * The composer sits above the tabs, not inside one: a prompt sent here creates a conversation in

@@ -2,12 +2,12 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { ModelDto } from '@shared/models/api/chat-model.model';
+import { PROVIDER_ID } from '@shared/models/api/provider.model';
+import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
+import { TurnSettingsStore } from '@state/turn-settings-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
-import { ModelDto } from '@domain/api/model';
-import { PROVIDER_ID } from '@domain/api/provider';
-import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
-import { TurnSettingsStore } from '@core/chat/turn-settings-store';
 import { ModelMenu, formatTokenCount } from './model-menu';
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;

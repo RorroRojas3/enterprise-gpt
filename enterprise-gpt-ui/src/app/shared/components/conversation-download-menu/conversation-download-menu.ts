@@ -8,15 +8,15 @@ import {
   signal,
 } from '@angular/core';
 import {
-  EXPORT_FORMAT_LABELS,
   EXPORT_FORMATS,
+  EXPORT_FORMAT_LABELS,
   ExportFormat,
-} from '@domain/api/conversation-export';
-import { ConversationExportStore } from '@core/conversations/conversation-export-store';
-import { Icon } from '@shared/icon/icon';
-import { IconName } from '@shared/icon/icon-names';
-import { Menu } from '@shared/overlay/menu/menu';
-import { MenuItem } from '@shared/overlay/menu/menu-item';
+} from '@shared/models/api/conversation-export.model';
+import { IconName } from '@shared/utils/icons/icon-names';
+import { ConversationExportStore } from '@state/conversation-export-store';
+import { Icon } from '@shared/components/icon/icon';
+import { Menu } from '@shared/components/menu/menu';
+import { MenuItem } from '@shared/directives/menu-item';
 
 let nextId = 0;
 

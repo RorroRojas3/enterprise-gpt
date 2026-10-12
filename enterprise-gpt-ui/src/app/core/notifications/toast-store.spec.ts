@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { AppError } from '@core/errors/app-error';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AppError } from '@core/errors/app-error';
 import { ToastStore } from './toast-store';
 
 function appError(overrides: Partial<AppError> = {}): AppError {

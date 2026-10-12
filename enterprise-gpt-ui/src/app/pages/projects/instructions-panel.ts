@@ -6,13 +6,13 @@ import {
   linkedSignal,
   signal,
 } from '@angular/core';
-import { PROJECT_FIELD_LENGTHS } from '@domain/api/project';
+import { PROJECT_FIELD_LENGTHS } from '@shared/models/api/project.model';
 import { canRetry } from '@core/errors/error-message';
-import { ProjectActionsStore } from '@core/projects/project-actions-store';
-import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
-import { Skeleton } from '@shared/feedback/skeleton/skeleton';
-import { Modal } from '@shared/overlay/modal/modal';
-import { ProjectStore } from '../project-store';
+import { ProjectActionsStore } from '@state/project-actions-store';
+import { ProjectStore } from '@state/projects/project-store';
+import { ErrorPanel } from '@shared/components/error-panel/error-panel';
+import { Modal } from '@shared/components/modal/modal';
+import { Skeleton } from '@shared/components/skeleton/skeleton';
 import { ConfirmsDiscard } from './unsaved-instructions.guard';
 
 /**

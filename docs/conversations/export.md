@@ -142,7 +142,7 @@ addressed to nobody.
 **The fence is matched twice, and both sides must agree.** `EmailFence.Info` is `"email"`, matched
 case-insensitively and only when the whole info string is exactly that word — Markdig splits at the
 first space, so ` ```email draft ` has arguments and is left an ordinary code block. The client
-reaches the same outcome by a different route in `domain/markdown/fences.ts`. The two never call
+reaches the same outcome by a different route in `shared/utils/markdown/fences.ts`. The two never call
 into each other; a divergence would render the same message as prose in an export and as source code
 in the chat, which is why the info-string edge cases are pinned explicitly in tests. Tilde fences
 match too.
@@ -170,7 +170,7 @@ fields.
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Exports/MarkdownBlockMapper.cs` | Markdown AST to the block model |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Exports/ExportTheme.cs` | Shared palette and type scale |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Conversations/Rendering/EmailFence.cs` | The server half of the fence contract |
-| `enterprise-gpt-ui/src/app/domain/email/` | `mailto:` construction from the same fence |
+| `enterprise-gpt-ui/src/app/shared/utils/email/` | `mailto:` construction from the same fence |
 | `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Service/Exports/MarkdownBlockMapperTests.cs` | Info-string and nesting edge cases |
 
 ## Related

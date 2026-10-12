@@ -7,13 +7,13 @@ import { Router, provideRouter, withComponentInputBinding } from '@angular/route
 import { RouterTestingHarness } from '@angular/router/testing';
 import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ConversationDto } from '@shared/models/api/conversation.model';
 import { TokenService } from '@core/auth/token-service';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
-import { COMPOSER_UPLOADS, ComposerUploads } from '@core/documents/composer-uploads';
-import { UploadStore } from '@core/documents/upload-store';
 import { projectEvents } from '@core/events/project-events';
 import { SessionStore } from '@core/session/session-store';
-import { ConversationDto } from '@domain/api/conversation';
+import { COMPOSER_UPLOADS, ComposerUploads } from '@state/documents/composer-uploads.token';
+import { UploadStore } from '@state/documents/upload-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';

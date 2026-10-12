@@ -1,6 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { MESSAGE_FEEDBACK_RATING, MessageFeedbackRating } from '@domain/api/conversation';
-import { Icon } from '@shared/icon/icon';
+import {
+  MESSAGE_FEEDBACK_RATING,
+  MessageFeedbackRating,
+} from '@shared/models/api/conversation.model';
+import { Icon } from '@shared/components/icon/icon';
 
 /**
  * Stateless: the rating lives on `TurnStore`'s entry, which survives a reload. Both thumbs stay

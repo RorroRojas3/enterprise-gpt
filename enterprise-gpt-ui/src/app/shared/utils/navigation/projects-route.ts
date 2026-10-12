@@ -75,4 +75,4 @@ export function sortKey(option: ProjectSortOption): string {
 }
 
 /** Re-exported so this screen's route contract reads from one file. */
-export { shouldReplaceHistory } from '@core/navigation/search-history';
+export { shouldReplaceHistory } from './search-history';

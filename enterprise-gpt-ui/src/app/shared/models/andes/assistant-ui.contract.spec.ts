@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createInitialSnapshot, foldAssistantEvents } from './assistant-ui.contract';
@@ -9,8 +9,8 @@ import { createInitialSnapshot, foldAssistantEvents } from './assistant-ui.contr
  */
 
 const SRC_ROOT = resolve(import.meta.dirname, '../../../..');
-const VENDORED = join(SRC_ROOT, 'app/domain/stream/andes/assistant-ui.contract.ts');
-const SPEC = join(SRC_ROOT, 'app/domain/stream/andes/assistant-ui.contract.spec.ts');
+const VENDORED = join(SRC_ROOT, 'app/shared/models/andes/assistant-ui.contract.ts');
+const SPEC = join(SRC_ROOT, 'app/shared/models/andes/assistant-ui.contract.spec.ts');
 
 const VENDORED_SYMBOLS = [
   'AssistantUiEvent',

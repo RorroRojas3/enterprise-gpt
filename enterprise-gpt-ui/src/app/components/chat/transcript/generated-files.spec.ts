@@ -2,9 +2,9 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MessageAttachmentDto } from '@shared/models/api/conversation.model';
+import { DocumentDownloadDto } from '@shared/models/api/document.model';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
-import { MessageAttachmentDto } from '@domain/api/conversation';
-import { DocumentDownloadDto } from '@domain/api/document';
 import { GeneratedFiles } from './generated-files';
 
 const CONVERSATION_ID = '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b';

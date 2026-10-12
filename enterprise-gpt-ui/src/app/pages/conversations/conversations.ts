@@ -14,26 +14,8 @@ import {
   viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Params, Router, RouterLink } from '@angular/router';
-import { ConversationDto } from '@domain/api/conversation';
-import { CHAT_ROUTE } from '@core/auth/auth-routes';
-import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
-import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
-import { canRetry } from '@core/errors/error-message';
-import { ProjectLookupStore } from '@core/projects/project-lookup-store';
-import { EmptyState } from '@shared/feedback/empty-state/empty-state';
-import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
-import { SearchInput } from '@shared/form/search-input/search-input';
-import { BulkActionBar } from '@shared/data/bulk-action-bar/bulk-action-bar';
-import { DataTable } from '@shared/data/data-table/data-table';
-import { TableCell } from '@shared/data/data-table/table-cell';
-import { TableColumn } from '@shared/data/data-table/table-column';
-import { Icon } from '@shared/icon/icon';
-import { Menu } from '@shared/overlay/menu/menu';
-import { MenuItem } from '@shared/overlay/menu/menu-item';
-import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
-import { ProjectPicker } from '@shared/projects/project-picker/project-picker';
-import { ConversationLibraryStore } from './conversation-library-store';
-import { DeleteConversationsDialog } from './delete-conversations-dialog';
+import { ConversationDto } from '@shared/models/api/conversation.model';
+import { TableColumn } from '@shared/models/table-column.model';
 import {
   CONVERSATION_SORTS,
   DEFAULT_CONVERSATION_SORT,
@@ -44,7 +26,25 @@ import {
   shouldReplaceHistory,
   sortKey,
   toConversationSort,
-} from './conversations-route';
+} from '@shared/utils/navigation/conversations-route';
+import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
+import { canRetry } from '@core/errors/error-message';
+import { CHAT_ROUTE } from '@core/navigation/route-paths';
+import { ProjectLookupStore } from '@core/projects/project-lookup-store';
+import { ConversationActionsStore } from '@state/conversation-actions-store';
+import { ConversationLibraryStore } from '@state/conversations/conversation-library-store';
+import { BulkActionBar } from '@shared/components/bulk-action-bar/bulk-action-bar';
+import { DataTable } from '@shared/components/data-table/data-table';
+import { EmptyState } from '@shared/components/empty-state/empty-state';
+import { ErrorPanel } from '@shared/components/error-panel/error-panel';
+import { Icon } from '@shared/components/icon/icon';
+import { Menu } from '@shared/components/menu/menu';
+import { ProjectPicker } from '@shared/components/project-picker/project-picker';
+import { SearchInput } from '@shared/components/search-input/search-input';
+import { MenuItem } from '@shared/directives/menu-item';
+import { MenuSeparator } from '@shared/directives/menu-separator';
+import { TableCell } from '@shared/directives/table-cell';
+import { DeleteConversationsDialog } from '@components/conversations/delete-conversations-dialog';
 
 /**
  * The URL is the query's source of truth. Bind `SearchInput`'s `[value]` one-way and never

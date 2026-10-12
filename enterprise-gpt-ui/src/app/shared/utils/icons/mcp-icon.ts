@@ -11,7 +11,7 @@ export interface McpIconOption {
 /**
  * The marks a server can be given, keyed by the stored slug. The API checks only its shape, so
  * an unknown key degrades to {@link MCP_FALLBACK_ICON}. This is the admin `<select>` in source
- * order: "None", then alphabetical. Not in `core/`, which may not import `shared/` types.
+ * order: "None", then alphabetical.
  */
 export const MCP_ICON_OPTIONS: readonly McpIconOption[] = [
   { value: '', label: 'None', icon: null },

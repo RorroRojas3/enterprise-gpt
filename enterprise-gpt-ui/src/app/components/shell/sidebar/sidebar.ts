@@ -11,29 +11,29 @@ import {
   viewChild,
 } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { IconName } from '@shared/utils/icons/icon-names';
+import { ConversationListStore } from '@core/conversations/conversation-list-store';
+import { canRetry } from '@core/errors/error-message';
 import {
   ADMIN_ROUTE,
   CHAT_ROUTE,
   CONVERSATIONS_ROUTE,
   DOCUMENTS_ROUTE,
   PROJECTS_ROUTE,
-} from '@core/auth/auth-routes';
-import { ConversationListStore } from '@core/conversations/conversation-list-store';
-import { canRetry } from '@core/errors/error-message';
+} from '@core/navigation/route-paths';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { SessionStore } from '@core/session/session-store';
-import { BrandLogo } from '@shared/brand-logo/brand-logo';
-import { EmptyState } from '@shared/feedback/empty-state/empty-state';
-import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
-import { Skeleton } from '@shared/feedback/skeleton/skeleton';
-import { SearchInput } from '@shared/form/search-input/search-input';
-import { Icon } from '@shared/icon/icon';
-import { IconName } from '@shared/icon/icon-names';
-import { UserFooter } from '@shared/nav/user-footer/user-footer';
-import { Tooltip } from '@shared/overlay/tooltip/tooltip';
-import { Ridgeline } from '@shared/ridgeline/ridgeline';
+import { BrandLogo } from '@shared/components/brand-logo/brand-logo';
+import { EmptyState } from '@shared/components/empty-state/empty-state';
+import { ErrorPanel } from '@shared/components/error-panel/error-panel';
+import { Icon } from '@shared/components/icon/icon';
+import { Ridgeline } from '@shared/components/ridgeline/ridgeline';
+import { SearchInput } from '@shared/components/search-input/search-input';
+import { Skeleton } from '@shared/components/skeleton/skeleton';
+import { Tooltip } from '@shared/directives/tooltip';
 import { ConversationRow } from './conversation-row';
 import { SidebarFavorites } from './favorite-projects';
+import { UserFooter } from './user-footer';
 
 /**
  * `overlay` omits the collapse chevron: the mobile drawer has no collapsed state, and the shell's

@@ -1,10 +1,10 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { EMPTY, Observable, catchError, expand, filter, map, of, switchMap, timer } from 'rxjs';
-import { JOB_STATE, JobStatusDto } from '@domain/api/document';
-import { pollDelayMs } from '@domain/documents/upload-schedule';
+import { JOB_STATE, JobStatusDto } from '@shared/models/api/document.model';
+import { pollDelayMs } from '@shared/utils/documents/upload-schedule';
 import { toAppError } from '@core/errors/to-app-error';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
 
 /** What one poll of an upload job produced. */
 export type JobPoll =

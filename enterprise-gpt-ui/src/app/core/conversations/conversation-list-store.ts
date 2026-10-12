@@ -1,5 +1,6 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
+import { tapResponse } from '@ngrx/operators';
 import {
   patchState,
   signalStore,
@@ -19,14 +20,13 @@ import {
 } from '@ngrx/signals/entities';
 import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { tapResponse } from '@ngrx/operators';
 import { Subject, exhaustMap, filter, merge, pipe, switchMap, takeUntil, tap } from 'rxjs';
-import { ConversationDto } from '@domain/api/conversation';
-import { PaginatedResponseDto } from '@domain/api/paginated-response';
+import { ConversationDto } from '@shared/models/api/conversation.model';
+import { PaginatedResponseDto } from '@shared/models/api/paginated-response.model';
 import { toAppError } from '@core/errors/to-app-error';
 import { projectEvents } from '@core/events/project-events';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
 import { ToastStore } from '@core/notifications/toast-store';
 import { setFirstPage, setPage, withOffsetPagination } from '@core/state/with-offset-pagination';
 import { addPendingId, removePendingId, withPendingIds } from '@core/state/with-pending-ids';

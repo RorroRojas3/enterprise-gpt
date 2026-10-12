@@ -38,11 +38,6 @@ export interface McpCredentialWriteBody {
   readonly apiKey: string;
 }
 
-/** A rejected key already reads as absent server-side, so this covers a refused key too. */
-export function needsUserApiKey(server: McpDto): boolean {
-  return server.requiresUserApiKey && !server.hasUserApiKey;
-}
-
 /**
  * Mirrors `McpAuthTypes`. Numbers, not strings: the API registers no `JsonStringEnumConverter`,
  * and `IsInEnum` rejects `0`.
@@ -105,9 +100,4 @@ export interface McpServerWriteBody {
    * read-only would silently restore its write tools.
    */
   readonly headers: McpServerHeaders | null;
-}
-
-/** Named apart from `model.ts`'s `isRetired` because specs and fixtures import both. */
-export function isMcpServerRetired(server: McpServerDto): boolean {
-  return (server.dateDeactivated ?? null) !== null;
 }

@@ -1,5 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
+import { Router } from '@angular/router';
+import { tapResponse } from '@ngrx/operators';
 import {
   PartialStateUpdater,
   patchState,
@@ -12,7 +14,6 @@ import {
 } from '@ngrx/signals';
 import { Dispatcher } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { tapResponse } from '@ngrx/operators';
 import {
   EMPTY,
   Subject,
@@ -30,22 +31,19 @@ import {
   tap,
 } from 'rxjs';
 import {
+  AssistantStatusSnapshot,
+  AssistantUiEvent,
+  createInitialSnapshot,
+  foldAssistantEvents,
+} from '@shared/models/andes/assistant-ui.contract';
+import {
   CHAT_ROLE,
   ChatConversationDto,
   ConversationDto,
   ConversationMessageDto,
   MessageAttachmentDto,
   MessageFeedbackRating,
-} from '@domain/api/conversation';
-import {
-  AssistantStatusSnapshot,
-  AssistantUiEvent,
-  createInitialSnapshot,
-  foldAssistantEvents,
-} from '@domain/stream/andes/assistant-ui.contract';
-import { replayAssistantText } from '@domain/stream/replayed-turn';
-import { turnAnnouncement } from '@domain/stream/turn-announcement';
-import { TurnTimeline, createInitialTimeline, foldTimeline } from '@domain/stream/turn-timeline';
+} from '@shared/models/api/conversation.model';
 import {
   ReasoningTiming,
   createInitialReasoningTiming,
@@ -53,18 +51,22 @@ import {
   hasModelReasoning,
   modelReasoningText,
   reasoningSeconds,
-} from '@domain/stream/reasoning-timing';
-import { ComposerExportTarget, ComposerProjectTarget } from '@core/chat/composer-host';
-import { PendingAttachmentsStore } from '@core/chat/pending-attachments-store';
-import { PendingPromptStore } from '@core/chat/pending-prompt-store';
-import { TurnSettingsStore, TurnSelection } from '@core/chat/turn-settings-store';
+} from '@shared/utils/stream/reasoning-timing';
+import { replayAssistantText } from '@shared/utils/stream/replayed-turn';
+import { turnAnnouncement } from '@shared/utils/stream/turn-announcement';
+import {
+  TurnTimeline,
+  createInitialTimeline,
+  foldTimeline,
+} from '@shared/utils/stream/turn-timeline';
+import { ComposerExportTarget, ComposerProjectTarget } from '@core/chat/composer-host.token';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { AppError } from '@core/errors/app-error';
-import { ToastStore } from '@core/notifications/toast-store';
 import { toAppError } from '@core/errors/to-app-error';
 import { injectSignedOut } from '@core/events/session-events';
 import { turnEvents } from '@core/events/turn-events';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
+import { ToastStore } from '@core/notifications/toast-store';
 import {
   addPendingId,
   clearPendingIds,
@@ -72,9 +74,11 @@ import {
   withPendingIds,
 } from '@core/state/with-pending-ids';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
-import { ConversationStreamClient } from '@core/stream/conversation-stream-client';
-import { Router } from '@angular/router';
-import { UploadStore } from '@core/documents/upload-store';
+import { ConversationStreamClient } from '@services/conversations/conversation-stream-client';
+import { UploadStore } from '@state/documents/upload-store';
+import { PendingAttachmentsStore } from '@state/pending-attachments-store';
+import { PendingPromptStore } from '@state/pending-prompt-store';
+import { TurnSelection, TurnSettingsStore } from '@state/turn-settings-store';
 import { ConversationStore } from './conversation-store';
 
 /** What Retry re-sends: the prompt and selection as sent, even if the pickers moved since. */

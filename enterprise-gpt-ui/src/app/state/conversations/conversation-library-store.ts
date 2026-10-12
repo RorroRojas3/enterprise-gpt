@@ -1,5 +1,6 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { computed, inject, linkedSignal } from '@angular/core';
+import { tapResponse } from '@ngrx/operators';
 import {
   PartialStateUpdater,
   patchState,
@@ -22,15 +23,18 @@ import {
 } from '@ngrx/signals/entities';
 import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { tapResponse } from '@ngrx/operators';
 import { Subject, exhaustMap, merge, pipe, switchMap, takeUntil, tap } from 'rxjs';
-import { ConversationDto } from '@domain/api/conversation';
-import { PaginatedResponseDto } from '@domain/api/paginated-response';
-import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
+import { ConversationDto } from '@shared/models/api/conversation.model';
+import { PaginatedResponseDto } from '@shared/models/api/paginated-response.model';
+import {
+  ConversationSortOption,
+  DEFAULT_CONVERSATION_SORT,
+} from '@shared/utils/navigation/conversations-route';
+import { selectRows } from '@shared/utils/selection/row-selection';
+import { toAppError } from '@core/errors/to-app-error';
 import { conversationEvents } from '@core/events/conversation-events';
 import { injectSignedOut } from '@core/events/session-events';
-import { toAppError } from '@core/errors/to-app-error';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
 import { ToastStore } from '@core/notifications/toast-store';
 import {
   OffsetPaginationState,
@@ -45,8 +49,7 @@ import {
   withRequestStatus,
 } from '@core/state/with-request-status';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
-import { selectRows } from '@shared/data/row-selection';
-import { ConversationSortOption, DEFAULT_CONVERSATION_SORT } from './conversations-route';
+import { ConversationActionsStore } from '@state/conversation-actions-store';
 
 /** Sized for a table with Load more; `SIDEBAR_PAGE_SIZE` is sized so a sidebar rarely pages. */
 export const LIBRARY_PAGE_SIZE = 25;
@@ -133,8 +136,8 @@ export const ConversationLibraryStore = signalStore(
     /** Cancels an in-flight page once the result set or offset it was built against changes. */
     _querySuperseded$: new Subject<void>(),
     /**
-     * Owns the bulk delete, which outlives this route. Core cannot depend on features, so the
-     * rollback travels back as a callback.
+     * Owns the bulk delete, which outlives this route. A root store cannot inject this
+     * route-scoped one, so the rollback travels back as a callback.
      */
     _actions: inject(ConversationActionsStore),
   })),

@@ -1,6 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AssistantUiEvent } from '@shared/models/andes/assistant-ui.contract';
+import { TokenService } from '@core/auth/token-service';
+import { AppConfig } from '@core/config/app-config';
+import { AppError } from '@core/errors/app-error';
+import { sessionEvents } from '@core/events/session-events';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { FRAMEWORK_PROBLEM_FIXTURES, PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import {
@@ -11,11 +16,6 @@ import {
   problemResponse,
   streamingResponse,
 } from '@testing/stream-frames';
-import { AppError } from '@core/errors/app-error';
-import { AppConfig } from '@core/config/app-config';
-import { sessionEvents } from '@core/events/session-events';
-import { TokenService } from '@core/auth/token-service';
-import { AssistantUiEvent } from '@domain/stream/andes/assistant-ui.contract';
 import {
   ConversationStreamClient,
   STREAM_BATCH_WINDOW_MS,

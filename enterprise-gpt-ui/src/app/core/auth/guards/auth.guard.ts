@@ -1,7 +1,7 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
-import { AuthService } from '../auth-service';
-import { LOGIN_FAILED_ROUTE } from '../auth-routes';
+import { AuthService } from '@core/auth/auth-service';
+import { LOGIN_FAILED_ROUTE } from '@core/navigation/route-paths';
 
 /**
  * Alone on its route level: one `canActivate` array runs concurrently, and `sessionGuard` needs a

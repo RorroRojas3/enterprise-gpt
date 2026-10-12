@@ -71,7 +71,7 @@ The icon font is **not** shipped: its stylesheet alone is roughly 72 kB and woul
 to render the ~75 in use.
 
 ```text
-shared/icon/icon-names.ts    sorted names + the IconName union     (checked in)
+shared/utils/icons/icon-names.ts   sorted names + the IconName union     (checked in)
    |  npm run assets:icons
 public/icons/sprite.svg      one <symbol> per glyph, fill=currentColor   (gitignored)
    |  loadIconSprite(), in parallel with the config fetch in main.ts
@@ -154,10 +154,12 @@ stylesheet — each would add one. Anything else that has to move uses a transit
 
 ## The kit
 
-`shared/` holds the presentational components: avatars, badges, cards, chips, the composer, data
-table and paginator, empty and error states, the icon component, overlay primitives (anchored panel,
-menu, modal, offcanvas, tooltip), the search input, the ridgeline, the theme toggle and the upload
-drop target. A dev-only `/ui-kit` route renders the gallery.
+`shared/components/` and `shared/directives/` hold the presentational, feature-agnostic building
+blocks: avatars, badges, chips, the data table and paginator, empty and error states, the icon
+component, overlay primitives (menu, modal, offcanvas, tooltip), the search input, the ridgeline,
+the theme toggle and the upload drop target. Anything one feature owns lives with that feature
+instead — the composer in `components/composer/`, the project card in `components/projects/`. A
+dev-only `/ui-kit` route (`pages/ui-kit/`) renders the gallery.
 
 ## Key files
 
@@ -167,7 +169,7 @@ drop target. A dev-only `/ui-kit` route renders the gallery.
 | `enterprise-gpt-ui/src/styles/_focus.scss` | The focus floor |
 | `enterprise-gpt-ui/src/styles/_bootstrap-overrides.scss` | The three components the floor cannot reach |
 | `enterprise-gpt-ui/src/styles/_motion.scss` | The four keyframes and the reduced-motion block |
-| `enterprise-gpt-ui/src/app/shared/icon/icon-names.ts` | The sprite manifest |
+| `enterprise-gpt-ui/src/app/shared/utils/icons/icon-names.ts` | The sprite manifest |
 | `enterprise-gpt-ui/scripts/check-tokens.mjs` | Shell parity, contrast, breakpoint parity |
 | `enterprise-gpt-ui/src/styles/motion.spec.ts` | No animation names a keyframe that does not exist |
 

@@ -8,15 +8,19 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ProjectSummaryDto } from '@domain/api/project';
+import { ProjectSummaryDto } from '@shared/models/api/project.model';
+import {
+  DEFAULT_PROJECT_SORT,
+  PROJECT_SORTS,
+  ProjectSortOption,
+} from '@shared/utils/navigation/projects-route';
 import { projectEvents } from '@core/events/project-events';
 import { sessionEvents } from '@core/events/session-events';
-import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { ToastStore } from '@core/notifications/toast-store';
-import { projectDetailFixture, projectFixture, projectPage } from '@testing/projects';
+import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
+import { projectDetailFixture, projectFixture, projectPage } from '@testing/projects';
 import { PROJECT_LIST_PAGE_SIZE, ProjectListStore } from './project-list-store';
-import { DEFAULT_PROJECT_SORT, PROJECT_SORTS, ProjectSortOption } from './projects-route';
 
 const PROJECTS_URL = `${TEST_API_BASE_URL}/api/projects`;
 

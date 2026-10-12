@@ -1,5 +1,5 @@
 import { InjectionToken, Provider, Signal, Type } from '@angular/core';
-import { ConversationDto } from '@domain/api/conversation';
+import { ConversationDto } from '@shared/models/api/conversation.model';
 
 /** What the composer's download control acts on. */
 export interface ComposerExportTarget {
@@ -16,8 +16,8 @@ export type ComposerProjectTarget =
   | { readonly kind: 'project'; readonly projectId: string };
 
 /**
- * What the composer needs from whatever executes its prompt. A token keeps the composer in
- * `shared/`, which may depend on `core/` but not on `features/chat`.
+ * What the composer needs from whatever executes its prompt. A token because two pages supply
+ * different hosts: chat's `TurnStore` and the project screen's `ProjectComposerHost`.
  */
 export interface ComposerHost {
   /** A fresh object per seed, so seeding the same text twice still propagates. */
@@ -25,7 +25,7 @@ export interface ComposerHost {
 
   readonly inFlight: Signal<boolean>;
 
-  /** Typed as a bare object so `features/chat` notice types stay out of `core/`. */
+  /** Typed as a bare object so the chat components' notice types stay out of `core/`. */
   readonly turnError: Signal<object | null>;
 
   /** Null hides the control rather than disabling it, e.g. on empty `/chat`. */

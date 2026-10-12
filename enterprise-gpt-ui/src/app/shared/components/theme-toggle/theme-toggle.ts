@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { ThemeService } from '@core/theme/theme-service';
-import { Icon } from '@shared/icon/icon';
+import { Icon } from '@shared/components/icon/icon';
 
 /**
  * CSS tokens swap the icons, but the label reads the resolved theme: a screen reader cannot see a

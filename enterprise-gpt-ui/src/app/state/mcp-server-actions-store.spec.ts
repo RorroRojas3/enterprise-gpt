@@ -4,7 +4,8 @@ import { TestBed } from '@angular/core/testing';
 import { Dispatcher, Events } from '@ngrx/signals/events';
 import { Subscription } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MCP_AUTH_TYPE } from '@domain/api/mcp';
+import { MCP_AUTH_TYPE } from '@shared/models/api/mcp.model';
+import { McpServerFormValue } from '@shared/utils/catalog/mcp-server-form';
 import { adminEvents } from '@core/events/admin-events';
 import { sessionEvents } from '@core/events/session-events';
 import { ToastStore } from '@core/notifications/toast-store';
@@ -12,7 +13,6 @@ import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpServerFixture } from '@testing/catalog';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { McpServerActionsStore } from './mcp-server-actions-store';
-import { McpServerFormValue } from './mcp-server-form';
 
 const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps`;
 

@@ -1,8 +1,8 @@
 import { TestBed } from '@angular/core/testing';
-import { sessionEvents } from '@core/events/session-events';
-import { PREFERENCE_KEYS, writePreference } from '@core/storage/local-preferences';
 import { Dispatcher } from '@ngrx/signals/events';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PREFERENCE_KEYS, writePreference } from '@shared/utils/storage/local-preferences';
+import { sessionEvents } from '@core/events/session-events';
 import { UiStore } from './ui-store';
 
 describe('UiStore', () => {

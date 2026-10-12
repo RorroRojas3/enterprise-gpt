@@ -9,7 +9,7 @@ import {
   model,
   output,
 } from '@angular/core';
-import { Modal } from '@shared/overlay/modal/modal';
+import { Modal } from '@shared/components/modal/modal';
 
 /**
  * Takes inputs rather than a store, so other bulk-delete invokers can reuse it. Confirming

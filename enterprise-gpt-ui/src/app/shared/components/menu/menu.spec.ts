@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MenuItem } from '@shared/directives/menu-item';
+import { MenuSeparator } from '@shared/directives/menu-separator';
+import { MenuTriggerContent } from '@shared/directives/menu-trigger-content';
 import { Menu } from './menu';
-import { MenuItem } from './menu-item';
-import { MenuSeparator } from './menu-separator';
-import { MenuTriggerContent } from './menu-trigger-content';
 
 @Component({
   selector: 'app-menu-host',

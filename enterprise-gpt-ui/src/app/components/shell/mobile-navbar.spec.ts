@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, TemplateRef, viewChild } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ShellChrome } from '@core/ui/shell-chrome';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { ShellChrome } from '@core/ui/shell-chrome-service';
 import { MobileNavbar } from './mobile-navbar';
 
 /** Proves the navbar renders what a screen hands it; the chat and shell specs stop short. */

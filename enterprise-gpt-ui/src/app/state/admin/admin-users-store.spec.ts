@@ -4,10 +4,11 @@ import {
   TestRequest,
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
-import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { DEFAULT_USER_PAGE_SIZE } from '@shared/utils/navigation/admin-users-route';
 import { adminEvents } from '@core/events/admin-events';
 import { sessionEvents } from '@core/events/session-events';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
@@ -15,7 +16,6 @@ import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { ADMINISTRATOR_GRANT } from '@testing/session';
 import { directoryUserFixture, userPage } from '@testing/users';
 import { AdminUsersStore } from './admin-users-store';
-import { DEFAULT_USER_PAGE_SIZE } from './admin-users-route';
 
 const USERS_URL = `${TEST_API_BASE_URL}/api/users`;
 

@@ -170,12 +170,12 @@ is still billed and recorded.
 | --- | --- |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Conversations/ConversationService.cs` | The turn engine |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Conversations/ConversationLockService.cs` | One turn per conversation |
-| `enterprise-gpt-ui/src/app/features/chat/turn-store.ts` | Phase, send pipeline, settle discrimination |
-| `enterprise-gpt-ui/src/app/features/chat/conversation-store.ts` | The conversation open on `/chat` |
-| `enterprise-gpt-ui/src/app/core/chat/turn-settings-store.ts` | Model and MCP servers for the next turn |
-| `enterprise-gpt-ui/src/app/core/chat/pending-prompt-store.ts` | The prompt handed between screens |
-| `enterprise-gpt-ui/src/app/core/chat/pending-attachments-store.ts` | The files handed alongside it |
-| `enterprise-gpt-ui/src/app/features/chat/turn-store.spec.ts` | The settle table, case by case |
+| `enterprise-gpt-ui/src/app/state/chat/turn-store.ts` | Phase, send pipeline, settle discrimination |
+| `enterprise-gpt-ui/src/app/state/chat/conversation-store.ts` | The conversation open on `/chat` |
+| `enterprise-gpt-ui/src/app/state/turn-settings-store.ts` | Model and MCP servers for the next turn |
+| `enterprise-gpt-ui/src/app/state/pending-prompt-store.ts` | The prompt handed between screens |
+| `enterprise-gpt-ui/src/app/state/pending-attachments-store.ts` | The files handed alongside it |
+| `enterprise-gpt-ui/src/app/state/chat/turn-store.spec.ts` | The settle table, case by case |
 
 ## Related
 

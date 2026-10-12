@@ -1,17 +1,18 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { ActivatedRoute, Params, Router } from '@angular/router';
-import { UsageGroupDto } from '@domain/api/usage-report';
-import { canRetry } from '@core/errors/error-message';
-import { DataTable } from '@shared/data/data-table/data-table';
-import { TableCell } from '@shared/data/data-table/table-cell';
-import { TableColumn } from '@shared/data/data-table/table-column';
-import { Paginator } from '@shared/data/paginator/paginator';
-import { EmptyState } from '@shared/feedback/empty-state/empty-state';
-import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
-import { Skeleton } from '@shared/feedback/skeleton/skeleton';
-import { MOBILE_VIEWPORT, TABLET_VIEWPORT } from '@shared/layout/breakpoints';
-import { injectMediaQuery } from '@shared/layout/media-query';
-import { Icon } from '@shared/icon/icon';
+import { UsageGroupDto } from '@shared/models/api/usage-report.model';
+import { TableColumn } from '@shared/models/table-column.model';
+import {
+  MS_PER_DAY,
+  NO_VALUE,
+  deltaPercent,
+  formatCost,
+  formatCount,
+  formatDateRange,
+  formatTokens,
+  groupingNoun,
+} from '@shared/utils/format/usage-format';
+import { MOBILE_VIEWPORT, TABLET_VIEWPORT } from '@shared/utils/layout/breakpoints';
 import {
   DEFAULT_USAGE_GROUPING,
   DEFAULT_USAGE_RANGE,
@@ -23,23 +24,22 @@ import {
   UsageRange,
   toUsageGrouping,
   toUsageRange,
-} from './admin-reports-route';
-import { KpiTile } from './kpi-tile';
-import { OutcomeDonut } from './outcome-donut';
-import { RangeSegmented } from './range-segmented';
-import { ReportsStore } from './admin-reports-store';
-import { UsageAreaChart } from './usage-area-chart';
-import { UsageBarList } from './usage-bar-list';
-import {
-  MS_PER_DAY,
-  NO_VALUE,
-  deltaPercent,
-  formatCost,
-  formatCount,
-  formatDateRange,
-  formatTokens,
-  groupingNoun,
-} from './usage-format';
+} from '@shared/utils/navigation/admin-reports-route';
+import { canRetry } from '@core/errors/error-message';
+import { injectMediaQuery } from '@core/ui/media-query';
+import { ReportsStore } from '@state/admin/admin-reports-store';
+import { DataTable } from '@shared/components/data-table/data-table';
+import { EmptyState } from '@shared/components/empty-state/empty-state';
+import { ErrorPanel } from '@shared/components/error-panel/error-panel';
+import { Icon } from '@shared/components/icon/icon';
+import { Paginator } from '@shared/components/paginator/paginator';
+import { Skeleton } from '@shared/components/skeleton/skeleton';
+import { TableCell } from '@shared/directives/table-cell';
+import { KpiTile } from '@components/admin/reports/kpi-tile';
+import { OutcomeDonut } from '@components/admin/reports/outcome-donut';
+import { RangeSegmented } from '@components/admin/reports/range-segmented';
+import { UsageAreaChart } from '@components/admin/reports/usage-area-chart';
+import { UsageBarList } from '@components/admin/reports/usage-bar-list';
 
 /**
  * `?range=` and `?group=` are the source of truth: bound inputs drive the store and

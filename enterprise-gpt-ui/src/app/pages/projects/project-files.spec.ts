@@ -4,14 +4,14 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TokenService } from '@core/auth/token-service';
-import { UploadStore } from '@core/documents/upload-store';
 import { SessionStore } from '@core/session/session-store';
+import { UploadStore } from '@state/documents/upload-store';
+import { ProjectDocumentsStore } from '@state/projects/project-documents-store';
+import { ProjectStore } from '@state/projects/project-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { projectDetailFixture, projectDocumentFixture } from '@testing/projects';
-import { provideFakeUploadXhr, FakeUploadXhrQueue } from '@testing/upload-xhr';
-import { ProjectStore } from '../project-store';
-import { ProjectDocumentsStore } from './project-documents-store';
+import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
 import { ProjectFiles } from './project-files';
 
 const PROJECT = projectDetailFixture();

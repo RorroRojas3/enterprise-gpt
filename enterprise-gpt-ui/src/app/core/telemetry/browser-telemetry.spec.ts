@@ -1,12 +1,12 @@
 import { ApplicationInitStatus } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NavigationEnd, Router } from '@angular/router';
-import { AuthService } from '@core/auth/auth-service';
-import { AppConfig } from '@core/config/app-config';
-import { APP_CONFIG } from '@core/config/app-config.token';
 import type { IConfig, IConfiguration, ITelemetryItem } from '@microsoft/applicationinsights-web';
 import { Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AuthService } from '@core/auth/auth-service';
+import { AppConfig } from '@core/config/app-config';
+import { APP_CONFIG } from '@core/config/app-config.token';
 import devConfig from '../../../../public/config.json';
 import {
   BrowserTelemetry,

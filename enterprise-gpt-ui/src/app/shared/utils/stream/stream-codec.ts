@@ -1,4 +1,4 @@
-import { AssistantUiEvent } from './andes/assistant-ui.contract';
+import { AssistantUiEvent } from '@shared/models/andes/assistant-ui.contract';
 
 /** Stateful across reads (partial frames, split characters), so use one instance per request. */
 export interface StreamCodec {

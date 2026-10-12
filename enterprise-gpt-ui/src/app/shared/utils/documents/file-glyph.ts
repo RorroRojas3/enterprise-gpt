@@ -1,6 +1,6 @@
-import { IconName } from '@shared/icon/icon-names';
+import { IconName } from '@shared/utils/icons/icon-names';
 
-/** Here, not in `domain/`: it maps onto `IconName`, the sprite manifest's union. */
+/** Not in `attachment.model.ts`: it maps onto `IconName`, which `shared/models` may not import. */
 interface FileGlyph {
   readonly icon: IconName;
   readonly tone: 'fail' | 'ok' | 'accent' | 'muted' | 'warn';

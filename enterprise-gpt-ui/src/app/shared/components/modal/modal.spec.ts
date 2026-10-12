@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { Modal } from './modal';
 
 @Component({

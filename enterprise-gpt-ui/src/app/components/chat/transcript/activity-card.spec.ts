@@ -4,7 +4,7 @@ import {
   AssistantActivity,
   createInitialSnapshot,
   foldAssistantEvents,
-} from '@domain/stream/andes/assistant-ui.contract';
+} from '@shared/models/andes/assistant-ui.contract';
 import { assistantEvent } from '@testing/stream-frames';
 import { ActivityCard } from './activity-card';
 

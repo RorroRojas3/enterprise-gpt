@@ -1,5 +1,9 @@
 import { DOCUMENT, DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
-import { PREFERENCE_KEYS, readPreference, writePreference } from '@core/storage/local-preferences';
+import {
+  PREFERENCE_KEYS,
+  readPreference,
+  writePreference,
+} from '@shared/utils/storage/local-preferences';
 
 /** What the user chose. `system` defers to `prefers-color-scheme`. */
 export type ThemePreference = 'light' | 'dark' | 'system';

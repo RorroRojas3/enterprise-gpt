@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { Icon } from '@shared/icon/icon';
+import { Icon } from '@shared/components/icon/icon';
 
 /**
  * `managedBy` marks a grant that cannot be revoked here; the reason is spelled out for assistive

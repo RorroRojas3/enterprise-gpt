@@ -1,15 +1,15 @@
 import { TestBed } from '@angular/core/testing';
-import { AuthService } from '@core/auth/auth-service';
-import { SIGNED_OUT_ROUTE } from '@core/auth/auth-routes';
-import { HardNavigation } from '@core/navigation/hard-navigation';
 import { Events } from '@ngrx/signals/events';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AuthService } from '@core/auth/auth-service';
 import { sessionEvents } from '@core/events/session-events';
+import { HardNavigation } from '@core/navigation/hard-navigation-service';
+import { SIGNED_OUT_ROUTE } from '@core/navigation/route-paths';
 import { provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
-import { FakeNavigation, provideFakeNavigation } from '@testing/navigation';
 import { provideFakeMsal, signedInMsal } from '@testing/msal';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SessionChannel } from './session-channel';
+import { FakeNavigation, provideFakeNavigation } from '@testing/navigation';
+import { SessionChannel } from './session-channel-service';
 
 const CHANNEL_NAME = 'egpt.session';
 

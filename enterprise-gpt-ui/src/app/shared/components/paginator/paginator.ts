@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { Icon } from '@shared/icon/icon';
-import { PAGE_GAP, pageWindow } from './page-window';
+import { PAGE_GAP, pageWindow } from '@shared/utils/pagination/page-window';
+import { Icon } from '@shared/components/icon/icon';
 
 /** Numbered pager for server-paged screens; "Load more" is a plain button in the table footer. */
 @Component({

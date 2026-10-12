@@ -45,7 +45,3 @@ export interface ModelWriteBody {
   readonly inputPricePerMillionTokens: number | null;
   readonly outputPricePerMillionTokens: number | null;
 }
-
-export function isRetired(model: ModelDto): boolean {
-  return (model.dateDeactivated ?? null) !== null;
-}

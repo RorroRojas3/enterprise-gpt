@@ -8,7 +8,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { UserDocumentDto } from '@domain/api/document';
+import { UserDocumentDto } from '@shared/models/api/document.model';
 import { conversationEvents } from '@core/events/conversation-events';
 import { sessionEvents } from '@core/events/session-events';
 import { ToastStore } from '@core/notifications/toast-store';

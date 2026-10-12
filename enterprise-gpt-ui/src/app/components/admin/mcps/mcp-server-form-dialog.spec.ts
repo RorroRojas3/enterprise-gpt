@@ -6,8 +6,8 @@ import {
 } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { MCP_AUTH_TYPE, McpServerWriteBody } from '@domain/api/mcp';
-import { McpServerActionsStore } from '@core/catalog/mcp-server-actions-store';
+import { MCP_AUTH_TYPE, McpServerWriteBody } from '@shared/models/api/mcp.model';
+import { McpServerActionsStore } from '@state/mcp-server-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpServerFixture } from '@testing/catalog';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';

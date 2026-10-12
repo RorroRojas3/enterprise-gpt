@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { EmailDraft } from '@domain/email/email-draft';
+import { EmailDraft } from '@shared/utils/email/email-draft';
 import { EmailCard } from './email-card';
 
 const draft = (over: Partial<EmailDraft> = {}): EmailDraft => ({

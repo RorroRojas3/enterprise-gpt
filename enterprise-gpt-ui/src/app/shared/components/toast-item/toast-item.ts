@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { IconName } from '@shared/utils/icons/icon-names';
 import { TOAST_ICONS, Toast } from '@core/notifications/toast.model';
-import { Icon } from '@shared/icon/icon';
-import { IconName } from '@shared/icon/icon-names';
+import { Icon } from '@shared/components/icon/icon';
 
 /** One toast. Layout only — {@link ToastRegion} owns the live regions and the queue. */
 @Component({

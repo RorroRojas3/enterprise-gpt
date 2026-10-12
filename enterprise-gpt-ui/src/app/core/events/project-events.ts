@@ -1,6 +1,6 @@
 import { type } from '@ngrx/signals';
 import { eventGroup } from '@ngrx/signals/events';
-import { ProjectDto } from '@domain/api/project';
+import { ProjectDto } from '@shared/models/api/project.model';
 
 /** The payload of {@link projectEvents.favorited}: what one idempotent SET decided. */
 export interface ProjectFavoriteChange {

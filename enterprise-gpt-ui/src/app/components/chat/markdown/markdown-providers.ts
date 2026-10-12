@@ -8,7 +8,7 @@ import {
   SANITIZE,
   provideMarkdown,
 } from 'ngx-markdown';
-import { LazyRendererLoader } from './lazy-renderer-loader';
+import { LazyRendererLoader } from './lazy-renderer-loader-service';
 import { mathExtension } from './math-extension';
 import './prism';
 

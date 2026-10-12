@@ -6,7 +6,7 @@ import {
   input,
   isDevMode,
 } from '@angular/core';
-import { BRAND_ICON_NAME_SET, BrandIconName } from './brand-icon-names';
+import { BRAND_ICON_NAME_SET, BrandIconName } from '@shared/utils/icons/brand-icon-names';
 
 /**
  * A multi-colour brand mark from the sprite. A sibling of {@link Icon}, not a widening of it:
@@ -39,7 +39,7 @@ export class BrandIcon {
         if (!BRAND_ICON_NAME_SET.has(name)) {
           console.error(
             `<app-brand-icon> was given "${name}", which is not in the brand manifest ` +
-              `(src/app/shared/icon/brand-icon-names.ts). It will render blank.`,
+              `(src/app/shared/utils/icons/brand-icon-names.ts). It will render blank.`,
           );
         }
       });

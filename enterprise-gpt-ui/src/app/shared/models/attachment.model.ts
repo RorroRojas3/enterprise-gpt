@@ -1,4 +1,4 @@
-/** In `domain/` because `core/` (the upload store) and `shared/` (the chip) both need it. */
+/** A shared model because the upload store and the attachment chip both need it. */
 /**
  * `failed` and `unsupported` render alike, but only `failed` offers Retry: re-posting a file
  * this deployment cannot read would get the same refusal.

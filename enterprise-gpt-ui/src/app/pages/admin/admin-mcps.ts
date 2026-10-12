@@ -1,24 +1,25 @@
 import { ChangeDetectionStrategy, Component, computed, inject, viewChild } from '@angular/core';
-import { McpServerDto, isMcpServerRetired } from '@domain/api/mcp';
-import { McpServerActionsStore } from '@core/catalog/mcp-server-actions-store';
-import { authTypeLabel } from '@core/catalog/mcp-server-form';
+import { McpServerDto } from '@shared/models/api/mcp.model';
+import { TableColumn } from '@shared/models/table-column.model';
+import { isMcpServerRetired } from '@shared/utils/catalog/mcp-server';
+import { authTypeLabel } from '@shared/utils/catalog/mcp-server-form';
+import { mcpBrandIcon } from '@shared/utils/icons/mcp-icon';
 import { canRetry } from '@core/errors/error-message';
-import { PermissionBadge } from '@shared/badge/permission-badge/permission-badge';
-import { StatusDot } from '@shared/badge/status-dot/status-dot';
-import { DataTable } from '@shared/data/data-table/data-table';
-import { TableCell } from '@shared/data/data-table/table-cell';
-import { TableColumn } from '@shared/data/data-table/table-column';
-import { EmptyState } from '@shared/feedback/empty-state/empty-state';
-import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
-import { SearchInput } from '@shared/form/search-input/search-input';
-import { BrandIcon } from '@shared/icon/brand-icon';
-import { Icon } from '@shared/icon/icon';
-import { mcpBrandIcon } from '@shared/icon/mcp-icon';
-import { Menu } from '@shared/overlay/menu/menu';
-import { MenuItem } from '@shared/overlay/menu/menu-item';
-import { AdminMcpsStore } from './admin-mcps-store';
-import { DeactivateMcpServerDialog } from './deactivate-mcp-server-dialog';
-import { McpServerFormDialog } from './mcp-server-form-dialog';
+import { AdminMcpsStore } from '@state/admin/admin-mcps-store';
+import { McpServerActionsStore } from '@state/mcp-server-actions-store';
+import { BrandIcon } from '@shared/components/brand-icon/brand-icon';
+import { DataTable } from '@shared/components/data-table/data-table';
+import { EmptyState } from '@shared/components/empty-state/empty-state';
+import { ErrorPanel } from '@shared/components/error-panel/error-panel';
+import { Icon } from '@shared/components/icon/icon';
+import { Menu } from '@shared/components/menu/menu';
+import { SearchInput } from '@shared/components/search-input/search-input';
+import { StatusDot } from '@shared/components/status-dot/status-dot';
+import { MenuItem } from '@shared/directives/menu-item';
+import { TableCell } from '@shared/directives/table-cell';
+import { DeactivateMcpServerDialog } from '@components/admin/mcps/deactivate-mcp-server-dialog';
+import { McpServerFormDialog } from '@components/admin/mcps/mcp-server-form-dialog';
+import { PermissionBadge } from '@components/admin/permission-badge';
 
 /**
  * The admin MCP server registry. Deactivated (soft-deleted) servers stay listed, muted, because

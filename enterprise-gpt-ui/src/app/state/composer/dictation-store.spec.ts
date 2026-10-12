@@ -1,8 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeRecognition } from '@testing/speech';
-import { SPEECH_RECOGNITION, SpeechRecognitionLike } from '@core/speech/speech-recognition';
 import { DictationStore } from './dictation-store';
+import { SPEECH_RECOGNITION, SpeechRecognitionLike } from './speech-recognition.token';
 
 describe('DictationStore', () => {
   let recognition: FakeRecognition;

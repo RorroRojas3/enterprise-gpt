@@ -5,7 +5,7 @@ import {
   IPublicClientApplication,
   LogLevel,
 } from '@azure/msal-browser';
-import { AppConfig } from '../config/app-config';
+import { AppConfig } from '@core/config/app-config';
 
 /**
  * Ours, not `@azure/msal-angular`'s: its `canMatch` guard cannot redirect, `MsalService` replays a

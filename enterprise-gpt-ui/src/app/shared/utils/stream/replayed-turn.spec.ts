@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createInitialSnapshot } from './andes/assistant-ui.contract';
+import { createInitialSnapshot } from '@shared/models/andes/assistant-ui.contract';
 import { replayAssistantText } from './replayed-turn';
 
 describe('replayAssistantText', () => {

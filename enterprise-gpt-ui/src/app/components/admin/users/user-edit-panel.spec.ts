@@ -4,14 +4,14 @@ import {
   TestRequest,
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserDto } from '@domain/api/user';
+import { UserDto } from '@shared/models/api/user.model';
 import { ToastStore } from '@core/notifications/toast-store';
 import { SessionStore } from '@core/session/session-store';
 import { SELF_REVOKE_ADMIN_MESSAGE } from '@core/users/self-action-messages';
-import { UserActionsStore } from '@core/users/user-actions-store';
+import { UserActionsStore } from '@state/user-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';

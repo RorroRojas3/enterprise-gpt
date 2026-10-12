@@ -1,5 +1,6 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
+import { tapResponse } from '@ngrx/operators';
 import {
   PartialStateUpdater,
   patchState,
@@ -19,14 +20,13 @@ import {
 } from '@ngrx/signals/entities';
 import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { tapResponse } from '@ngrx/operators';
 import { Observable, Subject, exhaustMap, merge, pipe, switchMap, takeUntil, tap } from 'rxjs';
-import { GENERATED_DOCUMENT_TYPE, UserDocumentDto } from '@domain/api/document';
-import { PaginatedResponseDto } from '@domain/api/paginated-response';
+import { GENERATED_DOCUMENT_TYPE, UserDocumentDto } from '@shared/models/api/document.model';
+import { PaginatedResponseDto } from '@shared/models/api/paginated-response.model';
 import { toAppError } from '@core/errors/to-app-error';
 import { conversationEvents } from '@core/events/conversation-events';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
 import { ToastStore } from '@core/notifications/toast-store';
 import {
   OffsetPaginationState,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MCP_AUTH_TYPE } from '@domain/api/mcp';
+import { MCP_AUTH_TYPE } from '@shared/models/api/mcp.model';
 import { mcpServerFixture } from '@testing/catalog';
 import {
   ABSOLUTE_URL_MESSAGE,

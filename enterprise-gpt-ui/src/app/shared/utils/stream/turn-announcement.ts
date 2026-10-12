@@ -2,12 +2,12 @@
  * The transcript's live region is `aria-busy` during a turn, so this is all a reader hears. Each
  * branch changes only with turn state (text is read as a boolean), never once per delta.
  */
-import { activityLabel } from './activity-label';
 import {
   ActivityState,
   AssistantActivity,
   AssistantStatusSnapshot,
-} from './andes/assistant-ui.contract';
+} from '@shared/models/andes/assistant-ui.contract';
+import { activityLabel } from './activity-label';
 
 export interface TurnAnnouncementContext {
   /** `POST api/conversations` is in flight for a first prompt. */

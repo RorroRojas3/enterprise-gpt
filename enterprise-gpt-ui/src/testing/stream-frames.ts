@@ -2,7 +2,7 @@ import { vi } from 'vitest';
 import {
   AssistantUiEvent,
   AssistantUiEventKind,
-} from '../app/domain/stream/andes/assistant-ui.contract';
+} from '../app/shared/models/andes/assistant-ui.contract';
 
 /** A representative wire timestamp; the contract forbids ordering by it. */
 export const EVENT_TIMESTAMP = '2026-08-12T09:00:00.0000000+00:00';

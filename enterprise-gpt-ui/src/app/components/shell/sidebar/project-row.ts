@@ -8,13 +8,13 @@ import {
   output,
 } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import { ProjectSummaryDto } from '@domain/api/project';
-import { PROJECTS_ROUTE } from '@core/auth/auth-routes';
-import { ProjectActionsStore } from '@core/projects/project-actions-store';
-import { Icon } from '@shared/icon/icon';
-import { Menu } from '@shared/overlay/menu/menu';
-import { MenuItem } from '@shared/overlay/menu/menu-item';
-import { MenuSeparator } from '@shared/overlay/menu/menu-separator';
+import { ProjectSummaryDto } from '@shared/models/api/project.model';
+import { PROJECTS_ROUTE } from '@core/navigation/route-paths';
+import { ProjectActionsStore } from '@state/project-actions-store';
+import { Icon } from '@shared/components/icon/icon';
+import { Menu } from '@shared/components/menu/menu';
+import { MenuItem } from '@shared/directives/menu-item';
+import { MenuSeparator } from '@shared/directives/menu-separator';
 import { SidebarProjectConversations } from './project-conversations';
 
 /**

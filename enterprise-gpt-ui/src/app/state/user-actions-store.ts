@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
+import { tapResponse } from '@ngrx/operators';
 import {
   patchState,
   signalStore,
@@ -10,19 +11,18 @@ import {
 } from '@ngrx/signals';
 import { Dispatcher } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { tapResponse } from '@ngrx/operators';
 import { exhaustMap, mergeMap, switchMap, takeUntil } from 'rxjs';
-import { PermissionDto, UserDto } from '@domain/api/user';
+import { PermissionDto, UserDto } from '@shared/models/api/user.model';
 import { AppError, ValidationAppError } from '@core/errors/app-error';
 import { traceLine } from '@core/errors/error-message';
 import { toAppError } from '@core/errors/to-app-error';
 import { adminEvents } from '@core/events/admin-events';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
 import { ToastStore } from '@core/notifications/toast-store';
 import { SessionStore } from '@core/session/session-store';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
-import { isSelfActionRefusal } from './self-action-messages';
+import { isSelfActionRefusal } from '@core/users/self-action-messages';
 
 export type UserFormMode = 'create' | 'edit';
 
@@ -399,7 +399,7 @@ export const UserActionsStore = signalStore(
       },
 
       /**
-       * The caller removes the row optimistically (`core/` can't import the route-scoped list),
+       * The caller removes the row optimistically (a root store cannot inject the route-scoped list),
        * so `onRollback` puts it back on any failure.
        */
       confirmDeactivate(onRollback?: () => void): void {

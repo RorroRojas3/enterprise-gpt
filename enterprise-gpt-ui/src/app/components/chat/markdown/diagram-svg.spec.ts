@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CHAT_ALLOWED_TAGS, sanitizeChatMarkdown } from './markdown-providers';
 import { sanitizeDiagramSvg } from './diagram-svg';
+import { CHAT_ALLOWED_TAGS, sanitizeChatMarkdown } from './markdown-providers';
 
 /** Serializes the fragment so an assertion can read what actually survived. */
 function sanitize(svg: string): string {

@@ -1,21 +1,21 @@
+import { Location } from '@angular/common';
 import { provideHttpClient } from '@angular/common/http';
 import {
   HttpTestingController,
   TestRequest,
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
-import { Location } from '@angular/common';
 import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserDocumentDto } from '@domain/api/document';
-import { formatShortDate } from '@domain/format/relative-time';
+import { UserDocumentDto } from '@shared/models/api/document.model';
+import { formatShortDate } from '@shared/utils/format/relative-time';
+import { DOCUMENT_PAGE_SIZE } from '@state/documents/document-library-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { documentPage, userDocumentFixture } from '@testing/documents';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
-import { DOCUMENT_PAGE_SIZE } from './document-library-store';
 import { Documents } from './documents';
 
 const DOCUMENTS_URL = `${TEST_API_BASE_URL}/api/documents`;

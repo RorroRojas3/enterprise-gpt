@@ -7,12 +7,12 @@ import {
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
+import { focusOnRender } from '@core/a11y/focus-on-render';
 import { AuthService } from '@core/auth/auth-service';
-import { LOGIN_FAILED_ROUTE } from '@core/auth/auth-routes';
-import { BrandLogo } from '@shared/brand-logo/brand-logo';
-import { Ridgeline } from '@shared/ridgeline/ridgeline';
-import { focusOnRender } from '@shared/a11y/focus-on-render';
-import { AuthPage } from '../auth-page/auth-page';
+import { LOGIN_FAILED_ROUTE } from '@core/navigation/route-paths';
+import { BrandLogo } from '@shared/components/brand-logo/brand-logo';
+import { Ridgeline } from '@shared/components/ridgeline/ridgeline';
+import { AuthPage } from '@components/auth/auth-page';
 
 /**
  * Unguarded: as the redirect URI, a guard here would recurse or block the handshake it awaits, and

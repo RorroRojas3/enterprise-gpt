@@ -1,5 +1,5 @@
-import { PERMISSION_ID } from '../app/domain/api/permission-ids';
-import { PermissionDto, UserDto } from '../app/domain/api/user';
+import { PERMISSION_ID } from '../app/shared/models/api/permission-ids.model';
+import { PermissionDto, UserDto } from '../app/shared/models/api/user.model';
 
 /** The `Upload File` grant, seeded as a default for every user. */
 export const UPLOAD_FILE_GRANT: PermissionDto = {

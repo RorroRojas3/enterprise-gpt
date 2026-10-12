@@ -1,11 +1,11 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { ConversationActionsStore } from '@state/conversation-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture } from '@testing/conversations';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DeleteConversationDialog } from './delete-conversation-dialog';
 
 describe('DeleteConversationDialog', () => {

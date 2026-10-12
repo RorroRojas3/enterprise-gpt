@@ -6,7 +6,7 @@ import {
   input,
   isDevMode,
 } from '@angular/core';
-import { ICON_NAME_SET, IconName } from './icon-names';
+import { ICON_NAME_SET, IconName } from '@shared/utils/icons/icon-names';
 
 /** One glyph from the sprite, sized in `em` so callers set its size with `font-size`. */
 @Component({
@@ -36,7 +36,7 @@ export class Icon {
         if (!ICON_NAME_SET.has(name)) {
           console.error(
             `<app-icon> was given "${name}", which is not in the sprite manifest ` +
-              `(src/app/shared/icon/icon-names.ts). It will render blank.`,
+              `(src/app/shared/utils/icons/icon-names.ts). It will render blank.`,
           );
         }
       });

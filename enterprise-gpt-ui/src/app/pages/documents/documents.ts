@@ -14,15 +14,15 @@ import {
   viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Params, Router, RouterLink } from '@angular/router';
-import { CHAT_ROUTE } from '@core/auth/auth-routes';
 import { canRetry } from '@core/errors/error-message';
-import { EmptyState } from '@shared/feedback/empty-state/empty-state';
-import { ErrorPanel } from '@shared/feedback/error-panel/error-panel';
-import { Skeleton } from '@shared/feedback/skeleton/skeleton';
-import { SearchInput } from '@shared/form/search-input/search-input';
-import { Icon } from '@shared/icon/icon';
-import { DocumentGroup, DocumentLibraryStore } from './document-library-store';
-import { DocumentRow } from './document-row';
+import { CHAT_ROUTE } from '@core/navigation/route-paths';
+import { DocumentGroup, DocumentLibraryStore } from '@state/documents/document-library-store';
+import { EmptyState } from '@shared/components/empty-state/empty-state';
+import { ErrorPanel } from '@shared/components/error-panel/error-panel';
+import { Icon } from '@shared/components/icon/icon';
+import { SearchInput } from '@shared/components/search-input/search-input';
+import { Skeleton } from '@shared/components/skeleton/skeleton';
+import { DocumentRow } from '@components/documents/document-row';
 import {
   NAME_PARAM,
   SOURCE_GENERATED,

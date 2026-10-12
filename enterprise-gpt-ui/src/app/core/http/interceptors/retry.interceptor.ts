@@ -6,8 +6,8 @@ import {
 } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { retry, throwError, timer } from 'rxjs';
-import { RETRY_POLICY, computeBackoffDelay, isTransientRetriable } from '../../errors/retry-policy';
-import { toAppError } from '../../errors/to-app-error';
+import { RETRY_POLICY, computeBackoffDelay, isTransientRetriable } from '@core/errors/retry-policy';
+import { toAppError } from '@core/errors/to-app-error';
 
 /**
  * For non-JSON responses, whose `Blob` error body cannot be classified: an application 503 that

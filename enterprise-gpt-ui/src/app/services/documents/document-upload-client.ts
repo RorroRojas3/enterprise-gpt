@@ -1,13 +1,14 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, Subscriber } from 'rxjs';
-import { JobDto, UploadTarget, documentTargetPath } from '@domain/api/document';
+import { JobDto, UploadTarget } from '@shared/models/api/document.model';
+import { documentTargetPath } from '@shared/utils/documents/document-target-path';
 import { TokenService } from '@core/auth/token-service';
 import { AppError } from '@core/errors/app-error';
 import { buildAppError, clientAppError } from '@core/errors/build-app-error';
 import { parseProblemDetails } from '@core/errors/problem-details';
 import { authErrorDecision } from '@core/errors/retry-policy';
 import { toAppError } from '@core/errors/to-app-error';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
 import { UPLOAD_XHR } from './upload-xhr.token';
 
 /** What the transport reports while one file is on its way to the server. */

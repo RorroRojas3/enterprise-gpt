@@ -65,6 +65,11 @@ carries no body; the event carries the fact rather than a DTO.
 
 ## The stores
 
+Root stores sit flat in `state/`, and stores provided on a page or route sit in `state/<feature>/`.
+A root store that a guard, interceptor or core service injects stays in `core/`, because `core` may
+not import `state`: `SessionStore`, `ModelCatalogStore`, `McpCatalogStore`, `ConversationListStore`,
+`ProjectLookupStore` and `ToastStore`.
+
 **Root-scoped** — session, UI preferences, toasts, the model and MCP catalogs and their action
 stores, conversation list/actions/export, project lookup and actions, document download, supported
 extensions, user actions, pending prompt and pending attachments, turn settings.
@@ -89,10 +94,10 @@ Two scoping choices worth knowing:
   calls `deferUploadsUntilSend()`, so attaching only states an intention and `TurnStore` posts the
   files at the head of its send pipeline; the Files-panel instance keeps the opposite default,
   where dropping a file is itself the instruction. Cancelling a busy chip calls `UploadCancelClient`
-  (`core/documents/`) — a plain root-scoped `@Injectable`, not a store, since a fire-and-forget
+  (`services/documents/`) — a plain root-scoped `@Injectable`, not a store, since a fire-and-forget
   `DELETE` renders nothing — so the request outlives a screen a cancel very often navigates away
   from.
-- `PendingAttachmentsStore` (`core/chat/`) mirrors `PendingPromptStore`: root-scoped, single-shot,
+- `PendingAttachmentsStore` (`state/`) mirrors `PendingPromptStore`: root-scoped, single-shot,
   id-matched — the same shape, for the same reason, one field wider. It carries the `File` handles a
   project-created conversation's composer already held, from the screen that creates the
   conversation to the one that uploads into it.
@@ -105,6 +110,7 @@ Two scoping choices worth knowing:
 | `enterprise-gpt-ui/src/app/core/conversations/conversation-list-store.ts` | The reference list store |
 | `enterprise-gpt-ui/src/app/core/events/` | The six event groups |
 | `enterprise-gpt-ui/src/app/core/session/session-store.ts` | Identity and permissions |
+| `enterprise-gpt-ui/src/app/state/` | Root stores, and page- and route-provided stores by feature |
 | `enterprise-gpt-ui/src/app/core/state/with-reset-on-sign-out.spec.ts` | The composition-order guard |
 
 ## Related

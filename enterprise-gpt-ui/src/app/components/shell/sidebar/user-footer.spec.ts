@@ -1,16 +1,16 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ALLOWED_PREFERENCE_KEYS, PREFERENCE_KEYS } from '@shared/utils/storage/local-preferences';
 import { AuthService } from '@core/auth/auth-service';
 import { SessionStore } from '@core/session/session-store';
-import { ALLOWED_PREFERENCE_KEYS, PREFERENCE_KEYS } from '@core/storage/local-preferences';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
+import { PREFERS_DARK, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { provideFakeMsal, signedInMsal } from '@testing/msal';
 import { provideFakeNavigation } from '@testing/navigation';
 import { userFixture } from '@testing/session';
-import { PREFERS_DARK, resetMediaQueries, setMediaQuery } from '@testing/media-query';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UserFooter } from './user-footer';
 
 const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;
@@ -117,7 +117,7 @@ describe('UserFooter', () => {
 
   it('does not sweep localStorage — the build gate is what keeps user data out of it', async () => {
     // Sign-out clears nothing here: user data stays out because `check-forbidden-apis.mjs`
-    // lets only core/storage/local-preferences.ts write, so a stray key survives.
+    // lets only shared/utils/storage/local-preferences.ts write, so a stray key survives.
     const fixture = await render();
     localStorage.setItem('egpt.leftover', 'what a regression looks like');
 

@@ -7,8 +7,8 @@ import {
   inject,
   output,
 } from '@angular/core';
-import { UserActionsStore } from '@core/users/user-actions-store';
-import { Modal } from '@shared/overlay/modal/modal';
+import { UserActionsStore } from '@state/user-actions-store';
+import { Modal } from '@shared/components/modal/modal';
 
 /**
  * Emits the confirm rather than calling the store, because only the route-scoped screen can

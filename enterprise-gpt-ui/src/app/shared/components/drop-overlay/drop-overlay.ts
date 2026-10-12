@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { Icon } from '@shared/icon/icon';
+import { Icon } from '@shared/components/icon/icon';
 
 /**
  * The dashed affordance shown while a file drag is over a zone; separate from

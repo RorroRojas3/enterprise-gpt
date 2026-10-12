@@ -1,30 +1,30 @@
+import { Location } from '@angular/common';
 import { provideHttpClient } from '@angular/common/http';
 import {
   HttpTestingController,
   TestRequest,
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
-import { Location } from '@angular/common';
 import { provideLocationMocks } from '@angular/common/testing';
-import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
-import { ModelDto } from '@domain/api/model';
+import { ModelDto } from '@shared/models/api/chat-model.model';
+import { shouldReplaceHistory } from '@shared/utils/navigation/conversations-route';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
-import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { ToastStore } from '@core/notifications/toast-store';
+import { ProjectLookupStore } from '@core/projects/project-lookup-store';
+import { LIBRARY_PAGE_SIZE } from '@state/conversations/conversation-library-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
 import { conversationFixture, conversationPage } from '@testing/conversations';
+import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { projectFixture, projectPage } from '@testing/projects';
-import { LIBRARY_PAGE_SIZE } from './conversation-library-store';
 import { Conversations } from './conversations';
-import { shouldReplaceHistory } from './conversations-route';
 
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
 

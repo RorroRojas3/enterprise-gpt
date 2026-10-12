@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { UsageGroupDto } from '@domain/api/usage-report';
+import { UsageGroupDto } from '@shared/models/api/usage-report.model';
 import { usageGroupFixture } from '@testing/reports';
 import { UsageBarList } from './usage-bar-list';
 

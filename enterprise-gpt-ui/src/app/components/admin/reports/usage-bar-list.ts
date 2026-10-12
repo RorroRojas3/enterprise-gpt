@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { UsageGroupDto } from '@domain/api/usage-report';
-import { formatTokens } from './usage-format';
+import { UsageGroupDto } from '@shared/models/api/usage-report.model';
+import { formatTokens } from '@shared/utils/format/usage-format';
 
 /** The narrowest bar, so one that rounds to zero still reads as a row with usage. */
 const MINIMUM_WIDTH = 2;
