@@ -7,11 +7,11 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const UI_ROOT = resolve(fileURLToPath(import.meta.url), '../..');
-const ICON_ROOT = join(UI_ROOT, 'src', 'app', 'shared', 'icon');
+const ICON_ROOT = join(UI_ROOT, 'src', 'app', 'shared', 'utils', 'icons');
 const MANIFEST = join(ICON_ROOT, 'icon-names.ts');
 const ICON_DIR = join(UI_ROOT, 'node_modules', 'bootstrap-icons', 'icons');
 const BRAND_MANIFEST = join(ICON_ROOT, 'brand-icon-names.ts');
-const BRAND_DIR = join(ICON_ROOT, 'brand');
+const BRAND_DIR = join(UI_ROOT, 'src', 'icons', 'brand');
 const OUT_FILE = join(UI_ROOT, 'public', 'icons', 'sprite.svg');
 
 function die(...lines) {

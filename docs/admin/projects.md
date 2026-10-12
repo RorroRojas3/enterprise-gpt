@@ -127,8 +127,9 @@ attaches is uploaded until a conversation exists to own it. The files then reach
 through `PendingAttachmentsStore`, alongside the prompt itself, because the screen that created the
 conversation navigates away before ingestion can start.
 
-`ProjectConversationsStore` lives in `core/` rather than the feature, so `features/shell` can reach
-it without violating the layer direction.
+`ProjectConversationsStore` lives in `state/projects/` rather than beside the page, so
+`components/shell` can reach it: a component may import `state/`, but not another feature's
+components or pages.
 
 The project route uses `loadChildren` rather than `loadComponent`, so the grid and the detail screen
 share one layout instance where the project dialogs mount.
@@ -141,7 +142,8 @@ share one layout instance where the project dialogs mount.
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Conversations/ConversationService.cs` | `EnsureProjectExistsAsync`, instruction injection |
 | `enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ProjectEndpoints.cs` | The routes |
 | `enterprise-gpt-ui/src/app/core/projects/project-lookup-store.ts` | The root project set |
-| `enterprise-gpt-ui/src/app/features/projects/detail/` | The detail route and its three stores |
+| `enterprise-gpt-ui/src/app/state/projects/` | The detail route's stores |
+| `enterprise-gpt-ui/src/app/pages/projects/` | The projects routes and the detail screen |
 | `enterprise-gpt-api/test/Enterprise.Gpt.Integration.Test/` | Cascade and ownership tests |
 
 ## Related

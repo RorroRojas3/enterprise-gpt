@@ -1,12 +1,17 @@
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRouteSnapshot, Router, RouterStateSnapshot, UrlTree } from '@angular/router';
-import { provideRouter } from '@angular/router';
+import {
+  ActivatedRouteSnapshot,
+  Router,
+  RouterStateSnapshot,
+  UrlTree,
+  provideRouter,
+} from '@angular/router';
 import { IPublicClientApplication, RedirectRequest } from '@azure/msal-browser';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AuthService } from '@core/auth/auth-service';
 import { provideTestAppConfig } from '@testing/app-config';
 import { fakeAccount, provideFakeMsal, signedInMsal, signedOutMsal } from '@testing/msal';
 import { provideFakeNavigation } from '@testing/navigation';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthService } from '../auth-service';
 import { authGuard } from './auth.guard';
 
 describe('authGuard', () => {

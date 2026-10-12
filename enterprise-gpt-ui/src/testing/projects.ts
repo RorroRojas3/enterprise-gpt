@@ -1,5 +1,9 @@
-import { PaginatedResponseDto } from '../app/domain/api/paginated-response';
-import { ProjectDocumentDto, ProjectDto, ProjectSummaryDto } from '../app/domain/api/project';
+import { PaginatedResponseDto } from '../app/shared/models/api/paginated-response.model';
+import {
+  ProjectDocumentDto,
+  ProjectDto,
+  ProjectSummaryDto,
+} from '../app/shared/models/api/project.model';
 
 let sequence = 0;
 

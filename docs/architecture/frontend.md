@@ -5,22 +5,46 @@ NgRx Signals for state, Bootstrap 5.3 with SCSS for styling.
 
 ## Layers
 
-Dependencies run one way, and ESLint enforces it with `no-restricted-imports`:
+`src/app/` is grouped by *kind* first and by *feature* second, so a feature such as `chat` has
+`pages/chat/`, `components/chat/` and `state/chat/`. Dependencies run one way, and ESLint enforces
+it:
 
 ```
-features -> shared -> core -> domain
+pages -> components/<feature> -> shared/{components,directives,pipes} -> state -> services -> core -> shared/utils -> shared/models
 ```
+
+Importing across features (`components/a` to `components/b`, `pages/a` to `pages/b`) is banned too.
 
 | Layer | Holds | May not import |
 | --- | --- | --- |
-| `domain/` | Framework-free logic: wire DTO types, the SSE codec, turn reducers, formatters. Zero Angular imports, so it tests in Node with no `TestBed`. | `core`, `shared`, `features` |
-| `core/` | App-wide singletons and pure policy: auth, config, HTTP, errors, events, root stores. | `shared`, `features` |
-| `shared/` | Presentational, reusable, feature-agnostic components and directives. | `features` |
-| `features/` | Route-owned screens with their own stores. | — |
+| `shared/models/` | Wire DTO types (`api/*.model.ts`) and the vendored streaming contract (`andes/`). Zero Angular or NgRx imports. | everything else in `app/` |
+| `shared/utils/<topic>/` | Framework-free pure functions: the SSE codec, turn reducers, formatters, and the `-route.ts` contracts a store reads. Zero Angular or NgRx imports, so it tests in Node with no `TestBed`. | everything but `shared/models` |
+| `core/` | App-wide singletons and policy: auth, config, errors, events, HTTP, navigation, the signal-store features, cross-feature tokens, and the root stores that guards, interceptors and core services inject. | `services`, `state`, `shared/{components,directives,pipes}`, `components`, `pages` |
+| `services/<domain>/` | Transports: the conversation stream client and the upload clients, each with its test-seam token beside it. | `state`, `shared/{components,directives,pipes}`, `components`, `pages` |
+| `state/` | Root stores flat; stores provided on a page or route in `state/<feature>/`. | `shared/{components,directives,pipes}`, `components`, `pages` |
+| `shared/{components,directives,pipes}/` | Presentational, reusable, feature-agnostic building blocks. May inject root stores from `state/`. | `state/<feature>/`, `components`, `pages` |
+| `components/<feature>/` | What one feature renders. `components/composer` is a pageless feature that the chat and project pages both compose. | `pages`, and any other feature |
+| `pages/<feature>/` | Route targets, `*.routes.ts` tables, guards and resolvers. Only the auth pages are eager. | other features |
 
-Path aliases are `@core/*`, `@domain/*`, `@shared/*`, `@features/*`, `@testing/*`. Components follow
-the v21 convention — `foo.ts` / `foo.html` / `foo.scss`, no `.component` suffix. There are no barrel
-`index.ts` files.
+The table reads innermost first, so each layer imports only from the rows above it.
+
+A root store stays in `core/` when a guard, an interceptor or a core service injects it, because
+`core` may not import `state`. Those are `SessionStore`, `ModelCatalogStore`, `McpCatalogStore`,
+`ConversationListStore`, `ProjectLookupStore` and `ToastStore`. Every other root store lives in
+`state/`.
+
+`eslint-layer-bans.mjs` generates the bans. `layerBans()` emits one `no-restricted-imports` block per
+layer and per feature folder. `layerZones()` restates the app-path bans as
+`import-x/no-restricted-paths` zones, because `no-restricted-imports` never sees a dynamic
+`import()`. `eslint-plugin-import-x` also runs `no-cycle` and `no-relative-parent-imports`, and
+`banForms` rejects `FormsModule` and `ReactiveFormsModule` everywhere. Specs are exempt from all of
+these except the forms ban. Prettier sorts imports bottom-up through the same layers.
+
+Path aliases are `@pages/*`, `@components/*`, `@state/*`, `@services/*`, `@core/*`, `@shared/*` and
+`@testing/*`. Imports cross folders through the alias, never `../`. Components follow the v21
+convention — `foo.ts` / `foo.html` / `foo.scss`, no `.component` suffix — while every other kind
+carries one (`-store`, `-client`, `-service`, `.guard`, `.interceptor`, `.resolver`, `.routes`,
+`-route`, `.token`, `.model`). There are no barrel `index.ts` files.
 
 ## Bootstrap
 
@@ -113,6 +137,8 @@ The rule to preserve is which libraries stay off the initial graph: the markdown
 `@microsoft/applicationinsights-web` are reached only through `await import(...)` behind DI tokens
 and `config.json` flags, and sit in lazy chunks of their own. `check-initial-chunk.mjs` fails the
 build if a static import from `main.ts` reaches any of them, and names the import path that did it.
+It also fails if any `pages/`, `components/` or `state/<feature>/` file other than the eager auth
+pages reaches the initial graph, which keeps the signed-in screens in lazy chunks.
 
 Re-baseline the budget only when a dependency genuinely has to be initial — check first whether it
 does.
@@ -133,7 +159,8 @@ does.
 | `enterprise-gpt-ui/src/app/app.routes.ts` | Route table and guard nesting |
 | `enterprise-gpt-ui/src/app/core/config/load-app-config.ts` | Runtime config fetch and validation |
 | `enterprise-gpt-ui/src/styles.scss` | The ordered import chain |
-| `enterprise-gpt-ui/eslint.config.mjs` | Layer bans and the forbidden-API rules |
+| `enterprise-gpt-ui/eslint.config.mjs` | The lint rule set and the forbidden-API rules |
+| `enterprise-gpt-ui/eslint-layer-bans.mjs` | Generates the layer bans and import-path zones |
 | `enterprise-gpt-ui/scripts/check-initial-chunk.mjs` | The must-stay-lazy gate |
 | `enterprise-gpt-ui/src/app/core/config/load-app-config.spec.ts` | Config validation tests |
 

@@ -1,6 +1,6 @@
 import { computed } from '@angular/core';
 import { PartialStateUpdater, signalStoreFeature, withComputed, withState } from '@ngrx/signals';
-import { PaginatedResponseDto } from '@domain/api/paginated-response';
+import { PaginatedResponseDto } from '@shared/models/api/paginated-response.model';
 
 /** The server clamps `take` to 1–100, so a larger request silently gets less. */
 export const MAX_PAGE_SIZE = 100;

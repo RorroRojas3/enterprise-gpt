@@ -3,7 +3,7 @@ import { bootstrapApplication } from '@angular/platform-browser';
 import { createStandardPublicClientApplication } from '@azure/msal-browser';
 import { App } from './app/app';
 import { appConfig } from './app/app.config';
-import { MSAL_INSTANCE, buildMsalConfig } from './app/core/auth/msal-instance';
+import { MSAL_INSTANCE, buildMsalConfig } from './app/core/auth/msal-instance.token';
 import { AppConfigError } from './app/core/config/app-config';
 import { APP_CONFIG } from './app/core/config/app-config.token';
 import { showFatalShell } from './app/core/config/fatal-shell';

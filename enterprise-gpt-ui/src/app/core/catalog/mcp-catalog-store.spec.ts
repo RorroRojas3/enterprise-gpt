@@ -3,10 +3,10 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
-import { mcpFixture } from '@testing/catalog';
 import { adminEvents } from '@core/events/admin-events';
 import { sessionEvents } from '@core/events/session-events';
+import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { mcpFixture } from '@testing/catalog';
 import { McpCatalogStore } from './mcp-catalog-store';
 
 const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps`;

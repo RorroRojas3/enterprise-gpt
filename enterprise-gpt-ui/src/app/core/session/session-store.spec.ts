@@ -1,13 +1,13 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { sessionEvents } from '@core/events/session-events';
 import { Dispatcher } from '@ngrx/signals/events';
-import { PERMISSION_ID } from '@domain/api/permission-ids';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { PERMISSION_ID } from '@shared/models/api/permission-ids.model';
+import { sessionEvents } from '@core/events/session-events';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { MCP_GRANT, administratorFixture, userFixture } from '@testing/session';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SessionStore } from './session-store';
 
 const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;

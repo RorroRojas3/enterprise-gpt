@@ -17,4 +17,4 @@
 *.ttf   binary
 
 # Belt and braces: the one file whose exact bytes are a build gate.
-src/app/domain/stream/andes/assistant-ui.contract.ts text eol=lf
+src/app/shared/models/andes/assistant-ui.contract.ts text eol=lf

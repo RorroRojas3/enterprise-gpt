@@ -61,7 +61,7 @@ zero call sites for it.
 
 A partially arrived markdown buffer cannot simply be handed to the parser — an unterminated fence or
 emphasis would render as garbage and then re-render differently on the next delta.
-`domain/markdown/streaming-split.ts` splits the buffer at the last position where the markdown is
+`shared/utils/markdown/streaming-split.ts` splits the buffer at the last position where the markdown is
 provably complete:
 
 - The **head** is parsed and rendered as markdown.
@@ -111,13 +111,13 @@ refuses one.
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-ui/src/app/features/chat/markdown/` | The provider factory, the extras directive, the lazy loader |
-| `enterprise-gpt-ui/src/app/domain/markdown/streaming-split.ts` | Head/tail split |
-| `enterprise-gpt-ui/src/app/domain/markdown/fences.ts` | Fence scanning, shared with the email contract |
+| `enterprise-gpt-ui/src/app/components/chat/markdown/` | The provider factory, the extras directive, the lazy loader |
+| `enterprise-gpt-ui/src/app/shared/utils/markdown/streaming-split.ts` | Head/tail split |
+| `enterprise-gpt-ui/src/app/shared/utils/markdown/fences.ts` | Fence scanning, shared with the email contract |
 | `enterprise-gpt-ui/src/styles/_markdown.scss` | Styling for output out of reach of components |
 | `enterprise-gpt-ui/src/styles/_prism.scss` | Token-driven highlighting |
 | `enterprise-gpt-ui/scripts/check-initial-chunk.mjs` | The must-stay-lazy gate |
-| `enterprise-gpt-ui/src/app/features/chat/markdown/code-theme.spec.ts` | Code surface legibility |
+| `enterprise-gpt-ui/src/app/components/chat/markdown/code-theme.spec.ts` | Code surface legibility |
 
 ## Related
 

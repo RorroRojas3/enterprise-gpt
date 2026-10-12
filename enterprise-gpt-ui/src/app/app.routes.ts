@@ -3,12 +3,12 @@ import { Routes } from '@angular/router';
 import { adminCanMatch } from '@core/auth/guards/admin.guard';
 import { authGuard } from '@core/auth/guards/auth.guard';
 import { sessionGuard } from '@core/auth/guards/session.guard';
-import { AuthCallback } from '@features/auth/auth-callback/auth-callback';
-import { Forbidden } from '@features/auth/forbidden/forbidden';
-import { LoginFailed } from '@features/auth/login-failed/login-failed';
-import { SessionError } from '@features/auth/session-error/session-error';
-import { SignedOut } from '@features/auth/signed-out/signed-out';
-import { chatMatcher } from '@features/chat/chat-route';
+import { chatMatcher } from '@core/navigation/chat-matcher';
+import { AuthCallback } from '@pages/auth/auth-callback';
+import { Forbidden } from '@pages/auth/forbidden';
+import { LoginFailed } from '@pages/auth/login-failed';
+import { SessionError } from '@pages/auth/session-error';
+import { SignedOut } from '@pages/auth/signed-out';
 
 /**
  * Guards in one array run concurrently, so nesting is the only way to run authGuard before
@@ -39,7 +39,7 @@ export const routes: Routes = [
   {
     path: 'ui-kit',
     canMatch: [() => isDevMode()],
-    loadChildren: () => import('@features/ui-kit/ui-kit.routes'),
+    loadChildren: () => import('@pages/ui-kit/ui-kit.routes'),
   },
 
   {
@@ -55,30 +55,29 @@ export const routes: Routes = [
           {
             // Lazy: the public routes never render this ~24 kB of chrome.
             path: '',
-            loadComponent: () => import('@features/shell/shell').then((m) => m.Shell),
+            loadComponent: () => import('@pages/shell/shell').then((m) => m.Shell),
             children: [
               {
                 // One config for `/chat` and `/chat/{id}`, so the router reuses the component.
                 matcher: chatMatcher,
-                loadComponent: () => import('@features/chat/chat').then((m) => m.Chat),
+                loadComponent: () => import('@pages/chat/chat').then((m) => m.Chat),
                 title: 'Chat — Enterprise GPT',
               },
               {
                 path: 'conversations',
                 loadComponent: () =>
-                  import('@features/conversations/conversations').then((m) => m.Conversations),
+                  import('@pages/conversations/conversations').then((m) => m.Conversations),
                 title: 'Conversations — Enterprise GPT',
               },
               {
-                // loadChildren: the grid and a project's detail share one layout, which
-                // hosts the dialogs both of them invoke.
+                // loadChildren: the grid and a project's detail share one parent route, and the
+                // detail's tabs and route-scoped stores ride their own lazy table.
                 path: 'projects',
-                loadChildren: () => import('@features/projects/projects.routes'),
+                loadChildren: () => import('@pages/projects/projects.routes'),
               },
               {
                 path: 'documents',
-                loadComponent: () =>
-                  import('@features/documents/documents').then((m) => m.Documents),
+                loadComponent: () => import('@pages/documents/documents').then((m) => m.Documents),
                 title: 'Documents — Enterprise GPT',
               },
               {
@@ -86,7 +85,7 @@ export const routes: Routes = [
                 // recognition, so a non-admin's browser never requests the chunk.
                 path: 'admin',
                 canMatch: [adminCanMatch],
-                loadChildren: () => import('@features/admin/admin.routes'),
+                loadChildren: () => import('@pages/admin/admin.routes'),
               },
             ],
           },

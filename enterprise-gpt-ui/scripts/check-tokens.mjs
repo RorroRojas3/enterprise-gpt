@@ -92,7 +92,7 @@ for (const theme of ['light', 'dark']) {
 // The pre-paint script duplicates the theme storage key; a mismatch silently drops every
 // user's stored preference.
 const preferences = readFileSync(
-  join(UI_ROOT, 'src', 'app', 'core', 'storage', 'local-preferences.ts'),
+  join(UI_ROOT, 'src', 'app', 'shared', 'utils', 'storage', 'local-preferences.ts'),
   'utf8',
 );
 const serviceKey = preferences.match(/\btheme:\s*'([^']+)'/)?.[1];
@@ -396,7 +396,10 @@ for (const file of ['_prism.scss', '_markdown.scss']) {
     readFileSync(join(UI_ROOT, 'src', 'styles', '_breakpoints.scss'), 'utf8'),
   );
   const ts = stripComments(
-    readFileSync(join(UI_ROOT, 'src', 'app', 'shared', 'layout', 'breakpoints.ts'), 'utf8'),
+    readFileSync(
+      join(UI_ROOT, 'src', 'app', 'shared', 'utils', 'layout', 'breakpoints.ts'),
+      'utf8',
+    ),
   );
 
   const read = (source, pattern, what) => {

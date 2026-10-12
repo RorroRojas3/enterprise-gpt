@@ -1,6 +1,6 @@
 import { type } from '@ngrx/signals';
 import { eventGroup } from '@ngrx/signals/events';
-import { McpCredentialStatusDto } from '@domain/api/mcp';
+import { McpCredentialStatusDto } from '@shared/models/api/mcp.model';
 
 /**
  * The caller's own MCP credential changes, which are not administrative. The payload patches

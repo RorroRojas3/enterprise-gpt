@@ -8,11 +8,11 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router } from '@angular/router';
+import type { IConfig, IConfiguration, ITelemetryItem } from '@microsoft/applicationinsights-web';
+import { filter } from 'rxjs';
 import { AuthService } from '@core/auth/auth-service';
 import { TelemetryConfig } from '@core/config/app-config';
 import { APP_CONFIG } from '@core/config/app-config.token';
-import type { IConfig, IConfiguration, ITelemetryItem } from '@microsoft/applicationinsights-web';
-import { filter } from 'rxjs';
 
 /** The Application Insights tag that surfaces as `user_AuthenticatedId`. */
 const AUTHENTICATED_USER_TAG = 'ai.user.authUserId';

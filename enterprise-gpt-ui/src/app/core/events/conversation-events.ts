@@ -1,6 +1,6 @@
 import { type } from '@ngrx/signals';
 import { eventGroup } from '@ngrx/signals/events';
-import { ConversationDto } from '@domain/api/conversation';
+import { ConversationDto } from '@shared/models/api/conversation.model';
 
 /**
  * Server-confirmed conversation changes. Events, because the root `ConversationActionsStore`

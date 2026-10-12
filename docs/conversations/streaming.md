@@ -88,7 +88,7 @@ Four rules that are easy to get wrong:
 A client is expected to undo the prefix. `source` is the exact string the prefix was built from —
 `McpToolProvider` builds it with `SanitizeToolNamePrefix(server.Name)` and passes that same
 `server.Name` to the tracking wrapper, deliberately rather than using the server's self-advertised
-name, which need not agree. `domain/stream/activity-label.ts` sanitizes `source` the same way,
+name, which need not agree. `shared/utils/stream/activity-label.ts` sanitizes `source` the same way,
 strips a leading `{sanitized}_`, converts underscores to spaces and upper-cases the first character,
 so `Weather_get_forecast` + `Weather` renders as **Get forecast** over **Weather**. Every branch
 that cannot prove the prefix leaves the name alone.
@@ -166,9 +166,9 @@ Three layers, following the app's own dependency direction:
 
 | Layer | Owns | Where |
 | --- | --- | --- |
-| Codec | Body bytes to `AssistantUiEvent[]`, correct across arbitrary chunk boundaries | `domain/stream/` — framework-free, tests in Node with no `TestBed` |
-| Transport | The request, auth, error typing, abort, batching | `core/stream/conversation-stream-client.ts` |
-| Turn state | Folding events into a rendered turn | `features/chat/turn-store.ts` |
+| Codec | Body bytes to `AssistantUiEvent[]`, correct across arbitrary chunk boundaries | `shared/utils/stream/` — framework-free, tests in Node with no `TestBed` |
+| Transport | The request, auth, error typing, abort, batching | `services/conversations/conversation-stream-client.ts` |
+| Turn state | Folding events into a rendered turn | `state/chat/turn-store.ts` |
 
 `StreamCodec` is `decode(chunk: Uint8Array): AssistantUiEvent[]` plus `flush()` — synchronous and
 push-based, with **one instance per request**, because both implementations carry cross-read state
@@ -180,7 +180,7 @@ push-based, with **one instance per request**, because both implementations carr
 - `raw-text-codec.ts` is the `features.rawStreamCodec` fallback for servers predating the framed
   contract; each chunk becomes one synthesized `TextDelta` so everything downstream is identical.
 
-`domain/stream/andes/assistant-ui.contract.ts` is **vendored and must not be edited** — a
+`shared/models/andes/assistant-ui.contract.ts` is **vendored and must not be edited** — a
 byte-for-byte copy of the package's TypeScript declaration, verified by `npm run check:contract`.
 
 Two reducers run over the same events and answer different questions. The **fold**
@@ -198,11 +198,11 @@ replayed and live answers render through one code path.
 | --- | --- |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Conversations/ConversationService.cs` | Yields the event sequence, holds back `Finished` |
 | `enterprise-gpt-api/Enterprise.Gpt.Api/Endpoints/ConversationEndpoints.cs` | `StreamConversationAsync` and its lazy headers |
-| `enterprise-gpt-ui/src/app/domain/stream/sse-frame-codec.ts` | Frame decoding across chunk boundaries |
-| `enterprise-gpt-ui/src/app/domain/stream/turn-timeline.ts` | Arrival-ordered timeline |
-| `enterprise-gpt-ui/src/app/domain/stream/activity-label.ts` | Prefix stripping for MCP tool names |
-| `enterprise-gpt-ui/src/app/core/stream/conversation-stream-client.ts` | Raw-fetch transport |
-| `enterprise-gpt-ui/src/app/domain/stream/sse-frame-codec.spec.ts` | Chunk-boundary cases |
+| `enterprise-gpt-ui/src/app/shared/utils/stream/sse-frame-codec.ts` | Frame decoding across chunk boundaries |
+| `enterprise-gpt-ui/src/app/shared/utils/stream/turn-timeline.ts` | Arrival-ordered timeline |
+| `enterprise-gpt-ui/src/app/shared/utils/stream/activity-label.ts` | Prefix stripping for MCP tool names |
+| `enterprise-gpt-ui/src/app/services/conversations/conversation-stream-client.ts` | Raw-fetch transport |
+| `enterprise-gpt-ui/src/app/shared/utils/stream/sse-frame-codec.spec.ts` | Chunk-boundary cases |
 
 ## Related
 

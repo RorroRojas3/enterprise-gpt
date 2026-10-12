@@ -12,12 +12,12 @@ import {
 } from '@ngrx/signals';
 import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { firstValueFrom, takeUntil, tap } from 'rxjs';
-import { McpCredentialStatusDto, McpDto } from '@domain/api/mcp';
+import { McpCredentialStatusDto, McpDto } from '@shared/models/api/mcp.model';
 import { toAppError } from '@core/errors/to-app-error';
 import { adminEvents } from '@core/events/admin-events';
 import { mcpEvents } from '@core/events/mcp-events';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
 import {
   setError,
   setFulfilled,

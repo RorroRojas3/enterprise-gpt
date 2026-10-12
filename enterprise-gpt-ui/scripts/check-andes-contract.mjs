@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Checks the vendored Andes contract matches its NuGet package byte-for-byte, pins the version
 // the API references, and has no hand-written duplicates under src/.
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,8 +13,8 @@ const VENDORED = join(
   UI_ROOT,
   'src',
   'app',
-  'domain',
-  'stream',
+  'shared',
+  'models',
   'andes',
   'assistant-ui.contract.ts',
 );

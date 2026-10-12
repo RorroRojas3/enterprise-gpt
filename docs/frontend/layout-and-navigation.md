@@ -61,8 +61,8 @@ it is a device-local preference, not the signed-in user's data.
 
 ## The shell
 
-`features/shell/` is lazy, and everything under it is lazy too. That is what keeps the signed-in
-chrome off the four unguarded auth routes, and it is why `/forbidden` is a *sibling* of the shell
+`pages/shell/` is lazy, and so is everything it renders from `components/shell/`. That is what keeps
+the signed-in chrome off the four unguarded auth routes, and it is why `/forbidden` is a *sibling* of the shell
 rather than a child: it must render without chrome.
 
 The shell composes the sidebar, the mobile navbar, and a `<router-outlet>`. A routed screen
@@ -80,8 +80,9 @@ hovered the control focus landed on.
 
 ## Overlays
 
-`shared/overlay/` holds the primitives: `anchored-panel` (positioning), `menu` (roving focus),
-`modal` (native `<dialog>` with `showModal()`), `offcanvas`, and `tooltip`.
+The primitives are `anchored-panel` (positioning, `shared/utils/overlay/`), and `menu` (roving
+focus), `modal` (native `<dialog>` with `showModal()`) and `offcanvas` in `shared/components/`, plus
+the `tooltip` directive in `shared/directives/`.
 
 Using the native dialog is what gives real inertness from the top layer rather than a hand-rolled
 focus trap. Focus restoration runs on close **and** on destroy — see
@@ -99,13 +100,13 @@ would navigate the browser to that file, discarding an in-flight turn.
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-ui/src/app/shared/layout/breakpoints.ts` | The TypeScript half of the record |
+| `enterprise-gpt-ui/src/app/shared/utils/layout/breakpoints.ts` | The TypeScript half of the record |
 | `enterprise-gpt-ui/src/styles/_breakpoints.scss` | The Sass half and its mixins |
-| `enterprise-gpt-ui/src/app/features/shell/shell.ts` | Mode derivation and composition |
-| `enterprise-gpt-ui/src/app/features/shell/sidebar/sidebar.ts` | The two width branches |
-| `enterprise-gpt-ui/src/app/core/ui/ui-store.ts` | Device-local layout preferences |
-| `enterprise-gpt-ui/src/app/shared/overlay/` | Menu, modal, offcanvas, tooltip, anchored panel |
-| `enterprise-gpt-ui/src/app/shared/overlay/modal/modal.spec.ts` | Focus restore on close and destroy |
+| `enterprise-gpt-ui/src/app/pages/shell/shell.ts` | Mode derivation and composition |
+| `enterprise-gpt-ui/src/app/components/shell/sidebar/sidebar.ts` | The two width branches |
+| `enterprise-gpt-ui/src/app/state/ui-store.ts` | Device-local layout preferences |
+| `enterprise-gpt-ui/src/app/shared/components/` | Menu, modal and offcanvas, beside `shared/directives/tooltip.ts` and `shared/utils/overlay/anchored-panel.ts` |
+| `enterprise-gpt-ui/src/app/shared/components/modal/modal.spec.ts` | Focus restore on close and destroy |
 
 ## Related
 

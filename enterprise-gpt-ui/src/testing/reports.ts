@@ -3,7 +3,7 @@ import {
   UsageReportDto,
   UsageReportTotalsDto,
   UsageSeriesPointDto,
-} from '../app/domain/api/usage-report';
+} from '../app/shared/models/api/usage-report.model';
 
 /**
  * Period figures with every field explicit, so a fixture cannot pass against a shape the API

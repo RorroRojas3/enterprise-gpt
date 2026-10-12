@@ -106,7 +106,7 @@ not leave an orphan the user can see but never reach.
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/DocumentStorage.cs` | Container resolution and the content-type map |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/GeneratedDocumentService.cs` | Persisting and withdrawing generated files |
 | `enterprise-gpt-api/Enterprise.Gpt.Common/Enums/ConversationDocumentTypes.cs` | The discriminator |
-| `enterprise-gpt-ui/src/app/core/documents/document-download-store.ts` | The detached anchor click |
+| `enterprise-gpt-ui/src/app/state/document-download-store.ts` | The detached anchor click |
 | `enterprise-gpt-api/test/Enterprise.Gpt.Integration.Test/` | Ownership and 404-uniformity tests |
 
 ## Related

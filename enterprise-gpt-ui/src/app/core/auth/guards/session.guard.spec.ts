@@ -8,14 +8,14 @@ import {
   UrlTree,
   provideRouter,
 } from '@angular/router';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { AuthService } from '@core/auth/auth-service';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
-import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { settle } from '@testing/async';
 import { provideFakeMsal, signedInMsal } from '@testing/msal';
 import { provideFakeNavigation } from '@testing/navigation';
+import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { userFixture } from '@testing/session';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { AuthService } from '../auth-service';
 import { sessionGuard } from './session.guard';
 
 const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;

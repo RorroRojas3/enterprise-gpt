@@ -190,16 +190,20 @@ Angular **21.2**, standalone components, **zoneless**. Zoneless is the v21 defau
 - **Tests:** **Vitest** via `@angular/build:unit-test` (`watch: false`, `providersFile: src/testing/test-providers.ts`, which enables `provideCheckNoChangesConfig({ exhaustive: true })`). The axe accessibility specs are a separate target (`npm run test:a11y`) that `npm test` skips.
 - **Lint and type checks:** ESLint 10 flat config (`eslint.config.mjs`) with typescript-eslint, angular-eslint and `@ngrx/eslint-plugin` (`signalsTypeChecked`, which needs `projectService: true`).
   - `no-restricted-syntax` bans `bypassSecurityTrustHtml`.
+  - `eslint-layer-bans.mjs` is an ESM port of the `angular-ui-architecture` asset. `layerBans()` generates one `no-restricted-imports` block per layer and per feature folder. `layerZones()` restates the table's app-path bans as `import-x/no-restricted-paths` zones, because `no-restricted-imports` never sees a dynamic `import()`. `eslint-plugin-import-x` also runs `no-cycle` (it needs `import-x/extensions` to include `.ts`) and `no-relative-parent-imports`. Specs are exempt from all of these except the forms ban (`banForms: true`), which applies to every `src/**/*.ts`.
+  - Prettier sorts imports bottom-up through the layers with `@ianvs/prettier-plugin-sort-imports` (`.prettierrc` `importOrder`).
   - `npm run lint` also runs `check:icons`, `check:forbidden` and `check:tokens`. `npm run build` runs `check-initial-chunk.mjs` over the esbuild metafile.
   - Unused-symbol detection is tsc's (`noUnusedLocals`/`noUnusedParameters`), not ESLint's, because tsc counts a `{@link}` as a use.
   - `tsconfig.json` is strict, including `strictTemplates`, `noPropertyAccessFromIndexSignature` and `noUncheckedIndexedAccess`.
-- **Folder layout:** dependencies run one way: `features → shared → core → domain`.
-  - `core/` holds app-wide singletons and pure policy.
-  - `domain/` is framework-free, so the SSE codec and the activity fold test in Node with no `TestBed`.
-  - `shared/` is presentational only.
-  - `features/` is route-owned, with its own stores.
-  - Path aliases: `@core/* @domain/* @shared/* @features/* @testing/*`.
-  - Components use the v21 convention: `foo.ts`/`foo.html`/`foo.scss`, no `.component` suffix. No barrel `index.ts` files.
+- **Folder layout:** the `angular-ui-architecture` kind-first layout, the same one `andes-scaffold` generates. Placement decisions follow that skill's table. Dependencies run one way: `pages → components/<feature> → shared/{components,directives,pipes} → state → services → core → shared/utils → shared/models`. Imports across features (`components/a` → `components/b`, `pages/a` → `pages/b`) are banned.
+  - `pages/<feature>/` holds route targets, `*.routes.ts` tables, guards and resolvers, and the `-route.ts` contracts only the page reads. Only the auth pages are eager.
+  - `components/<feature>/` holds what one feature renders. `components/composer/` + `state/composer/` is a pageless feature that the chat and project pages both compose.
+  - `state/` holds root stores flat, and page- or route-provided stores under `state/<feature>/`. A root store that a guard, interceptor or core service injects stays in `core/`: `SessionStore`, `ModelCatalogStore`, `McpCatalogStore`, `ConversationListStore`, `ProjectLookupStore` and `ToastStore`.
+  - `services/<domain>/` holds transports: the conversation stream client and the upload clients, each with its test-seam token beside it.
+  - `core/` holds app-wide singletons and policy: auth, config, errors, events, http, navigation (`route-paths.ts`, `chat-matcher.ts`), the store features, and cross-feature tokens (`COMPOSER_HOST`).
+  - `shared/models/` holds wire DTOs (`api/*.model.ts`) and the vendored contract (`andes/`). `shared/utils/<topic>/` holds pure functions, including the `-route.ts` contracts a store reads. Neither may import Angular or NgRx, so the SSE codec and the activity fold test in Node with no `TestBed`.
+  - Path aliases: `@pages/* @components/* @state/* @services/* @core/* @shared/* @testing/*`. Cross-folder imports use the alias, never `../`.
+  - File suffixes: components carry none (`foo.ts`/`foo.html`/`foo.scss`). Every other kind does: `-store`, `-client`, `-service`, `.guard`, `.interceptor`, `.resolver`, `.routes`, `-route`, `.token`, `.model`. The exception is pure functions under `shared/utils`. `angular.json` pins the dot separator for guards, interceptors and resolvers. The service schematic cannot add a dash suffix, so name it: `ng g s services/<domain>/<name>-service`. No barrel `index.ts` files.
 - **Runtime config:** no `environments/` and no `fileReplacements`.
   - `main.ts` fetches `config.json` (`cache: 'no-store'`, resolved against `document.baseURI`), validates it with a narrow assertion, and provides `APP_CONFIG` **before** `bootstrapApplication`.
   - A missing or invalid config renders the static fatal shell in `index.html` and does not bootstrap.
@@ -222,7 +226,7 @@ Angular **21.2**, standalone components, **zoneless**. Zoneless is the v21 defau
   - The rule to preserve is which libraries stay off the initial graph:
     - the markdown stack (`ngx-markdown`, `marked`, `prismjs`, `dompurify`) rides the lazy chat chunk;
     - `mermaid`, `katex` and `@microsoft/applicationinsights-web` are reached only through `await import(…)` behind DI tokens and `config.json` flags, in lazy chunks of their own.
-  - `check-initial-chunk.mjs` fails the build if a static import from `main.ts` (or from the chat chunk, for the two flagged libraries) reaches any of them, and names the import path that did it. It also asserts that mermaid and katex exist *somewhere*, since every other check passes when a library is simply gone.
+  - `check-initial-chunk.mjs` fails the build if a static import from `main.ts` (or from the chat chunk, for the two flagged libraries) reaches any of them, and names the import path that did it. It also fails when any `pages/`, `components/` or `state/<feature>/` file other than the eager auth pages reaches the initial graph. It also asserts that mermaid and katex exist *somewhere*, since every other check passes when a library is simply gone.
   - Re-baseline only when a dependency genuinely has to be initial, and check first whether it does.
 
 ## Build, test, run
@@ -336,7 +340,7 @@ The skills set the target. These rows are where the code has not migrated yet. W
 | API versioning | None; routes are plain `api/{resource}` | Match the existing routes |
 | Zoneless Angular | Zoneless throughout; no `zone.js` | Nothing re-renders without a signal write, `markForCheck`, or `AsyncPipe` |
 | `OnPush` everywhere | `angular.json` sets it as the schematic default | `OnPush` on new components |
-| Frontend lint | ESLint plus the bundle and safety gates, green | Run `npm run lint` before handing work back; do not add a second lint mechanism |
+| Frontend lint | ESLint (including the generated layer bans) plus the bundle and safety gates, green | Run `npm run lint` before handing work back; do not add a second lint mechanism |
 
 ### Sanctioned deviations from the Andes standards
 

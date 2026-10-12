@@ -4,7 +4,7 @@
  */
 
 // Relative, not `@shared/*`: `setup-dom.ts` loads this as a Vite setupFile, outside the alias map.
-import { MOBILE_VIEWPORT, TABLET_VIEWPORT } from '../app/shared/layout/breakpoints';
+import { MOBILE_VIEWPORT, TABLET_VIEWPORT } from '../app/shared/utils/layout/breakpoints';
 
 /** The query `ThemeService` watches. */
 export const PREFERS_DARK = '(prefers-color-scheme: dark)';

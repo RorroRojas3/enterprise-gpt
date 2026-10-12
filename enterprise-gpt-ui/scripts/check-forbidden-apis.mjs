@@ -24,7 +24,7 @@ const FORBIDDEN = [
       'here is an unsanitised path to innerHTML, and model output is ' +
       'attacker-influenceable through uploaded documents and MCP tool results.',
     // Byte-for-byte upstream: exempt so this script is never a reason to edit it.
-    exempt: ['app/domain/stream/andes/assistant-ui.contract.ts'],
+    exempt: ['app/shared/models/andes/assistant-ui.contract.ts'],
   },
   {
     // The URL form, not the bare hostname: naming an origin in prose is fine.
@@ -58,16 +58,16 @@ const FORBIDDEN = [
     label: 'a direct localStorage write',
     why:
       'After sign-out localStorage must hold the theme and sidebar ' +
-      'preferences and nothing else. Route writes through core/storage/' +
+      'preferences and nothing else. Route writes through shared/utils/storage/' +
       'local-preferences.ts so the surviving keys are enumerated in one reviewable ' +
       'place rather than spread across call sites.',
     exempt: [
-      'app/core/storage/local-preferences.ts',
+      'app/shared/utils/storage/local-preferences.ts',
       // Asserts the wrapper itself, so it has to reach past it.
-      'app/core/storage/local-preferences.spec.ts',
+      'app/shared/utils/storage/local-preferences.spec.ts',
       // Plants a disallowed key to prove sign-out does not sweep it; this check, not a
       // runtime cleanup, is the enforcement point.
-      'app/shared/nav/user-footer/user-footer.spec.ts',
+      'app/components/shell/sidebar/user-footer.spec.ts',
     ],
   },
   {
@@ -102,10 +102,10 @@ const FORBIDDEN = [
     label: 'a hardcoded application breakpoint',
     why:
       'The three viewport modes are stated once, in styles/_breakpoints.scss ' +
-      'and app/shared/layout/breakpoints.ts, and check-tokens.mjs keeps the two in ' +
+      'and app/shared/utils/layout/breakpoints.ts, and check-tokens.mjs keeps the two in ' +
       'step. Use the `bp.mobile` / `bp.tablet` / `bp.desktop` mixins in a stylesheet, ' +
       'or MOBILE_VIEWPORT / TABLET_VIEWPORT in TypeScript.',
-    exempt: ['styles/_breakpoints.scss', 'app/shared/layout/breakpoints.ts'],
+    exempt: ['styles/_breakpoints.scss', 'app/shared/utils/layout/breakpoints.ts'],
   },
   {
     // `_motion.scss` is not exempt. The word boundary stops `@keyframes spinner` passing as `spin`.

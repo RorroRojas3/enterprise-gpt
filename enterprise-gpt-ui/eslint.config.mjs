@@ -3,9 +3,12 @@
 import js from '@eslint/js';
 import ngrx from '@ngrx/eslint-plugin/v9';
 import angular from 'angular-eslint';
+import { createTypeScriptImportResolver } from 'eslint-import-resolver-typescript';
+import { createNodeResolver, importX } from 'eslint-plugin-import-x';
 import { defineConfig, globalIgnores } from 'eslint/config';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import { layerBans, layerZones } from './eslint-layer-bans.mjs';
 
 /**
  * ngx-markdown trusts HTML itself after DOMPurify, so any other call is an unsanitised innerHTML
@@ -15,15 +18,6 @@ const NO_BYPASS =
   'bypassSecurityTrustHtml is banned app-wide. ngx-markdown performs the trust ' +
   'internally; there is no permitted call site. Render through the markdown ' +
   'pipeline instead.';
-
-/** Bans each alias plus a globstar form that also catches a relative import a refactor left. */
-function layerBan(aliases) {
-  return {
-    group: aliases.flatMap((alias) => [alias, `**/${alias.replace('@', '')}`]),
-    message:
-      'Dependencies run one way: features → shared → core → domain. Move the shared piece down a layer, or invert it with an injection token (see COMPOSER_HOST).',
-  };
-}
 
 export default defineConfig([
   globalIgnores([
@@ -35,11 +29,11 @@ export default defineConfig([
     // The host document, not an Angular template.
     'src/index.html',
     // Vendored byte-for-byte from a NuGet package; lint fixes would be drift.
-    'src/app/domain/stream/andes/assistant-ui.contract.ts',
+    'src/app/shared/models/andes/assistant-ui.contract.ts',
   ]),
 
   {
-    files: ['scripts/**/*.mjs', 'eslint.config.mjs'],
+    files: ['scripts/**/*.mjs', 'eslint.config.mjs', 'eslint-layer-bans.mjs'],
     extends: [js.configs.recommended],
     languageOptions: {
       ecmaVersion: 'latest',
@@ -102,28 +96,29 @@ export default defineConfig([
   },
 
   {
-    // A wrong-way import type-checks and builds, surfacing only as a lazy chunk the whole app
-    // downloads. Specs are exempt: they are outside the app graph and may drive real stores.
-    files: ['src/app/shared/**/*.ts'],
+    // `no-restricted-imports` matches the specifier text of static imports only, so a `../` import
+    // or a dynamic `import('@pages/…')` slips past the layer bans; this block closes both gaps.
+    files: ['src/app/**/*.ts'],
     ignores: ['**/*.spec.ts'],
-    rules: { 'no-restricted-imports': ['error', { patterns: [layerBan(['@features/*'])] }] },
-  },
-
-  {
-    files: ['src/app/core/**/*.ts'],
-    ignores: ['**/*.spec.ts'],
-    rules: {
-      'no-restricted-imports': ['error', { patterns: [layerBan(['@features/*', '@shared/*'])] }],
+    plugins: { 'import-x': importX },
+    settings: {
+      // Without it import-x maps only `.js` modules, and `no-cycle` never reports.
+      'import-x/extensions': ['.ts', '.mjs', '.js'],
+      'import-x/resolver-next': [
+        createTypeScriptImportResolver({ project: './tsconfig.json' }),
+        createNodeResolver(),
+      ],
     },
-  },
-
-  {
-    files: ['src/app/domain/**/*.ts'],
-    ignores: ['**/*.spec.ts'],
     rules: {
-      'no-restricted-imports': [
+      'import-x/no-cycle': ['error', { ignoreExternal: true }],
+      // The `ignore` keeps aliases legal; they resolve inside the repo, so count as parents.
+      'import-x/no-relative-parent-imports': [
         'error',
-        { patterns: [layerBan(['@features/*', '@shared/*', '@core/*'])] },
+        { ignore: ['^@(pages|components|state|services|core|shared|testing)/'] },
+      ],
+      'import-x/no-restricted-paths': [
+        'error',
+        { basePath: import.meta.dirname, zones: layerZones(import.meta.dirname) },
       ],
     },
   },
@@ -132,4 +127,8 @@ export default defineConfig([
     files: ['**/*.html'],
     extends: [...angular.configs.templateRecommended, ...angular.configs.templateAccessibility],
   },
+
+  // Last: a wrong-way import type-checks and builds, surfacing only as a lazy chunk the whole app
+  // downloads. Specs are exempt: they are outside the app graph and may drive real stores.
+  ...layerBans(import.meta.dirname, { banForms: true }),
 ]);

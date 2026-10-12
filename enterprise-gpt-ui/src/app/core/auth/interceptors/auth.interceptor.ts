@@ -7,10 +7,10 @@ import {
 } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Observable, catchError, defer, from, switchMap, throwError } from 'rxjs';
-import { authErrorDecision } from '../../errors/retry-policy';
-import { toAppError } from '../../errors/to-app-error';
-import { ApiUrl } from '../../http/api-url';
-import { TokenService } from '../token-service';
+import { TokenService } from '@core/auth/token-service';
+import { authErrorDecision } from '@core/errors/retry-policy';
+import { toAppError } from '@core/errors/to-app-error';
+import { ApiUrl } from '@core/http/api-url-service';
 
 /**
  * Goes after `retryInterceptor`, so a replay acquires a fresh token. A 401 retries once with a

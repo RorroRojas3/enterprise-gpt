@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
-import { PREFERENCE_KEYS, writePreference } from '@core/storage/local-preferences';
-import { PREFERS_DARK, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PREFERENCE_KEYS, writePreference } from '@shared/utils/storage/local-preferences';
+import { PREFERS_DARK, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { ThemeService } from './theme-service';
 
 function root(): HTMLElement {

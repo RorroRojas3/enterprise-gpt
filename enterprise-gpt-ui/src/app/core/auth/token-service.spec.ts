@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { InteractionRequiredAuthError, SilentRequest } from '@azure/msal-browser';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { provideTestAppConfig, testAppConfig } from '@testing/app-config';
 import {
   fakeAccount,
@@ -8,7 +9,6 @@ import {
   signedInMsal,
   signedOutMsal,
 } from '@testing/msal';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InteractiveSignInRequiredError, TokenService } from './token-service';
 
 const CORRELATION_ID = '00000000-0000-0000-0000-000000000000';

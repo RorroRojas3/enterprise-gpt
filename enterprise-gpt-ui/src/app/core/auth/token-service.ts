@@ -5,8 +5,8 @@ import {
   BrowserAuthErrorCodes,
   InteractionRequiredAuthError,
 } from '@azure/msal-browser';
-import { APP_CONFIG } from '../config/app-config.token';
-import { MSAL_INSTANCE } from './msal-instance';
+import { APP_CONFIG } from '@core/config/app-config.token';
+import { MSAL_INSTANCE } from './msal-instance.token';
 
 /** Raised when a token cannot be produced without leaving the page. */
 export class InteractiveSignInRequiredError extends Error {

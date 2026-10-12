@@ -1,5 +1,6 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
+import { tapResponse } from '@ngrx/operators';
 import {
   PartialStateUpdater,
   patchState,
@@ -19,7 +20,6 @@ import {
 } from '@ngrx/signals/entities';
 import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { tapResponse } from '@ngrx/operators';
 import {
   EMPTY,
   Observable,
@@ -32,12 +32,14 @@ import {
   takeUntil,
   tap,
 } from 'rxjs';
-import { PaginatedResponseDto } from '@domain/api/paginated-response';
-import { ProjectSummaryDto, toProjectSummary } from '@domain/api/project';
+import { PaginatedResponseDto } from '@shared/models/api/paginated-response.model';
+import { ProjectSummaryDto } from '@shared/models/api/project.model';
+import { PROJECT_LOAD_CEILING, PROJECT_PAGE_SIZE } from '@shared/utils/projects/project-load';
+import { toProjectSummary } from '@shared/utils/projects/project-summary';
 import { toAppError } from '@core/errors/to-app-error';
 import { projectEvents } from '@core/events/project-events';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
 import {
   OffsetPaginationState,
   setFirstPage,
@@ -51,7 +53,6 @@ import {
   withRequestStatus,
 } from '@core/state/with-request-status';
 import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
-import { PROJECT_LOAD_CEILING, PROJECT_PAGE_SIZE } from './project-load';
 
 interface ProjectLookupState {
   /** Whether {@link ProjectLookupStore.ensureLoaded} has released the drain; see `onInit`. */

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { FRAMEWORK_PROBLEM_FIXTURES, PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { AppError } from '@core/errors/app-error';
 import { buildAppError } from '@core/errors/build-app-error';
 import { AnyProblemDetails } from '@core/errors/problem-details';
+import { FRAMEWORK_PROBLEM_FIXTURES, PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { describeUploadRejection } from './upload-rejection';
 
 function errorFrom(problem: AnyProblemDetails): AppError {

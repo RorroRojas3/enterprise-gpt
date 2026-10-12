@@ -5,7 +5,7 @@ import {
   IPublicClientApplication,
   stubbedPublicClientApplication,
 } from '@azure/msal-browser';
-import { MSAL_INSTANCE } from '../app/core/auth/msal-instance';
+import { MSAL_INSTANCE } from '../app/core/auth/msal-instance.token';
 
 /**
  * Spreads msal-browser's `stubbedPublicClientApplication`, whose methods all reject, so an

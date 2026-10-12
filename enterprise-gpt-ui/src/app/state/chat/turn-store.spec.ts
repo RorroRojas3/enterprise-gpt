@@ -1,0 +1,1463 @@
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
+import { Dispatcher, Events } from '@ngrx/signals/events';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  CHAT_ROLE,
+  ConversationMessageDto,
+  MESSAGE_FEEDBACK_RATING,
+  MessageFeedbackRating,
+} from '@shared/models/api/conversation.model';
+import { TokenService } from '@core/auth/token-service';
+import { ConversationListStore } from '@core/conversations/conversation-list-store';
+import { sessionEvents } from '@core/events/session-events';
+import { TurnCompleted, turnEvents } from '@core/events/turn-events';
+import { ToastStore } from '@core/notifications/toast-store';
+import { STREAM_BATCH_WINDOW_MS } from '@services/conversations/conversation-stream-client';
+import { STREAM_FETCH } from '@services/conversations/stream-fetch.token';
+import { UploadStore } from '@state/documents/upload-store';
+import { PendingAttachmentsStore } from '@state/pending-attachments-store';
+import { TurnSelection, TurnSettingsStore } from '@state/turn-settings-store';
+import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { conversationFixture, messageFixture } from '@testing/conversations';
+import { FRAMEWORK_PROBLEM_FIXTURES, PROBLEM_FIXTURES } from '@testing/problem-fixtures';
+import {
+  StreamingResponseHandle,
+  assistantEvent,
+  frame,
+  fullTurnEvents,
+  problemResponse,
+  streamingResponse,
+} from '@testing/stream-frames';
+import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
+import { ConversationStore } from './conversation-store';
+import { TranscriptEntry, TurnStore } from './turn-store';
+
+const CONVERSATION_ID = '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b';
+const CREATE_URL = `${TEST_API_BASE_URL}/api/conversations`;
+const SELECTION: TurnSelection = { modelId: 'model-1', mcpServerIds: ['mcp-a'] };
+
+describe('TurnStore', () => {
+  let store: InstanceType<typeof TurnStore>;
+  let list: InstanceType<typeof ConversationListStore>;
+  let backend: HttpTestingController;
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let navigateByUrl: ReturnType<typeof vi.fn>;
+  let applyConversationSettings: ReturnType<typeof vi.fn>;
+  let getToken: ReturnType<typeof vi.fn>;
+  let selection: TurnSelection | null;
+  let uploadXhr: FakeUploadXhrQueue;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    uploadXhr = new FakeUploadXhrQueue();
+  });
+
+  afterEach(() => {
+    backend.verify();
+    vi.useRealTimers();
+  });
+
+  function setup(options: { selection?: TurnSelection | null } = {}): void {
+    selection = options.selection === undefined ? SELECTION : options.selection;
+    fetchMock = vi.fn();
+    navigateByUrl = vi.fn().mockResolvedValue(true);
+    applyConversationSettings = vi.fn();
+    getToken = vi.fn().mockResolvedValue('token-1');
+
+    TestBed.configureTestingModule({
+      providers: [
+        provideTestAppConfig(),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: STREAM_FETCH, useValue: fetchMock },
+        { provide: TokenService, useValue: { getToken } },
+        { provide: Router, useValue: { navigateByUrl } },
+        {
+          provide: TurnSettingsStore,
+          useValue: {
+            streamSelection: () => selection,
+            applyConversationSettings,
+          },
+        },
+        // Real, not faked, so the upload gate is exercised; with nothing attached it settles
+        // synchronously.
+        provideFakeUploadXhr(uploadXhr),
+        UploadStore,
+        ConversationStore,
+        TurnStore,
+      ],
+    });
+
+    store = TestBed.inject(TurnStore);
+    list = TestBed.inject(ConversationListStore);
+    backend = TestBed.inject(HttpTestingController);
+  }
+
+  function respondWithStream(handle: StreamingResponseHandle): void {
+    fetchMock.mockImplementation((_input: unknown, init?: RequestInit) => {
+      handle.abortOn(init?.signal);
+      return Promise.resolve(handle.response);
+    });
+  }
+
+  /** Advances fake time, draining the microtasks the read loop and buffer window await on. */
+  async function settle(ms = 0): Promise<void> {
+    await vi.advanceTimersByTimeAsync(ms);
+  }
+
+  function messagesUrl(id: string): string {
+    return `${TEST_API_BASE_URL}/api/conversations/${id}/messages`;
+  }
+
+  /** Opening a conversation always reads its transcript; an empty body means nothing said yet. */
+  function flushHistory(id: string, messages: readonly ConversationMessageDto[] = []): void {
+    backend.expectOne(messagesUrl(id)).flush({ id, name: 'Conversation', messages });
+  }
+
+  /** Binds an existing conversation and opens a live stream for it. */
+  async function startBoundTurn(handle = streamingResponse()): Promise<StreamingResponseHandle> {
+    store.bindRoute(CONVERSATION_ID);
+    flushHistory(CONVERSATION_ID);
+    respondWithStream(handle);
+    store.send('What is the weather?');
+    await settle();
+    return handle;
+  }
+
+  describe('the attachment gate', () => {
+    /** A file whose upload never settles, so the gate stays shut. */
+    function attachPending(): void {
+      const uploads = TestBed.inject(UploadStore);
+      uploads.bindConversation(CONVERSATION_ID);
+      uploads.attach([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
+    }
+
+    it('holds the stream until every attachment has settled', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      attachPending();
+      respondWithStream(streamingResponse());
+
+      store.send('What does this say?');
+      await settle();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(store.inFlight()).toBe(true);
+
+      TestBed.inject(UploadStore).remove(TestBed.inject(UploadStore).attachments()[0]!.id);
+      await settle();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('attaches files handed over from the project screen, and waits for them', async () => {
+      setup();
+      const handed = new File(['x'], 'notes.txt', { type: 'text/plain' });
+      TestBed.inject(PendingAttachmentsStore).hold(CONVERSATION_ID, [handed]);
+
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      respondWithStream(streamingResponse());
+      await settle();
+
+      const uploads = TestBed.inject(UploadStore);
+      expect(uploads.attachments()).toHaveLength(1);
+      expect(uploads.attachments()[0]?.fileName).toBe('notes.txt');
+
+      store.send('What does this say?');
+      await settle();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      uploads.remove(uploads.attachments()[0]!.id);
+      await settle();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves files held for a different conversation alone', async () => {
+      setup();
+      const other = '2b3c4d5e-6f70-4812-9a3b-4c5d6e7f8091';
+      TestBed.inject(PendingAttachmentsStore).hold(other, [
+        new File(['x'], 'notes.txt', { type: 'text/plain' }),
+      ]);
+
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      await settle();
+
+      expect(TestBed.inject(UploadStore).attachments()).toHaveLength(0);
+    });
+
+    it('costs a turn with no attachments nothing', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      respondWithStream(streamingResponse());
+
+      store.send('Plain prompt');
+      await settle();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets Stop out of the wait rather than stranding the turn in it', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      attachPending();
+      respondWithStream(streamingResponse());
+
+      store.send('What does this say?');
+      await settle();
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      store.stop();
+      await settle();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(store.inFlight()).toBe(false);
+      expect(store.phase()).toBe('idle');
+      expect(store.composerSeed()?.text).toBe('What does this say?');
+
+      // `exhaustMap`'s slot is free again, so a later send goes through.
+      TestBed.inject(UploadStore).remove(TestBed.inject(UploadStore).attachments()[0]!.id);
+      store.send('A fresh prompt');
+      await settle();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('settles cleanly when the composer stops the turn and cancels the uploads', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      attachPending();
+      respondWithStream(streamingResponse());
+
+      store.send('What does this say?');
+      await settle();
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      // The composer's order: cancelling first would release the gate before `stop()` ran.
+      store.stop();
+      TestBed.inject(UploadStore).cancelAll();
+      await settle();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(store.phase()).toBe('idle');
+      expect(store.composerSeed()?.text).toBe('What does this say?');
+      expect(TestBed.inject(UploadStore).attachments()).toHaveLength(0);
+    });
+
+    it('does not swallow the next send after a route change abandons the wait', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      attachPending();
+      respondWithStream(streamingResponse());
+
+      store.send('What does this say?');
+      await settle();
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      // Both bindings move together, as `Chat` drives them from the same input.
+      const other = '2b3c4d5e-6f70-4812-9a3b-4c5d6e7f8091';
+      store.bindRoute(other);
+      TestBed.inject(UploadStore).bindConversation(other);
+      flushHistory(other);
+      await settle();
+
+      store.send('A fresh prompt');
+      await settle();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`${TEST_API_BASE_URL}/api/conversations/${other}/stream`);
+    });
+  });
+
+  describe('send on the empty chat screen', () => {
+    it('creates the conversation, prepends it, replaces the URL, and streams against the new id', async () => {
+      setup();
+      const created = conversationFixture();
+      respondWithStream(streamingResponse());
+
+      store.send('First prompt');
+      expect(store.phase()).toBe('creating');
+      expect(store.pendingUserText()).toBe('First prompt');
+
+      const create = backend.expectOne(CREATE_URL);
+      expect(create.request.method).toBe('POST');
+      expect(create.request.body).toEqual({ projectId: null });
+      create.flush(created);
+      await settle();
+
+      expect(list.entities()[0]?.id).toBe(created.id);
+      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith(`/chat/${created.id}`, {
+        replaceUrl: true,
+      });
+      expect(store.boundConversationId()).toBe(created.id);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`${TEST_API_BASE_URL}/api/conversations/${created.id}/stream`);
+      expect(JSON.parse(init.body as string)).toEqual({
+        prompt: 'First prompt',
+        modelId: 'model-1',
+        mcpServers: [{ id: 'mcp-a' }],
+      });
+    });
+
+    it('does not reset the live turn when the route input catches up with the created id', async () => {
+      setup();
+      const created = conversationFixture();
+      const handle = streamingResponse();
+      respondWithStream(handle);
+
+      store.send('First prompt');
+      backend.expectOne(CREATE_URL).flush(created);
+      await settle();
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Hello' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      // withComponentInputBinding delivers the id the replaceUrl navigation set.
+      store.bindRoute(created.id);
+
+      expect(store.phase()).toBe('streaming');
+      expect(store.snapshot().text).toBe('Hello');
+    });
+
+    it('keeps the prompt when creation fails, as a composer seed beside the notice', async () => {
+      setup();
+      respondWithStream(streamingResponse());
+
+      store.send('First prompt');
+      backend
+        .expectOne(CREATE_URL)
+        .flush({ title: 'Boom' }, { status: 500, statusText: 'Internal Server Error' });
+      await settle();
+
+      expect(store.phase()).toBe('idle');
+      expect(store.pendingUserText()).toBeNull();
+      expect(store.composerSeed()?.text).toBe('First prompt');
+      expect(store.turnError()?.retry).toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      // The failure is contained: the next send still works.
+      store.send('Second try');
+      backend.expectOne(CREATE_URL).flush(conversationFixture());
+      await settle();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('cancels the create when the route moves before the 201 lands', async () => {
+      setup();
+      const other = conversationFixture();
+      store.send('First prompt');
+      const create = backend.expectOne(CREATE_URL);
+
+      // The user opened another conversation from the sidebar mid-create.
+      store.bindRoute(other.id);
+      flushHistory(other.id);
+      await settle();
+
+      expect(create.cancelled).toBe(true);
+      expect(store.phase()).toBe('idle');
+      expect(store.boundConversationId()).toBe(other.id);
+      expect(navigateByUrl).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      // The next send targets the newly opened conversation directly.
+      respondWithStream(streamingResponse());
+      store.send('Again');
+      await settle();
+      backend.expectNone(CREATE_URL);
+      const [url] = fetchMock.mock.calls[0] as [string];
+      expect(url).toBe(`${TEST_API_BASE_URL}/api/conversations/${other.id}/stream`);
+    });
+
+    it('settles like Stop when a same-URL route event lands mid-create', async () => {
+      setup();
+      store.send('First prompt');
+      const create = backend.expectOne(CREATE_URL);
+
+      // "New conversation" delivering the bare route again while the create flies.
+      store.bindRoute(undefined);
+      await settle();
+
+      expect(create.cancelled).toBe(true);
+      expect(store.phase()).toBe('idle');
+      expect(store.stoppedTurn()).toBeNull();
+      expect(store.composerSeed()?.text).toBe('First prompt');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('cancels the create and resets when the user signs out mid-create', async () => {
+      setup();
+      store.send('First prompt');
+
+      const create = backend.expectOne(CREATE_URL);
+      TestBed.inject(Dispatcher).dispatch(sessionEvents.signedOut());
+      await settle();
+
+      expect(create.cancelled).toBe(true);
+      expect(store.phase()).toBe('idle');
+      expect(store.pendingUserText()).toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('send on an open conversation', () => {
+    it('skips the create and streams against the bound id', async () => {
+      setup();
+      await startBoundTurn();
+
+      backend.expectNone(CREATE_URL);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url] = fetchMock.mock.calls[0] as [string];
+      expect(url).toBe(`${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/stream`);
+    });
+
+    it('ignores a second send while a turn is in flight', async () => {
+      setup();
+      await startBoundTurn();
+
+      store.send('Another prompt');
+      await settle();
+
+      backend.expectNone(CREATE_URL);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses to send with no resolvable model or an empty prompt', async () => {
+      setup({ selection: null });
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+
+      store.send('A prompt');
+      await settle();
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      selection = SELECTION;
+      store.send('   ');
+      await settle();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(store.phase()).toBe('idle');
+    });
+  });
+
+  describe('watching the answer arrive', () => {
+    it('accumulates streamed text on the live snapshot without touching the transcript', async () => {
+      setup();
+      const handle = await startBoundTurn();
+
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Hello, ' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'world.' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      expect(store.phase()).toBe('streaming');
+      expect(store.snapshot().text).toBe('Hello, world.');
+      expect(store.entries()).toEqual([]);
+      expect(store.pendingUserText()).toBe('What is the weather?');
+    });
+
+    it('appends the user and assistant entries once on Finished and clears the buffer', async () => {
+      setup();
+      const handle = await startBoundTurn();
+
+      handle.enqueue(fullTurnEvents().map(frame).join(''));
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      const entries = store.entries();
+      expect(entries.map((entry) => entry.kind)).toEqual(['user', 'assistant']);
+      expect(entries[0]).toMatchObject({ kind: 'user', text: 'What is the weather?' });
+      const answer = entries[1] as Extract<TranscriptEntry, { kind: 'assistant' }>;
+      expect(answer.snapshot.text).toBe('Hello, world.');
+      expect(answer.snapshot.phase).toBe('Completed');
+      expect(answer.timeline.nodes.length).toBeGreaterThan(0);
+
+      expect(store.phase()).toBe('idle');
+      expect(store.pendingUserText()).toBeNull();
+      expect(store.snapshot().text).toBeUndefined();
+      expect(store.timeline().nodes).toEqual([]);
+    });
+
+    it('settles a body that ended without Finished as a cut-off entry carrying its retry', async () => {
+      setup();
+      const handle = await startBoundTurn();
+
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Partial ans' })));
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      const entries = store.entries();
+      expect(entries.map((entry) => entry.kind)).toEqual(['user', 'cutOff']);
+      const cutOff = entries[1] as Extract<TranscriptEntry, { kind: 'cutOff' }>;
+      expect(cutOff.snapshot.text).toBe('Partial ans');
+      expect(cutOff.snapshot.phase).toBe('Running');
+      expect(cutOff.retry).toEqual({ prompt: 'What is the weather?', selection: SELECTION });
+      expect(store.phase()).toBe('idle');
+    });
+
+    it('keeps the thinking indicator through a Status-only batch and clears it on content', async () => {
+      setup();
+      const handle = await startBoundTurn();
+      expect(store.showThinking()).toBe(true);
+
+      handle.enqueue(frame(assistantEvent('Status')));
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(store.showThinking()).toBe(true);
+      expect(store.phase()).toBe('awaitingFirst');
+
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'H' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(store.showThinking()).toBe(false);
+      expect(store.phase()).toBe('streaming');
+    });
+
+    it('re-sends a cut-off turn with its own prompt and selection', async () => {
+      setup();
+      const handle = await startBoundTurn();
+      handle.close();
+      await settle();
+      const cutOff = store.entries()[1] as Extract<TranscriptEntry, { kind: 'cutOff' }>;
+
+      respondWithStream(streamingResponse());
+      store.retryTurn(cutOff.retry);
+      await settle();
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const [, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+      expect(JSON.parse(init.body as string)).toMatchObject({ prompt: 'What is the weather?' });
+    });
+  });
+
+  describe('stopping a turn', () => {
+    it('aborts the fetch, keeps the flushed partial text on the detached card, and drops the bubble', async () => {
+      setup();
+      const handle = await startBoundTurn();
+
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Partial ans' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      store.stop();
+      // The send control returns on this synchronous patch, with no network wait.
+      expect(store.inFlight()).toBe(true);
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      expect(store.phase()).toBe('idle');
+      expect(store.stoppedTurn()).toEqual({
+        text: 'Partial ans',
+        prompt: 'What is the weather?',
+        selection: SELECTION,
+      });
+      expect(store.pendingUserText()).toBeNull();
+      expect(store.entries()).toEqual([]);
+    });
+
+    it('restores the prompt and the turn settings from the stopped card, without sending', async () => {
+      setup();
+      const handle = await startBoundTurn();
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Partial' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+      store.stop();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      store.restoreStoppedToComposer();
+
+      expect(applyConversationSettings).toHaveBeenCalledExactlyOnceWith({
+        modelId: SELECTION.modelId,
+        mcpServerIds: SELECTION.mcpServerIds,
+      });
+      expect(store.composerSeed()?.text).toBe('What is the weather?');
+      expect(store.stoppedTurn()).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('honours a Finished that raced the stop: the answer is saved, so it is transcribed', async () => {
+      setup();
+      const handle = await startBoundTurn();
+
+      handle.enqueue(fullTurnEvents().map(frame).join(''));
+      handle.close();
+      store.stop();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      expect(store.stoppedTurn()).toBeNull();
+      expect(store.entries().map((entry) => entry.kind)).toEqual(['user', 'assistant']);
+    });
+
+    it('cancels the create when stopped before it returns, reseeding the prompt with no card', async () => {
+      setup();
+      store.send('First prompt');
+      const create = backend.expectOne(CREATE_URL);
+
+      store.stop();
+      await settle();
+
+      expect(create.cancelled).toBe(true);
+      expect(store.phase()).toBe('idle');
+      expect(store.stoppedTurn()).toBeNull();
+      expect(store.composerSeed()?.text).toBe('First prompt');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('discards the abort that follows a sign-out instead of resurrecting a stopped card', async () => {
+      setup();
+      const handle = await startBoundTurn();
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Partial' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      TestBed.inject(Dispatcher).dispatch(sessionEvents.signedOut());
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      expect(store.phase()).toBe('idle');
+      expect(store.stoppedTurn()).toBeNull();
+      expect(store.entries()).toEqual([]);
+      expect(store.snapshot().text).toBeUndefined();
+    });
+
+    it('clears the stopped card when the route moves to another conversation', async () => {
+      setup();
+      const handle = await startBoundTurn();
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Partial' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+      store.stop();
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(store.stoppedTurn()).not.toBeNull();
+
+      const other = conversationFixture();
+      store.bindRoute(other.id);
+      flushHistory(other.id);
+
+      expect(store.stoppedTurn()).toBeNull();
+      expect(store.entries()).toEqual([]);
+    });
+  });
+
+  describe('pre-stream failures', () => {
+    async function failWith(problem: object, status: number): Promise<void> {
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      fetchMock.mockResolvedValue(problemResponse(problem, status).response);
+      store.send('What is the weather?');
+      await settle();
+    }
+
+    it('surfaces a 502 as the tool-server-unavailable notice naming the server', async () => {
+      setup();
+      await failWith(PROBLEM_FIXTURES.mcpServerUnavailable, 502);
+
+      const notice = store.turnError();
+      expect(notice?.error.kind).toBe('mcp-server-unavailable');
+      expect(notice?.error.kind === 'mcp-server-unavailable' && notice.error.serverName).toBe(
+        'Weather',
+      );
+      expect(notice?.retry).toEqual({ prompt: 'What is the weather?', selection: SELECTION });
+      expect(store.pendingUserText()).toBeNull();
+      expect(store.phase()).toBe('idle');
+    });
+
+    it('surfaces a 409 as the conversation-busy notice', async () => {
+      setup();
+      await failWith(PROBLEM_FIXTURES.conversationBusy, 409);
+
+      expect(store.turnError()?.error.kind).toBe('conversation-busy');
+      expect(store.entries()).toEqual([]);
+      // Retry is the user's: another tab holds the lock for an unknown time.
+      expect(store.turnError()?.retry).not.toBeNull();
+    });
+
+    it('schedules no automatic retry of a 409 at any interval', async () => {
+      setup();
+      await failWith(PROBLEM_FIXTURES.conversationBusy, 409);
+
+      await settle(60_000);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(store.phase()).toBe('idle');
+    });
+
+    it('surfaces a 403 without a token refresh', async () => {
+      setup();
+      await failWith(PROBLEM_FIXTURES.forbidden, 403);
+
+      const notice = store.turnError();
+      expect(notice?.error.kind).toBe('forbidden');
+      // One acquisition, the request's own: a 403 never takes the 401 refresh-and-replay path.
+      expect(getToken).toHaveBeenCalledExactlyOnceWith(undefined);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('clears the notice when the user retries and the turn starts normally', async () => {
+      setup();
+      await failWith(PROBLEM_FIXTURES.conversationBusy, 409);
+      const retry = store.turnError()?.retry;
+      expect(retry).not.toBeNull();
+
+      respondWithStream(streamingResponse());
+      store.retryTurn(retry!);
+      await settle();
+
+      expect(store.turnError()).toBeNull();
+      expect(store.phase()).toBe('awaitingFirst');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('announcing a completed turn', () => {
+    function completions(): TurnCompleted[] {
+      const seen: TurnCompleted[] = [];
+      TestBed.inject(Events)
+        .on(turnEvents.completed)
+        .subscribe(({ payload }) => seen.push(payload));
+      return seen;
+    }
+
+    async function finishTurn(handle: StreamingResponseHandle): Promise<void> {
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Sunny.' })));
+      handle.enqueue(frame(assistantEvent('Finished', {})));
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+    }
+
+    it('reports the first completed turn of a conversation as the first', async () => {
+      setup();
+      const seen = completions();
+
+      await finishTurn(await startBoundTurn());
+
+      expect(seen).toEqual([{ conversationId: CONVERSATION_ID, wasFirstTurn: true }]);
+    });
+
+    it('reports a later turn as not the first, so nothing refetches a settled name', async () => {
+      setup();
+      await finishTurn(await startBoundTurn());
+      const seen = completions();
+
+      const second = streamingResponse();
+      respondWithStream(second);
+      store.send('And tomorrow?');
+      await settle();
+      await finishTurn(second);
+
+      expect(seen).toEqual([{ conversationId: CONVERSATION_ID, wasFirstTurn: false }]);
+    });
+
+    it('reports a conversation that already holds stored messages as not the first', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, [
+        messageFixture({ text: 'What is the weather?', role: CHAT_ROLE.user }),
+        messageFixture({ text: 'It was sunny.', role: CHAT_ROLE.assistant }),
+      ]);
+      const seen = completions();
+
+      const handle = streamingResponse();
+      respondWithStream(handle);
+      store.send('And tomorrow?');
+      await settle();
+      await finishTurn(handle);
+
+      expect(seen[0]?.wasFirstTurn).toBe(false);
+    });
+
+    it('claims nothing about being first when the stored transcript could not be read', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      backend
+        .expectOne(messagesUrl(CONVERSATION_ID))
+        .flush({ title: 'Boom' }, { status: 500, statusText: 'Internal Server Error' });
+      const seen = completions();
+
+      const handle = streamingResponse();
+      respondWithStream(handle);
+      store.send('And tomorrow?');
+      await settle();
+      await finishTurn(handle);
+
+      // Unread, not new: otherwise a long-named conversation would refetch on every turn.
+      expect(seen[0]?.wasFirstTurn).toBe(false);
+    });
+
+    it('stays silent for a turn that was stopped or cut off', async () => {
+      setup();
+      const seen = completions();
+
+      const cutOff = await startBoundTurn();
+      cutOff.enqueue(frame(assistantEvent('TextDelta', { text: 'Half an ans' })));
+      cutOff.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(store.entries().at(-1)?.kind).toBe('cutOff');
+
+      const stopped = streamingResponse();
+      respondWithStream(stopped);
+      store.send('Again');
+      await settle();
+      store.stop();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      // Neither turn left the server anything to name the conversation after.
+      expect(seen).toEqual([]);
+    });
+
+    it('announces the retry that completes, not the attempt that was abandoned', async () => {
+      setup();
+      const seen = completions();
+
+      const cutOff = await startBoundTurn();
+      cutOff.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(seen).toEqual([]);
+
+      const retried = streamingResponse();
+      respondWithStream(retried);
+      store.retryTurn({ prompt: 'What is the weather?', selection: SELECTION });
+      await settle();
+      await finishTurn(retried);
+
+      // The abandoned attempt left a `cutOff` entry, not an `assistant` one.
+      expect(seen).toEqual([{ conversationId: CONVERSATION_ID, wasFirstTurn: true }]);
+    });
+  });
+
+  describe('files the assistant produced', () => {
+    const SPREADSHEET = {
+      id: '9c8b7a65-4321-4fed-8cba-0987654321fe',
+      name: 'regional-summary.xlsx',
+      extension: '.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      size: 2048,
+    } as const;
+
+    it('reads the files a live turn produced off the Finished frame', async () => {
+      setup();
+      const handle = await startBoundTurn();
+
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Here it is.' })));
+      handle.enqueue(
+        frame(
+          assistantEvent('Finished', {
+            metadata: { generatedAttachments: JSON.stringify([SPREADSHEET]) },
+          }),
+        ),
+      );
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      const answer = store.entries()[1] as Extract<TranscriptEntry, { kind: 'assistant' }>;
+      expect(answer.attachments).toEqual([SPREADSHEET]);
+    });
+
+    it('leaves a turn that produced nothing with no attachments', async () => {
+      setup();
+      const handle = await startBoundTurn();
+
+      handle.enqueue(fullTurnEvents().map(frame).join(''));
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      const answer = store.entries()[1] as Extract<TranscriptEntry, { kind: 'assistant' }>;
+      expect(answer.attachments).toEqual([]);
+    });
+
+    it('ignores a metadata payload it cannot read rather than breaking the transcript', async () => {
+      setup();
+      const handle = await startBoundTurn();
+
+      handle.enqueue(
+        frame(assistantEvent('Finished', { metadata: { generatedAttachments: 'not json' } })),
+      );
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      const answer = store.entries()[1] as Extract<TranscriptEntry, { kind: 'assistant' }>;
+      expect(answer.attachments).toEqual([]);
+    });
+
+    it('drops an entry it cannot read rather than letting it reach a chip', async () => {
+      setup();
+      const handle = await startBoundTurn();
+
+      handle.enqueue(
+        frame(
+          assistantEvent('Finished', {
+            metadata: { generatedAttachments: JSON.stringify([{ id: 1 }, SPREADSHEET]) },
+          }),
+        ),
+      );
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      const answer = store.entries()[1] as Extract<TranscriptEntry, { kind: 'assistant' }>;
+      expect(answer.attachments).toEqual([SPREADSHEET]);
+    });
+
+    it('replays a generated file from the stored transcript', () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, [
+        messageFixture({ text: 'Make me a sheet', role: CHAT_ROLE.user }),
+        messageFixture({ text: 'Done.', role: CHAT_ROLE.assistant, attachments: [SPREADSHEET] }),
+      ]);
+
+      const answer = store.entries()[1] as Extract<TranscriptEntry, { kind: 'assistant' }>;
+      expect(answer.attachments).toEqual([SPREADSHEET]);
+    });
+
+    it('replays a message that carried no attachments field at all', () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, [
+        messageFixture({ text: 'Older answer', role: CHAT_ROLE.assistant, attachments: undefined }),
+      ]);
+
+      const answer = store.entries()[0] as Extract<TranscriptEntry, { kind: 'assistant' }>;
+      expect(answer.attachments).toEqual([]);
+    });
+  });
+
+  describe('replaying the stored transcript', () => {
+    const HISTORY: readonly ConversationMessageDto[] = [
+      messageFixture({ text: 'What is the weather?', role: CHAT_ROLE.user }),
+      messageFixture({ text: 'It is sunny.', role: CHAT_ROLE.assistant }),
+    ];
+
+    it('renders the stored messages as transcript entries when a conversation is opened', () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      expect(store.historyPending()).toBe(true);
+      expect(store.hasContent()).toBe(true);
+
+      flushHistory(CONVERSATION_ID, HISTORY);
+
+      expect(store.historyPending()).toBe(false);
+      const entries = store.entries();
+      expect(entries).toHaveLength(2);
+      expect(entries[0]).toMatchObject({ kind: 'user', text: 'What is the weather?' });
+      expect(entries[1]?.kind).toBe('assistant');
+      // Replayed through the live fold, so the text sits where the transcript reads it.
+      expect(entries[1]?.kind === 'assistant' && entries[1].snapshot.text).toBe('It is sunny.');
+    });
+
+    it('skips roles the transcript does not render', () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, [
+        messageFixture({ text: 'You are a helpful assistant.', role: CHAT_ROLE.system }),
+        messageFixture({ text: 'Ask the weather tool.', role: CHAT_ROLE.tool }),
+        messageFixture({ text: 'It is sunny.', role: CHAT_ROLE.assistant }),
+      ]);
+
+      expect(store.entries()).toHaveLength(1);
+      expect(store.entries()[0]?.kind).toBe('assistant');
+    });
+
+    it('replaces a longer local history with a shorter refetch rather than merging', () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, HISTORY);
+      expect(store.entries()).toHaveLength(2);
+
+      // An aborted turn leaves the server's transcript shorter than the screen's.
+      store.retryHistory();
+      flushHistory(CONVERSATION_ID, HISTORY.slice(0, 1));
+
+      expect(store.entries()).toHaveLength(1);
+      expect(store.entries()[0]).toMatchObject({ kind: 'user' });
+    });
+
+    it('keeps a turn taken during the read, and orders it after the replayed history', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      const pending = backend.expectOne(messagesUrl(CONVERSATION_ID));
+
+      const handle = streamingResponse();
+      respondWithStream(handle);
+      store.send('And tomorrow?');
+      await settle();
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Rain.' })));
+      handle.enqueue(frame(assistantEvent('Finished', {})));
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(store.entries()).toHaveLength(2);
+
+      pending.flush({ id: CONVERSATION_ID, name: 'Conversation', messages: HISTORY });
+
+      const kinds = store.entries().map((entry) => entry.kind);
+      expect(kinds).toEqual(['user', 'assistant', 'user', 'assistant']);
+      expect(store.entries()[2]).toMatchObject({ text: 'And tomorrow?' });
+      expect(
+        store.entries().every((entry, index) => (index < 2 ? entry.id < 0 : entry.id > 0)),
+      ).toBe(true);
+    });
+
+    it('cancels the read for a conversation the user leaves before it answers', () => {
+      setup();
+      const other = conversationFixture();
+      store.bindRoute(CONVERSATION_ID);
+      const stale = backend.expectOne(messagesUrl(CONVERSATION_ID));
+
+      store.bindRoute(other.id);
+
+      // Cancelled, not merely ignored on arrival.
+      expect(stale.cancelled).toBe(true);
+      flushHistory(other.id, HISTORY.slice(0, 1));
+      expect(store.entries()).toHaveLength(1);
+    });
+
+    it('surfaces a failed read without disabling the turn surface', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      backend
+        .expectOne(messagesUrl(CONVERSATION_ID))
+        .flush({ title: 'Boom' }, { status: 500, statusText: 'Internal Server Error' });
+
+      expect(store.historyPending()).toBe(false);
+      expect(store.historyError()?.status).toBe(500);
+
+      respondWithStream(streamingResponse());
+      store.send('And tomorrow?');
+      await settle();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      store.retryHistory();
+      flushHistory(CONVERSATION_ID, HISTORY);
+      expect(store.historyError()).toBeNull();
+    });
+
+    it('does not render a turn twice when a retry brings back the turn itself', async () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      backend
+        .expectOne(messagesUrl(CONVERSATION_ID))
+        .flush({ title: 'Boom' }, { status: 500, statusText: 'Internal Server Error' });
+
+      // The error panel keeps the composer live, so a turn can settle meanwhile.
+      const handle = streamingResponse();
+      respondWithStream(handle);
+      store.send('And tomorrow?');
+      await settle();
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Rain.' })));
+      handle.enqueue(frame(assistantEvent('Finished', {})));
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(store.entries()).toHaveLength(2);
+
+      // The server now holds that exchange too.
+      store.retryHistory();
+      flushHistory(CONVERSATION_ID, [
+        ...HISTORY,
+        messageFixture({ text: 'And tomorrow?', role: CHAT_ROLE.user }),
+        messageFixture({ text: 'Rain.', role: CHAT_ROLE.assistant }),
+      ]);
+
+      expect(store.entries()).toHaveLength(4);
+      expect(store.entries().map((entry) => entry.id > 0)).toEqual([false, false, false, false]);
+    });
+
+    it('reads nothing back on the empty chat route', () => {
+      setup();
+      store.bindRoute(undefined);
+
+      backend.expectNone(messagesUrl(CONVERSATION_ID));
+      expect(store.historyPending()).toBe(false);
+      expect(store.hasContent()).toBe(false);
+    });
+  });
+
+  describe('what a screen reader is told', () => {
+    it('reports the folded Finished before the body has closed', async () => {
+      setup();
+      const handle = await startBoundTurn();
+
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Hello.' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(store.answerComplete()).toBe(false);
+
+      // The frame only: the body stays open, so `inFlight` is still true.
+      handle.enqueue(frame(assistantEvent('Finished')));
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      expect(store.answerComplete()).toBe(true);
+      expect(store.inFlight()).toBe(true);
+      expect(store.phase()).toBe('streaming');
+
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(store.inFlight()).toBe(false);
+    });
+
+    it('says nothing at rest, and announces the answer as a backstop when it lands', async () => {
+      setup();
+      expect(store.turnStatus()).toBe('');
+
+      const handle = await startBoundTurn();
+      expect(store.turnStatus()).toBe('Waiting for a response');
+
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Clear skies.' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(store.turnStatus()).toBe('Writing the answer');
+
+      handle.enqueue(frame(assistantEvent('Finished')));
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      expect(store.turnStatus()).toBe('Answer ready');
+
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+      expect(store.turnStatus()).toBe('');
+    });
+
+    it('names the create round trip on a first prompt', async () => {
+      setup();
+      respondWithStream(streamingResponse());
+
+      store.send('What is the weather?');
+
+      expect(store.phase()).toBe('creating');
+      expect(store.turnStatus()).toBe('Starting the conversation');
+
+      backend.expectOne(CREATE_URL).flush(conversationFixture());
+      await settle();
+
+      expect(store.turnStatus()).toBe('Waiting for a response');
+    });
+
+    it('changes on a status change and holds still across a run of text deltas', async () => {
+      setup();
+      const handle = await startBoundTurn();
+      const spoken: string[] = [store.turnStatus()];
+
+      function record(): void {
+        const next = store.turnStatus();
+        if (next !== spoken[spoken.length - 1]) {
+          spoken.push(next);
+        }
+      }
+
+      handle.enqueue(frame(assistantEvent('ActivityStarted', { scopeId: 'mcp-1' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+      record();
+
+      handle.enqueue(frame(assistantEvent('ActivityCompleted', { scopeId: 'mcp-1' })));
+      await settle(STREAM_BATCH_WINDOW_MS);
+      record();
+
+      for (const chunk of ['The ', 'forecast ', 'is ', 'clear.']) {
+        handle.enqueue(frame(assistantEvent('TextDelta', { text: chunk })));
+        await settle(STREAM_BATCH_WINDOW_MS);
+        record();
+      }
+
+      expect(spoken).toEqual([
+        'Waiting for a response',
+        'Get forecast is running',
+        'Get forecast completed',
+        'Writing the answer',
+      ]);
+    });
+  });
+
+  describe('composer seeding', () => {
+    it('re-seeds the same text as a fresh object after the composer consumes it', () => {
+      setup();
+
+      store.seedComposer('Summarize a document');
+      const first = store.composerSeed();
+      store.consumeComposerSeed();
+      expect(store.composerSeed()).toBeNull();
+
+      store.seedComposer('Summarize a document');
+      const second = store.composerSeed();
+
+      expect(second).toEqual({ text: 'Summarize a document' });
+      expect(second).not.toBe(first);
+    });
+  });
+
+  describe('rating an answer', () => {
+    const MESSAGE_ID = 'aaaaaaaa-1111-4222-8333-444444444444';
+    const SECOND_MESSAGE_ID = 'bbbbbbbb-1111-4222-8333-444444444444';
+    const OTHER_CONVERSATION_ID = 'cccccccc-1111-4222-8333-444444444444';
+
+    function feedbackUrl(messageId = MESSAGE_ID): string {
+      return `${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages/${messageId}/feedback`;
+    }
+
+    /** Opens a conversation holding one rateable answer, optionally already rated. */
+    function openRatedConversation(rating: MessageFeedbackRating | null = null): void {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, [
+        messageFixture({ text: 'What is the weather?', role: CHAT_ROLE.user }),
+        messageFixture({
+          id: MESSAGE_ID,
+          text: 'It is sunny.',
+          role: CHAT_ROLE.assistant,
+          feedback: rating === null ? null : { rating, dateModified: '2026-08-21T09:30:00+00:00' },
+        }),
+      ]);
+    }
+
+    function assistantEntry(): { readonly rating: MessageFeedbackRating | null } {
+      const entry = store.entries().find((candidate) => candidate.kind === 'assistant');
+      if (entry?.kind !== 'assistant') {
+        throw new Error('the transcript holds no assistant entry');
+      }
+      return entry;
+    }
+
+    /** Settles a live turn, optionally claiming a persisted message id on its `Finished`. */
+    async function finishTurn(
+      handle: StreamingResponseHandle,
+      assistantMessageId?: string,
+    ): Promise<void> {
+      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Sunny.' })));
+      handle.enqueue(
+        frame(
+          assistantEvent(
+            'Finished',
+            assistantMessageId === undefined ? {} : { metadata: { assistantMessageId } },
+          ),
+        ),
+      );
+      handle.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+    }
+
+    it('hydrates a stored rating onto the replayed entry', () => {
+      openRatedConversation(MESSAGE_FEEDBACK_RATING.up);
+
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.up);
+    });
+
+    it('leaves an unrated answer unrated, and still rateable', () => {
+      openRatedConversation();
+
+      expect(assistantEntry().rating).toBeNull();
+    });
+
+    it('patches optimistically and sets the rating the caller asked for', () => {
+      openRatedConversation();
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.up);
+
+      // Optimistic: set before the request is answered.
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.up);
+      const request = backend.expectOne(feedbackUrl());
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toEqual({ rating: MESSAGE_FEEDBACK_RATING.up });
+      expect(store.isRowPending(MESSAGE_ID)).toBe(true);
+
+      request.flush(null, { status: 204, statusText: 'No Content' });
+
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.up);
+      expect(store.isRowPending(MESSAGE_ID)).toBe(false);
+    });
+
+    it('sends the opposite verdict as a set when the other thumb is pressed', () => {
+      openRatedConversation(MESSAGE_FEEDBACK_RATING.up);
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.down);
+
+      const request = backend.expectOne(feedbackUrl());
+      expect(request.request.body).toEqual({ rating: MESSAGE_FEEDBACK_RATING.down });
+      request.flush(null, { status: 204, statusText: 'No Content' });
+
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.down);
+    });
+
+    it('withdraws the rating when the selected thumb is pressed again', () => {
+      openRatedConversation(MESSAGE_FEEDBACK_RATING.down);
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.down);
+
+      const request = backend.expectOne(feedbackUrl());
+      expect(request.request.body).toEqual({ rating: null });
+      expect(assistantEntry().rating).toBeNull();
+      request.flush(null, { status: 204, statusText: 'No Content' });
+
+      expect(assistantEntry().rating).toBeNull();
+    });
+
+    it('reverts to what was stored before and raises one toast when the request fails', () => {
+      openRatedConversation(MESSAGE_FEEDBACK_RATING.up);
+      const toasts = TestBed.inject(ToastStore);
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.down);
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.down);
+
+      backend
+        .expectOne(feedbackUrl())
+        .flush(FRAMEWORK_PROBLEM_FIXTURES.serverError, { status: 500, statusText: 'Server Error' });
+
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.up);
+      expect(toasts.assertiveToasts()).toHaveLength(1);
+      expect(store.isRowPending(MESSAGE_ID)).toBe(false);
+    });
+
+    it('refuses a second press while the first request is in flight', () => {
+      openRatedConversation();
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.up);
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.down);
+
+      backend.expectOne(feedbackUrl()).flush(null, { status: 204, statusText: 'No Content' });
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.up);
+    });
+
+    it('ignores a message id the open transcript does not hold', () => {
+      openRatedConversation();
+
+      store.rateMessage('99999999-9999-4999-8999-999999999999', MESSAGE_FEEDBACK_RATING.up);
+
+      backend.expectNone(() => true);
+    });
+
+    it('takes the message id off the Finished frame, so a fresh turn is rateable', async () => {
+      setup();
+      const handle = await startBoundTurn();
+      await finishTurn(handle, MESSAGE_ID);
+
+      expect(assistantEntry().rating).toBeNull();
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.up);
+      backend.expectOne(feedbackUrl()).flush(null, { status: 204, statusText: 'No Content' });
+
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.up);
+    });
+
+    it('claims no message id when Finished carries no metadata', async () => {
+      setup();
+      const handle = await startBoundTurn();
+      await finishTurn(handle);
+
+      const entry = store.entries().find((candidate) => candidate.kind === 'assistant');
+      expect(entry?.kind === 'assistant' ? entry.messageId : 'unset').toBeNull();
+    });
+
+    it('cancels a rating in flight when the conversation changes', () => {
+      openRatedConversation();
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.up);
+      const request = backend.expectOne(feedbackUrl());
+
+      store.bindRoute(OTHER_CONVERSATION_ID);
+      backend
+        .expectOne(`${TEST_API_BASE_URL}/api/conversations/${OTHER_CONVERSATION_ID}/messages`)
+        .flush({ id: OTHER_CONVERSATION_ID, name: 'Elsewhere', messages: [] });
+
+      expect(request.cancelled).toBe(true);
+      expect(store.isRowPending(MESSAGE_ID)).toBe(false);
+    });
+
+    it('cancels a rating in flight when the user signs out', () => {
+      openRatedConversation();
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.up);
+      const request = backend.expectOne(feedbackUrl());
+
+      TestBed.inject(Dispatcher).dispatch(sessionEvents.signedOut());
+
+      expect(request.cancelled).toBe(true);
+      expect(store.pendingIds().size).toBe(0);
+      expect(store.entries()).toEqual([]);
+    });
+
+    it('rates two answers concurrently, each resolving on its own request', () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, [
+        messageFixture({ id: MESSAGE_ID, text: 'First.', role: CHAT_ROLE.assistant }),
+        messageFixture({ id: SECOND_MESSAGE_ID, text: 'Second.', role: CHAT_ROLE.assistant }),
+      ]);
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.up);
+      store.rateMessage(SECOND_MESSAGE_ID, MESSAGE_FEEDBACK_RATING.down);
+
+      const first = backend.expectOne(feedbackUrl());
+      const second = backend.expectOne(feedbackUrl(SECOND_MESSAGE_ID));
+      expect(store.isRowPending(MESSAGE_ID)).toBe(true);
+      expect(store.isRowPending(SECOND_MESSAGE_ID)).toBe(true);
+
+      // Answered out of order, which is what a merge has to survive.
+      second.flush(null, { status: 204, statusText: 'No Content' });
+      expect(store.isRowPending(MESSAGE_ID)).toBe(true);
+      expect(store.isRowPending(SECOND_MESSAGE_ID)).toBe(false);
+
+      first.flush(null, { status: 204, statusText: 'No Content' });
+
+      const ratings = store
+        .entries()
+        .filter((entry) => entry.kind === 'assistant')
+        .map((entry) => (entry.kind === 'assistant' ? entry.rating : null));
+      expect(ratings).toEqual([MESSAGE_FEEDBACK_RATING.up, MESSAGE_FEEDBACK_RATING.down]);
+    });
+
+    /** The reload rebuilds from a server that does not yet report the new rating. */
+    it('re-asserts the rating over a history reload that landed mid-request', () => {
+      openRatedConversation();
+
+      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.up);
+      const request = backend.expectOne(feedbackUrl());
+
+      store.retryHistory();
+      flushHistory(CONVERSATION_ID, [
+        messageFixture({ text: 'What is the weather?', role: CHAT_ROLE.user }),
+        messageFixture({ id: MESSAGE_ID, text: 'It is sunny.', role: CHAT_ROLE.assistant }),
+      ]);
+      expect(assistantEntry().rating).toBeNull();
+
+      request.flush(null, { status: 204, statusText: 'No Content' });
+
+      expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.up);
+    });
+  });
+
+  describe('the download target', () => {
+    it('is null before a conversation is bound', () => {
+      setup();
+
+      expect(store.exportTarget()).toBeNull();
+    });
+
+    it('is null for a conversation whose transcript is empty', () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+
+      expect(store.hasContent()).toBe(false);
+      expect(store.exportTarget()).toBeNull();
+    });
+
+    it('names the conversation once its transcript has been replayed', () => {
+      setup();
+      TestBed.inject(ConversationListStore).prependNewest(
+        conversationFixture({ id: CONVERSATION_ID, name: 'Helios release' }),
+      );
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, [
+        messageFixture({ text: 'What does retrieval do?', role: CHAT_ROLE.user }),
+        messageFixture({ text: 'It runs a tool call.', role: CHAT_ROLE.assistant }),
+      ]);
+
+      expect(store.exportTarget()).toEqual({ id: CONVERSATION_ID, name: 'Helios release' });
+    });
+
+    /** A conversation the 50-row sidebar never held still has to name itself. */
+    it('is null while neither the list nor the detail copy has landed', () => {
+      setup();
+      store.bindRoute(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID, [messageFixture({ text: 'Hello', role: CHAT_ROLE.user })]);
+
+      expect(store.exportTarget()).toBeNull();
+    });
+  });
+});

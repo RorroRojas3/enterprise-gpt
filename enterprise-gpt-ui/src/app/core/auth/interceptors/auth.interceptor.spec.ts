@@ -2,14 +2,14 @@ import { HttpClient, provideHttpClient, withFetch, withInterceptors } from '@ang
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { SilentRequest } from '@azure/msal-browser';
+import { firstValueFrom } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RETRY_POLICY } from '@core/errors/retry-policy';
 import { retryInterceptor } from '@core/http/interceptors/retry.interceptor';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
 import { fakeAuthResult, provideFakeMsal, signedInMsal } from '@testing/msal';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
-import { firstValueFrom } from 'rxjs';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { authInterceptor } from './auth.interceptor';
 
 const API_URL = `${TEST_API_BASE_URL}/api/models`;

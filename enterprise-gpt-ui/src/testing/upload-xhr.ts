@@ -1,5 +1,5 @@
 import { Provider } from '@angular/core';
-import { UPLOAD_XHR } from '../app/core/documents/upload-xhr.token';
+import { UPLOAD_XHR } from '../app/services/documents/upload-xhr.token';
 
 /**
  * One fake `XMLHttpRequest`: jsdom's would send a real request and cannot drive

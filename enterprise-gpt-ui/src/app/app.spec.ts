@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { AuthService } from '@core/auth/auth-service';
 import { SessionStore } from '@core/session/session-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
@@ -9,7 +10,6 @@ import { settle } from '@testing/async';
 import { provideFakeMsal, signedInMsal } from '@testing/msal';
 import { provideFakeNavigation } from '@testing/navigation';
 import { userFixture } from '@testing/session';
-import { beforeEach, describe, expect, it } from 'vitest';
 import { App } from './app';
 
 const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;

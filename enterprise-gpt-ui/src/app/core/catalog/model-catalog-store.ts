@@ -12,11 +12,11 @@ import {
 } from '@ngrx/signals';
 import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { firstValueFrom, takeUntil, tap } from 'rxjs';
-import { ModelDto } from '@domain/api/model';
+import { ModelDto } from '@shared/models/api/chat-model.model';
 import { toAppError } from '@core/errors/to-app-error';
 import { adminEvents } from '@core/events/admin-events';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url';
+import { ApiUrl } from '@core/http/api-url-service';
 import {
   setError,
   setFulfilled,

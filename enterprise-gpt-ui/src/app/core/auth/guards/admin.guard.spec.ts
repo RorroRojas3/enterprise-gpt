@@ -5,14 +5,14 @@ import { TestBed } from '@angular/core/testing';
 import { Router, Routes, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { IPublicClientApplication } from '@azure/msal-browser';
+import { Mock, beforeEach, describe, expect, it, vi } from 'vitest';
+import { UserDto } from '@shared/models/api/user.model';
+import { AuthService } from '@core/auth/auth-service';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
 import { provideFakeMsal, signedInMsal, signedOutMsal } from '@testing/msal';
 import { provideFakeNavigation } from '@testing/navigation';
 import { administratorFixture, userFixture } from '@testing/session';
-import { UserDto } from '@domain/api/user';
-import { Mock, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthService } from '../auth-service';
 import { adminCanMatch } from './admin.guard';
 
 const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;

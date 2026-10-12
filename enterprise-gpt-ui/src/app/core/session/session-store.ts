@@ -1,6 +1,5 @@
-import { computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { inject } from '@angular/core';
+import { computed, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   patchState,
@@ -12,11 +11,11 @@ import {
   withState,
 } from '@ngrx/signals';
 import { firstValueFrom, takeUntil } from 'rxjs';
-import { PERMISSION_ID } from '@domain/api/permission-ids';
-import { UserDto } from '@domain/api/user';
-import { injectSignedOut } from '@core/events/session-events';
+import { PERMISSION_ID } from '@shared/models/api/permission-ids.model';
+import { UserDto } from '@shared/models/api/user.model';
 import { toAppError } from '@core/errors/to-app-error';
-import { ApiUrl } from '@core/http/api-url';
+import { injectSignedOut } from '@core/events/session-events';
+import { ApiUrl } from '@core/http/api-url-service';
 import {
   setError,
   setFulfilled,

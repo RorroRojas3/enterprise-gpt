@@ -410,8 +410,8 @@ public sealed class ReportEndpointsIntegrationTests(IntegrationTestFixture fixtu
         using var document = await JsonDocument.ParseAsync(
             body, cancellationToken: TestContext.Current.CancellationToken);
 
-        // Asserted rather than assumed: the TypeScript mirror in `domain/api/usage-report.ts` uses these
-        // exact names, and case-insensitive round-trip tests would hide a naming-policy change.
+        // Asserted rather than assumed: the TypeScript mirror in `shared/models/api/usage-report.model.ts`
+        // uses these exact names, and case-insensitive round-trip tests would hide a naming-policy change.
         var names = PropertyNames(document.RootElement).ToHashSet(StringComparer.Ordinal);
 
         Assert.Contains("groupBy", names);

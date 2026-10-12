@@ -11,14 +11,14 @@ import {
   withComponentInputBinding,
   withEnabledBlockingInitialNavigation,
 } from '@angular/router';
+import { AuthService } from '@core/auth/auth-service';
+import { authInterceptor } from '@core/auth/interceptors/auth.interceptor';
+import { provideStartupShellHandoff } from '@core/config/startup-shell-handoff';
+import { providePreventDropNavigation } from '@core/dnd/prevent-drop-navigation';
+import { retryInterceptor } from '@core/http/interceptors/retry.interceptor';
+import { provideBrowserTelemetry } from '@core/telemetry/browser-telemetry';
+import { ThemeService } from '@core/theme/theme-service';
 import { routes } from './app.routes';
-import { AuthService } from './core/auth/auth-service';
-import { authInterceptor } from './core/auth/interceptors/auth.interceptor';
-import { provideStartupShellHandoff } from './core/config/startup-shell-handoff';
-import { providePreventDropNavigation } from './core/dnd/prevent-drop-navigation';
-import { retryInterceptor } from './core/http/interceptors/retry.interceptor';
-import { provideBrowserTelemetry } from './core/telemetry/browser-telemetry';
-import { ThemeService } from './core/theme/theme-service';
 
 export const appConfig: ApplicationConfig = {
   providers: [
