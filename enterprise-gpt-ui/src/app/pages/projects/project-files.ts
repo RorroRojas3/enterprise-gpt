@@ -39,7 +39,8 @@ import { FileDropTarget } from '@shared/directives/file-drop-target';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AttachmentChip, DropOverlay, ErrorPanel, FileDropTarget, Icon, Modal, Skeleton],
   // Neither store is provided here: `ProjectDocumentsStore` is on the route so the tab count
-  // survives a panel switch, and `UploadStore` on `ProjectDetail` so the composer shares its chips.
+  // survives a panel switch, and `UploadStore` on `ProjectDetail` so a tab switch does not cancel
+  // a transfer. The composer uploads through its own instance.
   templateUrl: './project-files.html',
   styleUrl: './project-files.scss',
 })

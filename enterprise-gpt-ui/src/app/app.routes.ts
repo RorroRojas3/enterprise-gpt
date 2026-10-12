@@ -70,8 +70,8 @@ export const routes: Routes = [
                 title: 'Conversations — Enterprise GPT',
               },
               {
-                // loadChildren: the grid and a project's detail share one layout, which
-                // hosts the dialogs both of them invoke.
+                // loadChildren: the grid and a project's detail share one parent route, and the
+                // detail's tabs and route-scoped stores ride their own lazy table.
                 path: 'projects',
                 loadChildren: () => import('@pages/projects/projects.routes'),
               },
