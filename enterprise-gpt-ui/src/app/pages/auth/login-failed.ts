@@ -19,8 +19,8 @@ import { AuthPage } from '@components/auth/auth-page';
   selector: 'app-login-failed',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AuthPage, BrandLogo],
+  host: { class: 'd-block' },
   templateUrl: './login-failed.html',
-  styleUrl: './login-failed.scss',
 })
 export class LoginFailed implements OnInit {
   private readonly _auth = inject(AuthService);

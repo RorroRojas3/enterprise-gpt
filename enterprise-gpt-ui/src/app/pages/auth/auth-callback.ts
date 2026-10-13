@@ -22,8 +22,8 @@ import { AuthPage } from '@components/auth/auth-page';
   selector: 'app-auth-callback',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AuthPage, BrandLogo, Ridgeline],
+  host: { class: 'd-block' },
   templateUrl: './auth-callback.html',
-  styleUrl: './auth-callback.scss',
 })
 export class AuthCallback implements OnInit {
   private readonly _auth = inject(AuthService);

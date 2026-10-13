@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { getByRole } from '@testing-library/dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { Offcanvas } from './offcanvas';
@@ -68,7 +69,20 @@ describe('Offcanvas', () => {
     component.open.set(true);
     await fixture.whenStable();
 
-    expect(dialog.querySelector('.offcanvas-panel__footer #save')).not.toBeNull();
+    expect(getByRole(dialog, 'button', { name: 'Save' })).toBeTruthy();
+  });
+
+  it('closes from its close button and returns focus to the invoker', async () => {
+    const { fixture, component, dialog, invoker } = await render();
+    invoker.focus();
+    component.open.set(true);
+    await fixture.whenStable();
+
+    getByRole(dialog, 'button', { name: 'Close' }).click();
+    await fixture.whenStable();
+
+    expect(component.open()).toBe(false);
+    expect(document.activeElement).toBe(invoker);
   });
 
   it('anchors to the opposite edge when side is start', async () => {
@@ -76,6 +90,7 @@ describe('Offcanvas', () => {
     component.side.set('start');
     await fixture.whenStable();
 
-    expect(dialog.classList.contains('offcanvas-panel--start')).toBe(true);
+    expect(dialog.classList).toContain('offcanvas-start');
+    expect(dialog.classList).not.toContain('offcanvas-end');
   });
 });

@@ -1,17 +1,22 @@
 <!-- Only once there is a project: a kebab that acts on nothing is worse than a skeleton. -->
 @if (project.project(); as current) {
-  <header class="detail__header">
-    <div class="detail__identity">
-      <p class="detail__name-row">
-        <app-icon class="detail__folder" name="bi-folder-fill" />
-        <button class="detail__name font-display" type="button" (click)="beginEdit()">
+  <header class="d-flex align-items-start gap-3">
+    <div class="d-flex flex-column gap-1 flex-grow-1 min-w-0">
+      <p class="d-flex align-items-center gap-2 mb-0 min-w-0">
+        <app-icon class="flex-shrink-0 fs-5 text-primary" name="bi-folder-fill" />
+        <!-- A button that reads as a heading, with no chrome until hovered or focused. -->
+        <button
+          class="btn btn-link p-0 border-0 min-w-0 text-start text-truncate font-display fs-5 fw-bold link-body-emphasis link-underline-opacity-0 link-underline-opacity-100-hover"
+          type="button"
+          (click)="beginEdit()"
+        >
           {{ current.name }}
         </button>
         <!-- No `aria-pressed`: the label already carries the direction. -->
         <button
-          class="detail__favorite"
+          class="btn btn-ghost btn-icon btn-icon-sm touch-target"
           type="button"
-          [class.detail__favorite--on]="current.isFavorite"
+          [class.text-primary]="current.isFavorite"
           [attr.aria-label]="favoriteLabel(current)"
           [attr.aria-disabled]="actions.isRowPending(current.id) ? 'true' : null"
           (click)="actions.toggleFavorite(current)"
@@ -20,7 +25,7 @@
         </button>
       </p>
       @if (current.description) {
-        <p class="detail__description">{{ current.description }}</p>
+        <p class="small text-body-secondary mb-0">{{ current.description }}</p>
       }
     </div>
 
@@ -39,7 +44,7 @@
       <button
         appMenuItem
         type="button"
-        class="menu__item--danger"
+        class="text-danger-emphasis"
         [attr.aria-disabled]="actions.isRowPending(current.id) ? 'true' : null"
         (click)="beginDelete()"
       >
@@ -51,9 +56,9 @@
 
   <!--
     The chat route's composer; here `COMPOSER_HOST` creates a conversation in the project and
-    navigates to it instead of streaming in place.
+    navigates to it instead of streaming in place. The same cap as the panels below.
   -->
-  <div class="detail__composer">
+  <div class="mw-prose">
     <app-composer />
   </div>
 
@@ -61,8 +66,8 @@
   @if (isNarrow()) {
     <app-pill-subnav [items]="pills()" ariaLabel="Project sections" />
   } @else {
-    <nav class="detail__tabs" aria-label="Project sections">
-      <ul class="nav nav-tabs">
+    <nav aria-label="Project sections">
+      <ul class="nav nav-underline small">
         <li class="nav-item">
           <a
             class="nav-link"
@@ -82,7 +87,8 @@
           >
             Files
             @if (filesCount() !== null) {
-              <span class="detail__tab-count">{{ filesCount() }}</span>
+              <!-- A smaller run beside the label, as on the pill strip, not a badge. -->
+              <span class="small ms-1">{{ filesCount() }}</span>
             }
           </a>
         </li>
@@ -95,7 +101,7 @@
           >
             Conversations
             @if (conversationsCount() !== null) {
-              <span class="detail__tab-count">{{ conversationsCount() }}</span>
+              <span class="small ms-1">{{ conversationsCount() }}</span>
             }
           </a>
         </li>
@@ -103,15 +109,13 @@
     </nav>
   }
 } @else if (project.isFirstLoad()) {
-  <div class="detail__header" aria-busy="true">
-    <div class="detail__identity">
-      <app-skeleton width="240px" height="24px" />
-      <app-skeleton width="360px" />
-    </div>
+  <div class="d-flex flex-column gap-1" aria-busy="true">
+    <app-skeleton width="240px" height="24px" />
+    <app-skeleton width="360px" />
   </div>
 }
 
 <!-- Outside the @if: the panel renders its own error state, so a failed request is not blank. -->
-<div class="detail__panel">
+<div class="min-w-0">
   <router-outlet />
 </div>

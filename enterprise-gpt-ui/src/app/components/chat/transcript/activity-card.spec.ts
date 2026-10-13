@@ -1,10 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { getByRole, getByText, queryByRole, queryByText, within } from '@testing-library/dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   AssistantActivity,
   createInitialSnapshot,
   foldAssistantEvents,
 } from '@shared/models/andes/assistant-ui.contract';
+import { iconOf } from '@testing/overlays';
 import { assistantEvent } from '@testing/stream-frames';
 import { ActivityCard } from './activity-card';
 
@@ -32,19 +34,25 @@ describe('ActivityCard', () => {
     await fixture.whenStable();
   });
 
+  /** The state glyph in the card's own header, ignoring any nested card's. */
+  function ownState(card: HTMLElement): string | null {
+    return iconOf(card.firstElementChild!);
+  }
+
   it('shows the agent name and its kind as two separate elements', async () => {
     // A pre-composed "Calling File Agent" is the defect the contract keeps these apart to prevent.
-    const name = host.querySelector('.activity-card__name');
+    const card = getByRole(host, 'group', { name: 'File Agent' });
+    const name = getByText(card, 'File Agent');
+    const badge = getByText(card, 'Agent');
 
-    expect(name?.textContent?.trim()).toBe('File Agent');
-    expect(host.querySelector('.kind-badge')?.textContent?.trim()).toBe('Agent');
-    expect(name?.querySelector('.kind-badge')).toBeNull();
+    expect(badge.classList.contains('badge')).toBe(true);
+    expect(name.contains(badge)).toBe(false);
   });
 
   // The pair, not the absence: asserting only that the agent avoids the mono styling would still pass
   // if the binding were deleted outright.
   it('sets a function name in mono and leaves an agent name in prose', async () => {
-    expect(host.querySelector('.activity-card__name--mono')).toBeNull();
+    expect(getByText(host, 'File Agent').classList.contains('font-monospace')).toBe(false);
 
     fixture.componentRef.setInput(
       'activity',
@@ -52,7 +60,9 @@ describe('ActivityCard', () => {
     );
     await fixture.whenStable();
 
-    expect(host.querySelector('.activity-card__name--mono')).not.toBeNull();
+    const card = getByRole(host, 'group');
+    const name = document.getElementById(card.getAttribute('aria-labelledby') ?? '');
+    expect(name?.classList.contains('font-monospace')).toBe(true);
   });
 
   it('fills the wait before the first child with its own running state', async () => {
@@ -71,11 +81,10 @@ describe('ActivityCard', () => {
     fixture.componentRef.setInput('activity', folded);
     await fixture.whenStable();
 
-    expect(host.querySelector('.activity-card__ring')).not.toBeNull();
-    expect(host.querySelector('.activity-card__substatus')).toBeNull();
-    expect(
-      host.querySelector('.activity-card__header > .visually-hidden')?.textContent?.trim(),
-    ).toBe('Running');
+    // The ring is decoration: the state is the hidden text, and no glyph is drawn yet.
+    expect(getByText(host, 'Running').classList.contains('visually-hidden')).toBe(true);
+    expect(ownState(getByRole(host, 'group'))).toBeNull();
+    expect(queryByRole(host, 'listitem')).toBeNull();
   });
 
   it('nests the steps the agent took inside its own card', async () => {
@@ -92,12 +101,12 @@ describe('ActivityCard', () => {
     );
     await fixture.whenStable();
 
-    const children = [...host.querySelectorAll('.activity-card__children .activity-card__name')];
+    const parent = getByRole(host, 'group', { name: 'File Agent' });
+    const children = within(parent).getAllByRole('group');
 
-    expect(children.map((child) => child.textContent?.trim())).toEqual([
-      'Running code',
-      'Checking notes.docx',
-    ]);
+    expect(children).toHaveLength(2);
+    expect(within(children[0]!).getByText('Running code')).not.toBeNull();
+    expect(within(children[1]!).getByText('Checking notes.docx')).not.toBeNull();
   });
 
   it('draws a nested step one level in, so a subtree stays readable', async () => {
@@ -107,7 +116,12 @@ describe('ActivityCard', () => {
     );
     await fixture.whenStable();
 
-    expect(host.querySelector('.activity-card__children .activity-card--depth-1')).not.toBeNull();
+    // The depth has no ARIA state; the stepped-down fill is the visual contract.
+    const child = within(getByRole(host, 'group', { name: 'File Agent' })).getByRole('group', {
+      name: 'Running code',
+    });
+    expect(child.classList.contains('bg-body-tertiary')).toBe(true);
+    expect(getByRole(host, 'group', { name: 'File Agent' }).classList).toContain('bg-surface');
   });
 
   it('shows how long a settled activity took', async () => {
@@ -117,10 +131,10 @@ describe('ActivityCard', () => {
     );
     await fixture.whenStable();
 
-    expect(host.querySelector('.activity-card__duration')?.textContent?.trim()).toBe('3.1s');
-    expect(
-      host.querySelector('.activity-card__header > .visually-hidden')?.textContent?.trim(),
-    ).toBe('Completed after 3.1s');
+    expect(getByText(host, '3.1s').classList.contains('font-monospace')).toBe(true);
+    expect(getByText(host, 'Completed after 3.1s').classList.contains('visually-hidden')).toBe(
+      true,
+    );
   });
 
   /** The wording is the API's; that the four differ is asserted in `FileAgentFailuresTests`. */
@@ -135,13 +149,9 @@ describe('ActivityCard', () => {
     );
     await fixture.whenStable();
 
-    expect(host.querySelector('app-icon.activity-card__state--warn')).not.toBeNull();
-    expect(host.querySelector('.activity-card__substatus')?.textContent?.trim()).toBe(
-      'The file did not open when checked',
-    );
-    expect(
-      host.querySelector('.activity-card__header > .visually-hidden')?.textContent?.trim(),
-    ).toBe('Failed after 8.0s');
+    expect(ownState(getByRole(host, 'group'))).toBe('bi-exclamation-triangle-fill');
+    expect(getByRole(host, 'listitem').textContent).toContain('The file did not open when checked');
+    expect(getByText(host, 'Failed after 8.0s')).not.toBeNull();
   });
 
   // A refusal is an answer, not a failure: it completes with its reason on the card, and the assistant
@@ -157,14 +167,12 @@ describe('ActivityCard', () => {
     );
     await fixture.whenStable();
 
-    expect(host.querySelector('app-icon.activity-card__state--ok')).not.toBeNull();
-    expect(host.querySelector('app-icon.activity-card__state--warn')).toBeNull();
-    expect(host.querySelector('.activity-card__substatus')?.textContent?.trim()).toBe(
-      'pptx to pdf is not supported',
-    );
+    expect(ownState(getByRole(host, 'group'))).toBe('bi-check-circle-fill');
+    expect(getByRole(host, 'listitem').textContent).toContain('pptx to pdf is not supported');
   });
 
   it('offers no cost control on an activity that has reported nothing to show', async () => {
-    expect(host.querySelector('.activity-card__toggle')).toBeNull();
+    expect(queryByRole(host, 'button', { name: /^Cost of/ })).toBeNull();
+    expect(queryByText(host, /^duration/)).toBeNull();
   });
 });

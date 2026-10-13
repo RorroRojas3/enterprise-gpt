@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { getByRole } from '@testing-library/dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppError } from '@core/errors/app-error';
 import { ErrorPanel } from './error-panel';
@@ -34,7 +35,7 @@ describe('ErrorPanel', () => {
   it('announces itself, because it usually replaces a loading skeleton', async () => {
     const host = (await render()).nativeElement as HTMLElement;
 
-    expect(host.querySelector('[role="alert"]')).not.toBeNull();
+    expect(getByRole(host, 'alert').textContent).toContain("Documents couldn't load");
   });
 
   it('offers a retry, which is what separates it from the unavailable panel', async () => {
@@ -42,7 +43,7 @@ describe('ErrorPanel', () => {
     const retried = vi.fn();
     fixture.componentInstance.retried.subscribe(retried);
 
-    (fixture.nativeElement as HTMLElement).querySelector('button')?.click();
+    getByRole(fixture.nativeElement as HTMLElement, 'button', { name: 'Retry' }).click();
 
     expect(retried).toHaveBeenCalledOnce();
   });

@@ -3,7 +3,7 @@
   on the paperclip's in-flight condition, so a drop cannot do what a click cannot.
 -->
 <div
-  class="composer"
+  class="composer card bg-surface rounded-4 px-3 py-2"
   [class.composer--streaming]="turn.inFlight()"
   [appFileDropTarget]="session.canUploadFiles() && !turn.inFlight()"
   (filesDropped)="onFilesChosen($event)"
@@ -22,9 +22,13 @@
   @if (uploads.hasAttachments()) {
     <!-- `role="list"` because `list-style: none` strips list semantics in Safari,
          which is exactly what makes the count announceable. -->
-    <ul class="composer__chips" role="list" aria-label="Attached files">
+    <ul
+      class="list-unstyled d-flex flex-wrap gap-2 mt-1 mb-2"
+      role="list"
+      aria-label="Attached files"
+    >
       @for (attachment of uploads.attachments(); track attachment.id) {
-        <li>
+        <li class="composer__chip">
           <!-- Stop owns the cancel while a file is in flight, so one action has one control.
                A file still waiting for a conversation keeps its own. -->
           <app-attachment-chip
@@ -53,19 +57,23 @@
   ></textarea>
 
   <!-- Exists from first render: a region created with its content is not reliably announced. -->
-  <p class="composer__note" [class.composer__note--visible]="note() !== null" role="status">
+  <p
+    class="d-flex align-items-center gap-2 small text-warning-emphasis px-1 mb-0"
+    [class.pb-2]="note() !== null"
+    role="status"
+  >
     @if (note(); as note) {
-      <app-icon name="bi-exclamation-triangle-fill" />
+      <app-icon class="flex-shrink-0" name="bi-exclamation-triangle-fill" />
       {{ note }}
     }
   </p>
 
-  <div class="composer__controls">
+  <div class="d-flex align-items-center gap-1 gap-md-2">
     @if (session.canUploadFiles()) {
       <!-- Absent rather than disabled without the grant. -->
       <button
         type="button"
-        class="composer__aux composer__icon-button"
+        class="btn btn-ghost btn-icon composer__aux"
         aria-label="Attach files"
         [disabled]="turn.inFlight()"
         (click)="openFilePicker()"
@@ -78,7 +86,7 @@
       -->
       <input
         #filePicker
-        class="composer__file-input"
+        class="visually-hidden"
         type="file"
         multiple
         tabindex="-1"
@@ -91,24 +99,29 @@
     <!--
       Absent when the host has nothing to act on. A picker where the project belongs to the
       conversation; a static chip on a project screen, where it is the route. Natively disabled
-      mid-turn: a dimmed control that still opens a popover reads as broken.
+      mid-turn: a dimmed control that still opens a popover reads as broken. Below md the pill
+      keeps only its glyph, and the static chip goes: the header already names the project.
     -->
     @if (turn.projectTarget(); as target) {
       @if (target.kind === 'conversation') {
         <button
           #projectPill
           type="button"
-          class="composer__aux composer__project"
-          [class.composer__project--assigned]="projectLabel() !== null"
+          class="btn btn-sm rounded-pill bg-body-tertiary fw-semibold d-inline-flex align-items-center gap-2 mw-100 min-w-0 composer__aux"
           aria-haspopup="dialog"
           [attr.aria-expanded]="projectPickerOpen()"
           [attr.aria-label]="'Project: ' + (projectLabel() ?? 'none') + '. Move to a project'"
           [disabled]="turn.inFlight()"
           (click)="toggleProjectPicker()"
         >
-          <app-icon [name]="projectLabel() ? 'bi-folder-fill' : 'bi-folder'" />
-          <span class="composer__project-name">{{ projectLabel() ?? 'No project' }}</span>
-          <app-icon class="composer__project-caret" name="bi-chevron-down" />
+          <app-icon
+            class="flex-shrink-0"
+            [class.text-primary]="projectLabel() !== null"
+            [class.text-body-secondary]="projectLabel() === null"
+            [name]="projectLabel() ? 'bi-folder-fill' : 'bi-folder'"
+          />
+          <span class="d-none d-md-block text-truncate">{{ projectLabel() ?? 'No project' }}</span>
+          <app-icon class="flex-shrink-0 small text-body-secondary" name="bi-chevron-down" />
         </button>
 
         @if (projectPickerOpen() && projectPillEl(); as anchor) {
@@ -123,10 +136,10 @@
         }
       } @else {
         <span
-          class="composer__aux composer__project composer__project--assigned composer__project--fixed"
+          class="d-none d-md-inline-flex align-items-center gap-2 mw-100 min-w-0 rounded-pill bg-body-tertiary px-2 py-1 small fw-semibold composer__aux"
         >
-          <app-icon name="bi-folder-fill" />
-          <span class="composer__project-name">{{ projectLabel() ?? 'Project' }}</span>
+          <app-icon class="flex-shrink-0 text-primary" name="bi-folder-fill" />
+          <span class="text-truncate">{{ projectLabel() ?? 'Project' }}</span>
         </span>
       }
     }
@@ -139,16 +152,14 @@
            and the changing aria-label announces it. Stop stays operable while a turn streams. -->
       <button
         type="button"
-        [class.composer__aux]="!dictation.recording()"
-        [class.composer__icon-button]="!dictation.recording()"
-        [class.composer__mic-pill]="dictation.recording()"
+        [class]="micClass()"
         [attr.aria-label]="dictation.recording() ? 'Stop dictating' : 'Dictate'"
         [disabled]="!dictation.recording() && turn.inFlight()"
         (click)="dictation.toggle()"
       >
         @if (dictation.recording()) {
           <app-icon name="bi-mic-fill" />
-          <span class="composer__mic-elapsed font-mono">{{ dictation.elapsedLabel() }}</span>
+          <span class="font-monospace small">{{ dictation.elapsedLabel() }}</span>
         } @else {
           <app-icon name="bi-mic" />
         }
@@ -157,11 +168,12 @@
 
     <!--
       Absent when there is nothing to download, as on every project screen. Disabled rather than
-      absent mid-turn, because there is something to download, just not yet.
+      absent mid-turn, because there is something to download, just not yet. Absent below md,
+      where the navbar renders this same menu.
     -->
     @if (turn.exportTarget(); as target) {
       <app-conversation-download-menu
-        class="composer__aux"
+        class="d-none d-md-inline-flex composer__aux"
         [conversationId]="target.id"
         [conversationName]="target.name"
         [disabled]="turn.inFlight()"
@@ -169,22 +181,21 @@
       />
     }
 
-    <span class="composer__spacer"></span>
+    <span class="flex-grow-1"></span>
     <!-- One persistent button morphs between Send and Stop: swapping elements would destroy
          the control mid-press and drop focus to <body>. -->
     <button
       #actionButton
       type="button"
-      class="composer__action btn"
+      class="btn btn-icon rounded-circle"
       [class.btn-primary]="!inFlight()"
-      [class.composer__send]="!inFlight()"
       [class.composer__stop]="inFlight()"
       [attr.aria-label]="actionLabel()"
       [disabled]="!inFlight() && sendDisabled()"
       (click)="onAction()"
     >
       @if (inFlight()) {
-        <!-- A drawn square in a --brand ring, not a glyph. -->
+        <!-- A drawn square in a --bs-primary ring, not a glyph. -->
         <span class="composer__stop-glyph" aria-hidden="true"></span>
       } @else {
         <app-icon name="bi-send-fill" />
@@ -193,8 +204,8 @@
   </div>
 </div>
 
-<!-- Static, so no live region and no icon: either would make it read as one of
-     `composer__note`'s warnings, which are the transient thing worth announcing. -->
-<p class="composer__disclaimer">
+<!-- Static, so no live region and no icon: either would make it read as one of the card's
+     warnings, which are the transient thing worth announcing. -->
+<p class="composer__disclaimer small text-body-secondary text-center px-2 mt-2 mb-0">
   Enterprise GPT is AI and can make mistakes. Please double-check responses.
 </p>

@@ -53,8 +53,9 @@ describe('ModelFormDialog', () => {
     return host().querySelector('button[type="submit"]') as HTMLButtonElement;
   }
 
+  /** Every message on screen: each field's feedback and the summary above the fields. */
   function errors(): string[] {
-    return [...host().querySelectorAll('.model-form__error')].map(
+    return [...host().querySelectorAll('[role="alert"] p')].map(
       (node) => node.textContent?.trim() ?? '',
     );
   }

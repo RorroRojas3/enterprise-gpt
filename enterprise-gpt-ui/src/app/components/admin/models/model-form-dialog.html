@@ -6,18 +6,18 @@
   (closed)="actions.cancelForm()"
 >
   <!-- novalidate: the schema owns validation, and the browser bubble would fight it. -->
-  <form id="model-form" class="model-form" novalidate (submit)="submit($event)">
+  <form id="model-form" novalidate (submit)="submit($event)">
     @if (unmatched().length > 0) {
       <!-- Server messages no control carries, which would otherwise be silently dropped. -->
-      <div class="model-form__summary" role="alert">
+      <div class="alert alert-danger py-2 small" role="alert">
         @for (message of unmatched(); track $index) {
-          <p class="model-form__error">{{ message }}</p>
+          <p class="mb-0">{{ message }}</p>
         }
       </div>
     }
 
-    <div class="model-form__grid">
-      <div class="model-form__field">
+    <div class="row g-3 small">
+      <div class="col-12 col-sm-6">
         <label class="form-label" for="model-form-provider">Provider</label>
         <!-- A client-side mirror of the seeded rows: no endpoint lists providers. -->
         <select
@@ -38,21 +38,21 @@
           }
         </select>
         @if (fieldErrors().providerId.show || providerNotFound()) {
-          <div class="model-form__errors" id="model-form-provider-errors" role="alert">
+          <div class="invalid-feedback d-block" id="model-form-provider-errors" role="alert">
             @if (fieldErrors().providerId.show) {
               @for (message of fieldErrors().providerId.messages; track $index) {
-                <p class="model-form__error">{{ message }}</p>
+                <p class="mb-0">{{ message }}</p>
               }
             }
             <!-- A deactivated provider's 404, shown here rather than as a toast. -->
             @if (providerNotFound(); as message) {
-              <p class="model-form__error">{{ message }}</p>
+              <p class="mb-0">{{ message }}</p>
             }
           </div>
         }
       </div>
 
-      <div class="model-form__field">
+      <div class="col-12 col-sm-6">
         <label class="form-label" for="model-form-name">Display name</label>
         <!-- No literal maxlength: `[formField]` derives it from the schema (NG8022). -->
         <input
@@ -64,19 +64,19 @@
           [attr.aria-describedby]="fieldErrors().name.show ? 'model-form-name-errors' : null"
         />
         @if (fieldErrors().name.show) {
-          <div class="model-form__errors" id="model-form-name-errors" role="alert">
+          <div class="invalid-feedback d-block" id="model-form-name-errors" role="alert">
             @for (message of fieldErrors().name.messages; track $index) {
-              <p class="model-form__error">{{ message }}</p>
+              <p class="mb-0">{{ message }}</p>
             }
           </div>
         }
       </div>
 
-      <div class="model-form__field model-form__field--wide">
+      <div class="col-12">
         <label class="form-label" for="model-form-deployment">Deployment name</label>
         <input
           id="model-form-deployment"
-          class="form-control font-mono"
+          class="form-control font-monospace"
           type="text"
           autocomplete="off"
           spellcheck="false"
@@ -87,15 +87,15 @@
           "
         />
         @if (fieldErrors().deploymentName.show) {
-          <div class="model-form__errors" id="model-form-deployment-errors" role="alert">
+          <div class="invalid-feedback d-block" id="model-form-deployment-errors" role="alert">
             @for (message of fieldErrors().deploymentName.messages; track $index) {
-              <p class="model-form__error">{{ message }}</p>
+              <p class="mb-0">{{ message }}</p>
             }
           </div>
         }
       </div>
 
-      <div class="model-form__field model-form__field--wide">
+      <div class="col-12">
         <label class="form-label" for="model-form-description">Description</label>
         <input
           id="model-form-description"
@@ -108,20 +108,20 @@
           "
         />
         @if (fieldErrors().description.show) {
-          <div class="model-form__errors" id="model-form-description-errors" role="alert">
+          <div class="invalid-feedback d-block" id="model-form-description-errors" role="alert">
             @for (message of fieldErrors().description.messages; track $index) {
-              <p class="model-form__error">{{ message }}</p>
+              <p class="mb-0">{{ message }}</p>
             }
           </div>
         }
       </div>
 
-      <div class="model-form__field">
+      <div class="col-12 col-sm-6">
         <label class="form-label" for="model-form-context">Context window</label>
         <!-- Text, not type="number", which returns null for unparseable input and loses it. -->
         <input
           id="model-form-context"
-          class="form-control font-mono"
+          class="form-control font-monospace"
           type="text"
           inputmode="numeric"
           autocomplete="off"
@@ -132,19 +132,19 @@
           "
         />
         @if (fieldErrors().contextWindowSize.show) {
-          <div class="model-form__errors" id="model-form-context-errors" role="alert">
+          <div class="invalid-feedback d-block" id="model-form-context-errors" role="alert">
             @for (message of fieldErrors().contextWindowSize.messages; track $index) {
-              <p class="model-form__error">{{ message }}</p>
+              <p class="mb-0">{{ message }}</p>
             }
           </div>
         }
       </div>
 
-      <div class="model-form__field">
+      <div class="col-12 col-sm-6">
         <label class="form-label" for="model-form-output">Max output tokens</label>
         <input
           id="model-form-output"
-          class="form-control font-mono"
+          class="form-control font-monospace"
           type="text"
           inputmode="numeric"
           autocomplete="off"
@@ -155,21 +155,21 @@
           "
         />
         @if (fieldErrors().maxOutputTokens.show) {
-          <div class="model-form__errors" id="model-form-output-errors" role="alert">
+          <div class="invalid-feedback d-block" id="model-form-output-errors" role="alert">
             @for (message of fieldErrors().maxOutputTokens.messages; track $index) {
-              <p class="model-form__error">{{ message }}</p>
+              <p class="mb-0">{{ message }}</p>
             }
           </div>
         }
       </div>
 
-      <div class="model-form__field">
+      <div class="col-12 col-sm-6">
         <label class="form-label" for="model-form-input-price">
-          Input price <span class="model-form__optional">per million tokens</span>
+          Input price <span class="fw-normal text-body-secondary">per million tokens</span>
         </label>
         <input
           id="model-form-input-price"
-          class="form-control font-mono"
+          class="form-control font-monospace"
           type="text"
           inputmode="decimal"
           autocomplete="off"
@@ -183,21 +183,21 @@
           "
         />
         @if (fieldErrors().inputPricePerMillionTokens.show) {
-          <div class="model-form__errors" id="model-form-input-price-errors" role="alert">
+          <div class="invalid-feedback d-block" id="model-form-input-price-errors" role="alert">
             @for (message of fieldErrors().inputPricePerMillionTokens.messages; track $index) {
-              <p class="model-form__error">{{ message }}</p>
+              <p class="mb-0">{{ message }}</p>
             }
           </div>
         }
       </div>
 
-      <div class="model-form__field">
+      <div class="col-12 col-sm-6">
         <label class="form-label" for="model-form-output-price">
-          Output price <span class="model-form__optional">per million tokens</span>
+          Output price <span class="fw-normal text-body-secondary">per million tokens</span>
         </label>
         <input
           id="model-form-output-price"
-          class="form-control font-mono"
+          class="form-control font-monospace"
           type="text"
           inputmode="decimal"
           autocomplete="off"
@@ -211,87 +211,101 @@
           "
         />
         @if (fieldErrors().outputPricePerMillionTokens.show) {
-          <div class="model-form__errors" id="model-form-output-price-errors" role="alert">
+          <div class="invalid-feedback d-block" id="model-form-output-price-errors" role="alert">
             @for (message of fieldErrors().outputPricePerMillionTokens.messages; track $index) {
-              <p class="model-form__error">{{ message }}</p>
+              <p class="mb-0">{{ message }}</p>
             }
           </div>
         }
       </div>
 
       <!-- Blank is unpriced, not free: summing it as zero would understate spend. -->
-      <p class="model-form__note model-form__field--wide" id="model-form-price-note">
-        Leave a price blank if this deployment has none. Blank means unpriced, which usage reports
-        show as unknown rather than as zero.
-      </p>
-
-      <div class="model-form__switch form-check form-switch model-form__field--wide">
-        <input
-          id="model-form-tools"
-          class="form-check-input"
-          type="checkbox"
-          role="switch"
-          [formField]="f.isToolEnabled"
-        />
-        <label class="form-check-label" for="model-form-tools">
-          Tools enabled
-          <span class="model-form__hint">Lets a turn on this model call MCP tool servers.</span>
-        </label>
+      <div class="col-12">
+        <p class="form-text m-0" id="model-form-price-note">
+          Leave a price blank if this deployment has none. Blank means unpriced, which usage reports
+          show as unknown rather than as zero.
+        </p>
       </div>
 
-      <div class="model-form__switch form-check form-switch model-form__field--wide">
-        <input
-          id="model-form-reasoning"
-          class="form-check-input"
-          type="checkbox"
-          role="switch"
-          [formField]="f.isReasoningEnabled"
-        />
-        <label class="form-check-label" for="model-form-reasoning">
-          Reasoning enabled
-          <span class="model-form__hint">Read only by Azure AI Foundry deployments.</span>
-        </label>
+      <div class="col-12">
+        <div class="form-check form-switch mb-0">
+          <input
+            id="model-form-tools"
+            class="form-check-input"
+            type="checkbox"
+            role="switch"
+            [formField]="f.isToolEnabled"
+          />
+          <label class="form-check-label fw-semibold" for="model-form-tools">
+            Tools enabled
+            <span class="d-block form-text mt-0 fw-normal">
+              Lets a turn on this model call MCP tool servers.
+            </span>
+          </label>
+        </div>
       </div>
 
-      <div class="model-form__switch form-check form-switch model-form__field--wide">
-        <input
-          id="model-form-selectable"
-          class="form-check-input"
-          type="checkbox"
-          role="switch"
-          [formField]="f.isUserSelectable"
-        />
-        <label class="form-check-label" for="model-form-selectable">
-          Visible in model picker
-          <!-- Not retiring: a hidden model still serves a turn that names it by id. -->
-          <span class="model-form__hint">
-            Turn this off for an internal deployment users should never pick to chat with.
-          </span>
-        </label>
+      <div class="col-12">
+        <div class="form-check form-switch mb-0">
+          <input
+            id="model-form-reasoning"
+            class="form-check-input"
+            type="checkbox"
+            role="switch"
+            [formField]="f.isReasoningEnabled"
+          />
+          <label class="form-check-label fw-semibold" for="model-form-reasoning">
+            Reasoning enabled
+            <span class="d-block form-text mt-0 fw-normal">
+              Read only by Azure AI Foundry deployments.
+            </span>
+          </label>
+        </div>
       </div>
 
-      <div class="model-form__switch form-check form-switch model-form__field--wide">
-        <input
-          id="model-form-default"
-          class="form-check-input"
-          type="checkbox"
-          role="switch"
-          [formField]="f.isDefault"
-          [class.is-invalid]="!!defaultConflict()"
-          [attr.aria-describedby]="defaultConflict() ? 'model-form-default-errors' : null"
-        />
-        <label class="form-check-label" for="model-form-default">
-          Default model
-          <span class="model-form__hint">
-            Saving this replaces whichever model is the default today.
-          </span>
-        </label>
-        @if (defaultConflict(); as message) {
-          <!-- `isDefault` has no `fieldErrors()` entry, so Save would otherwise block silently. -->
-          <div class="model-form__errors" id="model-form-default-errors" role="alert">
-            <p class="model-form__error">{{ message }}</p>
-          </div>
-        }
+      <div class="col-12">
+        <div class="form-check form-switch mb-0">
+          <input
+            id="model-form-selectable"
+            class="form-check-input"
+            type="checkbox"
+            role="switch"
+            [formField]="f.isUserSelectable"
+          />
+          <label class="form-check-label fw-semibold" for="model-form-selectable">
+            Visible in model picker
+            <!-- Not retiring: a hidden model still serves a turn that names it by id. -->
+            <span class="d-block form-text mt-0 fw-normal">
+              Turn this off for an internal deployment users should never pick to chat with.
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div class="col-12">
+        <div class="form-check form-switch mb-0">
+          <input
+            id="model-form-default"
+            class="form-check-input"
+            type="checkbox"
+            role="switch"
+            [formField]="f.isDefault"
+            [class.is-invalid]="!!defaultConflict()"
+            [attr.aria-describedby]="defaultConflict() ? 'model-form-default-errors' : null"
+          />
+          <label class="form-check-label fw-semibold" for="model-form-default">
+            Default model
+            <span class="d-block form-text mt-0 fw-normal">
+              Saving this replaces whichever model is the default today.
+            </span>
+          </label>
+          @if (defaultConflict(); as message) {
+            <!-- `isDefault` has no `fieldErrors()` entry, so Save would otherwise block silently. -->
+            <div class="invalid-feedback d-block" id="model-form-default-errors" role="alert">
+              <p class="mb-0">{{ message }}</p>
+            </div>
+          }
+        </div>
       </div>
     </div>
   </form>
@@ -315,7 +329,7 @@
     [disabled]="!canSubmit()"
   >
     @if (actions.formBusy()) {
-      <span class="kit-spinner" aria-hidden="true"></span>
+      <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
     }
     {{ submitLabel() }}
   </button>

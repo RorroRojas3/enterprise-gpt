@@ -1,10 +1,14 @@
 @if (collapsed()) {
-  <nav class="strip" id="sidebar-primary" aria-label="Primary">
+  <nav
+    class="d-flex flex-column align-items-center gap-2 h-100 pt-3 pb-2 bg-surface border-end"
+    id="sidebar-primary"
+    aria-label="Primary"
+  >
     <app-brand-logo class="strip__mark" variant="mark" alt="Andes" />
 
     <button
       #collapseControl
-      class="strip__button"
+      class="btn btn-ghost btn-icon btn-icon-lg"
       type="button"
       aria-expanded="false"
       appTooltip="Expand sidebar"
@@ -13,12 +17,16 @@
       <app-icon name="bi-chevron-right" />
     </button>
 
-    <a class="btn btn-primary strip__button" [routerLink]="chatRoute" appTooltip="New conversation">
+    <a
+      class="btn btn-primary btn-icon btn-icon-lg"
+      [routerLink]="chatRoute"
+      appTooltip="New conversation"
+    >
       <app-icon name="bi-plus-lg" />
     </a>
 
     <button
-      class="strip__button"
+      class="btn btn-ghost btn-icon btn-icon-lg"
       type="button"
       appTooltip="Search conversations"
       (click)="expandAndSearch()"
@@ -26,15 +34,15 @@
       <app-icon name="bi-search" />
     </button>
 
-    <hr class="strip__rule" />
+    <hr class="w-50 my-1" />
 
-    <ul class="strip__nav">
+    <ul class="list-unstyled d-flex flex-column gap-2 mb-0">
       @for (item of navItems(); track item.link) {
         <li>
           <a
-            class="strip__button"
+            class="btn btn-ghost btn-icon btn-icon-lg"
             [routerLink]="item.link"
-            routerLinkActive="strip__button--active"
+            routerLinkActive="active"
             [ariaCurrentWhenActive]="true"
             [appTooltip]="item.label"
             appTooltipPlacement="right"
@@ -47,10 +55,10 @@
 
     <!-- Absent when nothing is starred: there would be no section to expand to. -->
     @if (projects.hasFavorites()) {
-      <hr class="strip__rule" />
+      <hr class="w-50 my-1" />
 
       <button
-        class="strip__button"
+        class="btn btn-ghost btn-icon btn-icon-lg"
         type="button"
         appTooltip="Favorite projects"
         appTooltipPlacement="right"
@@ -60,20 +68,22 @@
       </button>
     }
 
-    <span class="strip__spacer"></span>
-
-    <app-user-footer class="sidebar__footer" [compact]="true" />
+    <app-user-footer class="flex-shrink-0 mt-auto" [compact]="true" />
   </nav>
 } @else {
-  <nav class="sidebar" id="sidebar-primary" aria-label="Primary">
-    <div class="sidebar__brand">
-      <div class="sidebar__brand-row">
+  <nav
+    class="d-flex flex-column h-100 bg-surface border-end"
+    id="sidebar-primary"
+    aria-label="Primary"
+  >
+    <div class="flex-shrink-0 px-3 pt-3">
+      <div class="d-flex align-items-start justify-content-between gap-2">
         <app-brand-logo class="sidebar__logo" variant="full" alt="Andes Software Solutions" />
 
         @if (showCollapse()) {
           <button
             #collapseControl
-            class="sidebar__collapse"
+            class="btn btn-ghost btn-icon"
             type="button"
             aria-expanded="true"
             appTooltip="Collapse sidebar"
@@ -84,12 +94,15 @@
         }
       </div>
 
-      <app-ridgeline class="sidebar__ridge" variant="divider" />
+      <app-ridgeline class="mt-3" variant="divider" />
     </div>
 
-    <div class="sidebar__actions">
+    <div class="d-flex flex-column flex-shrink-0 gap-2 px-3 pt-3 pb-2">
       <!-- A link, not a button: it navigates, and nothing is created until the first prompt. -->
-      <a class="btn btn-primary sidebar__new" [routerLink]="chatRoute">
+      <a
+        class="btn btn-primary btn-sm d-flex align-items-center justify-content-center gap-2 py-2 rounded-3 fw-semibold text-nowrap"
+        [routerLink]="chatRoute"
+      >
         <app-icon name="bi-plus-lg" />
         <span>New conversation</span>
       </a>
@@ -102,19 +115,20 @@
         (searched)="conversations.search($event)"
       />
 
-      <ul class="sidebar__nav">
+      <!-- `small` on the list: `.nav-link` takes its font-size from an unset variable, so it inherits. -->
+      <ul class="nav nav-pills nav-pills-subtle flex-column gap-1 small">
         @for (item of navItems(); track item.link) {
-          <li>
+          <li class="nav-item">
             <a
-              class="sidebar__nav-link"
+              class="nav-link d-flex align-items-center gap-2 px-2 focus-inset"
               [routerLink]="item.link"
-              routerLinkActive="sidebar__nav-link--active"
+              routerLinkActive="active"
               [ariaCurrentWhenActive]="true"
             >
-              <app-icon class="sidebar__nav-icon" [name]="item.icon" />
-              <span class="sidebar__nav-label">{{ item.label }}</span>
+              <app-icon [name]="item.icon" />
+              <span class="text-truncate flex-grow-1">{{ item.label }}</span>
               @if (item.restricted) {
-                <app-icon class="sidebar__nav-shield" name="bi-shield-lock" />
+                <app-icon class="text-body-secondary small" name="bi-shield-lock" />
               }
             </a>
           </li>
@@ -124,14 +138,20 @@
 
     <app-sidebar-favorites (lastFavoriteRemoved)="focusSearch()" />
 
-    <section class="sidebar__conversations" aria-labelledby="sidebar-conversations-heading">
-      <h2 class="sidebar__heading" id="sidebar-conversations-heading">Conversations</h2>
+    <section
+      class="d-flex flex-column flex-grow-1 min-h-0 px-3 pt-1 pb-2"
+      aria-labelledby="sidebar-conversations-heading"
+    >
+      <h2 class="eyebrow p-2 mb-0" id="sidebar-conversations-heading">Conversations</h2>
 
       <!-- The only scroll container, so the brand, actions and footer stay put. -->
-      <div class="sidebar__list" [attr.aria-busy]="conversations.isPending() ? 'true' : null">
+      <div
+        class="flex-grow-1 overflow-y-auto overscroll-contain"
+        [attr.aria-busy]="conversations.isPending() ? 'true' : null"
+      >
         @if (isFirstLoad()) {
           @for (row of skeletonRows; track $index) {
-            <app-skeleton class="sidebar__skeleton" variant="block" height="34px" />
+            <app-skeleton class="mb-1" variant="block" height="34px" />
           }
         } @else if (conversations.error(); as error) {
           <app-error-panel
@@ -164,7 +184,7 @@
             </a>
           </app-empty-state>
         } @else {
-          <ul class="sidebar__rows">
+          <ul class="list-unstyled vstack gap-1 mb-0">
             @for (conversation of conversations.entities(); track conversation.id) {
               <li>
                 <app-conversation-row [conversation]="conversation" />
@@ -175,13 +195,13 @@
           <!-- Stated, not silent: an undisclosed cut-off reads as "this is all of them". -->
           @if (conversations.hasMore() && !conversations.isPending()) {
             <button
-              class="btn btn-sm btn-link sidebar__more"
+              class="btn btn-link btn-sm text-body-secondary text-decoration-none d-flex align-items-center justify-content-center gap-2 w-100 mt-1"
               type="button"
               [attr.aria-disabled]="conversations.loadingMore() ? 'true' : null"
               (click)="conversations.loadMore()"
             >
               @if (conversations.loadingMore()) {
-                <span class="kit-spinner" aria-hidden="true"></span>
+                <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
                 <span>Loading…</span>
               } @else {
                 <span>Load more conversations</span>
@@ -192,6 +212,6 @@
       </div>
     </section>
 
-    <app-user-footer class="sidebar__footer" />
+    <app-user-footer class="flex-shrink-0" />
   </nav>
 }

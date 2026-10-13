@@ -69,8 +69,9 @@ import { DeleteConversationsDialog } from '@components/conversations/delete-conv
     TableCell,
   ],
   providers: [ConversationLibraryStore],
+  // The shell's `<main>` clips its overflow, so a routed screen scrolls itself.
+  host: { class: 'd-flex flex-column gap-3 p-3 p-md-4 overflow-y-auto' },
   templateUrl: './conversations.html',
-  styleUrl: './conversations.scss',
 })
 export class Conversations {
   /** Bound from `?name=`. Trimmed, so a hand-edited `?name=%20%20` means unfiltered. */
@@ -325,7 +326,7 @@ export class Conversations {
       return;
     }
 
-    const rows = this._host.nativeElement.querySelectorAll<HTMLElement>('.conversations__name');
+    const rows = this._host.nativeElement.querySelectorAll<HTMLElement>('[data-row-anchor]');
     const last = rows.item(rows.length - 1);
 
     if (last === null) {

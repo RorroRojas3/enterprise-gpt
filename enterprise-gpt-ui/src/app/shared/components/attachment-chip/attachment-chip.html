@@ -1,31 +1,22 @@
 @let state = attachment().state;
 
 <div
-  class="chip"
-  [class]="'chip--' + state.kind"
-  [class.chip--generated]="generated()"
+  class="d-flex align-items-start gap-2 p-2 border rounded-3 bg-surface"
+  [class]="border()"
   [attr.role]="generated() ? 'group' : null"
   [attr.aria-label]="generated() ? generatedLabel() : null"
 >
-  @if (generated()) {
-    <app-icon class="chip__icon" [class]="'chip__icon--' + glyph().tone" [name]="glyph().icon" />
-  } @else if (state.kind === 'processing') {
-    <span class="kit-spinner chip__spinner" aria-hidden="true"></span>
-  } @else if (state.kind === 'ready') {
-    <app-icon class="chip__icon chip__icon--ok" name="bi-check-circle-fill" />
-  } @else if (state.kind === 'failed' || state.kind === 'unsupported') {
-    <app-icon class="chip__icon chip__icon--fail" name="bi-x-circle-fill" />
-  } @else if (state.kind === 'unknown') {
-    <app-icon class="chip__icon chip__icon--muted" name="bi-question-circle" />
+  @if (!generated() && state.kind === 'processing') {
+    <span class="spinner-border spinner-border-sm flex-shrink-0 mt-1" aria-hidden="true"></span>
   } @else {
-    <app-icon class="chip__icon" [class]="'chip__icon--' + glyph().tone" [name]="glyph().icon" />
+    <app-icon class="flex-shrink-0 mt-1 fs-6" [class]="lead().tone" [name]="lead().icon" />
   }
 
-  <div class="chip__body">
-    <p class="chip__name">{{ attachment().fileName }}</p>
+  <div class="flex-fill min-w-0">
+    <p class="small fw-medium text-truncate mb-0">{{ attachment().fileName }}</p>
 
     @if (generated()) {
-      <div class="chip__meta chip__meta--generated">
+      <div class="d-flex align-items-center gap-2 small text-body-secondary mt-1">
         <app-source-badge source="generated" />
         @if (attachment().sizeLabel) {
           <span>{{ attachment().sizeLabel }}</span>
@@ -35,23 +26,24 @@
       @switch (state.kind) {
         @case ('uploading') {
           <div
-            class="chip__progress"
+            class="progress mt-1"
+            style="height: 0.25rem"
             role="progressbar"
             aria-valuemin="0"
             aria-valuemax="100"
             [attr.aria-valuenow]="state.percent"
             [attr.aria-label]="progressLabel()"
           >
-            <span class="chip__progress-fill" [style.width.%]="state.percent"></span>
+            <div class="progress-bar" [style.width.%]="state.percent"></div>
           </div>
-          <p class="chip__meta font-mono">{{ state.percent }}%</p>
+          <p class="small text-body-secondary font-monospace mt-1 mb-0">{{ state.percent }}%</p>
         }
         @case ('processing') {
           <!-- Polite: ingest progress is worth hearing, but not worth interrupting. -->
-          <p class="chip__meta" role="status">{{ state.subStatus }}</p>
+          <p class="small text-body-secondary mt-1 mb-0" role="status">{{ state.subStatus }}</p>
         }
         @case ('ready') {
-          <p class="chip__meta">
+          <p class="small text-body-secondary mt-1 mb-0">
             @if (attachment().sizeLabel) {
               {{ attachment().sizeLabel }} ·
             }
@@ -61,11 +53,11 @@
         @case ('failed') {
           <!-- No `role="status"`: a region created with its content is not reliably
              announced, so the surrounding surface owns the summary region. -->
-          <p class="chip__meta chip__meta--fail">{{ state.reason }}</p>
+          <p class="small text-danger-emphasis mt-1 mb-0">{{ state.reason }}</p>
           <!-- Retry belongs to this arm alone: the same file through the same pipeline
              can succeed on a second attempt, where an unsupported extension cannot. -->
           <button
-            class="chip__retry"
+            class="btn btn-link btn-sm fw-semibold p-0 mt-1"
             type="button"
             [attr.aria-label]="retryLabel()"
             (click)="retried.emit(attachment().id)"
@@ -74,11 +66,11 @@
           </button>
         }
         @case ('unsupported') {
-          <p class="chip__meta chip__meta--fail">{{ state.reason }}</p>
+          <p class="small text-danger-emphasis mt-1 mb-0">{{ state.reason }}</p>
         }
         @case ('unknown') {
           <!-- Not "failed": nothing failed, the status is simply no longer kept. -->
-          <p class="chip__meta">Status is only kept for a limited time.</p>
+          <p class="small text-body-secondary mt-1 mb-0">Status is only kept for a limited time.</p>
         }
       }
     }
@@ -88,7 +80,7 @@
     <!-- `aria-disabled`, not `disabled`: disabling the activated element drops focus to `<body>`
          for good. `download()` carries the guard instead. -->
     <button
-      class="chip__action"
+      class="btn btn-ghost btn-icon btn-icon-sm"
       type="button"
       [attr.aria-label]="downloadLabel()"
       [attr.aria-busy]="downloading() ? 'true' : null"
@@ -96,7 +88,7 @@
       (click)="download()"
     >
       @if (downloading()) {
-        <span class="kit-spinner" aria-hidden="true"></span>
+        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
       } @else {
         <app-icon name="bi-download" />
       }
@@ -105,7 +97,7 @@
 
   @if (removable()) {
     <button
-      class="chip__action chip__remove"
+      class="btn btn-ghost btn-icon btn-icon-sm"
       type="button"
       [attr.aria-label]="removeLabel()"
       (click)="removed.emit(attachment().id)"

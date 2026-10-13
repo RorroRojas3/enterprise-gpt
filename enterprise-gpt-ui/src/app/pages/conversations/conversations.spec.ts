@@ -10,6 +10,13 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import {
+  getAllByRole,
+  getByRole,
+  getByText,
+  queryByLabelText,
+  queryByRole,
+} from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ModelDto } from '@shared/models/api/chat-model.model';
 import { shouldReplaceHistory } from '@shared/utils/navigation/conversations-route';
@@ -21,7 +28,9 @@ import { LIBRARY_PAGE_SIZE } from '@state/conversations/conversation-library-sto
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
 import { conversationFixture, conversationPage } from '@testing/conversations';
+import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
+import { dialogNamed, iconOf, menuItems, openMenu } from '@testing/overlays';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { projectFixture, projectPage } from '@testing/projects';
 import { Conversations } from './conversations';
@@ -55,6 +64,7 @@ describe('Conversations', () => {
 
   beforeEach(async () => {
     models = signal<readonly ModelDto[]>([]);
+    installDialogPolyfill();
 
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
@@ -87,6 +97,42 @@ describe('Conversations', () => {
     return harness.routeNativeElement as HTMLElement;
   }
 
+  function searchField(): HTMLInputElement {
+    return getByRole<HTMLInputElement>(element(), 'searchbox', {
+      name: 'Search conversations by name',
+    });
+  }
+
+  /** The row name links, which are also where focus recovery lands. */
+  function rowLinks(): HTMLAnchorElement[] {
+    return [...element().querySelectorAll<HTMLAnchorElement>('[data-row-anchor]')];
+  }
+
+  function rowNames(): (string | undefined)[] {
+    return rowLinks().map((link) => link.textContent?.trim());
+  }
+
+  /** One column's cell text, top to bottom, found by its header. */
+  function columnTexts(header: string): (string | undefined)[] {
+    const table = getByRole(element(), 'table', { name: 'Conversations' });
+    const index = getAllByRole(table, 'columnheader').findIndex(
+      (cell) => cell.textContent?.trim() === header,
+    );
+
+    return getAllByRole(table, 'row')
+      .slice(1)
+      .map((row) => getAllByRole(row, 'cell')[index]?.textContent?.trim());
+  }
+
+  /** The count the toolbar draws; aria-hidden, so it has no role to be found by. */
+  function visibleCount(): HTMLElement | null {
+    return element().querySelector('p[aria-hidden="true"]');
+  }
+
+  function skeleton(): HTMLElement | null {
+    return queryByLabelText(element(), 'Loading Conversations');
+  }
+
   function expectSearch(): TestRequest {
     return backend.expectOne((request) => request.url === SEARCH_URL);
   }
@@ -107,10 +153,9 @@ describe('Conversations', () => {
 
   /** Types into the field and waits out the debounce on real timers. */
   async function type(term: string): Promise<void> {
-    const field = element().querySelector<HTMLInputElement>('.search__field');
-    expect(field).not.toBeNull();
-    field!.value = term;
-    field!.dispatchEvent(new Event('input'));
+    const field = searchField();
+    field.value = term;
+    field.dispatchEvent(new Event('input'));
     await harness.fixture.whenStable();
 
     await new Promise((resolve) => setTimeout(resolve, DEBOUNCE_MS));
@@ -121,9 +166,9 @@ describe('Conversations', () => {
     it('waits for the pause, then sends name= and never filter=', async () => {
       await open();
 
-      const field = element().querySelector<HTMLInputElement>('.search__field');
-      field!.value = 'quarterly';
-      field!.dispatchEvent(new Event('input'));
+      const field = searchField();
+      field.value = 'quarterly';
+      field.dispatchEvent(new Event('input'));
       await harness.fixture.whenStable();
       // `SearchInput` debounces, which is why the store carries no second one.
       backend.expectNone((request) => request.url === SEARCH_URL);
@@ -180,7 +225,7 @@ describe('Conversations', () => {
       request.flush(conversationPage([]));
       await harness.fixture.whenStable();
 
-      expect(element().querySelector<HTMLInputElement>('.search__field')?.value).toBe('quarterly');
+      expect(searchField().value).toBe('quarterly');
     });
 
     it('restores the prior list when the back button is pressed', async () => {
@@ -221,21 +266,19 @@ describe('Conversations', () => {
     it('renders frame 4b, naming the term', async () => {
       await open('/conversations?name=quarterly', []);
 
-      const empty = element().querySelector('app-empty-state');
-      expect(empty?.querySelector('app-ridgeline')).not.toBeNull();
-      expect(empty?.querySelector('.empty-state__heading')?.textContent?.trim()).toBe(
+      const empty = element().querySelector<HTMLElement>('app-empty-state')!;
+      expect(empty.querySelector('app-ridgeline')).not.toBeNull();
+      expect(getByRole(empty, 'heading').textContent?.trim()).toBe(
         'No conversations match “quarterly”',
       );
-      expect(empty?.querySelector('.empty-state__message')?.textContent?.trim()).toBe(
-        'Search covers conversation names only.',
-      );
-      expect(empty?.querySelector('button')?.textContent?.trim()).toBe('Clear search');
+      expect(getByText(empty, 'Search covers conversation names only.')).toBeTruthy();
+      expect(getByRole(empty, 'button').textContent?.trim()).toBe('Clear search');
     });
 
     it('clears the search from that state, and puts focus back in the field', async () => {
       await open('/conversations?name=quarterly', []);
 
-      element().querySelector<HTMLButtonElement>('app-empty-state button')?.click();
+      getByRole(element(), 'button', { name: 'Clear search' }).click();
       await harness.fixture.whenStable();
 
       const request = expectSearch();
@@ -244,18 +287,16 @@ describe('Conversations', () => {
       await harness.fixture.whenStable();
 
       expect(TestBed.inject(Router).url).toBe('/conversations');
-      expect(document.activeElement?.classList.contains('search__field')).toBe(true);
+      expect(document.activeElement).toBe(searchField());
     });
 
     it('offers a different state, and a different action, when there are none at all', async () => {
       await open('/conversations', []);
 
-      const empty = element().querySelector('app-empty-state');
-      expect(empty?.querySelector('.empty-state__heading')?.textContent?.trim()).toBe(
-        'No conversations yet',
-      );
-      expect(empty?.querySelector('button')).toBeNull();
-      expect(empty?.querySelector('a')?.textContent?.trim()).toBe('New conversation');
+      const empty = element().querySelector<HTMLElement>('app-empty-state')!;
+      expect(getByRole(empty, 'heading').textContent?.trim()).toBe('No conversations yet');
+      expect(queryByRole(empty, 'button')).toBeNull();
+      expect(getByRole(empty, 'link').textContent?.trim()).toBe('New conversation');
     });
   });
 
@@ -264,9 +305,8 @@ describe('Conversations', () => {
       const conversation = conversationFixture({ name: 'Quarterly review' });
       await open('/conversations', [conversation]);
 
-      const link = element().querySelector('.conversations__name');
-      expect(link?.textContent?.trim()).toBe('Quarterly review');
-      expect(link?.getAttribute('href')).toBe(`/chat/${conversation.id}`);
+      const link = getByRole(element(), 'link', { name: 'Quarterly review' });
+      expect(link.getAttribute('href')).toBe(`/chat/${conversation.id}`);
     });
 
     it('names each row’s model, and says so honestly when it has none', async () => {
@@ -279,23 +319,20 @@ describe('Conversations', () => {
 
       // Rendered through a cell template keyed on the column's key; if they diverge, `DataTable`
       // falls back to the undefined `column.text` and the column renders blank.
-      const cells = [...element().querySelectorAll('.conversations__model')].map((cell) =>
-        cell.textContent?.trim(),
-      );
-      expect(cells).toEqual(['GPT-5', '—']);
+      expect(columnTexts('Model')).toEqual(['GPT-5', '—']);
     });
 
     it('shows a skeleton for the first load, and never for a refinement', async () => {
       await harness.navigateByUrl('/conversations', Conversations);
-      expect(element().querySelector('.table-skeleton')).not.toBeNull();
+      expect(skeleton()?.getAttribute('aria-busy')).toBe('true');
 
       expectSearch().flush(conversationPage([conversationFixture()]));
       await harness.fixture.whenStable();
-      expect(element().querySelector('.table-skeleton')).toBeNull();
+      expect(skeleton()).toBeNull();
 
       await type('quarterly');
-      expect(element().querySelector('.table-skeleton')).toBeNull();
-      expect(element().querySelectorAll('.conversations__name')).toHaveLength(1);
+      expect(skeleton()).toBeNull();
+      expect(rowLinks()).toHaveLength(1);
 
       expectSearch().flush(conversationPage([]));
       await harness.fixture.whenStable();
@@ -312,7 +349,7 @@ describe('Conversations', () => {
       expect(element().querySelector('app-error-panel')).not.toBeNull();
       expect(element().querySelector('app-data-table')).toBeNull();
 
-      element().querySelector<HTMLButtonElement>('app-error-panel button')?.click();
+      getByRole(element(), 'button', { name: 'Retry' }).click();
       await harness.fixture.whenStable();
 
       expectSearch().flush(conversationPage([conversationFixture()]));
@@ -322,14 +359,9 @@ describe('Conversations', () => {
   });
 
   describe('choosing the order', () => {
+    /** Named by its visually hidden label: "Newest first" is a value, not the control's job. */
     function sortSelect(): HTMLSelectElement {
-      const control = element().querySelector<HTMLSelectElement>('.conversations__sort select');
-
-      if (control === null) {
-        throw new Error('The sort select is not rendered.');
-      }
-
-      return control;
+      return getByRole<HTMLSelectElement>(element(), 'combobox', { name: 'Sort conversations' });
     }
 
     async function choose(value: string): Promise<void> {
@@ -342,16 +374,9 @@ describe('Conversations', () => {
     it('offers a sort control rather than a caption stating the order', async () => {
       await open();
 
-      // No caption explaining a fixed order, and no flyout for it.
-      expect(element().querySelector('.conversations__order')).toBeNull();
-      expect(element().querySelector('.conversations__order-info')).toBeNull();
-
       const options = [...sortSelect().querySelectorAll('option')];
       expect(options.map((option) => option.value)).toEqual(['newest', 'oldest', 'name']);
       expect(sortSelect().value).toBe('newest');
-      expect(
-        element().querySelector('.conversations__sort .visually-hidden')?.textContent?.trim(),
-      ).toBe('Sort conversations');
     });
 
     it('sends the API pair the chosen order maps to, and records it in the URL', async () => {
@@ -415,7 +440,7 @@ describe('Conversations', () => {
       );
       await harness.fixture.whenStable();
 
-      element().querySelector<HTMLButtonElement>('.conversations__more button')!.click();
+      getByRole(element(), 'button', { name: 'Load more' }).click();
       await harness.fixture.whenStable();
 
       const next = expectSearch();
@@ -441,11 +466,7 @@ describe('Conversations', () => {
       expectSearch().flush(conversationPage([conversationFixture({ name: 'Alpha' })]));
       await harness.fixture.whenStable();
 
-      expect(
-        [...element().querySelectorAll('.conversations__name')].map((row) =>
-          row.textContent?.trim(),
-        ),
-      ).toEqual(['Alpha']);
+      expect(rowNames()).toEqual(['Alpha']);
     });
 
     it('applies no client-side reordering to a partially loaded list', async () => {
@@ -455,7 +476,7 @@ describe('Conversations', () => {
       expectSearch().flush(conversationPage(first, { totalCount: 4, pageSize: LIBRARY_PAGE_SIZE }));
       await harness.fixture.whenStable();
 
-      element().querySelector<HTMLButtonElement>('.conversations__more button')!.click();
+      getByRole(element(), 'button', { name: 'Load more' }).click();
       await harness.fixture.whenStable();
       expectSearch().flush(
         conversationPage(
@@ -465,19 +486,20 @@ describe('Conversations', () => {
       );
       await harness.fixture.whenStable();
 
-      expect(
-        [...element().querySelectorAll('.conversations__name')].map((row) =>
-          row.textContent?.trim(),
-        ),
-      ).toEqual(['Zulu', 'Alpha', 'Mike', 'Bravo']);
+      expect(rowNames()).toEqual(['Zulu', 'Alpha', 'Mike', 'Bravo']);
     });
   });
 
   describe('filtering to favourites', () => {
     function filterButton(): HTMLButtonElement {
-      const button = element().querySelector<HTMLButtonElement>('.conversations__filter');
-      expect(button).not.toBeNull();
-      return button!;
+      return getByRole<HTMLButtonElement>(element(), 'button', { name: 'Favourites' });
+    }
+
+    /** The row's star, named by the direction it would take. */
+    function star(name: string): HTMLButtonElement {
+      return getByRole<HTMLButtonElement>(element(), 'button', {
+        name: new RegExp(`^(Unf|F)avourite ${name}$`),
+      });
     }
 
     function url(): string {
@@ -538,10 +560,10 @@ describe('Conversations', () => {
       const conversation = conversationFixture({ name: 'Helios', isFavorite: false });
       await open('/conversations', [conversation]);
 
-      const star = element().querySelector<HTMLButtonElement>('.conversations__star');
-      expect(star?.getAttribute('aria-label')).toBe('Favourite Helios');
+      expect(star('Helios').getAttribute('aria-label')).toBe('Favourite Helios');
+      expect(iconOf(star('Helios'))).toBe('bi-star');
 
-      star!.click();
+      star('Helios').click();
       await harness.fixture.whenStable();
 
       const request = backend.expectOne(
@@ -549,30 +571,23 @@ describe('Conversations', () => {
       );
       expect(request.request.body).toEqual({ isFavorite: true });
       // aria-disabled, not `disabled`, which would blur the button mid-press.
-      expect(element().querySelector('.conversations__star')?.getAttribute('aria-disabled')).toBe(
-        'true',
-      );
-      expect(element().querySelector<HTMLButtonElement>('.conversations__star')?.disabled).toBe(
-        false,
-      );
+      expect(star('Helios').getAttribute('aria-disabled')).toBe('true');
+      expect(star('Helios').disabled).toBe(false);
 
       request.flush(null, { status: 204, statusText: 'No Content' });
       await harness.fixture.whenStable();
 
       // The 204 has no body; the row updates from the actions store's confirmed event.
-      expect(
-        element().querySelector('.conversations__star')?.getAttribute('aria-disabled'),
-      ).toBeNull();
-      expect(element().querySelector('.conversations__star')?.getAttribute('aria-label')).toBe(
-        'Unfavourite Helios',
-      );
+      expect(star('Helios').getAttribute('aria-disabled')).toBeNull();
+      expect(star('Helios').getAttribute('aria-label')).toBe('Unfavourite Helios');
+      expect(iconOf(star('Helios'))).toBe('bi-star-fill');
     });
 
     it('drops a row from the filtered list when its star is cleared', async () => {
       const conversation = conversationFixture({ name: 'Helios', isFavorite: true });
       await open('/conversations?favorites=1', [conversation]);
 
-      element().querySelector<HTMLButtonElement>('.conversations__star')!.click();
+      star('Helios').click();
       await harness.fixture.whenStable();
 
       backend
@@ -580,12 +595,12 @@ describe('Conversations', () => {
         .flush(null, { status: 204, statusText: 'No Content' });
       await harness.fixture.whenStable();
 
-      expect(element().querySelectorAll('.conversations__name')).toHaveLength(0);
+      expect(rowLinks()).toHaveLength(0);
       expect(element().querySelector('app-empty-state')?.textContent).toContain(
         'No favourite conversations',
       );
       // The pressed star went with the row.
-      expect(document.activeElement).toBe(element().querySelector('.search__field'));
+      expect(document.activeElement).toBe(searchField());
     });
 
     it('offers its own empty state and way out when nothing is starred', async () => {
@@ -595,7 +610,7 @@ describe('Conversations', () => {
       expect(empty?.textContent).toContain('No favourite conversations');
       expect(empty?.textContent).toContain('Star a conversation and it will appear here.');
 
-      element().querySelector<HTMLButtonElement>('app-empty-state button')?.click();
+      getByRole(element(), 'button', { name: 'Show all conversations' }).click();
       await harness.fixture.whenStable();
 
       expect(url()).toBe('/conversations');
@@ -606,17 +621,26 @@ describe('Conversations', () => {
 
   describe('deleting several at once', () => {
     function rowCheckboxes(): HTMLInputElement[] {
-      return [...element().querySelectorAll<HTMLInputElement>('tbody input[type="checkbox"]')];
+      return getAllByRole<HTMLInputElement>(element(), 'checkbox', { name: /^Select Row/ });
     }
 
     function selectAll(): HTMLInputElement {
-      const box = element().querySelector<HTMLInputElement>('.conversations__select-all input');
-      expect(box).not.toBeNull();
-      return box!;
+      return getByRole<HTMLInputElement>(element(), 'checkbox', { name: 'Select all' });
     }
 
     function bulkBar(): HTMLElement | null {
-      return element().querySelector('.bulk-bar');
+      return queryByRole(element(), 'region', { name: 'Bulk actions' });
+    }
+
+    function deleteSelected(): void {
+      getByRole(bulkBar()!, 'button', { name: 'Delete selected' }).click();
+    }
+
+    /** Confirms in whichever count's dialog is open. */
+    function confirmDelete(): void {
+      getByRole(dialogNamed(/^Delete (\d+ )?conversations?\?$/), 'button', {
+        name: 'Delete conversations',
+      }).click();
     }
 
     async function openWithRows(count = 3): Promise<void> {
@@ -666,14 +690,13 @@ describe('Conversations', () => {
       selectAll().click();
       await harness.fixture.whenStable();
 
-      element().querySelector<HTMLButtonElement>('.bulk-bar .btn-danger')!.click();
+      deleteSelected();
       await harness.fixture.whenStable();
 
-      const dialog = element().querySelector('app-modal');
-      expect(dialog?.textContent).toContain('Delete 3 conversations?');
+      expect(dialogNamed('Delete 3 conversations?')).toBeTruthy();
       backend.expectNone(() => true);
 
-      element().querySelectorAll<HTMLButtonElement>('app-modal [modalFooter]')[1]!.click();
+      confirmDelete();
       await harness.fixture.whenStable();
 
       const request = backend.expectOne(`${TEST_API_BASE_URL}/api/conversations/bulk`);
@@ -682,7 +705,7 @@ describe('Conversations', () => {
       );
 
       // Optimistic: the rows and the bar are gone before the server answers.
-      expect(element().querySelectorAll('.conversations__name')).toHaveLength(0);
+      expect(rowLinks()).toHaveLength(0);
       expect(bulkBar()).toBeNull();
 
       request.flush(null, { status: 204, statusText: 'No Content' });
@@ -694,13 +717,13 @@ describe('Conversations', () => {
       rowCheckboxes()[0]!.click();
       await harness.fixture.whenStable();
 
-      element().querySelector<HTMLButtonElement>('.bulk-bar .btn-danger')!.click();
+      deleteSelected();
       await harness.fixture.whenStable();
-      element().querySelectorAll<HTMLButtonElement>('app-modal [modalFooter]')[0]!.click();
+      getByRole(dialogNamed('Delete conversation?'), 'button', { name: 'Cancel' }).click();
       await harness.fixture.whenStable();
 
       backend.expectNone(() => true);
-      expect(element().querySelectorAll('.conversations__name')).toHaveLength(3);
+      expect(rowLinks()).toHaveLength(3);
       expect(bulkBar()?.textContent).toContain('1 selected');
     });
 
@@ -708,9 +731,9 @@ describe('Conversations', () => {
       await openWithRows();
       selectAll().click();
       await harness.fixture.whenStable();
-      element().querySelector<HTMLButtonElement>('.bulk-bar .btn-danger')!.click();
+      deleteSelected();
       await harness.fixture.whenStable();
-      element().querySelectorAll<HTMLButtonElement>('app-modal [modalFooter]')[1]!.click();
+      confirmDelete();
       await harness.fixture.whenStable();
 
       backend
@@ -721,11 +744,7 @@ describe('Conversations', () => {
         });
       await harness.fixture.whenStable();
 
-      expect(
-        [...element().querySelectorAll('.conversations__name')].map((row) =>
-          row.textContent?.trim(),
-        ),
-      ).toEqual(['Row 0', 'Row 1', 'Row 2']);
+      expect(rowNames()).toEqual(['Row 0', 'Row 1', 'Row 2']);
       // Re-selected, so Retry is one press.
       expect(bulkBar()?.textContent).toContain('3 selected');
       expect(TestBed.inject(ToastStore).toasts()).toHaveLength(1);
@@ -745,9 +764,9 @@ describe('Conversations', () => {
       await open('/conversations', rows);
       selectAll().click();
       await harness.fixture.whenStable();
-      element().querySelector<HTMLButtonElement>('.bulk-bar .btn-danger')!.click();
+      deleteSelected();
       await harness.fixture.whenStable();
-      element().querySelectorAll<HTMLButtonElement>('app-modal [modalFooter]')[1]!.click();
+      confirmDelete();
       await harness.fixture.whenStable();
 
       // Rows left in the sidebar would 404 on click and put its next page one window late.
@@ -779,9 +798,9 @@ describe('Conversations', () => {
       rowCheckboxes()[0]!.click();
       rowCheckboxes()[1]!.click();
       await harness.fixture.whenStable();
-      element().querySelector<HTMLButtonElement>('.bulk-bar .btn-danger')!.click();
+      deleteSelected();
       await harness.fixture.whenStable();
-      element().querySelectorAll<HTMLButtonElement>('app-modal [modalFooter]')[1]!.click();
+      confirmDelete();
       await harness.fixture.whenStable();
 
       backend
@@ -803,7 +822,7 @@ describe('Conversations', () => {
       selectAll().click();
       await harness.fixture.whenStable();
 
-      element().querySelector<HTMLButtonElement>('.bulk-bar__clear')!.click();
+      getByRole(bulkBar()!, 'button', { name: 'Clear' }).click();
       await harness.fixture.whenStable();
 
       expect(bulkBar()).toBeNull();
@@ -812,14 +831,11 @@ describe('Conversations', () => {
   });
 
   describe('paging', () => {
+    /** Named "Loading…" while a page is on the wire, so either label finds it. */
     function loadMoreButton(): HTMLButtonElement | null {
-      return element().querySelector<HTMLButtonElement>('.conversations__more button');
-    }
-
-    function rowNames(): (string | undefined)[] {
-      return [...element().querySelectorAll('.conversations__name')].map((row) =>
-        row.textContent?.trim(),
-      );
+      return queryByRole<HTMLButtonElement>(element(), 'button', {
+        name: /^(Load more|Loading…)$/,
+      });
     }
 
     /** Opens with a full first page that leaves more behind. */
@@ -835,17 +851,13 @@ describe('Conversations', () => {
     it('counts the loaded rows against the envelope total', async () => {
       await openPaged(312);
 
-      expect(element().querySelector('.conversations__count')?.textContent?.trim()).toBe(
-        'Showing 25 of 312 conversations',
-      );
+      expect(visibleCount()?.textContent?.trim()).toBe('Showing 25 of 312 conversations');
     });
 
     it('hands the same count to the table’s live region rather than a second one', async () => {
       await openPaged(312);
 
-      expect(element().querySelector('.conversations__count')?.getAttribute('aria-hidden')).toBe(
-        'true',
-      );
+      expect(visibleCount()?.getAttribute('aria-hidden')).toBe('true');
       const summary = element().querySelector('[aria-live="polite"]');
       expect(summary?.textContent?.trim()).toBe('Showing 25 of 312 conversations');
     });
@@ -871,9 +883,7 @@ describe('Conversations', () => {
       expect(names).toHaveLength(LIBRARY_PAGE_SIZE + 1);
       expect(names.at(0)).toBe('Row 0');
       expect(names.at(-1)).toBe('Row 25');
-      expect(element().querySelector('.conversations__count')?.textContent?.trim()).toBe(
-        'Showing 26 of 60 conversations',
-      );
+      expect(visibleCount()?.textContent?.trim()).toBe('Showing 26 of 60 conversations');
     });
 
     it('removes the control rather than disabling it once everything is loaded', async () => {
@@ -954,7 +964,7 @@ describe('Conversations', () => {
       loadMoreButton()!.click();
       await harness.fixture.whenStable();
 
-      const field = element().querySelector<HTMLInputElement>('.search__field')!;
+      const field = searchField();
       field.focus();
 
       expectSearch().flush(
@@ -971,7 +981,7 @@ describe('Conversations', () => {
 
     it('withholds the counter until there is one, and beside an error', async () => {
       await harness.navigateByUrl('/conversations', Conversations);
-      expect(element().querySelector('.conversations__count')).toBeNull();
+      expect(visibleCount()).toBeNull();
 
       expectSearch().flush(FRAMEWORK_PROBLEM_FIXTURES.serverError, {
         status: 500,
@@ -979,7 +989,7 @@ describe('Conversations', () => {
       });
       await harness.fixture.whenStable();
 
-      expect(element().querySelector('.conversations__count')).toBeNull();
+      expect(visibleCount()).toBeNull();
     });
   });
 
@@ -1004,9 +1014,7 @@ describe('Conversations', () => {
         conversationFixture({ projectId: null }),
       ]);
 
-      const chips = [...element().querySelectorAll('.conversations__project')];
-      expect(chips).toHaveLength(1);
-      expect(chips[0]?.textContent?.trim()).toBe('Data Platform Migration');
+      expect(columnTexts('Project')).toEqual(['Data Platform Migration', '']);
     });
 
     it('shows no chip for a project past the lookup ceiling', async () => {
@@ -1014,7 +1022,7 @@ describe('Conversations', () => {
       loadProjects([]);
       await open('/conversations', [conversationFixture({ projectId: project.id })]);
 
-      expect(element().querySelector('.conversations__project')).toBeNull();
+      expect(columnTexts('Project')).toEqual(['']);
     });
 
     it('offers the five row actions, routed through the shared store', async () => {
@@ -1022,10 +1030,8 @@ describe('Conversations', () => {
       const row = conversationFixture({ projectId: project.id });
       await open('/conversations', [row]);
 
-      element().querySelector<HTMLButtonElement>('.menu__trigger')?.click();
-      await harness.fixture.whenStable();
-
-      const items = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')];
+      const menu = await openMenu(harness.fixture, `Actions for ${row.name}`);
+      const items = menuItems(menu);
       expect(items.map((item) => item.textContent?.trim())).toEqual([
         'Rename',
         'Favourite',
@@ -1054,8 +1060,8 @@ describe('Conversations', () => {
     resetMediaQueries();
 
     // Icon controls stretched across the card's foot would read as two broken bars.
-    const trailing = element().querySelector('.card-row__trailing');
+    const trailing = element().querySelector('[data-card-slot="trailing"]');
     expect(trailing?.querySelectorAll('button')).toHaveLength(2);
-    expect(element().querySelector('.card-row__actions button')).toBeNull();
+    expect(element().querySelector('[data-card-slot="actions"] button')).toBeNull();
   });
 });

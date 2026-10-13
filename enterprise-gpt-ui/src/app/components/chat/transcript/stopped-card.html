@@ -1,22 +1,30 @@
-<!-- Not a live region: the Transcript's persistent status region announces the stop. -->
-<div class="stopped">
-  <div class="stopped__header">
-    <app-icon class="stopped__icon" name="bi-stop-circle" />
-    <span class="stopped__title">Stopped — not saved to this conversation</span>
+<!-- Not a live region: the Transcript's persistent status region announces the stop. Dashed and
+     inset: visually detached from the transcript proper. -->
+<div class="border border-dashed rounded-4 p-3 ms-3">
+  <div class="d-flex align-items-center gap-2 small fw-semibold text-body-secondary">
+    <app-icon class="flex-shrink-0" name="bi-stop-circle" />
+    Stopped — not saved to this conversation
   </div>
 
   @if (text(); as text) {
-    <p class="stopped__text">{{ text }}</p>
+    <!-- The span hugs its text: under `pre-wrap` an indent would render. -->
+    <p class="small text-body-secondary text-break mt-2 mb-0">
+      <span style="white-space: pre-wrap">{{ text }}</span>
+    </p>
   }
 
-  <div class="stopped__actions">
-    <button type="button" class="btn btn-outline-secondary btn-sm stopped__action" (click)="copy()">
+  <div class="d-flex flex-wrap gap-2 mt-2">
+    <button
+      type="button"
+      class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2"
+      (click)="copy()"
+    >
       <app-icon name="bi-copy" />
       {{ copied() ? 'Copied' : 'Copy' }}
     </button>
     <button
       type="button"
-      class="btn btn-outline-secondary btn-sm stopped__action"
+      class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2"
       (click)="retried.emit()"
     >
       <app-icon name="bi-arrow-clockwise" />

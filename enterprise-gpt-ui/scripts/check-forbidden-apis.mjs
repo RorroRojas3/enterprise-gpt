@@ -98,7 +98,7 @@ const FORBIDDEN = [
   {
     // A whole-number max beside `min-width: 768px` leaves a 767.5px viewport (Windows display
     // scaling) in neither mode. Component-local reflow points (480px, 575px) stay allowed.
-    pattern: /\((?:max|min)-width\s*:\s*(?:767(?:\.98)?|768|1023(?:\.98)?|1024)px/,
+    pattern: /\((?:max|min)-width\s*:\s*(?:767(?:\.98)?|768|991(?:\.98)?|992)px/,
     label: 'a hardcoded application breakpoint',
     why:
       'The three viewport modes are stated once, in styles/_breakpoints.scss ' +
@@ -108,13 +108,46 @@ const FORBIDDEN = [
     exempt: ['styles/_breakpoints.scss', 'app/shared/utils/layout/breakpoints.ts'],
   },
   {
-    // `_motion.scss` is not exempt. The word boundary stops `@keyframes spinner` passing as `spin`.
-    pattern: /@keyframes\s+(?!(?:blink|spin|ringpulse|ridgedash)\b)/,
-    label: 'a fifth keyframe',
+    // Lookbehind and lookahead, so `--bs-warning`, a local `--muted-x` and a BEM `&--muted` pass.
+    pattern:
+      /(?<![\w&-])--(?:muted|brand|accent|ok|warn|warn-bg|warn-border|fail|surface-2|active-bg|btnP-[\w-]+)(?![\w-])/,
+    label: 'a removed colour token',
     why:
-      'The app defines exactly four keyframes — blink, spin, ringpulse and ' +
-      'ridgedash. Anything else that has to move uses a transition on the ' +
-      '--t-fast / --t-slow scale, which the reduced-motion block already suppresses.',
+      "The palette feeds Bootstrap's own variables: --bs-secondary-color, --bs-primary, " +
+      '--bs-info, --bs-success, --bs-warning(-bg-subtle/-border-subtle), --bs-danger, ' +
+      '--bs-tertiary-bg, --bs-secondary-bg, --primary-fg. See _tokens.scss.',
+    exempt: [],
+  },
+  {
+    // `-emphasis`/`-subtle` pass the lookahead. `border-success` stays allowed: 3.49:1 clears the
+    // 3:1 a border needs.
+    pattern: /\b(?:text|link|btn-outline)-(?:info|success)\b(?!-)|\bborder-info\b(?!-)/,
+    label: 'a theme colour that fails contrast as text',
+    why:
+      'On light surfaces --bs-info measures 2.74:1 and --bs-success 3.49:1, under the 4.5:1 text ' +
+      'and (for info) the 3:1 non-text minimum. Use text-info-emphasis / text-success-emphasis, ' +
+      'or a -subtle background with -emphasis text.',
+    exempt: [],
+  },
+  {
+    pattern:
+      /(?:from\s+|import\s*\(?\s*)['"](?:bootstrap(?:\/(?:js|dist\/js)[^'"]*)?|@popperjs\/core|@ng-bootstrap\/[^'"]+)['"]|\bdata-bs-(?:toggle|dismiss|target)\b/,
+    label: 'Bootstrap JavaScript',
+    why:
+      'Bootstrap is CSS only here. Its JS toggles classes and moves focus outside Angular, and ' +
+      'its modal replaces the native <dialog> top layer the overlays rely on for inertness. ' +
+      'Use the shared modal, offcanvas, menu and tooltip primitives.',
+    exempt: [],
+  },
+  {
+    // `_motion.scss` is not exempt. The word boundary stops `@keyframes blinker` passing as `blink`.
+    // Bootstrap's own (spinners, placeholders, progress) compile from node_modules, unscanned.
+    pattern: /@keyframes\s+(?!(?:blink|ringpulse|ridgedash)\b)/,
+    label: 'a fourth keyframe',
+    why:
+      'The app defines exactly three keyframes of its own — blink, ringpulse and ridgedash — ' +
+      "besides Bootstrap's. Spinners are `.spinner-border`. Anything else that has to move uses " +
+      'a transition on the --t-fast / --t-slow scale, which the reduced-motion block suppresses.',
     exempt: [],
   },
 ];
@@ -141,13 +174,18 @@ for (const file of walk(SRC)) {
   }
 }
 
-// ngx-markdown's README adds a Prism theme through angular.json's `styles`, which is outside
-// src/ and every other gate.
+// ngx-markdown's README adds a Prism theme through angular.json's `styles`, and Bootstrap's docs
+// add its bundle through `scripts`; both are outside src/ and every other gate.
 const ANGULAR_JSON = join(UI_ROOT, 'angular.json');
+const WORKSPACE_RULES = [
+  { pattern: /prismjs\/themes\//, label: 'Prism' },
+  { pattern: /bootstrap(?:\.bundle)?(?:\.min)?\.js|@popperjs/, label: 'Bootstrap JavaScript' },
+];
 const workspace = readFileSync(ANGULAR_JSON, 'utf8');
 for (const [index, line] of workspace.split('\n').entries()) {
-  if (/prismjs\/themes\//.test(line)) {
-    const rule = FORBIDDEN.find(({ label }) => label.includes('Prism'));
+  for (const { pattern, label } of WORKSPACE_RULES) {
+    if (!pattern.test(line)) continue;
+    const rule = FORBIDDEN.find((candidate) => candidate.label.includes(label));
     findings.push({
       label: rule.label,
       why: rule.why,

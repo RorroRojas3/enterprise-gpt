@@ -1,5 +1,6 @@
+<!-- Callers size the host; `h-auto` keeps the aspect ratio while width/height reserve layout. -->
 <img
-  class="brand brand--light"
+  class="theme-light-only mw-100 h-auto"
   [src]="lightSrc()"
   [alt]="alt()"
   [width]="width()"
@@ -7,7 +8,7 @@
   decoding="async"
 />
 <img
-  class="brand brand--dark"
+  class="theme-dark-only mw-100 h-auto"
   [src]="darkSrc()"
   [alt]="alt()"
   [width]="width()"

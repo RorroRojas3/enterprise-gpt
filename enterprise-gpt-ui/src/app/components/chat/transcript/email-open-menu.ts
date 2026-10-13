@@ -22,7 +22,7 @@ import { MenuItem } from '@shared/directives/menu-item';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [BrandIcon, Icon, Menu, MenuItem],
   templateUrl: './email-open-menu.html',
-  styleUrl: './email-open-menu.scss',
+  host: { class: 'd-inline-flex align-items-center gap-1' },
 })
 export class EmailOpenMenu {
   readonly draft = input.required<EmailDraft>();
@@ -32,6 +32,13 @@ export class EmailOpenMenu {
   private readonly toasts = inject(ToastStore);
 
   protected readonly menuOpen = signal(false);
+
+  /** The footer is a row of bare controls, where a bordered button would tower over Copy. */
+  protected readonly openClass = computed(() =>
+    this.compact()
+      ? 'btn btn-link btn-sm p-0 text-reset text-decoration-none d-inline-flex align-items-center gap-1'
+      : 'btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2',
+  );
 
   protected readonly mailtoUrl = computed(() => buildMailtoUrl(this.draft()));
   protected readonly outlookWebUrl = computed(() => buildOutlookWebComposeUrl(this.draft()));

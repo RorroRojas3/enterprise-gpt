@@ -1,63 +1,68 @@
-<div class="paginator">
-  <div class="paginator__lead">
-    <!-- Announces the new range, unless the table's live region already carries it. -->
-    <p class="paginator__summary" [attr.aria-live]="liveSummary() ? 'polite' : null">
-      {{ summary() }}
-    </p>
+<div class="d-flex flex-wrap align-items-center gap-3">
+  <!-- Announces the new range, unless the table's live region already carries it. -->
+  <p class="small text-body-secondary mb-0" [attr.aria-live]="liveSummary() ? 'polite' : null">
+    {{ summary() }}
+  </p>
 
-    @if (pageSizes().length > 0) {
-      <!-- Hidden, not absent: "25 / page" reads as a value, not as what the control does. -->
-      <label class="paginator__size">
-        <span class="visually-hidden">Rows per page</span>
-        <!--
-          Bound per option: a `[value]` on the select runs before `@for` adds the options, so
-          a deep link to `?size=100` would request 100 and display "25 / page".
-        -->
-        <select class="form-select" (change)="onPageSize($event)">
-          @for (size of pageSizes(); track size) {
-            <option [value]="size" [selected]="size === pageSize()">{{ size }} / page</option>
-          }
-        </select>
-      </label>
-    }
-  </div>
+  @if (pageSizes().length > 0) {
+    <!-- Hidden, not absent: "25 / page" reads as a value, not as what the control does. -->
+    <label>
+      <span class="visually-hidden">Rows per page</span>
+      <!--
+        Bound per option: a `[value]` on the select runs before `@for` adds the options, so
+        a deep link to `?size=100` would request 100 and display "25 / page".
+      -->
+      <select class="form-select form-select-sm w-auto" (change)="onPageSize($event)">
+        @for (size of pageSizes(); track size) {
+          <option [value]="size" [selected]="size === pageSize()">{{ size }} / page</option>
+        }
+      </select>
+    </label>
+  }
+</div>
 
-  <nav class="paginator__nav" aria-label="Pagination">
-    <button
-      class="paginator__step"
-      type="button"
-      aria-label="Previous page"
-      [disabled]="isFirst()"
-      (click)="go(page() - 1)"
-    >
-      <app-icon name="bi-chevron-left" />
-    </button>
+<nav aria-label="Pagination">
+  <ul class="pagination pagination-sm flex-wrap mb-0">
+    <li class="page-item" [class.disabled]="isFirst()">
+      <button
+        class="page-link touch-target"
+        type="button"
+        aria-label="Previous page"
+        [disabled]="isFirst()"
+        (click)="go(page() - 1)"
+      >
+        <app-icon name="bi-chevron-left" />
+      </button>
+    </li>
 
     @for (entry of entries(); track $index) {
       @if (entry === gap) {
-        <span class="paginator__gap" aria-hidden="true">…</span>
+        <li class="page-item disabled" aria-hidden="true"><span class="page-link">…</span></li>
       } @else {
-        <button
-          class="paginator__page"
-          type="button"
-          [class.paginator__page--current]="entry === page()"
-          [attr.aria-current]="entry === page() ? 'page' : null"
-          [attr.aria-label]="'Page ' + entry"
-          (click)="go(entry)"
-        >
-          {{ entry }}
-        </button>
+        <li class="page-item" [class.active]="entry === page()">
+          <button
+            class="page-link touch-target"
+            type="button"
+            [attr.aria-current]="entry === page() ? 'page' : null"
+            [attr.aria-label]="'Page ' + entry"
+            (click)="go(entry)"
+          >
+            {{ entry }}
+          </button>
+        </li>
       }
     }
 
-    <button
-      class="paginator__step"
-      type="button"
-      aria-label="Next page"
-      [disabled]="isLast()"
-      (click)="go(page() + 1)"
-    >
-      <app-icon name="bi-chevron-right" />
-    </button>
-  </nav>
-</div>
+    <li class="page-item" [class.disabled]="isLast()">
+      <button
+        class="page-link touch-target"
+        type="button"
+        aria-label="Next page"
+        [disabled]="isLast()"
+        (click)="go(page() + 1)"
+      >
+        <app-icon name="bi-chevron-right" />
+      </button>
+    </li>
+  </ul>
+</nav>

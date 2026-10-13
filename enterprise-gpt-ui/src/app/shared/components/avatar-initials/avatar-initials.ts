@@ -8,8 +8,9 @@ import { avatarTone, initialsOf } from '@shared/utils/text/initials';
 @Component({
   selector: 'app-avatar-initials',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { class: 'd-inline-flex' },
   template: `<span
-    class="avatar"
+    class="avatar avatar-circle fw-semibold lh-1 user-select-none"
     aria-hidden="true"
     [attr.data-tone]="tone()"
     [style.--avatar-size.px]="size()"

@@ -1,22 +1,28 @@
-<div class="project" routerLinkActive="project--selected">
-  <a class="project__link" [routerLink]="link()" routerLinkActive ariaCurrentWhenActive="page">
-    <app-icon class="project__glyph" name="bi-folder-fill" />
-    <span class="project__title">{{ project().name }}</span>
+<div class="list-row reveal-host" routerLinkActive="active">
+  <a
+    class="d-flex flex-grow-1 align-items-center gap-2 min-w-0 py-1 ps-2 pe-1 rounded-2 text-reset text-decoration-none focus-inset"
+    [routerLink]="link()"
+    routerLinkActive
+    ariaCurrentWhenActive="page"
+  >
+    <app-icon class="text-primary small" name="bi-folder-fill" />
+    <span class="text-truncate small flex-grow-1">{{ project().name }}</span>
   </a>
 
+  <!-- Always visible, unlike the kebab: a disclosure shown on hover is unfindable without a pointer. -->
   <button
-    class="project__disclosure"
+    class="btn btn-ghost btn-icon btn-icon-sm"
     type="button"
     [attr.aria-expanded]="expanded()"
     [attr.aria-controls]="expanded() ? panelId() : null"
     [attr.aria-label]="disclosureLabel()"
     (click)="toggle()"
   >
-    <app-icon [name]="expanded() ? 'bi-chevron-down' : 'bi-chevron-right'" />
+    <app-icon class="small" [name]="expanded() ? 'bi-chevron-down' : 'bi-chevron-right'" />
   </button>
 
   <!-- Always Unfavourite: every row in this section is starred by construction. -->
-  <app-menu class="project__menu" [label]="'Actions for ' + project().name">
+  <app-menu class="reveal-target me-1" [label]="'Actions for ' + project().name">
     <!--
       `aria-disabled`: native `disabled` breaks the panel's roving focus. The store's guards
       make the click a no-op while pending.
@@ -43,7 +49,7 @@
     <button
       appMenuItem
       type="button"
-      class="menu__item--danger"
+      class="text-danger-emphasis"
       [attr.aria-disabled]="pending() ? 'true' : null"
       (click)="deleted.emit()"
     >

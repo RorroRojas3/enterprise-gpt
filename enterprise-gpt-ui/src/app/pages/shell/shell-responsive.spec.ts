@@ -4,6 +4,7 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { getByRole, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PREFERENCE_KEYS, writePreference } from '@shared/utils/storage/local-preferences';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
@@ -103,6 +104,22 @@ describe('Shell responsive layout', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
+  function isExpanded(element: HTMLElement): boolean {
+    return queryByRole(element, 'searchbox', { name: 'Search conversations' }) !== null;
+  }
+
+  function expandButton(element: HTMLElement): HTMLButtonElement | null {
+    return queryByRole(element, 'button', { name: 'Expand sidebar' });
+  }
+
+  function hamburger(element: HTMLElement): HTMLButtonElement {
+    return getByRole(element, 'button', { name: 'Open navigation' });
+  }
+
+  function drawerClose(element: HTMLElement): HTMLButtonElement | null {
+    return queryByRole(element, 'button', { name: 'Close navigation' });
+  }
+
   /** Puts the fixture in the document, which every `activeElement` assertion needs. */
   function attach(fixture: ComponentFixture<Shell>): HTMLElement {
     const element = host(fixture);
@@ -134,11 +151,11 @@ describe('Shell responsive layout', () => {
 
     expect(element.querySelector('app-mobile-navbar')).toBeNull();
     expect(element.querySelector('.shell__backdrop')).toBeNull();
-    expect(element.querySelector('nav.sidebar')).not.toBeNull();
+    expect(isExpanded(element)).toBe(true);
     expectAtMostOneSidebar(element);
   });
 
-  describe('768–1023px (frame 3g)', () => {
+  describe('768–991.98px', () => {
     it('defaults to the strip whatever the stored preference says', async () => {
       // Through the one sanctioned writer: `check:forbidden` allows a single `setItem` call site.
       writePreference(PREFERENCE_KEYS.sidebar, 'expanded');
@@ -147,8 +164,8 @@ describe('Shell responsive layout', () => {
       await loadConversations(fixture);
       const element = host(fixture);
 
-      expect(element.querySelector('nav.strip')).not.toBeNull();
-      expect(element.querySelector('nav.sidebar')).toBeNull();
+      expect(expandButton(element)).not.toBeNull();
+      expect(isExpanded(element)).toBe(false);
       expectAtMostOneSidebar(element);
     });
 
@@ -158,12 +175,10 @@ describe('Shell responsive layout', () => {
       await loadConversations(fixture);
       const element = host(fixture);
 
-      element
-        .querySelector<HTMLButtonElement>('.strip__button[aria-label="Expand sidebar"]')
-        ?.click();
+      expandButton(element)!.click();
       await fixture.whenStable();
 
-      expect(element.querySelector('nav.sidebar')).not.toBeNull();
+      expect(isExpanded(element)).toBe(true);
       expect(element.querySelector('.shell__backdrop')).not.toBeNull();
       // The rail holds the 60px track the panel vacated, so the main content never reflows.
       expect(element.querySelector('.shell__rail')).not.toBeNull();
@@ -183,9 +198,7 @@ describe('Shell responsive layout', () => {
 
       expect(main?.hasAttribute('inert')).toBe(false);
 
-      element
-        .querySelector<HTMLButtonElement>('.strip__button[aria-label="Expand sidebar"]')
-        ?.click();
+      expandButton(element)!.click();
       await fixture.whenStable();
 
       // jsdom can only prove `inert` is applied; its behaviour is a browser check.
@@ -198,22 +211,18 @@ describe('Shell responsive layout', () => {
       await loadConversations(fixture);
       const element = attach(fixture);
 
-      element
-        .querySelector<HTMLButtonElement>('.strip__button[aria-label="Expand sidebar"]')
-        ?.click();
+      expandButton(element)!.click();
       await fixture.whenStable();
 
       // `pointerdown`, not `click`: the panel dismisses on the press.
       element
-        .querySelector('.shell__backdrop')
-        ?.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+        .querySelector('.shell__backdrop')!
+        .dispatchEvent(new Event('pointerdown', { bubbles: true }));
       await fixture.whenStable();
 
-      expect(element.querySelector('nav.sidebar')).toBeNull();
+      expect(isExpanded(element)).toBe(false);
       expect(element.querySelector('.shell__backdrop')).toBeNull();
-      expect(document.activeElement).toBe(
-        element.querySelector('.strip__button[aria-label="Expand sidebar"]'),
-      );
+      expect(document.activeElement).toBe(expandButton(element));
     });
   });
 
@@ -234,23 +243,23 @@ describe('Shell responsive layout', () => {
       await atWidth(NARROW_VIEWPORT, fixture);
       const element = attach(fixture);
 
-      const hamburger = element.querySelector<HTMLButtonElement>('app-mobile-navbar .navbar__menu');
-      hamburger?.focus();
-      hamburger?.click();
+      const menu = hamburger(element);
+      menu.focus();
+      menu.click();
       await fixture.whenStable();
       await loadConversations(fixture);
 
       expect(element.querySelector('#sidebar-primary')).not.toBeNull();
       expectAtMostOneSidebar(element);
-      expect(document.activeElement).toBe(element.querySelector('.shell__drawer-close'));
+      expect(document.activeElement).toBe(drawerClose(element));
 
-      element.querySelector<HTMLButtonElement>('.shell__drawer-close')?.click();
+      drawerClose(element)!.click();
       await fixture.whenStable();
 
       expect(element.querySelector('#sidebar-primary')).toBeNull();
       // Identity, not `contains`: "somewhere in the navbar" would pass for focus dropped
       // on the bar itself.
-      expect(document.activeElement).toBe(hamburger);
+      expect(document.activeElement).toBe(menu);
     });
 
     it('suppresses the sidebar’s own collapse chevron inside the drawer', async () => {
@@ -258,14 +267,15 @@ describe('Shell responsive layout', () => {
       await atWidth(NARROW_VIEWPORT, fixture);
       const element = host(fixture);
 
-      element.querySelector<HTMLButtonElement>('app-mobile-navbar .navbar__menu')?.click();
+      hamburger(element).click();
       await fixture.whenStable();
       await loadConversations(fixture);
 
       // There is no collapsed width to go to here, and the shell's close button already
       // occupies that corner.
-      expect(element.querySelector('.sidebar__collapse')).toBeNull();
-      expect(element.querySelector('.shell__drawer-close')).not.toBeNull();
+      expect(isExpanded(element)).toBe(true);
+      expect(queryByRole(element, 'button', { name: 'Collapse sidebar' })).toBeNull();
+      expect(drawerClose(element)).not.toBeNull();
     });
   });
 
@@ -289,15 +299,15 @@ describe('Shell responsive layout', () => {
     await atWidth(NARROW_VIEWPORT, fixture);
     const element = attach(fixture);
 
-    element.querySelector<HTMLButtonElement>('app-mobile-navbar .navbar__menu')?.click();
+    hamburger(element).click();
     await fixture.whenStable();
     await loadConversations(fixture);
     expect(element.querySelector('#sidebar-primary')).not.toBeNull();
 
     await atWidth(TABLET_VIEWPORT_QUERY, fixture);
 
-    expect(element.querySelector('nav.strip')).not.toBeNull();
-    expect(element.querySelector('nav.sidebar')).toBeNull();
+    expect(expandButton(element)).not.toBeNull();
+    expect(isExpanded(element)).toBe(false);
     expect(element.querySelector('.shell__backdrop')).toBeNull();
     expectAtMostOneSidebar(element);
   });

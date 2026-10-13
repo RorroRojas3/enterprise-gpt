@@ -21,6 +21,7 @@ let nextId = 0;
   selector: 'app-search-input',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
+  host: { class: 'd-block' },
   templateUrl: './search-input.html',
   styleUrl: './search-input.scss',
 })

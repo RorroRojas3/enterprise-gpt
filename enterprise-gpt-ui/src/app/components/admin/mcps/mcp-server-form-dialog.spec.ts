@@ -57,14 +57,15 @@ describe('McpServerFormDialog', () => {
     return host().querySelector('button[type="submit"]') as HTMLButtonElement;
   }
 
+  /** The messages the fields carry; the panel above them is {@link summary}. */
   function errors(): string[] {
-    return [...host().querySelectorAll('.mcp-form__error')].map(
+    return [...host().querySelectorAll('.invalid-feedback p')].map(
       (node) => node.textContent?.trim() ?? '',
     );
   }
 
   function summary(): string {
-    return host().querySelector('.mcp-form__summary')?.textContent?.replace(/\s+/g, ' ') ?? '';
+    return host().querySelector('.alert-danger')?.textContent?.replace(/\s+/g, ' ') ?? '';
   }
 
   async function type(id: string, text: string): Promise<void> {
@@ -462,7 +463,7 @@ describe('McpServerFormDialog', () => {
 
     expect(summary()).toContain('SAP Ledger');
     // Support asks for the correlation id, and the panel is now the only place it can go.
-    expect(host().querySelector('.mcp-form__trace')).not.toBeNull();
+    expect(summary()).toContain('No trace ID was returned.');
     expect(host().querySelector('dialog[open]')).not.toBeNull();
   });
 

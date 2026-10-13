@@ -1,22 +1,25 @@
 @if (isNarrow()) {
-  <app-pill-subnav class="admin__pills" [items]="pills" ariaLabel="Administration" />
+  <app-pill-subnav [items]="pills" ariaLabel="Administration" />
 } @else {
-  <nav class="admin-nav" aria-label="Administration">
-    <p class="admin-nav__title font-display">
+  <nav class="admin-rail" aria-label="Administration">
+    <p
+      class="d-flex align-items-center gap-2 mb-0 px-2 pt-1 pb-3 text-primary fw-bold font-display"
+    >
       <app-icon name="bi-shield-lock" />
       Admin
     </p>
 
-    <ul class="admin-nav__list">
+    <!-- `small` on the list: `.nav-link` resets its own font size, so a class on the link loses. -->
+    <ul class="nav nav-pills nav-pills-subtle flex-column gap-1 small">
       @for (tab of tabs; track tab.id) {
-        <li>
+        <li class="nav-item">
           <a
-            class="admin-nav__link"
-            routerLinkActive="admin-nav__link--active"
+            class="nav-link d-flex align-items-center gap-2 px-2"
+            routerLinkActive="active"
             ariaCurrentWhenActive="page"
             [routerLink]="tab.link"
           >
-            <app-icon class="admin-nav__icon" [name]="tab.icon" />
+            <app-icon [name]="tab.icon" />
             {{ tab.label }}
           </a>
         </li>
@@ -25,6 +28,7 @@
   </nav>
 }
 
-<div class="admin__content">
+<!-- `min-w-0` lets the table ellipsise instead of widening the row past the viewport. -->
+<div class="d-flex flex-column flex-fill min-w-0">
   <router-outlet />
 </div>

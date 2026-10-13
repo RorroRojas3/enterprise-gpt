@@ -23,7 +23,7 @@
 
 @if (mode() !== 'mobile') {
   @if (tabletOverlayOpen()) {
-    <!-- Holds the track the floating panel vacated, so `.shell__main` never reflows. -->
+    <!-- Holds the track the floating panel vacated, so `<main>` never reflows. -->
     <div class="shell__rail" aria-hidden="true"></div>
 
     <!-- Dismisses on `pointerdown`, like every other dismissal in the app. Hidden from AT:
@@ -41,7 +41,7 @@
 <main
   #main
   id="main-content"
-  class="shell__main"
+  class="d-flex flex-column flex-grow-1 min-w-0 overflow-hidden focus-inset"
   tabindex="-1"
   [attr.inert]="tabletOverlayOpen() ? '' : null"
 >
@@ -63,7 +63,7 @@
   @if (mobileDrawerOpen()) {
     <!-- The shell owns this close control, since the overlay it dismisses is the shell's. -->
     <button
-      class="shell__drawer-close"
+      class="shell__drawer-close btn btn-ghost btn-icon btn-icon-lg bg-body-tertiary position-absolute"
       type="button"
       data-modal-autofocus
       aria-label="Close navigation"

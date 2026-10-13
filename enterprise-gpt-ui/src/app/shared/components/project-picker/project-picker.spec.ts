@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ChangeDetectionStrategy, Component, ElementRef, signal, viewChild } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { getByRole, getByText, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConversationDto } from '@shared/models/api/conversation.model';
 import { ProjectSummaryDto } from '@shared/models/api/project.model';
@@ -78,17 +79,19 @@ describe('ProjectPicker', () => {
   }
 
   function rowNamed(host: HTMLElement, text: string): HTMLButtonElement | undefined {
-    return [...host.querySelectorAll<HTMLButtonElement>('.picker__option')].find((button) =>
+    return [...host.querySelectorAll<HTMLButtonElement>('[data-picker-row]')].find((button) =>
       button.textContent?.includes(text),
     );
+  }
+
+  function panel(host: HTMLElement): HTMLElement | null {
+    return queryByRole(host, 'dialog', { name: /to a project$/ });
   }
 
   it('is a dialog holding a listbox, not a menu', async () => {
     const host = await render([projectFixture()]);
 
-    const panel = host.querySelector('.picker');
-    expect(panel?.getAttribute('role')).toBe('dialog');
-    expect(panel?.getAttribute('aria-modal')).toBeNull();
+    expect(panel(host)?.getAttribute('aria-modal')).toBeNull();
     expect(host.querySelector('[role="listbox"]')).not.toBeNull();
     expect(host.querySelector('[role="menu"]')).toBeNull();
   });
@@ -110,9 +113,9 @@ describe('ProjectPicker', () => {
       projectFixture({ name: 'RFP Responses' }),
     ]);
 
-    const field = host.querySelector<HTMLInputElement>('.picker__field');
-    field!.value = 'rfp';
-    field!.dispatchEvent(new Event('input'));
+    const field = getByRole(host, 'textbox', { name: 'Search projects' }) as HTMLInputElement;
+    field.value = 'rfp';
+    field.dispatchEvent(new Event('input'));
     await fixture.whenStable();
 
     // Client-side and case-insensitive, matching the server's `?name=` rule.
@@ -137,7 +140,7 @@ describe('ProjectPicker', () => {
     request.flush({ ...conversation, projectId: project.id });
     await fixture.whenStable();
 
-    expect(host.querySelector('.picker')).toBeNull();
+    expect(panel(host)).toBeNull();
     expect(document.activeElement).toBe(fixture.componentInstance.anchor().nativeElement);
   });
 
@@ -181,7 +184,7 @@ describe('ProjectPicker', () => {
     const actions = TestBed.inject(ProjectActionsStore);
     expect(actions.formMode()).toBe('create');
     // The panel gets out of the way of the modal it just opened.
-    expect(host.querySelector('.picker')).toBeNull();
+    expect(panel(host)).toBeNull();
 
     actions.submitForm({ name: 'Q3 Board Deck', description: '', instructions: '' });
     const created = backend.expectOne(`${TEST_API_BASE_URL}/api/projects`);
@@ -227,20 +230,16 @@ describe('ProjectPicker', () => {
     await fixture.whenStable();
 
     const host = fixture.nativeElement as HTMLElement;
-    expect(host.querySelector('.picker__status--ceiling')?.textContent).toContain(
-      'Showing the first 500 of 4000 projects.',
-    );
+    expect(getByText(host, /Showing the first 500 of 4000 projects\./)).toBeTruthy();
   });
 
   it('closes on Escape and returns focus to the anchor', async () => {
     const host = await render([projectFixture()]);
 
-    host
-      .querySelector('.picker')
-      ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    panel(host)?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await fixture.whenStable();
 
-    expect(host.querySelector('.picker')).toBeNull();
+    expect(panel(host)).toBeNull();
     expect(document.activeElement).toBe(fixture.componentInstance.anchor().nativeElement);
   });
 

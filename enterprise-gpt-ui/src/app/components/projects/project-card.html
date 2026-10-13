@@ -1,32 +1,44 @@
-<article class="project-card" [attr.aria-labelledby]="headingId" [attr.aria-busy]="pending()">
-  <div class="project-card__head">
-    <!-- Grouped rather than a third child of the head, so `space-between` still puts the
-         actions at the far edge and the link's hit area stays the name itself. -->
-    <div class="project-card__identity">
-      <app-icon class="project-card__glyph" name="bi-folder-fill" />
-      <a class="project-card__name" [id]="headingId" [routerLink]="link()">{{ name() }}</a>
-    </div>
-
-    <div class="project-card__actions">
-      @if (showFavorite()) {
-        <button
-          class="project-card__favorite"
-          type="button"
-          [class.project-card__favorite--on]="favorite()"
-          [attr.aria-label]="favoriteLabel()"
-          [attr.aria-disabled]="pending() ? 'true' : null"
-          (click)="favoriteToggled.emit()"
+<article class="card h-100" [attr.aria-labelledby]="headingId" [attr.aria-busy]="pending()">
+  <div class="card-body d-flex flex-column gap-2">
+    <div class="d-flex align-items-center justify-content-between gap-2">
+      <!-- Grouped rather than a third child of the head, so `space-between` still puts the
+           actions at the far edge and the link's hit area stays the name itself. Always
+           brand-tinted, like the sidebar row. -->
+      <div class="d-flex align-items-center gap-2 min-w-0">
+        <app-icon class="flex-shrink-0 text-primary" name="bi-folder-fill" />
+        <a
+          class="text-truncate font-display fw-semibold link-body-emphasis link-underline-opacity-0 link-underline-opacity-100-hover"
+          data-row-anchor
+          [id]="headingId"
+          [routerLink]="link()"
         >
-          <app-icon [name]="favorite() ? 'bi-star-fill' : 'bi-star'" />
-        </button>
-      }
+          {{ name() }}
+        </a>
+      </div>
 
-      <ng-content select="[cardMenu]" />
+      <div class="d-flex align-items-center gap-1">
+        @if (showFavorite()) {
+          <!-- No aria-pressed: the label already says "Favourite" or "Unfavourite", and
+               carrying the state twice announces as "Unfavourite Helios, pressed". -->
+          <button
+            class="btn btn-ghost btn-icon btn-icon-sm touch-target"
+            type="button"
+            [class.text-primary]="favorite()"
+            [attr.aria-label]="favoriteLabel()"
+            [attr.aria-disabled]="pending() ? 'true' : null"
+            (click)="favoriteToggled.emit()"
+          >
+            <app-icon [name]="favorite() ? 'bi-star-fill' : 'bi-star'" />
+          </button>
+        }
+
+        <ng-content select="[cardMenu]" />
+      </div>
     </div>
+
+    <!-- Grows, so the meta line sits at the card's foot whether or not there is a description. -->
+    <p class="flex-grow-1 small text-body-secondary mb-0">{{ description() }}</p>
+
+    <p class="small text-body-secondary mb-0">Updated {{ updatedLabel() }}</p>
   </div>
-
-  <!-- Reserved height, so a card with no description does not shorten its row. -->
-  <p class="project-card__description">{{ description() }}</p>
-
-  <p class="project-card__meta">Updated {{ updatedLabel() }}</p>
 </article>

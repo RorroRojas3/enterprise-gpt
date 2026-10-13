@@ -33,7 +33,6 @@ const EMAIL_MAX_LENGTH = 512;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormField, Modal, PermissionChecklist],
   templateUrl: './user-form-dialog.html',
-  styleUrl: './user-form-dialog.scss',
 })
 export class UserFormDialog {
   protected readonly actions = inject(UserActionsStore);

@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The Angular client is restyled on full Bootstrap 5.3, with Bootstrap's default type, spacing and
+  radius scales, so text and spacing are visibly larger than before. The desktop layout with the
+  persistent sidebar now starts at 992px instead of 1024px, and the palette lives under Bootstrap's
+  variable names (the old `--muted`, `--brand`, `--ok`, `--warn`, `--fail` and related tokens are
+  gone, and lint rejects them). Modals and side panels are re-skinned and gain a Close button.
+  Accessibility fixes: dark-theme danger buttons and checked checkboxes, radios and switches now meet
+  contrast, the admin MCP and model tables drop columns at narrow desktop widths instead of
+  crowding, and the project pages scroll again. Component stylesheets shrank from about 7,100 lines
+  to about 900, and the production size budgets rose to fit.
 - The Angular client in `enterprise-gpt-ui/` now follows the Andes `angular-ui-architecture` kind-first
   layout; behaviour is unchanged. `src/app/` is grouped by kind, then by feature: `pages/<feature>`,
   `components/<feature>`, `state/` (root stores flat, page- and route-provided stores in

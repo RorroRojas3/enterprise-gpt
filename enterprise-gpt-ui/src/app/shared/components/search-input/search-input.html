@@ -1,11 +1,14 @@
 <label class="visually-hidden" [for]="inputId">{{ label() }}</label>
 
-<div class="search">
-  <app-icon class="search__icon" name="bi-search" />
+<div class="position-relative">
+  <app-icon
+    class="position-absolute top-50 start-0 translate-middle-y ms-3 pe-none text-body-secondary small"
+    name="bi-search"
+  />
 
   <input
     #field
-    class="form-control search__field"
+    class="form-control ps-5 bg-surface"
     type="search"
     autocomplete="off"
     [id]="inputId"

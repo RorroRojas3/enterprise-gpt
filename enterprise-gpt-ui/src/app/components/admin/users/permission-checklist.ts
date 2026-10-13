@@ -24,8 +24,8 @@ interface ChecklistRow {
   selector: 'app-permission-checklist',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
+  host: { class: 'd-block' },
   templateUrl: './permission-checklist.html',
-  styleUrl: './permission-checklist.scss',
 })
 export class PermissionChecklist {
   readonly permissions = input.required<readonly PermissionDto[]>();

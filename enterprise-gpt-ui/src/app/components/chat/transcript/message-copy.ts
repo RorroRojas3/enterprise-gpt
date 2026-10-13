@@ -27,7 +27,6 @@ export type CopySubject = 'prompt' | 'response';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
   templateUrl: './message-copy.html',
-  styleUrl: './message-copy.scss',
   // Keeps the hover-revealed footer up for the confirmation window.
   host: { '[class.message-copy--copied]': 'copied()' },
 })

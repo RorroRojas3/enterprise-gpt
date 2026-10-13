@@ -31,7 +31,7 @@ export class UsageBarList {
         row.totalTokens <= 0
           ? '0%'
           : `${Math.max(MINIMUM_WIDTH, Math.round((row.totalTokens / peak) * 100))}%`,
-      // `--brand` and `--accent` match in the dark theme, so the rank is the second channel
+      // `--bs-primary` and `--bs-info` match in the dark theme, so the rank is the second channel
       // that keeps the ordering readable.
       rank: index + 1,
       isLeader: index === 0,

@@ -17,7 +17,7 @@ describe('Skeleton', () => {
     fixture.componentRef.setInput('lines', 3);
     await fixture.whenStable();
 
-    const bars = [...(fixture.nativeElement as HTMLElement).querySelectorAll('.skeleton')];
+    const bars = [...(fixture.nativeElement as HTMLElement).children];
     expect(bars).toHaveLength(3);
     expect((bars[2] as HTMLElement).style.width).toBe('60%');
   });

@@ -48,8 +48,8 @@ import { TableCell } from '@shared/directives/table-cell';
     RouterLink,
     TableCell,
   ],
+  host: { class: 'd-block' },
   templateUrl: './project-conversations.html',
-  styleUrl: './project-conversations.scss',
 })
 export class ProjectConversations {
   protected readonly conversations = inject(ProjectConversationsStore);
@@ -226,9 +226,7 @@ export class ProjectConversations {
       return;
     }
 
-    const first = this._host.nativeElement.querySelector<HTMLElement>(
-      '.project-conversations__name',
-    );
+    const first = this._host.nativeElement.querySelector<HTMLElement>('[data-row-anchor]');
 
     (first ?? this._document.getElementById('main-content'))?.focus();
   }

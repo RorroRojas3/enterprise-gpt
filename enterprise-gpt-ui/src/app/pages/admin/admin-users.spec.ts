@@ -10,6 +10,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { getAllByText, getByRole, getByText } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { UserDto } from '@shared/models/api/user.model';
 import {
@@ -121,9 +122,13 @@ describe('AdminUsers', () => {
     return backend.expectOne((request) => request.url === USERS_URL);
   }
 
-  /** By class, not document order: the paginator's page-size select is also on the page. */
+  /** By name, not document order: the paginator's page-size select is also on the page. */
   function permissionSelect(): HTMLSelectElement {
-    return element().querySelector<HTMLSelectElement>('.admin-users__permission select')!;
+    return getByRole(element(), 'combobox', { name: 'Filter users by permission' });
+  }
+
+  function pageSizeSelect(): HTMLSelectElement {
+    return getByRole(element(), 'combobox', { name: /rows per page/i });
   }
 
   async function open(
@@ -152,9 +157,11 @@ describe('AdminUsers', () => {
   }
 
   async function type(term: string): Promise<void> {
-    const field = element().querySelector<HTMLInputElement>('.search__field');
-    field!.value = term;
-    field!.dispatchEvent(new Event('input'));
+    const field = getByRole<HTMLInputElement>(element(), 'searchbox', {
+      name: 'Search users by name or email',
+    });
+    field.value = term;
+    field.dispatchEvent(new Event('input'));
     await harness.fixture.whenStable();
     await new Promise((resolve) => setTimeout(resolve, DEBOUNCE_MS));
     await harness.fixture.whenStable();
@@ -183,9 +190,7 @@ describe('AdminUsers', () => {
 
     expect(element().querySelector('.avatar')?.textContent?.trim()).toBe('GH');
     expect(element().querySelector('.admin-users__name')?.textContent).toContain('Grace Hopper');
-    expect(element().querySelector('.admin-users__email')?.textContent).toContain(
-      'grace.hopper@example.com',
-    );
+    expect(getByText(element(), 'grace.hopper@example.com')).toBeTruthy();
     expect(element().querySelectorAll('app-permission-badge')).toHaveLength(2);
   });
 
@@ -214,9 +219,7 @@ describe('AdminUsers', () => {
       directoryUserFixture(),
     ]);
 
-    const marks = element().querySelectorAll('.admin-users__you');
-    expect(marks).toHaveLength(1);
-    expect(marks[0]?.textContent).toContain('(you)');
+    expect(getAllByText(element(), '(you)')).toHaveLength(1);
   });
 
   it('sends a deep link’s term, page and size on one request', async () => {
@@ -245,7 +248,7 @@ describe('AdminUsers', () => {
   it('pages through the URL, and back restores the page before it', async () => {
     await open('/admin/users', [directoryUserFixture()], { totalCount: 312 });
 
-    element().querySelectorAll<HTMLButtonElement>('.paginator__page')[1]?.click();
+    getByRole(element(), 'button', { name: 'Page 2' }).click();
     await harness.fixture.whenStable();
     expectSearch().flush(
       userPage([directoryUserFixture()], { totalCount: 312, skip: DEFAULT_USER_PAGE_SIZE }),
@@ -267,16 +270,15 @@ describe('AdminUsers', () => {
     });
 
     // Options come from `@for`, so a `[value]` on the select would leave the first one showing.
-    const select = element().querySelector<HTMLSelectElement>('.paginator__size select');
-    expect(select!.value).toBe('100');
+    expect(pageSizeSelect().value).toBe('100');
   });
 
   it('returns to the first page when the page size changes', async () => {
     await open('/admin/users?page=3', [directoryUserFixture()], { totalCount: 312, skip: 50 });
 
-    const select = element().querySelector<HTMLSelectElement>('.paginator__size select');
-    select!.value = '100';
-    select!.dispatchEvent(new Event('change'));
+    const select = pageSizeSelect();
+    select.value = '100';
+    select.dispatchEvent(new Event('change'));
     await harness.fixture.whenStable();
 
     const request = expectSearch();
@@ -308,8 +310,8 @@ describe('AdminUsers', () => {
   it('states the order it cannot change', async () => {
     await open();
 
-    expect(element().querySelector('.admin-users__order')?.textContent).toContain('By last name');
-    expect(element().querySelector('.admin-users__order-info')).not.toBeNull();
+    expect(getByText(element(), 'By last name')).toBeTruthy();
+    expect(getByRole(element(), 'button', { name: 'About this list' })).toBeTruthy();
   });
 
   it('announces the count once — the table’s region, not the paginator’s', async () => {
@@ -318,7 +320,11 @@ describe('AdminUsers', () => {
     const live = [...element().querySelectorAll('[aria-live]')];
     expect(live).toHaveLength(1);
     expect(live[0]?.textContent).toContain('Showing 1–25 of 312 users');
-    expect(element().querySelector('.paginator__summary')?.hasAttribute('aria-live')).toBe(false);
+    // The paginator states the same sentence visibly, outside any live region.
+    const visible = getAllByText(element(), 'Showing 1–25 of 312 users').filter(
+      (node) => !node.hasAttribute('aria-live'),
+    );
+    expect(visible).toHaveLength(1);
   });
 
   it('offers a way out of a page past the end of the directory', async () => {

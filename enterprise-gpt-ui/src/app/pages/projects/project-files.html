@@ -3,8 +3,9 @@
   drop inert, since the browser navigates to a file dropped where no target is rendered.
 -->
 @if (session.canUploadFiles()) {
+  <!-- The dashed border is the resting state; `DropOverlay` draws the drag-over one on top. -->
   <div
-    class="files__dropzone"
+    class="position-relative d-flex align-items-center justify-content-center gap-2 p-3 border border-2 border-dashed rounded-4 small text-body-secondary"
     [appFileDropTarget]="true"
     (filesDropped)="onFilesChosen($event)"
     #drop="appFileDropTarget"
@@ -13,20 +14,28 @@
       <app-drop-overlay label="Drop files to add them to this project" />
     }
 
-    <app-icon class="files__dropzone-icon" name="bi-file-earmark-arrow-up" />
+    <app-icon class="fs-6 text-info-emphasis" name="bi-file-earmark-arrow-up" />
     <span>
       Drop files here or
-      <button class="files__browse" type="button" (click)="openFilePicker()">browse</button>
+      <!-- Reads as an inline link but is a real button, so it is keyboard-reachable. -->
+      <button
+        class="btn btn-link btn-sm p-0 align-baseline fw-semibold"
+        type="button"
+        data-focus-next
+        (click)="openFilePicker()"
+      >
+        browse
+      </button>
     </span>
   </div>
 
   <!--
-    Off-screen, not `display: none`, which is unfocusable; the button above is the accessible
+    Visually hidden, not `display: none`, which is unfocusable; the button above is the accessible
     control. `accept` is empty, meaning any file, until this deployment's list loads.
   -->
   <input
     #filePicker
-    class="files__file-input"
+    class="visually-hidden"
     type="file"
     multiple
     tabindex="-1"
@@ -40,7 +49,7 @@
 <p class="visually-hidden" role="status">{{ uploads.attachmentSummary() }}</p>
 
 @if (uploads.hasAttachments()) {
-  <ul class="files__chips" role="list" aria-label="Files being added">
+  <ul class="list-unstyled d-flex flex-wrap gap-2 mb-0" role="list" aria-label="Files being added">
     @for (attachment of uploads.attachments(); track attachment.id) {
       <li>
         <app-attachment-chip
@@ -63,19 +72,21 @@
     (retried)="documents.refresh()"
   />
 } @else if (documents.isFirstLoad()) {
-  <div class="files__list" aria-busy="true">
-    @for (row of skeletonRows; track $index) {
-      <div class="files__row">
-        <app-skeleton variant="circle" width="16px" height="16px" />
-        <app-skeleton width="60%" />
-        <app-skeleton width="50px" />
-        <app-skeleton width="50px" />
-      </div>
-    }
+  <div class="card rounded-4 overflow-hidden" aria-busy="true">
+    <div class="list-group list-group-flush">
+      @for (row of skeletonRows; track $index) {
+        <div class="files__row list-group-item d-grid align-items-center column-gap-2 px-3 py-0">
+          <app-skeleton variant="circle" width="16px" height="16px" />
+          <app-skeleton width="60%" />
+          <app-skeleton width="50px" />
+          <app-skeleton width="50px" />
+        </div>
+      }
+    </div>
   </div>
 } @else if (documents.isEmpty()) {
   <!-- A plain sentence, not an illustration competing with the drop zone above. -->
-  <p class="files__empty">
+  <p class="small text-body-secondary mb-0">
     @if (session.canUploadFiles()) {
       No files yet. Files added here are shared by every conversation in this project.
     } @else {
@@ -83,53 +94,62 @@
     }
   </p>
 } @else {
-  <ul class="files__list" role="list">
-    @for (document of documents.documents(); track trackId(document)) {
-      <li class="files__row" [attr.aria-busy]="documents.isRowPending(document.id)">
-        <app-icon
-          class="files__glyph"
-          [class]="'files__glyph--' + glyph(document.name).tone"
-          [name]="glyph(document.name).icon"
-        />
-        <span class="files__name">{{ document.name }}</span>
-        <span class="files__size">{{ sizeLabel(document) }}</span>
-        <span class="files__date">{{ dateLabel(document) }}</span>
-
-        <button
-          class="files__action"
-          type="button"
-          [attr.aria-label]="'Download ' + document.name"
-          [attr.aria-busy]="isDownloading(document)"
-          [disabled]="isDownloading(document)"
-          (click)="download(document)"
+  <div class="card rounded-4 overflow-hidden">
+    <ul class="list-group list-group-flush" role="list">
+      @for (document of documents.documents(); track trackId(document)) {
+        @let fileGlyph = glyph(document.name);
+        <li
+          class="files__row list-group-item d-grid align-items-center column-gap-2 px-3 py-0"
+          [attr.aria-busy]="documents.isRowPending(document.id)"
         >
-          @if (isDownloading(document)) {
-            <span class="kit-spinner" aria-hidden="true"></span>
-          } @else {
-            <app-icon name="bi-download" />
-          }
-        </button>
+          <app-icon [class]="glyphText[fileGlyph.tone]" [name]="fileGlyph.icon" />
+          <span class="min-w-0 text-truncate small fw-medium">{{ document.name }}</span>
+          <!-- Below `sm` the metadata gives way: the name and both controls are the row's
+               reason for existing. -->
+          <span class="d-none d-sm-inline small text-body-secondary">
+            {{ sizeLabel(document) }}
+          </span>
+          <span class="d-none d-sm-inline small text-body-secondary">
+            {{ dateLabel(document) }}
+          </span>
 
-        @if (session.canUploadFiles()) {
-          <!-- Removing needs the upload permission; without it files stay downloadable. -->
           <button
-            class="files__action files__action--danger"
+            class="btn btn-ghost btn-icon btn-icon-sm"
             type="button"
-            [attr.aria-label]="'Remove ' + document.name"
-            [attr.aria-disabled]="documents.isRowPending(document.id) ? 'true' : null"
-            (click)="removeTarget.set(document)"
+            data-row-anchor
+            [attr.aria-label]="'Download ' + document.name"
+            [attr.aria-busy]="isDownloading(document)"
+            [disabled]="isDownloading(document)"
+            (click)="download(document)"
           >
-            <app-icon name="bi-trash3" />
+            @if (isDownloading(document)) {
+              <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+            } @else {
+              <app-icon name="bi-download" />
+            }
           </button>
-        }
-      </li>
-    }
-  </ul>
+
+          @if (session.canUploadFiles()) {
+            <!-- Removing needs the upload permission; without it files stay downloadable. -->
+            <button
+              class="files__remove btn btn-ghost btn-icon btn-icon-sm"
+              type="button"
+              [attr.aria-label]="'Remove ' + document.name"
+              [attr.aria-disabled]="documents.isRowPending(document.id) ? 'true' : null"
+              (click)="removeTarget.set(document)"
+            >
+              <app-icon name="bi-trash3" />
+            </button>
+          }
+        </li>
+      }
+    </ul>
+  </div>
 }
 
 <app-modal heading="Remove file?" size="sm" [open]="removeOpen()" (closed)="removeTarget.set(null)">
   @if (removeTarget(); as target) {
-    <p class="files__confirm">
+    <p class="small text-body-secondary mb-0">
       “{{ target.name }}” will be removed from this project and its conversations will stop being
       able to use it.
     </p>

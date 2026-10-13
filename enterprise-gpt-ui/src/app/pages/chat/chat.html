@@ -10,9 +10,9 @@
       "Unfavourite …, pressed". Native [disabled] is fine outside a roving-focus menu.
     -->
     <button
-      class="chat__star"
+      class="btn btn-ghost btn-icon btn-icon-sm touch-target"
       type="button"
-      [class.chat__star--on]="conversation.isFavorite()"
+      [class.text-primary]="conversation.isFavorite()"
       [attr.aria-label]="(conversation.isFavorite() ? 'Unfavourite ' : 'Favourite ') + current.name"
       [disabled]="conversation.actionPending()"
       (click)="actions.toggleFavorite(current)"
@@ -33,7 +33,7 @@
       aria-disabled: a natively disabled item cannot take focus, stranding the menu's roving
       focus. The store's begin* methods refuse a pending row, so the click is a no-op.
     -->
-    <app-menu #headerMenu class="chat__menu" [label]="'Actions for ' + current.name">
+    <app-menu #headerMenu class="flex-shrink-0 ms-auto" [label]="'Actions for ' + current.name">
       <button
         appMenuItem
         type="button"
@@ -52,8 +52,8 @@
         (click)="openPicker(headerMenu)"
       >
         <app-icon name="bi-folder-symlink" />
-        <span class="chat__menu-label">Move to project</span>
-        <app-icon class="chat__menu-chevron" name="bi-chevron-right" />
+        <span class="flex-fill">Move to project</span>
+        <app-icon class="small" name="bi-chevron-right" />
       </button>
       @if (current.projectId !== null) {
         <button
@@ -70,7 +70,7 @@
       <button
         appMenuItem
         type="button"
-        class="menu__item--danger"
+        class="text-danger-emphasis"
         [attr.aria-disabled]="conversation.actionPending() ? 'true' : null"
         (click)="actions.beginDelete(current)"
       >
@@ -86,13 +86,15 @@
 </ng-template>
 
 @if (conversation.isOpen()) {
-  <header class="chat__header">
+  <!-- Below md the shell's navbar replaces the bar. The <h1> is hidden, not removed: it is the
+       page's only level-one heading. -->
+  <header [class]="headerClass()">
     <!-- The skeleton sits inside the h1 so the page never lacks a level-1 heading mid-load. -->
-    <h1 class="chat__title">
+    <h1 class="fs-6 fw-semibold text-truncate min-w-0 mb-0" [class.visually-hidden]="isNarrow()">
       @if (conversation.name(); as name) {
         {{ name }}
       } @else {
-        <app-skeleton class="chat__title-skeleton" variant="text" width="200px" height="15px" />
+        <app-skeleton variant="text" width="200px" height="15px" />
       }
     </h1>
 
@@ -104,26 +106,27 @@
 
 <!-- Where the jump-to-latest control hands focus when it removes itself, not <body>. -->
 <div
-  class="chat__body"
+  class="chat__body d-flex flex-column flex-fill min-h-0 overflow-y-auto overscroll-contain focus-inset"
   tabindex="-1"
   [appTranscriptPinning]="bottomSentinel"
   [pinningContent]="pinnedContent"
   #pinning="appTranscriptPinning"
 >
   <!-- One stable wrapper for the pinning directive to measure; the scroll box never resizes. -->
-  <div class="chat__content" #pinnedContent>
+  <div class="d-flex flex-column flex-grow-1 flex-shrink-0" #pinnedContent>
     @if (conversation.error(); as error) {
       <!-- The API does not tell missing from someone else's on a 404, and neither does this. -->
       <app-error-panel
-        class="chat__error"
+        class="m-auto p-4"
         [error]="error"
         [canRetry]="canRetry(error)"
         heading="This conversation couldn’t be opened"
         (retried)="conversation.retry()"
       />
     } @else if (turn.hasContent()) {
-      <div class="chat__transcript">
-        <app-transcript />
+      <!-- Shares the composer's column, so the answer and its input share an edge. -->
+      <div class="chat__gutter">
+        <app-transcript class="mw-prose mx-auto" />
       </div>
     } @else {
       <app-chat-empty-state
@@ -134,17 +137,20 @@
   </div>
 
   <!-- Outside the branches, so a body swap never leaves the observer on a detached node. -->
-  <div class="chat__sentinel" #bottomSentinel aria-hidden="true"></div>
+  <div class="flex-shrink-0" #bottomSentinel aria-hidden="true"></div>
 </div>
 
 <!-- Not under a conversation that failed to open: sending would have no target. -->
 @if (!conversation.error()) {
-  <div class="chat__composer">
+  <div class="chat__gutter chat__composer position-relative flex-shrink-0">
     <!-- The ring is a wrapper: `ringpulse` animates box-shadow over the button's own shadow. -->
     @if (pinning.showJump()) {
-      <div class="chat__jump" [class.chat__jump--pulsing]="pinning.pulsing()">
+      <div
+        class="chat__jump position-absolute start-50 translate-middle-x rounded-circle"
+        [class.chat__jump--pulsing]="pinning.pulsing()"
+      >
         <button
-          class="chat__jump-button"
+          class="btn btn-icon btn-icon-lg rounded-circle border bg-surface shadow text-primary"
           type="button"
           aria-label="Jump to latest message"
           (click)="pinning.jumpToLatest()"
@@ -153,7 +159,7 @@
         </button>
       </div>
     }
-    <app-composer />
+    <app-composer class="mw-prose mx-auto" />
   </div>
 }
 

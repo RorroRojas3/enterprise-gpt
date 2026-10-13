@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, viewChild } from '@angular/core';
 import { McpDto } from '@shared/models/api/mcp.model';
 import { needsUserApiKey } from '@shared/utils/catalog/mcp-server';
 import { MCP_FALLBACK_ICON, mcpBrandIcon } from '@shared/utils/icons/mcp-icon';
@@ -23,7 +23,7 @@ import { MenuTriggerContent } from '@shared/directives/menu-trigger-content';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [BrandIcon, Icon, Menu, MenuItem, MenuSeparator, MenuTriggerContent, StatusDot, Switch],
   templateUrl: './tools-menu.html',
-  styleUrl: './tools-menu.scss',
+  host: { class: 'd-inline-flex' },
 })
 export class ToolsMenu {
   protected readonly settings = inject(TurnSettingsStore);
@@ -31,6 +31,14 @@ export class ToolsMenu {
   protected readonly credentials = inject(McpCredentialStore);
 
   private readonly menu = viewChild.required(Menu);
+
+  /**
+   * The label is a count, the only visible sign that servers are armed, so below md it hides only
+   * when it has nothing to report.
+   */
+  protected readonly labelClass = computed(() =>
+    this.settings.effectiveMcpServerIds().length > 0 ? '' : 'd-none d-md-inline',
+  );
 
   /** A field, not a template literal: `checkNoChanges` runs exhaustively here. */
   protected readonly fallbackIcon = MCP_FALLBACK_ICON;

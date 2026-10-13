@@ -12,16 +12,15 @@ import {
   viewChild,
 } from '@angular/core';
 import { captureFocusOrigin } from '@shared/utils/a11y/focus-return';
-import { tabbableWithin } from '@shared/utils/a11y/tabbable';
+import { focusInitialTarget } from '@shared/utils/a11y/tabbable';
 
 let nextId = 0;
 
-/** A native `<dialog>` pinned to an edge by `margin`, sharing {@link Modal}'s focus semantics. */
+/** Bootstrap's offcanvas CSS on a native `<dialog>`, sharing {@link Modal}'s focus semantics. */
 @Component({
   selector: 'app-offcanvas',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './offcanvas.html',
-  styleUrl: './offcanvas.scss',
 })
 export class Offcanvas {
   private readonly destroyRef = inject(DestroyRef);
@@ -32,8 +31,8 @@ export class Offcanvas {
   readonly side = input<'start' | 'end'>('end');
   readonly width = input<string>('420px');
   /**
-   * Strips the chrome for content that owns its edges, such as the mobile sidebar. The heading is
-   * clipped, not removed: it is the dialog's accessible name via `aria-labelledby`.
+   * Strips the chrome for content that owns its edges, such as the mobile sidebar. The header is
+   * visually hidden, not removed: its heading is the dialog's accessible name.
    */
   readonly bare = input<boolean>(false);
 
@@ -55,11 +54,7 @@ export class Offcanvas {
         if (shouldBeOpen && !dialog.open) {
           this.restoreFocus = captureFocusOrigin(dialog.ownerDocument);
           dialog.showModal();
-          const target =
-            dialog.querySelector<HTMLElement>('[data-modal-autofocus]') ??
-            tabbableWithin(dialog)[0] ??
-            dialog.querySelector<HTMLElement>('h2');
-          target?.focus();
+          focusInitialTarget(dialog);
         } else if (!shouldBeOpen && dialog.open) {
           dialog.close();
         }

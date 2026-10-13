@@ -3,6 +3,13 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { IPublicClientApplication, RedirectRequest } from '@azure/msal-browser';
+import {
+  getAllByRole,
+  getByRole,
+  getByText,
+  queryAllByRole,
+  queryByRole,
+} from '@testing-library/dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HardNavigation } from '@core/navigation/hard-navigation-service';
 import { SessionStore } from '@core/session/session-store';
@@ -16,6 +23,7 @@ import {
   signedOutMsal,
 } from '@testing/msal';
 import { FakeNavigation, provideFakeNavigation } from '@testing/navigation';
+import { iconOf } from '@testing/overlays';
 import { PROBLEM_FIXTURES, TRACE_ID } from '@testing/problem-fixtures';
 import { userFixture } from '@testing/session';
 import { AuthCallback } from './auth-callback';
@@ -52,10 +60,8 @@ describe('AuthCallback', () => {
     await fixture.whenStable();
 
     const host = fixture.nativeElement as HTMLElement;
-    expect(host.querySelector('h1')?.textContent).toContain('Signing you in…');
-    const text = host.textContent ?? '';
-    expect(text).toContain('Finishing up with Microsoft Entra ID');
-    expect((fixture.nativeElement as HTMLElement).querySelector('.kit-spinner')).not.toBeNull();
+    expect(getByRole(host, 'heading', { level: 1, name: 'Signing you in…' })).toBeTruthy();
+    expect(getByText(host, 'Finishing up with Microsoft Entra ID')).toBeTruthy();
   });
 
   it('returns the user to the route they originally asked for', async () => {
@@ -100,9 +106,10 @@ describe('LoginFailed', () => {
     await fixture.whenStable();
 
     const host = fixture.nativeElement as HTMLElement;
-    expect(host.querySelector('h1')?.textContent).toContain('Sign-in didn’t complete');
+    expect(getByRole(host, 'heading', { level: 1, name: 'Sign-in didn’t complete' })).toBeTruthy();
+    // Every input, not the textbox role: a password field has no role at all.
     expect(host.querySelectorAll('input')).toHaveLength(0);
-    expect(host.querySelectorAll('button')).toHaveLength(1);
+    expect(getAllByRole(host, 'button')).toHaveLength(1);
   });
 
   it('resolves the pending handshake on arrival, so Try again is not blocked by a stale lock', async () => {
@@ -122,15 +129,15 @@ describe('LoginFailed', () => {
     const fixture = TestBed.createComponent(LoginFailed);
     await fixture.whenStable();
 
-    const button = (fixture.nativeElement as HTMLElement).querySelector('button');
-    button?.click();
+    const host = fixture.nativeElement as HTMLElement;
+    const button = getByRole<HTMLButtonElement>(host, 'button', { name: 'Try again' });
+    button.click();
     await settle();
     await fixture.whenStable();
 
-    expect(button?.disabled).toBe(false);
-    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
-      'couldn’t reach Microsoft Entra ID',
-    );
+    expect(button.disabled).toBe(false);
+    expect(getByRole(host, 'alert').textContent).toContain('couldn’t reach Microsoft Entra ID');
+    expect(getByRole(host, 'button', { name: 'Reload and try again' })).toBe(button);
   });
 
   it('re-enters the Entra flow once, however often it is pressed', async () => {
@@ -139,10 +146,10 @@ describe('LoginFailed', () => {
     const fixture = TestBed.createComponent(LoginFailed);
     await fixture.whenStable();
 
-    const button = (fixture.nativeElement as HTMLElement).querySelector('button');
-    button?.click();
+    const button = getByRole(fixture.nativeElement as HTMLElement, 'button', { name: 'Try again' });
+    button.click();
     await fixture.whenStable();
-    button?.click();
+    button.click();
     await fixture.whenStable();
 
     expect(loginRedirect).toHaveBeenCalledTimes(1);
@@ -174,18 +181,16 @@ describe('SessionError', () => {
 
     const host = fixture.nativeElement as HTMLElement;
     // The panel owns the heading, so the page's outline comes from role/aria-level.
-    const heading = host.querySelector('[role="heading"]');
-    expect(heading?.getAttribute('aria-level')).toBe('1');
+    const heading = getByRole(host, 'heading', {
+      level: 1,
+      name: 'We couldn’t start Enterprise GPT',
+    });
     expect(document.activeElement).toBe(heading);
     // role="alert" implies aria-atomic, so leaving it on would read the whole panel
     // and then the focused heading again.
-    expect(host.querySelector('[role="alert"]')).toBeNull();
-    expect(heading?.textContent).toContain('We couldn’t start Enterprise GPT');
-    const text = host.textContent ?? '';
-    expect(text).toContain(TRACE_ID);
-    expect((fixture.nativeElement as HTMLElement).querySelector('button')?.textContent).toContain(
-      'Retry',
-    );
+    expect(queryByRole(host, 'alert')).toBeNull();
+    expect(host.textContent).toContain(TRACE_ID);
+    expect(getByRole(host, 'button', { name: 'Retry' })).toBeTruthy();
   });
 
   it('re-issues the bootstrap and leaves once the session recovers', async () => {
@@ -195,7 +200,7 @@ describe('SessionError', () => {
 
     const fixture = TestBed.createComponent(SessionError);
     await fixture.whenStable();
-    (fixture.nativeElement as HTMLElement).querySelector('button')?.click();
+    getByRole(fixture.nativeElement as HTMLElement, 'button', { name: 'Retry' }).click();
     await settle();
 
     TestBed.inject(HttpTestingController).expectOne(ME_URL).flush(userFixture());
@@ -212,13 +217,17 @@ describe('SessionError', () => {
     await fixture.whenStable();
 
     expect(navigateByUrl).toHaveBeenCalledWith('/chat', { replaceUrl: true });
-    expect((fixture.nativeElement as HTMLElement).querySelector('button')).toBeNull();
+    expect(queryByRole(fixture.nativeElement as HTMLElement, 'button')).toBeNull();
   });
 });
 
 describe('auth page focus', () => {
   // `#heading`, `tabindex="-1"` and `focusOnRender` are coupled across four components, and the
   // router moves no focus, so dropping any one silently strands keyboard users.
+  function heading(host: HTMLElement): HTMLElement {
+    return getByRole(host, 'heading', { level: 1 });
+  }
+
   beforeEach(() => {
     TestBed.resetTestingModule();
     sessionStorage.clear();
@@ -229,7 +238,7 @@ describe('auth page focus', () => {
     const fixture = TestBed.createComponent(AuthCallback);
     await fixture.whenStable();
 
-    expect(document.activeElement).toBe((fixture.nativeElement as HTMLElement).querySelector('h1'));
+    expect(document.activeElement).toBe(heading(fixture.nativeElement as HTMLElement));
   });
 
   it('moves focus to the sign-in failure heading', async () => {
@@ -237,7 +246,7 @@ describe('auth page focus', () => {
     const fixture = TestBed.createComponent(LoginFailed);
     await fixture.whenStable();
 
-    expect(document.activeElement).toBe((fixture.nativeElement as HTMLElement).querySelector('h1'));
+    expect(document.activeElement).toBe(heading(fixture.nativeElement as HTMLElement));
   });
 
   it('moves focus to the forbidden heading', async () => {
@@ -245,7 +254,7 @@ describe('auth page focus', () => {
     const fixture = TestBed.createComponent(Forbidden);
     await fixture.whenStable();
 
-    expect(document.activeElement).toBe((fixture.nativeElement as HTMLElement).querySelector('h1'));
+    expect(document.activeElement).toBe(heading(fixture.nativeElement as HTMLElement));
   });
 
   it('moves focus to the signed-out heading', async () => {
@@ -253,7 +262,7 @@ describe('auth page focus', () => {
     const fixture = TestBed.createComponent(SignedOut);
     await fixture.whenStable();
 
-    expect(document.activeElement).toBe((fixture.nativeElement as HTMLElement).querySelector('h1'));
+    expect(document.activeElement).toBe(heading(fixture.nativeElement as HTMLElement));
   });
 });
 
@@ -269,11 +278,11 @@ describe('SignedOut', () => {
     await fixture.whenStable();
 
     const host = fixture.nativeElement as HTMLElement;
-    expect(host.querySelector('h1')?.textContent).toContain('You’re signed out');
+    expect(getByRole(host, 'heading', { level: 1, name: 'You’re signed out' })).toBeTruthy();
     expect(host.textContent).toContain('cleared from this browser');
     // No routerLink: after a failed sign-out any guarded route re-authenticates the departing user.
-    expect(host.querySelectorAll('a')).toHaveLength(0);
-    expect(host.querySelectorAll('button')).toHaveLength(1);
+    expect(queryAllByRole(host, 'link')).toHaveLength(0);
+    expect(getAllByRole(host, 'button')).toHaveLength(1);
   });
 
   it('starts a fresh sign-in only when the user asks, and latches', async () => {
@@ -282,12 +291,14 @@ describe('SignedOut', () => {
     const fixture = TestBed.createComponent(SignedOut);
     await fixture.whenStable();
 
-    const button = (fixture.nativeElement as HTMLElement).querySelector('button');
-    button?.click();
+    const button = getByRole<HTMLButtonElement>(fixture.nativeElement as HTMLElement, 'button', {
+      name: 'Sign in again',
+    });
+    button.click();
     await fixture.whenStable();
 
     expect(loginRedirect).toHaveBeenCalledOnce();
-    expect(button?.disabled).toBe(true);
+    expect(button.disabled).toBe(true);
   });
 
   it('reloads when the redirect cannot even start, because the lock outlives this page', async () => {
@@ -295,7 +306,7 @@ describe('SignedOut', () => {
     const fixture = TestBed.createComponent(SignedOut);
     await fixture.whenStable();
 
-    (fixture.nativeElement as HTMLElement).querySelector('button')?.click();
+    getByRole(fixture.nativeElement as HTMLElement, 'button', { name: 'Sign in again' }).click();
     await fixture.whenStable();
 
     expect(
@@ -315,10 +326,12 @@ describe('Forbidden', () => {
     await fixture.whenStable();
 
     const host = fixture.nativeElement as HTMLElement;
-    expect(host.querySelector('h1')?.textContent).toContain('You don’t have access to Admin');
+    expect(
+      getByRole(host, 'heading', { level: 1, name: 'You don’t have access to Admin' }),
+    ).toBeTruthy();
     expect(host.textContent).toContain('Administrator permission');
-    expect(host.querySelector('use')?.getAttribute('href')).toBe('#bi-shield-lock');
-    expect(host.querySelectorAll('a')).toHaveLength(1);
-    expect(host.querySelector('a')?.getAttribute('href')).toBe('/chat');
+    expect(iconOf(host)).toBe('bi-shield-lock');
+    expect(getAllByRole(host, 'link')).toHaveLength(1);
+    expect(getByRole(host, 'link', { name: 'Back to Chat' }).getAttribute('href')).toBe('/chat');
   });
 });

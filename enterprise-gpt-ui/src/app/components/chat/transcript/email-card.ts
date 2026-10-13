@@ -19,4 +19,10 @@ export class EmailCard {
 
   protected readonly to = computed(() => this.draft().to.join(', '));
   protected readonly cc = computed(() => this.draft().cc.join(', '));
+
+  protected readonly hasFields = computed(() => {
+    const draft = this.draft();
+
+    return draft.to.length > 0 || draft.cc.length > 0 || !!draft.subject;
+  });
 }

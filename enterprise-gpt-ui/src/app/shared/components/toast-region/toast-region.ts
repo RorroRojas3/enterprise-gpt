@@ -11,7 +11,6 @@ import { ToastItem } from '@shared/components/toast-item/toast-item';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ToastItem],
   templateUrl: './toast-region.html',
-  styleUrl: './toast-region.scss',
 })
 export class ToastRegion {
   protected readonly store = inject(ToastStore);

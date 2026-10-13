@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { getAllByRole } from '@testing-library/dom';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AssistantActivity } from '@shared/models/andes/assistant-ui.contract';
 import { THEMES, applyTheme, clearTheme, expectNoSeriousViolations } from '@testing/a11y';
@@ -72,14 +73,14 @@ describe('ActivityCard accessibility', () => {
       // Open, so the `aria-controls` target and the strip are audited. Asserted, since a fixture
       // change could leave this auditing a collapsed card.
       const host = fixture.nativeElement as HTMLElement;
-      const toggle = host.querySelector<HTMLButtonElement>('.activity-card__toggle');
+      // The outermost card's, which is the one the fixture gives token counts.
+      const toggle = getAllByRole(host, 'button', { name: /^Cost of/ })[0]!;
 
-      expect(toggle).not.toBeNull();
-      toggle!.click();
+      toggle.click();
       await fixture.whenStable();
 
-      expect(toggle!.getAttribute('aria-expanded')).toBe('true');
-      expect(host.querySelector('.activity-card__usage')).not.toBeNull();
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+      expect(document.getElementById(toggle.getAttribute('aria-controls') ?? '')).not.toBeNull();
 
       await expectNoSeriousViolations(
         fixture.nativeElement as Element,

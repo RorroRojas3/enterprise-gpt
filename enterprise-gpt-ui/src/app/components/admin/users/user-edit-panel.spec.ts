@@ -6,6 +6,7 @@ import {
 } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { getAllByRole, getByText } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UserDto } from '@shared/models/api/user.model';
 import { ToastStore } from '@core/notifications/toast-store';
@@ -59,7 +60,7 @@ describe('UserEditPanel', () => {
   }
 
   function boxes(): HTMLInputElement[] {
-    return [...host().querySelectorAll<HTMLInputElement>('.checklist .form-check-input')];
+    return getAllByRole<HTMLInputElement>(host(), 'checkbox');
   }
 
   function boxFor(name: string): HTMLInputElement {
@@ -178,13 +179,13 @@ describe('UserEditPanel', () => {
     await fixture.whenStable();
 
     // The app's second-person wording, not the server's third-person one.
-    const message = host().querySelector('.checklist__error');
-    expect(message?.textContent).toContain(SELF_REVOKE_ADMIN_MESSAGE);
+    const message = getByText(host(), SELF_REVOKE_ADMIN_MESSAGE);
+    expect(message.getAttribute('role')).toBe('alert');
     expect(host().textContent).not.toContain('Administrators cannot revoke');
     expect(toast).not.toHaveBeenCalled();
 
     // Described by the message, and the panel stays open on the row it is about.
-    expect(boxFor('Administrator').getAttribute('aria-describedby')).toBe(message?.id);
+    expect(boxFor('Administrator').getAttribute('aria-describedby')).toBe(message.id);
     expect(actions.formMode()).toBe('edit');
   });
 
@@ -262,9 +263,7 @@ describe('UserEditPanel', () => {
 
     // The bare key is already said at the checkbox; the indexed key has no row, so it must
     // still surface.
-    expect(host().querySelector('.checklist__error')?.textContent).toContain(
-      SELF_REVOKE_ADMIN_MESSAGE,
-    );
+    expect(getByText(host(), SELF_REVOKE_ADMIN_MESSAGE).getAttribute('role')).toBe('alert');
     expect(host().textContent).toContain('Permission ids cannot be empty.');
     expect(host().textContent).not.toContain('Administrators cannot revoke');
   });

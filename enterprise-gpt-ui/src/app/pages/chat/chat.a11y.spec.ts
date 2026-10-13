@@ -5,6 +5,7 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { getAllByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CHAT_ROLE, MESSAGE_FEEDBACK_RATING } from '@shared/models/api/conversation.model';
 import { TokenService } from '@core/auth/token-service';
@@ -20,6 +21,7 @@ import {
   conversationFixture,
   messageFixture,
 } from '@testing/conversations';
+import { openMenu } from '@testing/overlays';
 import { Chat } from './chat';
 
 /** ISO 8601 with offset, as the transcript response carries it. */
@@ -149,12 +151,8 @@ describe('chat accessibility', () => {
         });
       await loadCatalogues();
 
-      element
-        .querySelector<HTMLButtonElement>(
-          '.chat__header app-conversation-download-menu .menu__trigger',
-        )
-        ?.click();
-      await harness.fixture.whenStable();
+      // The header's: the composer renders the same menu.
+      await openMenu(harness.fixture, /^Download /, element.querySelector('header')!);
 
       await expectNoSeriousViolations(element, `/chat/:id download menu (${theme})`);
     });
@@ -167,10 +165,9 @@ describe('chat accessibility', () => {
       const element = await open('/chat', theme);
       await loadCatalogues();
 
-      element.querySelector<HTMLButtonElement>('app-tools-menu .menu__trigger')?.click();
-      await harness.fixture.whenStable();
+      const menu = await openMenu(harness.fixture, /^Tool servers:/, element);
 
-      expect(element.querySelector('.tools-menu__option')).not.toBeNull();
+      expect(getAllByRole(menu, 'menuitemcheckbox').length).toBeGreaterThan(0);
       await expectNoSeriousViolations(element, `/chat tools picker (${theme})`);
     });
 
@@ -253,10 +250,12 @@ describe('chat accessibility', () => {
       await harness.fixture.whenStable();
 
       // Visible as well as rendered: axe cannot fail a chip it cannot see.
-      const chips = element.querySelectorAll<HTMLElement>('app-generated-files .chip');
+      const chips = getAllByRole(element, 'group', { name: /^Generated file, / });
 
       expect(chips).toHaveLength(2);
-      expect(element.querySelectorAll('app-generated-files .chip__action')).toHaveLength(2);
+      expect(getAllByRole(element, 'button', { name: /^Download generated file / })).toHaveLength(
+        2,
+      );
       expect(getComputedStyle(chips[0] as Element).opacity).toBe('1');
 
       await expectNoSeriousViolations(element, `/chat/:id generated file (${theme})`);

@@ -52,6 +52,7 @@ import { TurnNotice, TurnNoticeCard } from './turn-notice-card';
   // Busy while history loads, since the skeleton is aria-hidden. `answerComplete` releases it
   // when `Finished` arrives, a step before the settle, so the live turn is still mounted.
   host: {
+    class: 'd-flex flex-column gap-3 py-3',
     '[attr.aria-busy]':
       "turn.historyPending() || (turn.inFlight() && !turn.answerComplete()) ? 'true' : null",
     '(click)': 'onClick($event)',

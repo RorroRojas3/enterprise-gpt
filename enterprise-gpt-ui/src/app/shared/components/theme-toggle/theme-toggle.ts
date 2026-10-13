@@ -11,7 +11,6 @@ import { Icon } from '@shared/components/icon/icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
   templateUrl: './theme-toggle.html',
-  styleUrl: './theme-toggle.scss',
 })
 export class ThemeToggle {
   private readonly themeService = inject(ThemeService);

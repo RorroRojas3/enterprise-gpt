@@ -153,7 +153,7 @@ describe('LazyRendererLoader', () => {
     });
 
     it('omits errorColor rather than passing it empty', async () => {
-      // jsdom resolves no tokens, so `--fail` reads back as '', which KaTeX takes literally.
+      // jsdom resolves no tokens, so `--bs-danger` reads back as '', which KaTeX takes literally.
       const renderer = await loader({ diagrams: false, math: true }).getMathRenderer();
       renderer?.render('x^2', false);
 

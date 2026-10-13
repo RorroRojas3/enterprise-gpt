@@ -1,20 +1,22 @@
 @if (loading()) {
   <!-- role="status": the checkboxes replace this without moving focus, so it cues them. -->
-  <p class="checklist__status" role="status">Loading permissions…</p>
+  <p class="mb-0 small text-body-secondary" role="status">Loading permissions…</p>
 } @else if (error(); as failure) {
   <!-- Inline, not an ErrorPanel: the form still works and a new user still gets the defaults. -->
-  <p class="checklist__status checklist__status--error" role="alert">
+  <p class="mb-0 small text-danger-emphasis" role="alert">
     {{ failure.message }}
     @if (retried(); as retry) {
-      <button class="checklist__retry" type="button" (click)="retry()">Try again</button>
+      <button class="btn btn-link btn-sm p-0 align-baseline" type="button" (click)="retry()">
+        Try again
+      </button>
     }
   </p>
 } @else {
-  <ul class="checklist" [class.checklist--block]="captionStyle() === 'block'">
+  <ul class="list-unstyled vstack gap-2 mb-0 small">
     @for (row of rows(); track row.permission.id) {
-      <li class="checklist__row">
+      <li class="form-check mb-0">
         <!-- A wrapping <label>, not `for`, so clicking the block caption still toggles the row. -->
-        <label class="checklist__label">
+        <label class="form-check-label d-block">
           <input
             class="form-check-input"
             type="checkbox"
@@ -24,11 +26,14 @@
             [attr.aria-describedby]="row.message === null ? null : row.messageId"
             (change)="toggle(row.permission.id)"
           />
-          <span class="checklist__text">
-            <span class="checklist__name">{{ row.permission.name }}</span>
+          <span
+            class="d-flex flex-wrap column-gap-2 min-w-0"
+            [class.flex-column]="captionStyle() === 'block'"
+          >
+            <span>{{ row.permission.name }}</span>
             @if (row.managedBy; as server) {
               <!-- The glyph is decoration; the sentence beside it carries the reason. -->
-              <span class="checklist__managed">
+              <span class="d-inline-flex align-items-center gap-1 small text-body-secondary">
                 @if (captionStyle() === 'block') {
                   <app-icon name="bi-lock" />
                   Managed by the {{ server }} MCP server
@@ -42,14 +47,18 @@
 
         @if (row.message; as message) {
           <!-- Outside the <label>, so the refusal is not read as part of the checkbox's name. -->
-          <p class="checklist__error" role="alert" [id]="row.messageId">
-            <app-icon name="bi-slash-circle" />
+          <p
+            class="d-flex align-items-start gap-2 mt-2 mb-0 text-danger-emphasis"
+            role="alert"
+            [id]="row.messageId"
+          >
+            <app-icon class="flex-shrink-0 mt-1" name="bi-slash-circle" />
             {{ message }}
           </p>
         }
       </li>
     } @empty {
-      <li class="checklist__status">No permissions are defined.</li>
+      <li class="text-body-secondary">No permissions are defined.</li>
     }
   </ul>
 }

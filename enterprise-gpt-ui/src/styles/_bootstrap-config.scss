@@ -1,31 +1,180 @@
-// Bootstrap 5.3 module by module: the full build is 230 kB of initial bundle, this about 50 kB.
-// `@import` because its partials share one `!default` namespace, which is also why
-// `angular.json` silences the Sass deprecation. Order matters; see `styles.scss`.
+// Bootstrap 5.3 configuration: the palette in `_tokens.scss` fed into Bootstrap's own variables.
+// `@import` because its partials share one `!default` namespace, which is also why `angular.json`
+// silences the Sass deprecation. Emits only `root`; order matters, see `styles.scss`.
+@use 'sass:map';
+@use 'breakpoints' as bp;
 
-// ── Configuration. Emits no CSS. ─────────────────────────────────────────────
 @import 'bootstrap/scss/functions';
+@import 'tokens';
 
-// Overrides of Bootstrap's !default variables, before `variables` reads them. Three theme
-// colours, not eight: only those buttons are restyled, and each unused colour costs ~1.4 kB.
-$theme-colors: (
-  'primary': #14324f,
-  'secondary': #5a6e82,
-  'danger': #c0392b,
-);
-$enable-shadows: false;
-$enable-gradients: false;
+@function light-token($key) {
+  @return map.get($tokens-light, $key);
+}
+
+@function dark-token($key) {
+  @return map.get($tokens-dark, $key);
+}
+
+// ── Sass colours ─────────────────────────────────────────────────────────────
+// Anything Bootstrap passes to shade/tint/mix/color-contrast/to-rgb or into an SVG data URI must
+// be a real colour, so these read the light map, and their `-dark` twins the dark map.
+$primary: light-token('bs-primary');
+$secondary: light-token('bs-secondary');
+$success: light-token('bs-success');
+$info: light-token('bs-info');
+$warning: light-token('bs-warning');
+$danger: light-token('bs-danger');
+$light: light-token('bs-light');
+$dark: light-token('bs-dark');
+$color-contrast-dark: dark-token('primary-fg');
+
+$warning-text-emphasis: light-token('bs-warning-text-emphasis');
+$warning-bg-subtle: light-token('bs-warning-bg-subtle');
+$warning-border-subtle: light-token('bs-warning-border-subtle');
+$danger-text-emphasis: light-token('bs-danger-text-emphasis');
+
+// Bootstrap derives the dark subtle/emphasis set from the light colours; ours flip, so derive
+// them from the dark palette with Bootstrap's own amounts, except where the palette pins one.
+$primary-text-emphasis-dark: tint-color(dark-token('bs-primary'), 40%);
+$secondary-text-emphasis-dark: tint-color(dark-token('bs-secondary'), 40%);
+$success-text-emphasis-dark: tint-color(dark-token('bs-success'), 40%);
+$info-text-emphasis-dark: tint-color(dark-token('bs-info'), 40%);
+$warning-text-emphasis-dark: dark-token('bs-warning-text-emphasis');
+$danger-text-emphasis-dark: dark-token('bs-danger-text-emphasis');
+$primary-bg-subtle-dark: shade-color(dark-token('bs-primary'), 80%);
+$secondary-bg-subtle-dark: shade-color(dark-token('bs-secondary'), 80%);
+$success-bg-subtle-dark: shade-color(dark-token('bs-success'), 80%);
+$info-bg-subtle-dark: shade-color(dark-token('bs-info'), 80%);
+$warning-bg-subtle-dark: dark-token('bs-warning-bg-subtle');
+$danger-bg-subtle-dark: shade-color(dark-token('bs-danger'), 80%);
+$primary-border-subtle-dark: shade-color(dark-token('bs-primary'), 40%);
+$secondary-border-subtle-dark: shade-color(dark-token('bs-secondary'), 40%);
+$success-border-subtle-dark: shade-color(dark-token('bs-success'), 40%);
+$info-border-subtle-dark: shade-color(dark-token('bs-info'), 40%);
+$warning-border-subtle-dark: dark-token('bs-warning-border-subtle');
+$danger-border-subtle-dark: shade-color(dark-token('bs-danger'), 40%);
+
+$body-bg: light-token('bs-body-bg');
+$body-color: light-token('bs-body-color');
+$body-emphasis-color: light-token('bs-emphasis-color');
+$body-secondary-color: light-token('bs-secondary-color');
+$body-secondary-bg: light-token('bs-secondary-bg');
+$body-tertiary-bg: light-token('bs-tertiary-bg');
+$border-color: light-token('bs-border-color');
+$link-color: light-token('bs-link-color');
+$link-hover-color: light-token('bs-link-hover-color');
+
+$body-bg-dark: dark-token('bs-body-bg');
+$body-color-dark: dark-token('bs-body-color');
+$body-emphasis-color-dark: dark-token('bs-emphasis-color');
+$body-secondary-color-dark: dark-token('bs-secondary-color');
+$body-secondary-bg-dark: dark-token('bs-secondary-bg');
+$body-tertiary-bg-dark: dark-token('bs-tertiary-bg');
+$border-color-dark: dark-token('bs-border-color');
+$link-color-dark: dark-token('bs-link-color');
+$link-hover-color-dark: dark-token('bs-link-hover-color');
+
+// Bootstrap's default is pink; inline code reads as body text in a mono face.
+$code-color: light-token('bs-body-color');
+$code-color-dark: dark-token('bs-body-color');
+$mark-bg: light-token('bs-warning-bg-subtle');
+$mark-bg-dark: dark-token('bs-warning-bg-subtle');
+
+// Bootstrap's 25%-black thumb is too faint to read as a state.
+$form-switch-color: light-token('bs-secondary-color');
+$form-switch-color-dark: dark-token('bs-secondary-color');
+// Pinned: it would otherwise inherit `$input-focus-border-color`, a `var()` an SVG cannot read.
+$form-switch-focus-color: light-token('focus-ring');
+
+$form-valid-color: shade-color($success, 60%);
+$form-valid-border-color: $success;
+$form-invalid-color: light-token('bs-danger-text-emphasis');
+$form-invalid-border-color: $danger;
+$form-valid-color-dark: $success-text-emphasis-dark;
+$form-valid-border-color-dark: dark-token('bs-success');
+$form-invalid-color-dark: dark-token('bs-danger-text-emphasis');
+$form-invalid-border-color-dark: dark-token('bs-danger');
+
+$modal-backdrop-bg: light-token('bs-dark');
+$modal-backdrop-opacity: 0.45;
+
+// ── Options and type ─────────────────────────────────────────────────────────
+$grid-breakpoints: bp.$grid-breakpoints;
 // _motion.scss covers reduced motion, and smooth scrolling would fight a transcript that has to
 // stay pinned to its tail.
 $enable-smooth-scroll: false;
-$font-family-sans-serif:
-  'Inter',
-  system-ui,
-  -apple-system,
-  'Segoe UI',
-  sans-serif;
-$font-family-monospace: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-// 10px, the control radius used throughout.
-$border-radius: 0.625rem;
+$font-family-sans-serif: $font-sans;
+$font-family-monospace: $font-mono;
+$headings-font-family: $font-display;
+// Montserrat is self-hosted at 600/700/800 only.
+$headings-font-weight: 600;
+
+// ── Theme-aware component colours ────────────────────────────────────────────
+// Bootstrap only interpolates these into custom properties, so a `var()` flips with the theme.
+$card-bg: var(--surface);
+$card-border-color: var(--bs-border-color);
+$modal-content-bg: var(--surface);
+$modal-content-border-color: var(--bs-border-color);
+$offcanvas-bg-color: var(--surface);
+$dropdown-bg: var(--surface);
+$dropdown-border-color: var(--bs-border-color);
+$dropdown-header-color: var(--bs-secondary-color);
+// Full-width rows take an inset ring, invisible on a primary fill in dark, so active states are
+// the measured `--bs-secondary-bg` with primary text.
+$dropdown-link-active-bg: var(--bs-secondary-bg);
+$dropdown-link-active-color: var(--bs-primary);
+$list-group-bg: var(--surface);
+$list-group-border-color: var(--bs-border-color);
+$list-group-active-bg: var(--bs-secondary-bg);
+$list-group-active-color: var(--bs-primary);
+$list-group-active-border-color: var(--bs-border-color);
+$pagination-active-bg: var(--bs-secondary-bg);
+$pagination-active-color: var(--bs-primary);
+$pagination-active-border-color: var(--bs-border-color);
+$nav-pills-link-active-bg: var(--bs-primary);
+$nav-pills-link-active-color: var(--primary-fg);
+$progress-bar-bg: var(--bs-primary);
+$progress-bar-color: var(--primary-fg);
+$form-check-input-checked-bg-color: var(--bs-primary);
+$form-check-input-checked-border-color: var(--bs-primary);
+$form-check-input-indeterminate-bg-color: var(--bs-primary);
+$form-check-input-indeterminate-border-color: var(--bs-primary);
+$form-range-thumb-bg: var(--bs-primary);
+// Opaque: over a translucent background axe reports contrast as incomplete, which the suite drops.
+$toast-background-color: var(--surface);
+$toast-header-background-color: var(--surface);
+$toast-border-color: var(--bs-border-color);
+$tooltip-bg: var(--tooltip-bg);
+$tooltip-color: var(--tooltip-fg);
+$tooltip-opacity: 1;
+$btn-link-disabled-color: var(--bs-secondary-color);
+$blockquote-footer-color: var(--bs-secondary-color);
+$input-focus-border-color: var(--bs-info);
+// Tables sit on cards, so they show the card.
+$table-bg: transparent;
+// The six colour variants are fixed colours; `_bootstrap-overrides.scss` regenerates them so they flip.
+$table-variants: (
+  'light': $light,
+  'dark': $dark,
+);
+
+// ── Focus ────────────────────────────────────────────────────────────────────
+// Every Bootstrap box-shadow ring becomes the measured 2px `--focus-ring`; controls that take an
+// outline instead (`_bootstrap-overrides.scss`) drop their shadow. `none`, not `null`: a null is
+// replaced by the `!default`.
+$focus-ring-width: 2px;
+$focus-ring-opacity: 1;
+$focus-ring-color: var(--focus-ring);
+$nav-link-focus-box-shadow: none;
+$form-check-input-focus-box-shadow: none;
+$btn-close-focus-shadow: none;
+$accordion-button-focus-box-shadow: none;
+$pagination-focus-box-shadow: none;
+$navbar-toggler-focus-width: 0;
+$form-range-thumb-focus-box-shadow:
+  0 0 0 1px var(--bs-body-bg),
+  0 0 0 3px var(--focus-ring);
+$form-range-thumb-focus-box-shadow-width: 3px;
 
 @import 'bootstrap/scss/variables';
 @import 'bootstrap/scss/variables-dark';
@@ -33,37 +182,87 @@ $border-radius: 0.625rem;
 @import 'bootstrap/scss/mixins';
 @import 'bootstrap/scss/utilities';
 
-// Positive-list trim: the full utilities API is 69 kB, and only these layout groups are cheaper
-// than writing component CSS.
-$kit-utilities: (
-  'display',
-  'flex',
-  'flex-direction',
-  'flex-grow',
-  'flex-shrink',
-  'flex-wrap',
-  'justify-content',
-  'align-items',
-  'align-self',
-  'order',
-  'gap',
-  'row-gap',
-  'column-gap'
-);
-$trimmed-utilities: ();
-@each $key, $value in $utilities {
-  @if index($kit-utilities, $key) {
-    $trimmed-utilities: map-merge(
-      $trimmed-utilities,
-      (
-        $key: $value,
-      )
-    );
-  }
-}
-$utilities: $trimmed-utilities;
+// ── Utilities ────────────────────────────────────────────────────────────────
+// The full API, less the focus-ring colour classes: at opacity 1 they would paint unmeasured
+// theme colours (info is 2.74:1 on white).
+$utilities: map.remove($utilities, 'focus-ring');
 
-// ── Emitting modules ─────────────────────────────────────────────────────────
-// `root` first, so `_tokens.scss` — imported immediately after this file — overrides
-// its --bs-* values from an identical selector at a later source position.
+@function with-values($key, $values) {
+  $utility: map.get($utilities, $key);
+  @return map.set($utility, 'values', map.merge(map.get($utility, 'values'), $values));
+}
+
+$utilities: map.merge(
+  $utilities,
+  (
+    'font-family': with-values(
+        'font-family',
+        (
+          display: var(--font-display),
+        )
+      ),
+    'background-color': with-values(
+        'background-color',
+        (
+          surface: var(--surface),
+        )
+      ),
+    'max-width': with-values(
+        'max-width',
+        (
+          sm: 25rem,
+          md: 32.5rem,
+          prose: 51.25rem,
+        )
+      ),
+    'white-space': with-values(
+        'white-space',
+        (
+          pre-wrap: pre-wrap,
+        )
+      ),
+    // Bootstrap has no min-size utilities: every flex row that truncates needs `min-w-0`, and every
+    // flex column that scrolls a child needs `min-h-0`.
+    'min-width': (
+        property: min-width,
+        class: min-w,
+        values: (
+          0: 0,
+        ),
+      ),
+    'min-height': (
+      property: min-height,
+      class: min-h,
+      values: (
+        0: 0,
+      ),
+    ),
+    // `min-vh-100` measures the largest viewport, so content centred in it sits under a mobile
+    // browser's toolbar.
+    'min-dynamic-viewport-height': (
+        property: min-height,
+        class: min-dvh,
+        values: (
+          100: 100dvh,
+        ),
+      ),
+    'overscroll-behavior': (
+      property: overscroll-behavior,
+      class: overscroll,
+      values: (
+        contain: contain,
+      ),
+    ),
+    // After `border` in the map, so it beats the `border` shorthand at equal `!important`.
+    'border-style': (
+        property: border-style,
+        class: border,
+        values: (
+          dashed: dashed,
+        ),
+      ),
+  )
+);
+
+// `root` last, so `_theme.scss`, imported next, overrides its values from identical selectors.
 @import 'bootstrap/scss/root';

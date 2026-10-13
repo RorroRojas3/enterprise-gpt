@@ -7,6 +7,7 @@ import { Icon } from '@shared/components/icon/icon';
   selector: 'app-paginator',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
+  host: { class: 'd-flex flex-wrap justify-content-between align-items-center gap-3' },
   templateUrl: './paginator.html',
   styleUrl: './paginator.scss',
 })

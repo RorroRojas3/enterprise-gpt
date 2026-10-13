@@ -13,27 +13,27 @@
 }
 
 // Stops set here rather than as attributes so they read tokens, which carries the gradient into
-// the dark theme, where `--brand` is itself the accent.
+// the dark theme, where `--bs-primary` is itself the accent.
 .area__stop--top {
-  stop-color: var(--accent);
+  stop-color: var(--bs-info);
   stop-opacity: 0.5;
 }
 
 .area__stop--bottom {
-  stop-color: var(--brand);
+  stop-color: var(--bs-primary);
   stop-opacity: 0.04;
 }
 
-// `--brand`, not `--accent`: the line is the only presentation of the daily series, so SC 1.4.11
-// applies, and light `--accent` is 2.74:1 on `--surface`. In dark, `--brand` is that cyan anyway.
+// `--bs-primary`, not `--bs-info`: the line is the only presentation of the daily series, so SC 1.4.11
+// applies, and light `--bs-info` is 2.74:1 on `--surface`. In dark, `--bs-primary` is that cyan anyway.
 .area__line {
-  stroke: var(--brand);
+  stroke: var(--bs-primary);
 }
 
 .area__axis {
   display: flex;
   justify-content: space-between;
   margin-top: 6px;
-  color: var(--muted);
+  color: var(--bs-secondary-color);
   font-size: 10.5px;
 }

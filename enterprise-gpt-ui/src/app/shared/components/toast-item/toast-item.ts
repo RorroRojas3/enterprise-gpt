@@ -1,7 +1,14 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { IconName } from '@shared/utils/icons/icon-names';
-import { TOAST_ICONS, Toast } from '@core/notifications/toast.model';
+import { TOAST_ICONS, Toast, ToastTone } from '@core/notifications/toast.model';
 import { Icon } from '@shared/components/icon/icon';
+
+const THEME_COLORS = {
+  success: 'success',
+  error: 'danger',
+  warning: 'warning',
+  info: 'info',
+} as const satisfies Record<ToastTone, string>;
 
 /** One toast. Layout only — {@link ToastRegion} owns the live regions and the queue. */
 @Component({
@@ -18,5 +25,9 @@ export class ToastItem {
   readonly retried = output<string>();
 
   protected readonly icon = computed<IconName>(() => TOAST_ICONS[this.toast().tone] as IconName);
+  private readonly color = computed(() => THEME_COLORS[this.toast().tone]);
+  protected readonly accent = computed(() => `var(--bs-${this.color()})`);
+  /** Emphasis, not the base colour: light info measures 2.74:1, under an icon's 3:1. */
+  protected readonly iconClass = computed(() => `flex-shrink-0 mt-1 text-${this.color()}-emphasis`);
   protected readonly dismissLabel = computed(() => `Dismiss: ${this.toast().title}`);
 }

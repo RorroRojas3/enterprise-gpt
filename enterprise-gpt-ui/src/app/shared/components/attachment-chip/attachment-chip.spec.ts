@@ -1,7 +1,9 @@
 import { TestBed } from '@angular/core/testing';
+import { getByRole, getByText, queryByRole } from '@testing-library/dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Attachment, AttachmentState } from '@shared/models/attachment.model';
 import { fileGlyph } from '@shared/utils/documents/file-glyph';
+import { iconOf } from '@testing/overlays';
 import { AttachmentChip } from './attachment-chip';
 
 function attachment(state: AttachmentState): Attachment {
@@ -10,11 +12,11 @@ function attachment(state: AttachmentState): Attachment {
 
 describe('fileGlyph', () => {
   it.each([
-    ['report.pdf', 'bi-file-earmark-pdf', 'fail'],
-    ['sheet.XLSX', 'bi-file-earmark-excel', 'ok'],
-    ['notes.md', 'bi-filetype-md', 'accent'],
-    ['data.csv', 'bi-filetype-csv', 'accent'],
-    ['deck.pptx', 'bi-file-earmark-ppt', 'warn'],
+    ['report.pdf', 'bi-file-earmark-pdf', 'danger'],
+    ['sheet.XLSX', 'bi-file-earmark-excel', 'success'],
+    ['notes.md', 'bi-filetype-md', 'info'],
+    ['data.csv', 'bi-filetype-csv', 'info'],
+    ['deck.pptx', 'bi-file-earmark-ppt', 'warning'],
   ])('maps %s to its glyph', (fileName, icon, tone) => {
     expect(fileGlyph(fileName)).toEqual({ icon, tone });
   });
@@ -28,9 +30,12 @@ describe('fileGlyph', () => {
 describe('AttachmentChip', () => {
   beforeEach(() => TestBed.configureTestingModule({}));
 
-  async function render(state: AttachmentState) {
+  async function render(state: AttachmentState, inputs: Record<string, unknown> = {}) {
     const fixture = TestBed.createComponent(AttachmentChip);
     fixture.componentRef.setInput('attachment', attachment(state));
+    for (const [name, value] of Object.entries(inputs)) {
+      fixture.componentRef.setInput(name, value);
+    }
     await fixture.whenStable();
     return { fixture, host: fixture.nativeElement as HTMLElement };
   }
@@ -38,9 +43,8 @@ describe('AttachmentChip', () => {
   it('shows uploading as measurable progress, not just a spinner', async () => {
     const { host } = await render({ kind: 'uploading', percent: 42 });
 
-    const bar = host.querySelector('[role="progressbar"]');
-    expect(bar?.getAttribute('aria-valuenow')).toBe('42');
-    expect(bar?.getAttribute('aria-label')).toBe('Uploading q3-report.pdf');
+    const bar = getByRole(host, 'progressbar', { name: 'Uploading q3-report.pdf' });
+    expect(bar.getAttribute('aria-valuenow')).toBe('42');
     expect(host.textContent).toContain('42%');
   });
 
@@ -50,8 +54,8 @@ describe('AttachmentChip', () => {
       subStatus: 'Generating embeddings… 3 of 12 pages',
     });
 
-    expect(host.querySelector('[role="status"]')?.textContent).toContain('3 of 12 pages');
-    expect(host.querySelector('.kit-spinner')?.getAttribute('aria-hidden')).toBe('true');
+    expect(getByRole(host, 'status').textContent).toContain('3 of 12 pages');
+    expect(host.querySelector('.spinner-border')?.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('shows ready with its size', async () => {
@@ -59,7 +63,8 @@ describe('AttachmentChip', () => {
 
     expect(host.textContent).toContain('2.4 MB');
     expect(host.textContent).toContain('Ready to use');
-    expect(host.querySelector('[role="progressbar"]')).toBeNull();
+    expect(iconOf(host)).toBe('bi-check-circle-fill');
+    expect(queryByRole(host, 'progressbar')).toBeNull();
   });
 
   it('shows a failed job with its reason and a named retry', async () => {
@@ -70,11 +75,10 @@ describe('AttachmentChip', () => {
     const retried = vi.fn();
     fixture.componentInstance.retried.subscribe(retried);
 
-    const retry = host.querySelector<HTMLButtonElement>('.chip__retry');
-    expect(retry?.getAttribute('aria-label')).toBe('Retry uploading q3-report.pdf');
     expect(host.textContent).toContain('could not be read');
+    expect(iconOf(host)).toBe('bi-x-circle-fill');
 
-    retry?.click();
+    getByRole(host, 'button', { name: 'Retry uploading q3-report.pdf' }).click();
     expect(retried).toHaveBeenCalledWith('a1');
   });
 
@@ -87,7 +91,7 @@ describe('AttachmentChip', () => {
 
     expect(host.textContent).toContain('isn’t supported');
     expect(host.textContent).toContain('PPTX');
-    expect(host.querySelector('.chip__retry')).toBeNull();
+    expect(queryByRole(host, 'button', { name: /^Retry/ })).toBeNull();
   });
 
   it('renders expired-or-unknown differently from failed, and offers no retry', async () => {
@@ -95,49 +99,55 @@ describe('AttachmentChip', () => {
 
     expect(host.textContent).toContain('Status is only kept for a limited time.');
     expect(host.textContent?.toLowerCase()).not.toContain('failed');
-    expect(host.querySelector('.chip__retry')).toBeNull();
+    expect(iconOf(host)).toBe('bi-question-circle');
+    expect(queryByRole(host, 'button', { name: /^Retry/ })).toBeNull();
   });
 
   it('gives the remove control a name that says what it removes', async () => {
     const { host } = await render({ kind: 'ready' });
 
-    expect(host.querySelector('.chip__remove')?.getAttribute('aria-label')).toBe(
-      'Remove q3-report.pdf',
-    );
+    expect(getByRole(host, 'button', { name: 'Remove q3-report.pdf' })).not.toBeNull();
   });
 
   it('says "dismiss" once there is nothing left to cancel', async () => {
     // No API detaches a conversation document, so the control only hides the chip
     // from here on. Calling it "Remove" would claim an effect it does not have.
-    const fixture = TestBed.createComponent(AttachmentChip);
-    fixture.componentRef.setInput('attachment', attachment({ kind: 'ready' }));
-    fixture.componentRef.setInput('removeAction', 'dismiss');
-    await fixture.whenStable();
+    const { host } = await render({ kind: 'ready' }, { removeAction: 'dismiss' });
 
-    expect(
-      (fixture.nativeElement as HTMLElement)
-        .querySelector('.chip__remove')
-        ?.getAttribute('aria-label'),
-    ).toBe('Dismiss q3-report.pdf');
+    expect(getByRole(host, 'button', { name: 'Dismiss q3-report.pdf' })).not.toBeNull();
+    expect(queryByRole(host, 'button', { name: /^Remove/ })).toBeNull();
   });
 
   it('offers download only where the caller says the file can be fetched back', async () => {
     const plain = await render({ kind: 'ready' });
-    expect(plain.host.querySelector('[aria-label^="Download"]')).toBeNull();
+    expect(queryByRole(plain.host, 'button', { name: /^Download/ })).toBeNull();
 
-    const fixture = TestBed.createComponent(AttachmentChip);
-    fixture.componentRef.setInput('attachment', attachment({ kind: 'ready' }));
-    fixture.componentRef.setInput('downloadable', true);
-    await fixture.whenStable();
+    const { fixture, host } = await render({ kind: 'ready' }, { downloadable: true });
     const downloaded = vi.fn();
     fixture.componentInstance.downloaded.subscribe(downloaded);
 
-    const download = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
-      '[aria-label="Download q3-report.pdf"]',
-    );
-    download?.click();
+    getByRole(host, 'button', { name: 'Download q3-report.pdf' }).click();
 
     expect(downloaded).toHaveBeenCalledWith('a1');
+  });
+
+  it('keeps an in-flight download focusable but inert, and says why', async () => {
+    const { fixture, host } = await render(
+      { kind: 'ready' },
+      { downloadable: true, downloading: true },
+    );
+    const downloaded = vi.fn();
+    fixture.componentInstance.downloaded.subscribe(downloaded);
+
+    const button = getByRole<HTMLButtonElement>(host, 'button', {
+      name: 'Downloading q3-report.pdf',
+    });
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.getAttribute('aria-busy')).toBe('true');
+
+    button.click();
+    expect(downloaded).not.toHaveBeenCalled();
   });
 
   // Both arms, because only one of them is obviously wrong when it breaks: announcing every uploaded
@@ -146,26 +156,14 @@ describe('AttachmentChip', () => {
     [false, 'Download q3-report.pdf'],
     [true, 'Download generated file q3-report.pdf'],
   ])('names the download for a generated=%s file as "%s"', async (generated, label) => {
-    const fixture = TestBed.createComponent(AttachmentChip);
-    fixture.componentRef.setInput('attachment', attachment({ kind: 'ready' }));
-    fixture.componentRef.setInput('downloadable', true);
-    fixture.componentRef.setInput('generated', generated);
-    await fixture.whenStable();
+    const { host } = await render({ kind: 'ready' }, { downloadable: true, generated });
 
-    expect(
-      (fixture.nativeElement as HTMLElement)
-        .querySelector('.chip__action')
-        ?.getAttribute('aria-label'),
-    ).toBe(label);
+    expect(getByRole(host, 'button', { name: label })).not.toBeNull();
   });
 
   describe('a file the assistant produced', () => {
     async function renderGenerated() {
-      const fixture = TestBed.createComponent(AttachmentChip);
-      fixture.componentRef.setInput('attachment', attachment({ kind: 'ready' }));
-      fixture.componentRef.setInput('generated', true);
-      await fixture.whenStable();
-      return fixture.nativeElement as HTMLElement;
+      return (await render({ kind: 'ready' }, { generated: true })).host;
     }
 
     it('leads with the file type rather than the upload tick', async () => {
@@ -173,16 +171,14 @@ describe('AttachmentChip', () => {
       // file they never uploaded.
       const host = await renderGenerated();
 
-      expect(host.querySelector('app-icon use')?.getAttribute('href')).toBe('#bi-file-earmark-pdf');
+      expect(iconOf(host)).toBe('bi-file-earmark-pdf');
     });
 
     it('says so in text, not by colour or glyph alone', async () => {
       const host = await renderGenerated();
 
-      expect(host.querySelector('.source-badge')?.textContent?.trim()).toBe('Generated');
-      expect(host.querySelector('.chip')?.getAttribute('aria-label')).toBe(
-        'Generated file, q3-report.pdf',
-      );
+      const group = getByRole(host, 'group', { name: 'Generated file, q3-report.pdf' });
+      expect(getByText(group, 'Generated')).not.toBeNull();
     });
 
     it('reports the size instead of the upload lifecycle', async () => {
@@ -194,11 +190,8 @@ describe('AttachmentChip', () => {
   });
 
   it('hides the remove control where the caller forbids it', async () => {
-    const fixture = TestBed.createComponent(AttachmentChip);
-    fixture.componentRef.setInput('attachment', attachment({ kind: 'ready' }));
-    fixture.componentRef.setInput('removable', false);
-    await fixture.whenStable();
+    const { host } = await render({ kind: 'ready' }, { removable: false });
 
-    expect((fixture.nativeElement as HTMLElement).querySelector('.chip__remove')).toBeNull();
+    expect(queryByRole(host, 'button', { name: /^(Remove|Dismiss)/ })).toBeNull();
   });
 });

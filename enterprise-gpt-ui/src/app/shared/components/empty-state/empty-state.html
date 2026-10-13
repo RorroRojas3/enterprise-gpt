@@ -1,17 +1,19 @@
-<div class="empty-state">
-  @if (illustration() === 'ridgeline') {
-    <app-ridgeline variant="empty" />
-  }
+@if (illustration() === 'ridgeline') {
+  <app-ridgeline variant="empty" />
+}
 
-  <p class="empty-state__heading font-display" role="heading" [attr.aria-level]="headingLevel()">
-    {{ heading() }}
-  </p>
+<p
+  class="font-display fs-6 fw-semibold mt-1 mb-0"
+  role="heading"
+  [attr.aria-level]="headingLevel()"
+>
+  {{ heading() }}
+</p>
 
-  @if (message()) {
-    <p class="empty-state__message">{{ message() }}</p>
-  }
+@if (message()) {
+  <p class="small text-body-secondary mb-0">{{ message() }}</p>
+}
 
-  <div class="empty-state__action">
-    <ng-content select="[emptyStateAction]" />
-  </div>
+<div class="d-empty-none">
+  <ng-content select="[emptyStateAction]" />
 </div>

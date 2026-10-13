@@ -24,8 +24,8 @@ import { AuthPage } from '@components/auth/auth-page';
   selector: 'app-session-error',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AuthPage, BrandLogo, ErrorPanel],
+  host: { class: 'd-block' },
   templateUrl: './session-error.html',
-  styleUrl: './session-error.scss',
 })
 export class SessionError implements OnInit {
   private readonly _session = inject(SessionStore);

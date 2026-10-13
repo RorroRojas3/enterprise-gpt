@@ -1,47 +1,42 @@
-<div
-  class="activity-card"
-  [class.activity-card--depth-1]="level() === 1"
-  [class.activity-card--depth-2]="level() === 2"
->
-  <div class="activity-card__header">
+<div [class]="cardClass()" role="group" [attr.aria-labelledby]="nameId">
+  <div class="d-flex align-items-center gap-2 small">
     @switch (activity().state) {
       @case ('Running') {
         <!-- The visible state is decorative; the sr-only text below announces it. -->
-        <span class="activity-card__ring" aria-hidden="true"></span>
+        <span
+          class="spinner-border spinner-border-sm flex-shrink-0 text-primary"
+          aria-hidden="true"
+        ></span>
       }
       @case ('Completed') {
-        <app-icon
-          class="activity-card__state activity-card__state--ok"
-          name="bi-check-circle-fill"
-        />
+        <app-icon class="flex-shrink-0 fs-6 text-success-emphasis" name="bi-check-circle-fill" />
       }
       @case ('Failed') {
-        <app-icon
-          class="activity-card__state activity-card__state--warn"
-          name="bi-exclamation-triangle-fill"
-        />
+        <app-icon class="flex-shrink-0 fs-6 text-warning" name="bi-exclamation-triangle-fill" />
       }
     }
     <!-- Deliberately not a live region: the transcript's `aria-busy` defers it for the whole
          turn, and `Chat`'s status region carries the running commentary. -->
     <span class="visually-hidden">{{ stateLabel() }}</span>
+    <!-- Runtime-function names, e.g. `format_status_table`, are set in mono. -->
     <span
-      class="activity-card__name"
-      [class.activity-card__name--mono]="activity().kind === 'Function'"
+      class="text-truncate min-w-0 fw-semibold"
+      [class.font-monospace]="activity().kind === 'Function'"
+      [id]="nameId"
       >{{ label() }}</span
     >
-    <app-kind-badge [kind]="activity().kind" />
+    <app-kind-badge [kind]="activity().kind" [raised]="level() === 1" />
     @if (duration() || expandable()) {
       <!-- Duration and chevron share one auto margin, so the duration does not
            drift to the middle of the header when the chevron joins it. -->
-      <div class="activity-card__meta">
+      <div class="d-flex flex-shrink-0 align-items-center gap-2 ms-auto">
         @if (duration(); as duration) {
-          <span class="activity-card__duration font-mono">{{ duration }}</span>
+          <span class="font-monospace small text-body-secondary">{{ duration }}</span>
         }
         @if (expandable()) {
           <button
             type="button"
-            class="activity-card__toggle"
+            class="btn btn-ghost btn-icon btn-icon-sm"
             [attr.aria-expanded]="expanded()"
             [attr.aria-controls]="expanded() ? detailId : null"
             (click)="toggle()"
@@ -54,21 +49,27 @@
     }
   </div>
 
+  <!-- Every line below hangs off the rail: the glyph plus the header gap. -->
   @if (activity().source; as source) {
-    <div class="activity-card__source">{{ source }}</div>
+    <div class="small text-body-secondary ms-4 mt-1">{{ source }}</div>
   }
 
   @if (activity().subStatuses.length > 0) {
-    <ul class="activity-card__substatuses">
+    <ul class="list-unstyled d-flex flex-column gap-1 small text-body-secondary ms-4 mt-2 mb-0">
       @for (status of activity().subStatuses; track $index) {
-        <li class="activity-card__substatus">{{ status.message }}</li>
+        <li class="d-flex gap-2"><span aria-hidden="true">·</span>{{ status.message }}</li>
       }
     </ul>
   }
 
   @if (expanded()) {
-    <!-- Token columns are absent until the server attributes usage per activity. -->
-    <div class="activity-card__usage font-mono" [id]="detailId">
+    <!-- No border: a detail of the card, not a card of its own. Token columns are absent until
+         the server attributes usage per activity. -->
+    <div
+      class="d-flex flex-wrap gap-3 ms-4 mt-2 p-2 rounded-3 small font-monospace text-body-secondary"
+      [class]="usageFill()"
+      [id]="detailId"
+    >
       @for (part of usageEntries(); track part) {
         <span>{{ part }}</span>
       }
@@ -76,7 +77,7 @@
   }
 
   @if (activity().children.length > 0) {
-    <div class="activity-card__children">
+    <div class="d-flex flex-column gap-2 mt-2 border-start border-2" [class]="childrenInset()">
       @for (child of activity().children; track child.scopeId || $index) {
         <app-activity-card [activity]="child" [depth]="depth() + 1" />
       }

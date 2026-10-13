@@ -1,8 +1,7 @@
 <button
   #trigger
   type="button"
-  class="menu__trigger"
-  [class.menu__trigger--content]="hasTriggerContent()"
+  [class]="triggerClass()"
   aria-haspopup="menu"
   [attr.aria-expanded]="open()"
   [attr.aria-controls]="open() ? panelId : null"
@@ -22,7 +21,7 @@
 @if (open()) {
   <div
     #panel
-    class="menu__panel"
+    class="dropdown-menu dropdown-menu-fixed show p-1 shadow"
     role="menu"
     tabindex="-1"
     [id]="panelId"

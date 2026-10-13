@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { getAllByRole, getByRole, queryByRole } from '@testing-library/dom';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ConversationDto } from '@shared/models/api/conversation.model';
 import { ConversationActionsStore } from '@state/conversation-actions-store';
@@ -11,6 +12,7 @@ import {
 } from '@state/projects/project-conversations-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture, conversationPage } from '@testing/conversations';
+import { menuItems } from '@testing/overlays';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { ProjectConversations } from './project-conversations';
 
@@ -58,12 +60,14 @@ describe('ProjectConversations', () => {
     backend.verify();
   });
 
-  function menuItems(host: HTMLElement): HTMLButtonElement[] {
-    return [...host.querySelectorAll<HTMLButtonElement>('[appMenuItem]')];
+  /** The open row menu's items. */
+  function items(host: HTMLElement): HTMLElement[] {
+    return menuItems(getByRole(host, 'menu'));
   }
 
+  /** Opens the first row's kebab. */
   async function openRowMenu(host: HTMLElement): Promise<void> {
-    host.querySelector<HTMLButtonElement>('.menu__trigger')?.click();
+    getAllByRole(host, 'button', { name: /^Actions for / })[0]!.click();
     await fixture.whenStable();
   }
 
@@ -72,29 +76,34 @@ describe('ProjectConversations', () => {
       conversationFixture({ name: 'Helios release status', projectId: PROJECT_ID }),
     ]);
 
-    expect(host.querySelector('.project-conversations__name')?.textContent?.trim()).toBe(
-      'Helios release status',
-    );
-    expect(host.querySelector('.project-conversations__updated')?.textContent?.trim()).toBeTruthy();
-    expect(host.querySelector('.project-conversations__star')).not.toBeNull();
-    expect(host.querySelector('.menu__trigger')).not.toBeNull();
+    const row = getAllByRole(host, 'row')[1]!;
+    const cells = getAllByRole(row, 'cell');
+    expect(cells).toHaveLength(4);
+    expect(getByRole(cells[0]!, 'link').textContent?.trim()).toBe('Helios release status');
+    expect(cells[1]?.textContent?.trim()).toBeTruthy();
+    expect(
+      getByRole(cells[2]!, 'button', { name: 'Favourite Helios release status' }),
+    ).toBeTruthy();
+    expect(
+      getByRole(cells[3]!, 'button', { name: 'Actions for Helios release status' }),
+    ).toBeTruthy();
 
-    expect(host.querySelector('.search__field')).toBeNull();
-    expect(host.querySelector('input[type="checkbox"]')).toBeNull();
+    expect(queryByRole(host, 'searchbox')).toBeNull();
+    expect(queryByRole(host, 'checkbox')).toBeNull();
   });
 
   it('offers the five row actions, with Remove always present', async () => {
     const host = await render();
     await openRowMenu(host);
 
-    expect(menuItems(host).map((item) => item.textContent?.trim())).toEqual([
+    expect(items(host).map((item) => item.textContent?.trim())).toEqual([
       'Rename',
       'Favourite',
       'Move to another project',
       'Remove from project',
       'Delete',
     ]);
-    expect(menuItems(host).some((item) => item.hasAttribute('disabled'))).toBe(false);
+    expect(items(host).some((item) => item.hasAttribute('disabled'))).toBe(false);
   });
 
   it('removes a row from the project through toUpdateBody, and drops it', async () => {
@@ -102,7 +111,7 @@ describe('ProjectConversations', () => {
     const host = await render([row, conversationFixture({ projectId: PROJECT_ID })], 2);
     await openRowMenu(host);
 
-    menuItems(host)
+    items(host)
       .find((item) => item.textContent?.includes('Remove from project'))
       ?.click();
     await fixture.whenStable();
@@ -125,7 +134,7 @@ describe('ProjectConversations', () => {
     const host = await render();
     await openRowMenu(host);
 
-    const move = menuItems(host).find((item) => item.textContent?.includes('Move to another'));
+    const move = items(host).find((item) => item.textContent?.includes('Move to another'));
     expect(move?.getAttribute('aria-haspopup')).toBe('dialog');
 
     move?.click();
@@ -133,7 +142,7 @@ describe('ProjectConversations', () => {
 
     // The picker reads the root lookup store, drained at sign-in, so opening it costs no request.
     backend.expectNone((request) => request.url === `${TEST_API_BASE_URL}/api/projects`);
-    expect(host.querySelector('.picker')?.getAttribute('role')).toBe('dialog');
+    expect(getByRole(host, 'dialog', { name: /to a project$/ })).toBeTruthy();
   });
 
   it('points its empty state at the composer above it', async () => {
@@ -142,7 +151,7 @@ describe('ProjectConversations', () => {
     const empty = host.querySelector('app-empty-state');
     expect(empty?.textContent).toContain('No conversations in this project yet');
     expect(empty?.textContent).toContain('composer above');
-    expect(host.querySelector('.menu__trigger')).toBeNull();
+    expect(queryByRole(host, 'button', { name: /^Actions for / })).toBeNull();
   });
 
   it('shows no "most recent" ceiling caption', async () => {
@@ -158,12 +167,7 @@ describe('ProjectConversations', () => {
     );
     const host = await render(first, PROJECT_CONVERSATIONS_PAGE_SIZE + 1);
 
-    const more = [...host.querySelectorAll('button')].find((button) =>
-      button.textContent?.includes('Load more'),
-    );
-    expect(more).toBeDefined();
-
-    more?.click();
+    getByRole(host, 'button', { name: 'Load more' }).click();
     await fixture.whenStable();
     backend
       .expectOne((request) => request.url === SEARCH_URL)
@@ -178,11 +182,7 @@ describe('ProjectConversations', () => {
 
     // It disappears rather than rendering disabled: a disabled control still reads as
     // "there is more, but not for you".
-    expect(
-      [...host.querySelectorAll('button')].some((button) =>
-        button.textContent?.includes('Load more'),
-      ),
-    ).toBe(false);
+    expect(queryByRole(host, 'button', { name: /^(Load more|Loading…)$/ })).toBeNull();
   });
 
   it('replaces the list with an error panel when the query fails', async () => {
@@ -229,11 +229,9 @@ describe('ProjectConversations', () => {
     await openRowMenu(host);
     // aria-disabled, never the native attribute, which would blur the item the instant
     // it is pressed and strand the panel's roving focus.
-    expect(menuItems(host).every((item) => item.getAttribute('aria-disabled') === 'true')).toBe(
-      true,
-    );
+    expect(items(host).every((item) => item.getAttribute('aria-disabled') === 'true')).toBe(true);
 
-    menuItems(host)
+    items(host)
       .find((item) => item.textContent?.includes('Remove from project'))
       ?.click();
     await fixture.whenStable();
@@ -248,7 +246,7 @@ describe('ProjectConversations', () => {
     const row = conversationFixture({ projectId: PROJECT_ID, isFavorite: false });
     const host = await render([row]);
 
-    host.querySelector<HTMLButtonElement>('.project-conversations__star')?.click();
+    getByRole(host, 'button', { name: `Favourite ${row.name}` }).click();
     await fixture.whenStable();
 
     backend
@@ -270,7 +268,7 @@ describe('ProjectConversations', () => {
     document.body.append(host);
 
     await openRowMenu(host);
-    menuItems(host)
+    items(host)
       .find((item) => item.textContent?.includes('Remove from project'))
       ?.click();
     await fixture.whenStable();
@@ -279,7 +277,7 @@ describe('ProjectConversations', () => {
     await fixture.whenStable();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(document.activeElement).toBe(host.querySelector('.project-conversations__name'));
+    expect(document.activeElement).toBe(getByRole(host, 'link', { name: survivor.name }));
     host.remove();
   });
 });

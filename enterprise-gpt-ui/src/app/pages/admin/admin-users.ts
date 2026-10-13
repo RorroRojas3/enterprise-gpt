@@ -68,6 +68,7 @@ import { UserFormDialog } from '@components/admin/users/user-form-dialog';
     UserFormDialog,
   ],
   providers: [AdminUsersStore],
+  host: { class: 'd-block' },
   templateUrl: './admin-users.html',
   styleUrl: './admin-users.scss',
 })

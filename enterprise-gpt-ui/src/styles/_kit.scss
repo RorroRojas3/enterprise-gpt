@@ -1,93 +1,193 @@
 @use 'breakpoints' as bp;
 
-// Global rules the UI kit needs and component encapsulation cannot reach.
+// App classes for patterns Bootstrap has no class for, built on its variables. After
+// `_bootstrap-overrides.scss`, so a kit modifier beats the Bootstrap rule it adjusts.
+
+// ── Buttons ──────────────────────────────────────────────────────────────────
+// The transparent icon/text button the app uses wherever an outline would be noise. `.active`
+// gives the pressed look, as on any Bootstrap button.
+.btn-ghost {
+  --bs-btn-color: var(--bs-secondary-color);
+  --bs-btn-bg: transparent;
+  --bs-btn-border-color: transparent;
+  --bs-btn-hover-color: var(--bs-body-color);
+  --bs-btn-hover-bg: var(--bs-tertiary-bg);
+  --bs-btn-hover-border-color: transparent;
+  --bs-btn-active-color: var(--bs-primary);
+  --bs-btn-active-bg: var(--bs-secondary-bg);
+  --bs-btn-active-border-color: transparent;
+  --bs-btn-disabled-color: var(--bs-secondary-color);
+  --bs-btn-disabled-bg: transparent;
+  --bs-btn-disabled-border-color: transparent;
+}
+
+// Square icon-only buttons. 1.5rem is the floor: smaller fails axe's target-size rule.
+.btn-icon {
+  --btn-icon-size: 2rem;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--btn-icon-size);
+  height: var(--btn-icon-size);
+  padding: 0;
+}
+
+.btn-icon-sm {
+  --btn-icon-size: 1.5rem;
+  --bs-btn-font-size: #{$font-size-sm};
+  --bs-btn-border-radius: var(--bs-border-radius-sm);
+}
+
+.btn-icon-lg {
+  --btn-icon-size: 2.75rem;
+  --bs-btn-font-size: #{$font-size-lg};
+}
+
+// Disabled look without `disabled`, for controls that must stay focusable to explain why.
+.btn[aria-disabled='true'] {
+  opacity: var(--bs-btn-disabled-opacity);
+  cursor: default;
+}
+
+.dropdown-item[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
+
+  &:hover,
+  &:focus {
+    background-color: transparent;
+  }
+}
+
+// 44px targets on touch-sized screens, whatever the control's desktop size.
+@include bp.mobile {
+  .touch-target {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+}
+
+// ── Focus ────────────────────────────────────────────────────────────────────
+// Inside a scroll container an offset ring is clipped; this draws it inside the control.
+.focus-inset:focus-visible {
+  outline-offset: -2px;
+}
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+// Pills for in-page navigation, where a solid primary fill would outweigh the content.
+.nav-pills-subtle {
+  --bs-nav-link-color: var(--bs-body-color);
+  --bs-nav-link-hover-color: var(--bs-body-color);
+  --bs-nav-pills-link-active-bg: var(--bs-secondary-bg);
+  --bs-nav-pills-link-active-color: var(--bs-primary);
+
+  .nav-link:hover:not(.active) {
+    background-color: var(--bs-tertiary-bg);
+  }
+
+  .nav-link.active {
+    font-weight: $font-weight-semibold;
+  }
+}
+
+// A row holding a link plus its own controls, which a `.nav-link` cannot contain.
+.list-row {
+  display: flex;
+  align-items: center;
+  border-radius: var(--bs-border-radius);
+  transition: background-color var(--t-fast);
+
+  &:hover {
+    background-color: var(--bs-tertiary-bg);
+  }
+
+  &.active {
+    background-color: var(--bs-secondary-bg);
+    color: var(--bs-primary);
+    font-weight: $font-weight-semibold;
+  }
+}
+
+// Row controls that appear on hover or focus, and stay while their menu is open. Touch screens
+// cannot hover, so they always show there.
+.reveal-host .reveal-target {
+  opacity: 0;
+  transition: opacity var(--t-fast);
+}
+
+.reveal-host:hover .reveal-target,
+.reveal-host:focus-within .reveal-target,
+.reveal-host.active .reveal-target,
+.reveal-target:has([aria-expanded='true']) {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .reveal-host .reveal-target {
+    opacity: 1;
+  }
+}
+
+// ── Overlays ─────────────────────────────────────────────────────────────────
+// Menus are placed in viewport coordinates (`anchored-panel.ts`) so `overflow` ancestors cannot
+// clip them, and sit above the bulk-action bar.
+.dropdown-menu-fixed {
+  --bs-dropdown-zindex: 1070;
+  position: fixed;
+}
+
+// ── Type and content ─────────────────────────────────────────────────────────
+// A type style, like `.lead`: the uppercase label above a group.
+.eyebrow {
+  color: var(--bs-secondary-color);
+  font-size: 0.75rem;
+  font-weight: $font-weight-semibold;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+// For slots that may project nothing.
+.d-empty-none:empty {
+  display: none !important;
+}
+
+.avatar-circle {
+  --avatar-size: 1.75rem;
+  display: inline-flex;
+  flex: 0 0 var(--avatar-size);
+  align-items: center;
+  justify-content: center;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: 50%;
+}
+
+// Theme-specific artwork; the tokens flip with `data-bs-theme`, so no script swaps it.
+.theme-light-only {
+  display: var(--show-light) !important;
+}
+
+.theme-dark-only {
+  display: var(--show-dark) !important;
+}
+
 // ── Skip link ────────────────────────────────────────────────────────────────
 // Rendered by the shell but styled here, since it sits outside every component.
 .skip-link {
   position: absolute;
   left: -9999px;
   z-index: 1100;
-  padding: 10px 16px;
-  border-radius: 0 0 10px 0;
-  background: var(--brand);
-  color: var(--btnP-fg);
-  font-weight: 600;
+  padding: 0.5rem 1rem;
+  border-radius: 0 0 var(--bs-border-radius) 0;
+  background: var(--bs-primary);
+  color: var(--primary-fg);
+  font-weight: $font-weight-semibold;
 
   &:focus {
     left: 0;
     top: 0;
   }
-}
-
-// ── Overlays ─────────────────────────────────────────────────────────────────
-// ::backdrop belongs to the top layer, which no component's emulated encapsulation
-// reaches.
-dialog::backdrop {
-  background: rgba(11, 31, 51, 0.45);
-}
-
-// Native <dialog> ships a UA border, padding and max-width that fight every layout.
-dialog {
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
-// No scroll behind an open modal; `:has` avoids a script-managed body class that could leak.
-html:has(dialog[open]) {
-  overflow: hidden;
-}
-
-// ── Validation ───────────────────────────────────────────────────────────────
-// Hand-rolled in place of bootstrap/scss/forms/validation (6.9 kB). Fields bind
-// `.is-invalid` directly, and `.was-validated` is never used here.
-.form-control.is-invalid,
-.form-select.is-invalid,
-// A switch can fail a cross-field rule. Border only: `--fail` clears the 3:1 a non-text
-// indicator needs in both themes.
-.form-check-input.is-invalid {
-  border-color: var(--fail);
-
-  // Solid, not a wash: `--fail` measures 5.30:1 on `--surface`, so the ring is both the error
-  // colour and a compliant indicator.
-  &:focus {
-    border-color: var(--fail);
-    box-shadow: 0 0 0 2px var(--fail);
-  }
-}
-
-// ── Spinner ──────────────────────────────────────────────────────────────────
-// On the existing `spin` keyframe rather than Bootstrap's spinners, which add their own.
-.kit-spinner {
-  display: inline-block;
-  flex: 0 0 auto;
-  width: 1em;
-  height: 1em;
-  border: 2px solid var(--bs-border-color);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.9s linear infinite;
-}
-
-// ── Tooltip ──────────────────────────────────────────────────────────────────
-// Created through Renderer2, so no encapsulation attribute. Token colours, since a literal
-// #0B1F33 is the dark body background. Fixed, because `overflow: hidden` ancestors clip an
-// absolute flyout; the directive writes the position inline after measuring at this origin.
-.app-tooltip {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 1080;
-  padding: 5px 11px;
-  border-radius: 8px;
-  background: var(--tooltip-bg);
-  color: var(--tooltip-fg);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.4;
-  white-space: nowrap;
-  pointer-events: none;
-  box-shadow: 0 6px 16px rgba(11, 31, 51, 0.35);
 }
 
 // ── Safe areas ───────────────────────────────────────────────────────────────
@@ -101,8 +201,7 @@ html:has(dialog[open]) {
 }
 
 // ── Toast region ─────────────────────────────────────────────────────────────
-// Fixed, so it is positioned here rather than inside the component: 76px clears the
-// 52px chat header plus its rule. One place owns the number.
+// 76px clears the 52px chat header plus its rule. One place owns the number.
 :root {
   --toast-top: 76px;
   --toast-right: 20px;

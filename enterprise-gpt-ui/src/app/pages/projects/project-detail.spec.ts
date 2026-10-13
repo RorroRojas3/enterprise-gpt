@@ -6,6 +6,7 @@ import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { Dispatcher } from '@ngrx/signals/events';
+import { getAllByRole, getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConversationDto } from '@shared/models/api/conversation.model';
 import { TokenService } from '@core/auth/token-service';
@@ -17,6 +18,7 @@ import { UploadStore } from '@state/documents/upload-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
+import { dialogNamed } from '@testing/overlays';
 import { projectDetailFixture, projectDocumentFixture } from '@testing/projects';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
 import projectDetailRoutes from './project-detail.routes';
@@ -97,6 +99,19 @@ describe('ProjectDetail', () => {
   }
 
   /** Not `whenStable()`, which never settles while a guard deliberately holds a navigation. */
+  /** The header; scoped to it, since the composer below has buttons of its own. */
+  function header(): HTMLElement {
+    const element = host().querySelector<HTMLElement>('header');
+    expect(element).not.toBeNull();
+    return element!;
+  }
+
+  /** The tab strip's link names, counts included, whitespace collapsed. */
+  function tabNames(): (string | undefined)[] {
+    const nav = getByRole(host(), 'navigation', { name: 'Project sections' });
+    return getAllByRole(nav, 'link').map((tab) => tab.textContent?.replace(/\s+/g, ' ').trim());
+  }
+
   async function pump(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 0));
     TestBed.tick();
@@ -131,25 +146,20 @@ describe('ProjectDetail', () => {
   it('renders the header, the composer and a tab strip carrying both counts', async () => {
     await open('', [conversationFixture(), conversationFixture()]);
 
-    expect(host().querySelector('.detail__name')?.textContent?.trim()).toBe('Helios');
+    // The name is the rename control, styled as the heading.
+    expect(getByRole(header(), 'button', { name: 'Helios' })).toBeTruthy();
     // The composer is the shared component; what differs is the host it sends into.
     expect(host().querySelector('app-composer')).not.toBeNull();
 
-    const tabs = [...host().querySelectorAll('.nav-link')].map((tab) =>
-      tab.textContent?.replace(/\s+/g, ' ').trim(),
-    );
     // Three tabs, in order, each with its own count.
-    expect(tabs).toEqual(['Instructions', 'Files 1', 'Conversations 2']);
+    expect(tabNames()).toEqual(['Instructions', 'Files 1', 'Conversations 2']);
   });
 
   it('counts a project’s conversations from whichever tab the reader is on', async () => {
     await open('/instructions', [conversationFixture()]);
 
     expect(host().querySelector('app-project-conversations')).toBeNull();
-    const counts = [...host().querySelectorAll('.detail__tab-count')].map((span) =>
-      span.textContent?.trim(),
-    );
-    expect(counts).toEqual(['1', '1']);
+    expect(tabNames()).toEqual(['Instructions', 'Files 1', 'Conversations 1']);
   });
 
   it('resolves the upload store through the outlet, so the files panel shares one', async () => {
@@ -213,7 +223,7 @@ describe('ProjectDetail', () => {
       .flush([projectDocumentFixture({ name: 'plan.pdf' }), projectDocumentFixture()]);
     await harness.fixture.whenStable();
 
-    expect(host().querySelector('.detail__tab-count')?.textContent?.trim()).toBe('2');
+    expect(tabNames()[1]).toBe('Files 2');
     expect(uploads().hasAttachments()).toBe(false);
   });
 
@@ -249,11 +259,10 @@ describe('ProjectDetail', () => {
 
     // Through the router, not by calling the panel: the guard is what has to fire, and
     // it fires on a tab change as well as on leaving the project.
-    expect(host().querySelector('dialog')?.open).toBe(true);
+    const dialog = dialogNamed('Discard unsaved instructions?') as HTMLDialogElement;
+    expect(dialog.open).toBe(true);
 
-    const discard = host().querySelector<HTMLButtonElement>('dialog .btn-danger');
-    expect(discard).not.toBeNull();
-    discard?.click();
+    getByRole(dialog, 'button', { name: 'Discard' }).click();
 
     await expect(navigation).resolves.toBe(true);
     await settle();
@@ -263,7 +272,9 @@ describe('ProjectDetail', () => {
 
   describe('favourite', () => {
     function star(): HTMLButtonElement | null {
-      return host().querySelector<HTMLButtonElement>('.detail__favorite');
+      return getByRole<HTMLButtonElement>(header(), 'button', {
+        name: /^(Unf|F)avourite Helios$/,
+      });
     }
 
     it('names the direction it would take, and issues the set on press', async () => {

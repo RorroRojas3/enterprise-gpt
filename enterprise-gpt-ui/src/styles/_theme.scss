@@ -1,0 +1,60 @@
+// Emits `_tokens.scss` per theme, after Bootstrap's `root`. Bootstrap's dark block omits the theme
+// colours and their `-rgb` channels, so without this `.text-*`/`.bg-*` keep light values in dark.
+// Never `@use` this from a component: its `:root` blocks would be re-scoped and match nothing.
+@use 'sass:color';
+@use 'sass:map';
+@use 'sass:math';
+
+@function rgb-channels($value) {
+  @return #{color.channel($value, 'red', $space: rgb)},
+    #{color.channel($value, 'green', $space: rgb)}, #{color.channel($value, 'blue', $space: rgb)};
+}
+
+// Whole channels: Sass's colour module otherwise emits `rgb(66.3, 181.05, 221.85)`.
+@function rounded($value) {
+  @return rgb(
+    math.round(color.channel($value, 'red', $space: rgb)),
+    math.round(color.channel($value, 'green', $space: rgb)),
+    math.round(color.channel($value, 'blue', $space: rgb))
+  );
+}
+
+@mixin emit-tokens($tokens) {
+  @each $key, $value in $tokens {
+    --#{$key}: #{$value};
+  }
+  @each $key in $rgb-companions {
+    --#{$key}-rgb: #{rgb-channels(map.get($tokens, $key))};
+  }
+  // Button states, with Bootstrap's own amounts: a fill under a white label darkens, one under
+  // dark ink lightens, so contrast only grows.
+  @each $color in $flipping-colors {
+    $fill: map.get($tokens, 'bs-#{$color}');
+    $darkens: map.get($tokens, '#{$color}-fg') == #ffffff;
+    --#{$color}-hover: #{rounded(
+        if(
+          $darkens,
+          shade-color($fill, $btn-hover-bg-shade-amount),
+          tint-color($fill, $btn-hover-bg-tint-amount)
+        )
+      )};
+    --#{$color}-active: #{rounded(
+        if(
+          $darkens,
+          shade-color($fill, $btn-active-bg-shade-amount),
+          tint-color($fill, $btn-active-bg-tint-amount)
+        )
+      )};
+  }
+}
+
+// Selectors byte-identical to Bootstrap's `_root.scss`, so the later position wins without
+// `!important`.
+:root,
+[data-bs-theme='light'] {
+  @include emit-tokens($tokens-light);
+}
+
+[data-bs-theme='dark'] {
+  @include emit-tokens($tokens-dark);
+}

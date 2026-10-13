@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
+const RADIUS = { text: 'rounded-2', block: 'rounded-3', circle: 'rounded-circle' } as const;
+
 /**
  * Always `aria-hidden`, since the container swapping it out carries `aria-busy`. Static: a
  * shimmer would add a keyframe the design does not define.
@@ -7,9 +9,8 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 @Component({
   selector: 'app-skeleton',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { 'aria-hidden': 'true', class: 'skeleton-host' },
+  host: { 'aria-hidden': 'true', class: 'd-flex flex-column gap-2' },
   templateUrl: './skeleton.html',
-  styleUrl: './skeleton.scss',
 })
 export class Skeleton {
   readonly variant = input<'text' | 'block' | 'circle'>('text');
@@ -20,4 +21,5 @@ export class Skeleton {
   readonly lines = input<number>(1);
 
   protected readonly rows = computed(() => Array.from({ length: Math.max(1, this.lines()) }));
+  protected readonly radius = computed(() => RADIUS[this.variant()]);
 }

@@ -1,13 +1,14 @@
 <app-auth-page>
-  <app-brand-logo class="auth-callback__logo" alt="Andes Software Solutions" />
+  <app-brand-logo class="mw-100" style="width: 250px" alt="Andes Software Solutions" />
 
   <app-ridgeline variant="auth" />
 
-  <div class="auth-callback__status">
-    <span class="kit-spinner auth-callback__spinner" aria-hidden="true"></span>
+  <span class="spinner-border text-primary" aria-hidden="true"></span>
 
-    <!-- Focused, not live-announced: a region inserted with its text announces nothing. -->
-    <h1 #heading class="auth-callback__heading font-display" tabindex="-1">Signing you in…</h1>
-    <p class="auth-callback__detail">Finishing up with Microsoft Entra ID</p>
-  </div>
+  <!-- Focused, not live-announced: a region inserted with its text announces nothing. -->
+  <h1 #heading class="font-display fs-6 fw-semibold mb-0" tabindex="-1">Signing you in…</h1>
+  <!-- Dropped on phones so the mark, ridgeline and status fit above the fold. -->
+  <p class="d-none d-sm-block small text-body-secondary mb-0">
+    Finishing up with Microsoft Entra ID
+  </p>
 </app-auth-page>

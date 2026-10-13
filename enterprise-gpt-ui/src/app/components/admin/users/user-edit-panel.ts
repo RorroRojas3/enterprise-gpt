@@ -18,7 +18,6 @@ import { PermissionChecklist } from './permission-checklist';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AvatarInitials, Icon, Offcanvas, PermissionChecklist],
   templateUrl: './user-edit-panel.html',
-  styleUrl: './user-edit-panel.scss',
 })
 export class UserEditPanel {
   protected readonly actions = inject(UserActionsStore);

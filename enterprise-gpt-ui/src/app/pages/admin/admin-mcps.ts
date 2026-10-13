@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, viewChild } from '@angular/core';
 import { McpServerDto } from '@shared/models/api/mcp.model';
-import { TableColumn } from '@shared/models/table-column.model';
 import { isMcpServerRetired } from '@shared/utils/catalog/mcp-server';
 import { authTypeLabel } from '@shared/utils/catalog/mcp-server-form';
 import { mcpBrandIcon } from '@shared/utils/icons/mcp-icon';
@@ -20,6 +19,7 @@ import { TableCell } from '@shared/directives/table-cell';
 import { DeactivateMcpServerDialog } from '@components/admin/mcps/deactivate-mcp-server-dialog';
 import { McpServerFormDialog } from '@components/admin/mcps/mcp-server-form-dialog';
 import { PermissionBadge } from '@components/admin/permission-badge';
+import { injectAdminColumns } from './admin-columns';
 
 /**
  * The admin MCP server registry. Deactivated (soft-deleted) servers stay listed, muted, because
@@ -44,6 +44,7 @@ import { PermissionBadge } from '@components/admin/permission-badge';
     TableCell,
   ],
   providers: [AdminMcpsStore],
+  host: { class: 'd-block' },
   templateUrl: './admin-mcps.html',
   styleUrl: './admin-mcps.scss',
 })
@@ -68,7 +69,7 @@ export class AdminMcps {
   );
 
   /** Fields, not template literals: exhaustive no-changes checks see those as new values. */
-  protected readonly columns: readonly TableColumn<McpServerDto>[] = [
+  protected readonly columns = injectAdminColumns<McpServerDto>([
     { key: 'server', header: 'Server', width: 'minmax(0, 1.1fr)', mobile: 'title' },
     {
       key: 'description',
@@ -98,7 +99,7 @@ export class AdminMcps {
       align: 'end',
       mobile: 'trailing',
     },
-  ];
+  ]);
 
   protected readonly trackKey = (server: McpServerDto): string => server.id;
   protected readonly rowLabel = (server: McpServerDto): string => server.name;

@@ -1,9 +1,11 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { getByRole } from '@testing-library/dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MenuItem } from '@shared/directives/menu-item';
 import { MenuSeparator } from '@shared/directives/menu-separator';
 import { MenuTriggerContent } from '@shared/directives/menu-trigger-content';
+import { tooltipOf } from '@testing/overlays';
 import { Menu } from './menu';
 
 @Component({
@@ -20,7 +22,7 @@ import { Menu } from './menu';
       <button id="rename" appMenuItem type="button">Rename</button>
       <button id="favourite" appMenuItem type="button">Favourite</button>
       <hr appMenuSeparator />
-      <button id="delete" appMenuItem type="button" class="menu__item--danger">Delete</button>
+      <button id="delete" appMenuItem type="button" class="text-danger-emphasis">Delete</button>
     </app-menu>
     <div id="page">elsewhere</div>
   `,
@@ -46,10 +48,10 @@ describe('Menu', () => {
     return {
       fixture,
       host,
-      trigger: host.querySelector('.menu__trigger') as HTMLButtonElement,
+      trigger: getByRole(host, 'button', { name: 'Actions for Helios release' }),
       panel: () => host.querySelector('[role="menu"]'),
       async open() {
-        (host.querySelector('.menu__trigger') as HTMLButtonElement).click();
+        getByRole(host, 'button', { name: 'Actions for Helios release' }).click();
         await fixture.whenStable();
       },
       async keydown(key: string) {
@@ -212,7 +214,7 @@ describe('Menu', () => {
       menu.trigger.dispatchEvent(new MouseEvent('mouseenter'));
       await menu.fixture.whenStable();
 
-      const flyout = menu.trigger.querySelector('.app-tooltip');
+      const flyout = tooltipOf(menu.trigger);
       expect(flyout?.textContent).toBe('Available when the response finishes');
     });
 
@@ -225,9 +227,7 @@ describe('Menu', () => {
       menu.trigger.dispatchEvent(new MouseEvent('mouseenter'));
       await menu.fixture.whenStable();
 
-      expect(menu.trigger.querySelector('.app-tooltip')?.getAttribute('data-placement')).toBe(
-        'bottom',
-      );
+      expect(tooltipOf(menu.trigger)?.getAttribute('data-placement')).toBe('bottom');
     });
 
     /** Pins the wiring, not the geometry; the re-measurement is covered in the directive. */
@@ -241,9 +241,7 @@ describe('Menu', () => {
       menu.fixture.componentInstance.direction.set('up');
       await menu.fixture.whenStable();
 
-      expect(menu.trigger.querySelector('.app-tooltip')?.getAttribute('data-placement')).toBe(
-        'top',
-      );
+      expect(tooltipOf(menu.trigger)?.getAttribute('data-placement')).toBe('top');
     });
 
     /** Almost no menu passes a hint, so an absent one must render nothing and do no work. */
@@ -256,7 +254,7 @@ describe('Menu', () => {
       menu.trigger.dispatchEvent(new MouseEvent('mouseenter'));
       await menu.fixture.whenStable();
 
-      expect(menu.trigger.querySelector('.app-tooltip')).toBeNull();
+      expect(tooltipOf(menu.trigger)).toBeNull();
       expect(addEventListener.mock.calls.filter(([type]) => type === 'keydown')).toHaveLength(0);
 
       addEventListener.mockRestore();
@@ -341,10 +339,10 @@ describe('Menu with a projected trigger and checked items', () => {
       fixture,
       host,
       component: fixture.componentInstance,
-      trigger: host.querySelector('.menu__trigger') as HTMLButtonElement,
+      trigger: getByRole(host, 'button', { name: 'Model: GPT-5 Enterprise' }),
       panel: () => host.querySelector('[role="menu"]'),
       async open() {
-        (host.querySelector('.menu__trigger') as HTMLButtonElement).click();
+        getByRole(host, 'button', { name: 'Model: GPT-5 Enterprise' }).click();
         await fixture.whenStable();
       },
     };
@@ -355,7 +353,8 @@ describe('Menu with a projected trigger and checked items', () => {
 
     expect(trigger.querySelector('#pill')).not.toBeNull();
     expect(trigger.getAttribute('aria-label')).toBe('Model: GPT-5 Enterprise');
-    expect(trigger.classList.contains('menu__trigger--content')).toBe(true);
+    // The icon button's square and fill drop away for a projected face.
+    expect(trigger.classList).not.toContain('btn-icon');
     // The default icon face is replaced, not doubled.
     expect(trigger.querySelector('app-icon')).toBeNull();
   });

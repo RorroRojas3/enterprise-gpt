@@ -44,8 +44,9 @@ const SKELETON_ROWS = 6;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DocumentRow, EmptyState, ErrorPanel, Icon, RouterLink, SearchInput, Skeleton],
   providers: [DocumentLibraryStore],
+  // The shell's `<main>` clips its overflow, so a routed screen scrolls itself.
+  host: { class: 'd-flex flex-column gap-3 p-3 p-md-4 overflow-y-auto' },
   templateUrl: './documents.html',
-  styleUrl: './documents.scss',
 })
 export class Documents {
   /** Bound from `?name=`. Trimmed, so a hand-edited `?name=%20%20` means unfiltered. */
@@ -216,7 +217,7 @@ export class Documents {
       return;
     }
 
-    const actions = this._host.nativeElement.querySelectorAll<HTMLElement>('.document-row__action');
+    const actions = this._host.nativeElement.querySelectorAll<HTMLElement>('[data-row-anchor]');
     const last = actions.item(actions.length - 1);
 
     if (last === null) {

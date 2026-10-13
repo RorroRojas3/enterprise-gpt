@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
+import { getByRole, getByText, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModelDto } from '@shared/models/api/chat-model.model';
 import { PermissionDto } from '@shared/models/api/user.model';
@@ -28,6 +29,7 @@ import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpFixture, modelFixture } from '@testing/catalog';
 import { conversationFixture } from '@testing/conversations';
 import { dispatchDrag, fileDrag, textFile } from '@testing/drag';
+import { iconOf } from '@testing/overlays';
 import { projectFixture, projectPage } from '@testing/projects';
 import { UPLOAD_FILE_GRANT, userFixture } from '@testing/session';
 import { FakeRecognition } from '@testing/speech';
@@ -97,18 +99,26 @@ describe('Composer', () => {
     hosts.push(fixture.nativeElement as HTMLElement);
     await fixture.whenStable();
     const host = fixture.nativeElement as HTMLElement;
+    const prompt = () =>
+      getByRole<HTMLTextAreaElement>(host, 'textbox', { name: 'Message Enterprise GPT' });
     return {
       fixture,
       host,
-      send: () => host.querySelector('.composer__send') as HTMLButtonElement | null,
-      stop: () => host.querySelector('.composer__stop') as HTMLButtonElement | null,
-      prompt: () => host.querySelector('.composer__prompt') as HTMLTextAreaElement,
-      note: () => host.querySelector('.composer__note') as HTMLElement,
-      disclaimer: () => host.querySelector('.composer__disclaimer') as HTMLElement,
+      send: () => queryByRole<HTMLButtonElement>(host, 'button', { name: 'Send' }),
+      // Exact, so the microphone's "Stop dictating" never answers for it.
+      stop: () => queryByRole<HTMLButtonElement>(host, 'button', { name: /^Stop( uploading)?$/ }),
+      prompt,
+      /** The warning line, found by what it says. */
+      note: (text: string | RegExp) => getByText(host, text),
+      disclaimer: () =>
+        getByText(
+          host,
+          'Enterprise GPT is AI and can make mistakes. Please double-check responses.',
+        ),
+      modelPill: () => getByRole(host, 'button', { name: /^Model:/ }),
       async type(text: string) {
-        const prompt = host.querySelector('.composer__prompt') as HTMLTextAreaElement;
-        prompt.value = text;
-        prompt.dispatchEvent(new Event('input', { bubbles: true }));
+        prompt().value = text;
+        prompt().dispatchEvent(new Event('input', { bubbles: true }));
         await fixture.whenStable();
       },
     };
@@ -140,7 +150,7 @@ describe('Composer', () => {
     // Outside the card, not merely outside the note: nesting it would still match the
     // top-level selector and silently render inside the bordered box.
     expect(composer.host.querySelector('.composer')?.contains(composer.disclaimer())).toBe(false);
-    expect(composer.note().textContent).toContain('The model catalog failed to load');
+    expect(composer.note(/^The model catalog failed to load/).getAttribute('role')).toBe('status');
   });
 
   it('disables send until both a model and text exist', async () => {
@@ -165,14 +175,12 @@ describe('Composer', () => {
     await failModels();
     await composer.type('Still here');
 
-    expect(composer.note().getAttribute('role')).toBe('status');
-    expect(composer.note().textContent).toContain(
+    const note = composer.note(
       'The model catalog failed to load — sending is disabled. Retry from the model menu.',
     );
+    expect(note.getAttribute('role')).toBe('status');
     expect(composer.send()?.disabled).toBe(true);
-    expect(composer.host.querySelector('.model-menu__pill')?.textContent).toContain(
-      'Models unavailable',
-    );
+    expect(composer.modelPill().textContent).toContain('Models unavailable');
   });
 
   it("renders frame 2d's warning when a model change cleared the tool selection", async () => {
@@ -190,13 +198,15 @@ describe('Composer', () => {
     settings.selectModel(limited.id);
     await composer.fixture.whenStable();
 
-    expect(composer.note().textContent).toContain(
+    const note = composer.note(
       "GPT-5 Mini can't call tools — your previous selection was cleared.",
     );
 
     settings.selectModel(capable.id);
     await composer.fixture.whenStable();
-    expect(composer.note().textContent?.trim()).toBe('');
+    // The region stays mounted; only its content goes.
+    expect(note.isConnected).toBe(true);
+    expect(note.textContent?.trim()).toBe('');
   });
 
   it('ships the still-unbuilt affordances as absent, not disabled', async () => {
@@ -211,7 +221,7 @@ describe('Composer', () => {
       (button) => button.getAttribute('aria-label') ?? button.textContent?.trim() ?? '',
     );
     expect(labels.some((label) => /download/i.test(label))).toBe(false);
-    expect(composer.host.querySelector('.model-menu__pill')).not.toBeNull();
+    expect(composer.modelPill()).not.toBeNull();
     expect(composer.send()).not.toBeNull();
   });
 
@@ -222,7 +232,7 @@ describe('Composer', () => {
     await composer.fixture.whenStable();
 
     expect(TestBed.inject(TurnStore).projectTarget()).toBeNull();
-    expect(composer.host.querySelector('.composer__project')).toBeNull();
+    expect(queryByRole(composer.host, 'button', { name: /^Project:/ })).toBeNull();
   });
 
   describe('download control', () => {
@@ -238,7 +248,7 @@ describe('Composer', () => {
     }
 
     function control(host: HTMLElement): HTMLButtonElement | null {
-      return host.querySelector<HTMLButtonElement>('app-conversation-download-menu .menu__trigger');
+      return queryByRole<HTMLButtonElement>(host, 'button', { name: /^Download Helios/ });
     }
 
     it('is absent on the empty chat route', async () => {
@@ -319,6 +329,14 @@ describe('Composer', () => {
       TestBed.tick();
     }
 
+    function pill(host: HTMLElement): HTMLButtonElement {
+      return getByRole<HTMLButtonElement>(host, 'button', { name: /^Project:/ });
+    }
+
+    function picker(host: HTMLElement): HTMLElement | null {
+      return queryByRole(host, 'dialog', { name: /to a project$/ });
+    }
+
     it('names the assigned project and opens the picker upward', async () => {
       const project = projectFixture({ name: 'Data Platform Migration' });
       const composer = await render();
@@ -327,16 +345,17 @@ describe('Composer', () => {
       await openConversation(project.id);
       await composer.fixture.whenStable();
 
-      const pill = composer.host.querySelector<HTMLButtonElement>('.composer__project');
-      expect(pill?.textContent?.trim()).toBe('Data Platform Migration');
-      expect(pill?.getAttribute('aria-expanded')).toBe('false');
-      expect(pill?.getAttribute('aria-label')).toContain('Data Platform Migration');
+      const button = pill(composer.host);
+      expect(button.textContent?.trim()).toBe('Data Platform Migration');
+      expect(button.getAttribute('aria-expanded')).toBe('false');
+      expect(button.getAttribute('aria-label')).toContain('Data Platform Migration');
+      expect(iconOf(button)).toBe('bi-folder-fill');
 
-      pill?.click();
+      button.click();
       await composer.fixture.whenStable();
 
-      expect(composer.host.querySelector('.picker')).not.toBeNull();
-      expect(pill?.getAttribute('aria-expanded')).toBe('true');
+      expect(picker(composer.host)).not.toBeNull();
+      expect(button.getAttribute('aria-expanded')).toBe('true');
     });
 
     it('reads "No project" for a standalone conversation', async () => {
@@ -345,9 +364,8 @@ describe('Composer', () => {
       await openConversation(null);
       await composer.fixture.whenStable();
 
-      expect(composer.host.querySelector('.composer__project')?.textContent?.trim()).toBe(
-        'No project',
-      );
+      expect(pill(composer.host).textContent?.trim()).toBe('No project');
+      expect(iconOf(pill(composer.host))).toBe('bi-folder');
     });
 
     it('closes the picker when the pill is pressed again', async () => {
@@ -358,17 +376,17 @@ describe('Composer', () => {
       await openConversation(null);
       await composer.fixture.whenStable();
 
-      const pill = composer.host.querySelector<HTMLButtonElement>('.composer__project');
-      pill?.click();
+      const button = pill(composer.host);
+      button.click();
       await composer.fixture.whenStable();
-      expect(composer.host.querySelector('.picker')).not.toBeNull();
+      expect(picker(composer.host)).not.toBeNull();
 
       // The real sequence: pointerdown reaches the document handler first, then click.
-      pill?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
-      pill?.click();
+      button.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+      button.click();
       await composer.fixture.whenStable();
 
-      expect(composer.host.querySelector('.picker')).toBeNull();
+      expect(picker(composer.host)).toBeNull();
     });
 
     it('is disabled while a turn is streaming', async () => {
@@ -380,9 +398,7 @@ describe('Composer', () => {
       composer.send()?.click();
       await composer.fixture.whenStable();
 
-      expect(composer.host.querySelector<HTMLButtonElement>('.composer__project')?.disabled).toBe(
-        true,
-      );
+      expect(pill(composer.host).disabled).toBe(true);
     });
   });
 
@@ -403,10 +419,13 @@ describe('Composer', () => {
     }
 
     const attach = (host: HTMLElement) =>
-      host.querySelector<HTMLButtonElement>('[aria-label="Attach files"]');
+      queryByRole<HTMLButtonElement>(host, 'button', { name: 'Attach files' });
     const picker = (host: HTMLElement) =>
-      host.querySelector<HTMLInputElement>('.composer__file-input');
+      host.querySelector<HTMLInputElement>('input[type="file"]');
     const chips = (host: HTMLElement) => [...host.querySelectorAll('app-attachment-chip')];
+    /** A chip's own `×`: "Remove" while it would cancel, "Dismiss" once there is nothing to. */
+    const removeControl = (host: HTMLElement) =>
+      queryByRole(host, 'button', { name: /^(Remove|Dismiss) / });
 
     it('renders no attach control and an inert drop zone without the grant (frame 2h)', async () => {
       const composer = await render();
@@ -489,7 +508,7 @@ describe('Composer', () => {
       expect(composer.send()).toBeNull();
       expect(composer.stop()).not.toBeNull();
       expect(composer.stop()?.disabled).toBe(false);
-      expect(composer.note().textContent).toContain('Preparing 1 file');
+      expect(composer.note(/^Preparing 1 file/).getAttribute('role')).toBe('status');
     });
 
     it('cancels the upload from Stop, leaving no chip and no request outstanding', async () => {
@@ -526,13 +545,15 @@ describe('Composer', () => {
       await composer.fixture.whenStable();
 
       // Two controls for one action read as two different outcomes; Stop owns it.
-      expect(composer.host.querySelector('.chip__remove')).toBeNull();
+      expect(removeControl(composer.host)).toBeNull();
 
       dispatchDrag(card!, 'drop', fileDrag(textFile('demo-capture.mov')));
       await composer.fixture.whenStable();
 
       // A refused file is not in flight, so its chip keeps the control that dismisses it.
-      expect(composer.host.querySelector('.chip__remove')).not.toBeNull();
+      expect(removeControl(composer.host)?.getAttribute('aria-label')).toContain(
+        'demo-capture.mov',
+      );
     });
 
     it('leaves the remove control on a file still waiting for a conversation', async () => {
@@ -549,7 +570,7 @@ describe('Composer', () => {
       // Nothing is in flight, so Stop is not offered — and taking the `×` away too
       // would leave no way to change your mind about the file.
       expect(composer.stop()).toBeNull();
-      expect(composer.host.querySelector('.chip__remove')).not.toBeNull();
+      expect(removeControl(composer.host)?.getAttribute('aria-label')).toContain('notes.txt');
     });
 
     it('warns that a model with no tools cannot read an attachment', async () => {
@@ -566,7 +587,7 @@ describe('Composer', () => {
       await composer.fixture.whenStable();
 
       // Retrieval is a tool call, so this model would answer without ever seeing the file.
-      expect(composer.note().textContent).toContain('can’t read attachments');
+      expect(composer.note(/can’t read attachments/).getAttribute('role')).toBe('status');
     });
   });
 
@@ -579,12 +600,11 @@ describe('Composer', () => {
     });
 
     function mic(host: HTMLElement): HTMLButtonElement | null {
-      // By label: the attach control shares the `composer__icon-button` class.
-      return host.querySelector('[aria-label="Dictate"]');
+      return queryByRole<HTMLButtonElement>(host, 'button', { name: 'Dictate' });
     }
 
-    function pill(host: HTMLElement): HTMLElement | null {
-      return host.querySelector('.composer__mic-pill');
+    function pill(host: HTMLElement): HTMLButtonElement | null {
+      return queryByRole<HTMLButtonElement>(host, 'button', { name: 'Stop dictating' });
     }
 
     it('swaps the microphone for the recording pill and its clock (frame 2i)', async () => {
@@ -601,7 +621,9 @@ describe('Composer', () => {
       expect(mic(composer.host)).toBeNull();
       const recording = pill(composer.host);
       expect(recording?.textContent).toContain('0:00');
-      expect(recording?.querySelector('use')?.getAttribute('href')).toBe('#bi-mic-fill');
+      expect(iconOf(recording!)).toBe('bi-mic-fill');
+      // The pulse hangs off this class; jsdom loads no stylesheet to check the keyframe.
+      expect(recording?.classList.contains('composer__mic-pill')).toBe(true);
     });
 
     it('morphs one button rather than swapping two, so focus and state survive', async () => {
@@ -670,7 +692,7 @@ describe('Composer', () => {
       recognition.fail('not-allowed');
       await composer.fixture.whenStable();
 
-      expect(composer.note().textContent).toContain('Microphone access was blocked');
+      expect(composer.note(/^Microphone access was blocked/).getAttribute('role')).toBe('status');
       expect(composer.prompt().disabled).toBe(false);
       expect(mic(composer.host)).not.toBeNull();
     });
@@ -762,7 +784,7 @@ describe('Composer', () => {
       const composer = await renderFullComposer();
 
       // Off-screen, so `.click()` works; reachable through the button beside it and nothing else.
-      const input = composer.host.querySelector<HTMLInputElement>('.composer__file-input');
+      const input = composer.host.querySelector<HTMLInputElement>('input[type="file"]');
       expect(input).not.toBeNull();
       expect(input?.getAttribute('tabindex')).toBe('-1');
       expect(tabbableWithin(composer.host)).not.toContain(input);

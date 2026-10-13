@@ -58,6 +58,7 @@ type RenderedNode =
   ],
   templateUrl: './assistant-turn.html',
   styleUrl: './assistant-turn.scss',
+  host: { class: 'd-block' },
 })
 export class AssistantTurn {
   readonly snapshot = input.required<AssistantStatusSnapshot>();

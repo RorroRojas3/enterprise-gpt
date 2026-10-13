@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { getByRole } from '@testing-library/dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { EmptyState } from './empty-state';
 
@@ -11,9 +12,8 @@ describe('EmptyState', () => {
     fixture.componentRef.setInput('headingLevel', 2);
     await fixture.whenStable();
 
-    const heading = (fixture.nativeElement as HTMLElement).querySelector('[role="heading"]');
-    expect(heading?.getAttribute('aria-level')).toBe('2');
-    expect(heading?.textContent).toContain('No conversations match');
+    const heading = getByRole(fixture.nativeElement as HTMLElement, 'heading', { level: 2 });
+    expect(heading.textContent).toContain('No conversations match');
   });
 
   it('can drop the illustration for a compact surface such as the sidebar', async () => {

@@ -19,11 +19,18 @@
     [pendingIds]="actions.pendingIds()"
   >
     <ng-template appTableCell="name" [appTableCellFor]="conversations.entities()" let-row>
-      <a class="project-conversations__name" [routerLink]="[chatRoute, row.id]">{{ row.name }}</a>
+      <!-- Block, or the truncation is ignored in the mobile card title. -->
+      <a
+        class="d-block text-truncate fw-medium link-body-emphasis link-underline-opacity-0 link-underline-opacity-100-hover"
+        data-row-anchor
+        [routerLink]="[chatRoute, row.id]"
+      >
+        {{ row.name }}
+      </a>
     </ng-template>
 
     <ng-template appTableCell="updated" [appTableCellFor]="conversations.entities()" let-row>
-      <span class="project-conversations__updated">{{ updatedLabel(row) }}</span>
+      <span class="small text-body-secondary">{{ updatedLabel(row) }}</span>
     </ng-template>
 
     <ng-template appTableCell="favorite" [appTableCellFor]="conversations.entities()" let-row>
@@ -32,9 +39,9 @@
         entities, so `ConversationActionsStore` could not roll a flip back.
       -->
       <button
-        class="project-conversations__star"
+        class="btn btn-ghost btn-icon btn-icon-sm touch-target"
         type="button"
-        [class.project-conversations__star--on]="row.isFavorite"
+        [class.text-primary]="row.isFavorite"
         [attr.aria-label]="favoriteLabel(row)"
         [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
         (click)="actions.toggleFavorite(row)"
@@ -71,8 +78,8 @@
           (click)="openPicker(row, rowMenu)"
         >
           <app-icon name="bi-folder-symlink" />
-          <span class="project-conversations__menu-label">Move to another project</span>
-          <app-icon class="project-conversations__menu-chevron" name="bi-chevron-right" />
+          <span class="flex-grow-1">Move to another project</span>
+          <app-icon class="small" name="bi-chevron-right" />
         </button>
         <!-- Always present: every row on this panel is in a project. -->
         <button
@@ -88,7 +95,7 @@
         <button
           appMenuItem
           type="button"
-          class="menu__item--danger"
+          class="text-danger-emphasis"
           [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
           (click)="actions.beginDelete(row)"
         >
@@ -114,7 +121,7 @@
       The `@if` stays inside the projected div: around it, the `tableFooter` attribute would land on
       an `ng-template`, which `DataTable` drops silently.
     -->
-    <div tableFooter class="project-conversations__more">
+    <div tableFooter class="d-flex justify-content-center d-empty-none">
       @if (conversations.hasMore()) {
         <!--
           Mirrors `loadMore`'s guard so a no-op press never looks operable. The label swaps
@@ -122,14 +129,14 @@
         -->
         <button
           type="button"
-          class="btn btn-outline-secondary btn-sm"
+          class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2"
           [attr.aria-disabled]="
             conversations.loadingMore() || conversations.isPending() ? 'true' : null
           "
           (click)="onLoadMore()"
         >
           @if (conversations.loadingMore()) {
-            <span class="kit-spinner" aria-hidden="true"></span>
+            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
             Loading…
           } @else {
             Load more

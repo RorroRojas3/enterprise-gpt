@@ -9,6 +9,7 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { getAllByRole, getByRole, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ProjectActionsStore } from '@state/project-actions-store';
 import { PROJECT_LIST_PAGE_SIZE } from '@state/projects/project-list-store';
@@ -64,10 +65,21 @@ describe('Projects', () => {
     await harness.navigateByUrl(url);
   }
 
+  function searchField(): HTMLInputElement {
+    return getByRole<HTMLInputElement>(element(), 'searchbox', { name: 'Search projects by name' });
+  }
+
+  /** A card's star, named by the direction it would take. */
+  function star(name: string): HTMLButtonElement {
+    return getByRole<HTMLButtonElement>(element(), 'button', {
+      name: new RegExp(`^(Unf|F)avourite ${name}$`),
+    });
+  }
+
   async function type(text: string): Promise<void> {
-    const field = element().querySelector<HTMLInputElement>('.search__field');
-    field!.value = text;
-    field!.dispatchEvent(new Event('input'));
+    const field = searchField();
+    field.value = text;
+    field.dispatchEvent(new Event('input'));
     await new Promise((resolve) => setTimeout(resolve, DEBOUNCE_MS));
     await harness.fixture.whenStable();
   }
@@ -130,7 +142,9 @@ describe('Projects', () => {
 
     expect(element().querySelector('app-empty-state')?.textContent).toContain('No projects yet');
 
-    element().querySelector<HTMLButtonElement>('app-empty-state button')?.click();
+    getByRole(element().querySelector<HTMLElement>('app-empty-state')!, 'button', {
+      name: 'New project',
+    }).click();
     await harness.fixture.whenStable();
 
     expect(TestBed.inject(ProjectActionsStore).formMode()).toBe('create');
@@ -153,10 +167,12 @@ describe('Projects', () => {
     expectRequest().flush(projectPage([projectFixture({ name: 'Helios' }), projectFixture()]));
     await harness.fixture.whenStable();
 
-    const cards = element().querySelectorAll('app-project-card');
+    const cards = getAllByRole(element(), 'article');
     expect(cards.length).toBe(2);
-    expect(element().querySelectorAll('.project-card__favorite').length).toBe(2);
-    expect(element().querySelector('app-project-card app-menu')).not.toBeNull();
+    for (const card of cards) {
+      expect(getByRole(card, 'button', { name: /^(Unf|F)avourite / })).toBeTruthy();
+      expect(getByRole(card, 'button', { name: /^Actions for / })).toBeTruthy();
+    }
   });
 
   it('stars a project through its own route and reflects the server-confirmed flag', async () => {
@@ -165,9 +181,8 @@ describe('Projects', () => {
     expectRequest().flush(projectPage([project]));
     await harness.fixture.whenStable();
 
-    const star = element().querySelector<HTMLButtonElement>('.project-card__favorite');
-    expect(star?.getAttribute('aria-label')).toBe('Favourite Helios');
-    star?.click();
+    expect(star('Helios').getAttribute('aria-label')).toBe('Favourite Helios');
+    star('Helios').click();
     await harness.fixture.whenStable();
 
     const request = backend.expectOne(`${PROJECTS_URL}/${project.id}/favorite`);
@@ -176,16 +191,12 @@ describe('Projects', () => {
     expect(request.request.body).toEqual({ isFavorite: true });
 
     // Nothing moves until the 204 — every project write here is confirm-then-render.
-    expect(element().querySelector('.project-card__favorite')?.getAttribute('aria-label')).toBe(
-      'Favourite Helios',
-    );
+    expect(star('Helios').getAttribute('aria-label')).toBe('Favourite Helios');
 
     request.flush(null, { status: 204, statusText: 'No Content' });
     await harness.fixture.whenStable();
 
-    expect(element().querySelector('.project-card__favorite')?.getAttribute('aria-label')).toBe(
-      'Unfavourite Helios',
-    );
+    expect(star('Helios').getAttribute('aria-label')).toBe('Unfavourite Helios');
   });
 
   it('opens the create dialog from the toolbar', async () => {
@@ -193,15 +204,18 @@ describe('Projects', () => {
     expectRequest().flush(projectPage([projectFixture()]));
     await harness.fixture.whenStable();
 
-    element().querySelector<HTMLButtonElement>('.projects__new')?.click();
+    getByRole(element(), 'button', { name: 'New project' }).click();
     await harness.fixture.whenStable();
 
     expect(TestBed.inject(ProjectActionsStore).formMode()).toBe('create');
   });
 
   describe('paging', () => {
+    /** Named "Loading…" while a page is on the wire, so either label finds it. */
     function loadMoreButton(): HTMLButtonElement | null {
-      return element().querySelector<HTMLButtonElement>('.projects__more button');
+      return queryByRole<HTMLButtonElement>(element(), 'button', {
+        name: /^(Load more|Loading…)$/,
+      });
     }
 
     function cards(): HTMLElement[] {
@@ -246,9 +260,7 @@ describe('Projects', () => {
       );
       await harness.fixture.whenStable();
 
-      const names = cards().map((card) =>
-        card.querySelector('.project-card__name')?.textContent?.trim(),
-      );
+      const names = cards().map((card) => getByRole(card, 'link').textContent?.trim());
       expect(names).toHaveLength(PROJECT_LIST_PAGE_SIZE + 1);
       expect(names.at(0)).toBe('Project 0');
       expect(names.at(-1)).toBe('Project 25');
@@ -352,7 +364,7 @@ describe('Projects', () => {
       await harness.fixture.whenStable();
 
       // Yanking the reader out of the field they moved to is worse than the focus loss.
-      const field = element().querySelector<HTMLInputElement>('.search__field')!;
+      const field = searchField();
       field.focus();
 
       expectRequest().flush(
@@ -370,21 +382,13 @@ describe('Projects', () => {
     it('announces the loaded count against the envelope total', async () => {
       await openPaged(312);
 
-      expect(element().querySelector('[role="status"]')?.textContent?.trim()).toBe(
-        'Showing 25 of 312 projects',
-      );
+      expect(getByRole(element(), 'status').textContent?.trim()).toBe('Showing 25 of 312 projects');
     });
   });
 
   describe('the sort control', () => {
     function select(): HTMLSelectElement {
-      const control = element().querySelector<HTMLSelectElement>('.projects__sort select');
-
-      if (control === null) {
-        throw new Error('The sort select is not rendered.');
-      }
-
-      return control;
+      return getByRole<HTMLSelectElement>(element(), 'combobox', { name: 'Sort projects' });
     }
 
     async function choose(value: string): Promise<void> {
@@ -421,9 +425,9 @@ describe('Projects', () => {
       expectRequest().flush(projectPage([projectFixture()]));
       await harness.fixture.whenStable();
 
-      expect(element().querySelector('.projects__sort .visually-hidden')?.textContent?.trim()).toBe(
-        'Sort projects',
-      );
+      const label = element().querySelector<HTMLLabelElement>(`label[for="${select().id}"]`);
+      expect(label?.textContent?.trim()).toBe('Sort projects');
+      expect(label?.classList.contains('visually-hidden')).toBe(true);
     });
 
     it('writes the chosen order to the URL and re-runs the query', async () => {

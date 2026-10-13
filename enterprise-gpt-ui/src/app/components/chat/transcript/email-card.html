@@ -1,27 +1,32 @@
-<div class="email-card">
-  <div class="email-card__head">
-    <h3 class="email-card__title">
+<div class="card overflow-hidden">
+  <div
+    class="d-flex align-items-center justify-content-between gap-3 px-3 py-2 border-bottom bg-body-tertiary"
+  >
+    <h3 class="eyebrow d-flex align-items-center gap-2 mb-0">
       <app-icon name="bi-envelope" />
       Email
     </h3>
     <app-email-open-menu [draft]="draft()" />
   </div>
 
-  <!-- A description list, not a table: optional name/value pairs, not rows and columns. -->
-  <dl class="email-card__fields">
-    @if (draft().to.length > 0) {
-      <dt>To</dt>
-      <dd>{{ to() }}</dd>
-    }
-    @if (draft().cc.length > 0) {
-      <dt>Cc</dt>
-      <dd>{{ cc() }}</dd>
-    }
-    @if (draft().subject; as subject) {
-      <dt>Subject</dt>
-      <dd>{{ subject }}</dd>
-    }
-  </dl>
+  @if (hasFields()) {
+    <!-- A description list, not a table: optional name/value pairs, not rows and columns. -->
+    <dl class="email-card__fields d-grid row-gap-1 column-gap-3 px-3 py-2 mb-0">
+      @if (draft().to.length > 0) {
+        <dt class="small fw-medium text-body-secondary">To</dt>
+        <dd class="small text-break mb-0">{{ to() }}</dd>
+      }
+      @if (draft().cc.length > 0) {
+        <dt class="small fw-medium text-body-secondary">Cc</dt>
+        <dd class="small text-break mb-0">{{ cc() }}</dd>
+      }
+      @if (draft().subject; as subject) {
+        <dt class="small fw-medium text-body-secondary">Subject</dt>
+        <dd class="small text-break mb-0">{{ subject }}</dd>
+      }
+    </dl>
+  }
 
-  <p class="email-card__body">{{ draft().body }}</p>
+  <!-- Ruled only below a field row: the head's own rule would otherwise stack into 2px. -->
+  <p class="text-pre-wrap p-3 mb-0" [class.border-top]="hasFields()">{{ draft().body }}</p>
 </div>

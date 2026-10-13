@@ -7,6 +7,7 @@ import {
   Injector,
   TemplateRef,
   afterNextRender,
+  computed,
   effect,
   inject,
   input,
@@ -73,6 +74,7 @@ import { Composer } from '@components/composer/composer';
   ],
   templateUrl: './chat.html',
   styleUrl: './chat.scss',
+  host: { class: 'd-flex flex-column flex-fill min-h-0' },
 })
 export class Chat {
   /** Goes `undefined` on `/chat`, which is how a conversation closes without a remount. */
@@ -91,6 +93,13 @@ export class Chat {
 
   /** Picks one host: rendering the TemplateRef twice would put two menus in the DOM. */
   protected readonly isNarrow = injectMediaQuery(MOBILE_VIEWPORT);
+
+  /** Below md the shell's navbar is the bar, so the header keeps only its hidden heading. */
+  protected readonly headerClass = computed(() =>
+    this.isNarrow()
+      ? ''
+      : 'chat__header d-flex align-items-center gap-3 px-4 border-bottom flex-shrink-0',
+  );
 
   /** The project picker, opened from the header kebab and anchored where the kebab was. */
   protected readonly pickerOpen = signal(false);

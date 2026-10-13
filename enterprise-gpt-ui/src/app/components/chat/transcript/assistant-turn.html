@@ -1,12 +1,12 @@
-<div class="assistant-turn">
-  <div class="assistant-turn__avatar">
-    <app-brand-logo variant="mark" />
+<div class="assistant-turn d-flex gap-3">
+  <div class="avatar-circle border assistant-turn__avatar">
+    <app-brand-logo variant="mark" style="width: 20px" />
   </div>
 
   <!-- Polite only while streaming, so the answer is announced once. `aria-busy` defers it until
        `Finished`, and is released as an explicit `false`: that mutation is what announces it. -->
   <div
-    class="assistant-turn__content"
+    class="d-flex flex-column flex-fill gap-2 min-w-0 pt-1"
     [attr.aria-live]="streaming() ? 'polite' : null"
     [attr.aria-busy]="streaming() ? (liveAnswer() ? 'true' : 'false') : null"
   >
@@ -32,7 +32,7 @@
           @if ($index === caretIndex()) {
             <!-- A stable head and a volatile tail, since ngx-markdown re-parses its whole
                  input on every change. Wrapped so the column gap does not split the pair. -->
-            <div class="assistant-turn__live">
+            <div class="min-w-0">
               <markdown
                 class="assistant-turn__md"
                 [class.assistant-turn__md--caret]="liveTail() === ''"
@@ -71,7 +71,7 @@
     }
 
     @if (!streaming()) {
-      <div class="assistant-turn__footer">
+      <div class="assistant-turn__footer d-flex align-items-center gap-3 text-body-secondary">
         <!-- A cut-off can settle with no text, and copying '' succeeds: it would wipe the
              clipboard and still confirm. -->
         @if (copySource(); as source) {
@@ -91,7 +91,7 @@
           <app-email-open-menu [compact]="true" [draft]="draft" />
         }
         @if (usageLine(); as usage) {
-          <span class="assistant-turn__usage font-mono">{{ usage }}</span>
+          <span class="font-monospace small">{{ usage }}</span>
         }
       </div>
     }

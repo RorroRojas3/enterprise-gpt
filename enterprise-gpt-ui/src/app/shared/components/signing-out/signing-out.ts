@@ -10,8 +10,11 @@ import { Ridgeline } from '@shared/components/ridgeline/ridgeline';
   selector: 'app-signing-out',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Ridgeline],
+  host: {
+    class:
+      'd-flex flex-column align-items-center justify-content-center gap-3 min-dvh-100 p-4 text-center',
+  },
   templateUrl: './signing-out.html',
-  styleUrl: './signing-out.scss',
 })
 export class SigningOut {
   private readonly _heading = viewChild.required<ElementRef<HTMLElement>>('heading');

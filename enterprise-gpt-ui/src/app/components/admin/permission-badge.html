@@ -1,8 +1,11 @@
-<span class="permission-badge">
+<span
+  class="permission-badge badge rounded-pill bg-body-secondary text-primary border text-truncate mw-100"
+  [title]="name()"
+>
   @if (managedBy()) {
-    <app-icon name="bi-lock" />
+    <app-icon class="me-1" name="bi-lock" />
   }
-  <span class="permission-badge__name" [title]="name()">{{ name() }}</span>
+  {{ name() }}
   @if (managedBy()) {
     <span class="visually-hidden">— managed by {{ managedBy() }}</span>
   }

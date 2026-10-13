@@ -5,15 +5,15 @@ import { Icon } from '@shared/components/icon/icon';
 
 /**
  * The delta arrives precomputed, since what counts as "up" differs per tile. Direction is never
- * colour alone (SC 1.4.1), and every rise is `--ok`, cost included: "more spend is bad" is a
- * product opinion this component should not invent.
+ * colour alone (SC 1.4.1), and every rise takes the success tone, cost included: "more spend is
+ * bad" is a product opinion this component should not invent.
  */
 @Component({
   selector: 'app-kpi-tile',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
+  host: { class: 'card card-body h-100' },
   templateUrl: './kpi-tile.html',
-  styleUrl: './kpi-tile.scss',
 })
 export class KpiTile {
   readonly label = input.required<string>();

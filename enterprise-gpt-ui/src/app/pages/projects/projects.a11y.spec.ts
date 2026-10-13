@@ -4,14 +4,25 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PROJECT_LIST_PAGE_SIZE } from '@state/projects/project-list-store';
 import { Conversations } from '@pages/conversations/conversations';
-import { THEMES, applyTheme, clearTheme, expectNoSeriousViolations } from '@testing/a11y';
+import {
+  THEMES,
+  VIEWPORTS,
+  applyTheme,
+  atViewport,
+  clearTheme,
+  expectNoSeriousViolations,
+  expectScrollsToItsLastRow,
+  mountLikeShell,
+} from '@testing/a11y';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { projectFixture, projectPage } from '@testing/projects';
 import { Projects } from './projects';
+import { ProjectsLayout } from './projects-layout';
 
 /**
  * Both library screens are rendered with rows, not empty, so most of the shared kit (`DataTable`,
@@ -35,7 +46,12 @@ describe('library accessibility', () => {
         provideHttpClientTesting(),
         provideRouter(
           [
-            { path: 'projects', component: Projects },
+            // Through the layout, as in the app: it is what hands the grid a height to scroll in.
+            {
+              path: 'projects',
+              component: ProjectsLayout,
+              children: [{ path: '', component: Projects }],
+            },
             { path: 'conversations', component: Conversations },
           ],
           withComponentInputBinding(),
@@ -113,8 +129,7 @@ describe('library accessibility', () => {
         );
       await harness.fixture.whenStable();
 
-      const button = element.querySelector<HTMLButtonElement>('.projects__more button');
-      expect(button).not.toBeNull();
+      expect(getByRole(element, 'button', { name: 'Load more' })).toBeTruthy();
 
       await expectNoSeriousViolations(element, `/projects with Load more (${theme})`);
     });
@@ -134,12 +149,12 @@ describe('library accessibility', () => {
         );
       await harness.fixture.whenStable();
 
-      element.querySelector<HTMLButtonElement>('.projects__more button')?.click();
+      getByRole(element, 'button', { name: 'Load more' }).click();
       await harness.fixture.whenStable();
 
       // `aria-disabled`, never `disabled`, which would drop focus mid-press.
-      const busy = element.querySelector('.projects__more button');
-      expect(busy?.getAttribute('aria-disabled')).toBe('true');
+      const busy = getByRole(element, 'button', { name: 'Loading…' });
+      expect(busy.getAttribute('aria-disabled')).toBe('true');
 
       await expectNoSeriousViolations(element, `/projects loading more (${theme})`);
 
@@ -153,6 +168,30 @@ describe('library accessibility', () => {
           }),
         );
       await harness.fixture.whenStable();
+    });
+  }
+
+  // Last, so the audits above run at the default desktop width.
+  for (const viewport of Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[]) {
+    it(`scrolls the projects grid to its last card at the ${viewport} width`, async () => {
+      await atViewport(viewport);
+      applyTheme('light');
+      await harness.navigateByUrl('/projects');
+
+      const layout = harness.routeNativeElement as HTMLElement;
+      attached = mountLikeShell(layout);
+      backend
+        .expectOne((request) => request.url === PROJECTS_URL)
+        .flush(
+          projectPage(
+            Array.from({ length: 24 }, (_, index) => projectFixture({ name: `Project ${index}` })),
+          ),
+        );
+      await harness.fixture.whenStable();
+
+      const grid = layout.querySelector<HTMLElement>('app-projects')!;
+      const cards = grid.querySelectorAll<HTMLElement>('app-project-card');
+      expectScrollsToItsLastRow(grid, cards[cards.length - 1]!, `/projects (${viewport})`);
     });
   }
 });

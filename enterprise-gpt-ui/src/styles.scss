@@ -4,24 +4,28 @@
 // Self-hosted @font-face and the $font-* stacks.
 @import 'typography';
 
-// Bootstrap configuration, the utilities trim, and `root`.
+// The palette fed into Bootstrap's variables, the utilities map, and `root`.
 @import 'bootstrap-config';
 
-// Design tokens, overriding the --bs-* values `root` just emitted.
-@import 'tokens';
+// The tokens per theme, overriding the --bs-* values `root` just emitted.
+@import 'theme';
 
 @import 'bootstrap-components';
 
 @import 'base';
 
-// After Bootstrap's components so it beats their focus styles, before `kit` and
-// every component stylesheet so theirs beat it.
+// After Bootstrap's components so it beats their focus styles, before every component
+// stylesheet so theirs beat it.
 @import 'focus';
 
-@import 'kit';
+// Native <dialog> under Bootstrap's modal and offcanvas.
+@import 'overlays';
 
-// The theme's own component overrides, after the components they restyle.
+// Theme colours that must flip, and the focus rules for components the floor cannot reach.
 @import 'bootstrap-overrides';
+
+// App classes Bootstrap has no equivalent for; after the overrides so a modifier wins.
+@import 'kit';
 
 // Token-driven syntax highlighting; no prismjs stylesheet is imported.
 @import 'prism';

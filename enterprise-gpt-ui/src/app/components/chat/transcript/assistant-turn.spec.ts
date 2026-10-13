@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { getByRole, within } from '@testing-library/dom';
 import { MarkdownComponent, MarkdownService } from 'ngx-markdown';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -17,6 +18,7 @@ import {
 } from '@shared/utils/stream/turn-timeline';
 import { provideChatMarkdown } from '@components/chat/markdown/markdown-providers';
 import { provideTestAppConfig } from '@testing/app-config';
+import { iconOf } from '@testing/overlays';
 import { assistantEvent } from '@testing/stream-frames';
 import { AssistantTurn } from './assistant-turn';
 
@@ -32,6 +34,11 @@ class MarkdownReference {
 }
 
 const MESSAGE_ID = 'aaaaaaaa-1111-4222-8333-444444444444';
+
+/** The answer column beside the avatar: the live region, when there is one. */
+function contentOf(host: HTMLElement): Element | null {
+  return host.querySelector('.assistant-turn')?.lastElementChild ?? null;
+}
 
 describe('AssistantTurn markdown rendering', () => {
   let fixture: ComponentFixture<AssistantTurn>;
@@ -199,8 +206,8 @@ describe('AssistantTurn markdown rendering', () => {
   });
 
   describe('the streaming answer as a live region', () => {
-    function content(): HTMLElement | null {
-      return host.querySelector('.assistant-turn__content');
+    function content(): Element | null {
+      return contentOf(host);
     }
 
     it('is polite while streaming and silent once settled', async () => {
@@ -256,7 +263,8 @@ describe('AssistantTurn markdown rendering', () => {
       // Copy is offerable whether or not a `Finished` arrived; only the counts depend on it.
       expect(host.querySelector('.assistant-turn__footer')).not.toBeNull();
       expect(host.querySelector('app-message-copy')).not.toBeNull();
-      expect(host.querySelector('.assistant-turn__usage')).toBeNull();
+      // The counts are the footer's one mono line.
+      expect(host.querySelector('.assistant-turn__footer .font-monospace')).toBeNull();
     });
 
     it('withholds the footer while the turn is still streaming', async () => {
@@ -500,7 +508,7 @@ describe('AssistantTurn generated files', () => {
     // answer, so it must not be somewhere a reader has to go looking.
     await render([FILE]);
 
-    expect(host.querySelector('.assistant-turn__content > app-generated-files')).not.toBeNull();
+    expect(contentOf(host)?.querySelector(':scope > app-generated-files')).not.toBeNull();
     expect(host.querySelector('.assistant-turn__footer app-generated-files')).toBeNull();
   });
 
@@ -569,12 +577,11 @@ describe('AssistantTurn generated files', () => {
     fixture.componentRef.setInput('conversationId', '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b');
     await fixture.whenStable();
 
-    const child = host.querySelector('.activity-card__children .activity-card');
+    const agent = getByRole(host, 'group', { name: 'File Agent' });
+    const child = within(agent).getByRole('group', { name: 'Running code' });
 
-    expect(host.querySelectorAll('app-icon.activity-card__state--warn')).toHaveLength(2);
-    expect(child?.querySelector('.activity-card__name')?.textContent?.trim()).toBe('Running code');
-    expect(child?.querySelector('.activity-card__substatus')?.textContent?.trim()).toBe(
-      'No file was produced',
-    );
+    expect(iconOf(agent)).toBe('bi-exclamation-triangle-fill');
+    expect(iconOf(child)).toBe('bi-exclamation-triangle-fill');
+    expect(within(child).getByText('No file was produced').tagName).toBe('LI');
   });
 });

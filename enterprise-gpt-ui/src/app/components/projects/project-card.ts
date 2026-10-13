@@ -12,8 +12,9 @@ let nextId = 0;
   selector: 'app-project-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink, Icon],
+  // `h-100`, so cards sharing a grid row stretch to the tallest.
+  host: { class: 'd-block h-100' },
   templateUrl: './project-card.html',
-  styleUrl: './project-card.scss',
 })
 export class ProjectCard {
   readonly name = input.required<string>();

@@ -4,6 +4,7 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DOCUMENT_PAGE_SIZE } from '@state/documents/document-library-store';
 import {
@@ -173,7 +174,7 @@ describe('documents accessibility', () => {
       flushPagedListing();
       await harness.fixture.whenStable();
 
-      expect(element.querySelector('.documents__more button')).not.toBeNull();
+      expect(getByRole(element, 'button', { name: 'Load more' })).toBeTruthy();
 
       await expectNoSeriousViolations(element, `/documents with Load more (${theme})`);
     });
@@ -184,11 +185,11 @@ describe('documents accessibility', () => {
       flushPagedListing();
       await harness.fixture.whenStable();
 
-      element.querySelector<HTMLButtonElement>('.documents__more button')?.click();
+      getByRole(element, 'button', { name: 'Load more' }).click();
       await harness.fixture.whenStable();
 
       // aria-disabled, not `disabled`, which would drop focus mid-press.
-      expect(element.querySelector('.documents__more button')?.getAttribute('aria-disabled')).toBe(
+      expect(getByRole(element, 'button', { name: 'Loading…' }).getAttribute('aria-disabled')).toBe(
         'true',
       );
 

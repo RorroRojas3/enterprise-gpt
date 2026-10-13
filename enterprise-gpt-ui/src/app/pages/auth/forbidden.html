@@ -1,14 +1,14 @@
 <app-auth-page>
-  <app-icon class="forbidden__icon" name="bi-shield-lock" />
+  <app-icon class="fs-1 text-body-secondary" name="bi-shield-lock" />
 
-  <h1 #heading class="forbidden__heading font-display" tabindex="-1">
+  <h1 #heading class="font-display fs-6 fw-semibold mb-0" tabindex="-1">
     You don’t have access to Admin
   </h1>
 
-  <p class="forbidden__message">
+  <p class="small text-body-secondary mb-0">
     This area needs the Administrator permission. If you think you should have it, ask an existing
     administrator.
   </p>
 
-  <a class="btn btn-primary forbidden__action" [routerLink]="chatRoute">Back to Chat</a>
+  <a class="btn btn-primary px-4" [routerLink]="chatRoute">Back to Chat</a>
 </app-auth-page>

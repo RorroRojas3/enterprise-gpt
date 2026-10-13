@@ -9,6 +9,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { getByRole, queryByText } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UserDto } from '@shared/models/api/user.model';
 import { DEFAULT_USER_PAGE_SIZE } from '@shared/utils/navigation/admin-users-route';
@@ -18,6 +19,7 @@ import { SELF_DEACTIVATE_MESSAGE } from '@core/users/self-action-messages';
 import { UserActionsStore } from '@state/user-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
+import { dialogNamed } from '@testing/overlays';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { directoryUserFixture, flushPermissions, userPage } from '@testing/users';
 import { AdminUsers } from './admin-users';
@@ -65,6 +67,15 @@ describe('Deactivate a user', () => {
     return [...element().querySelectorAll<HTMLElement>('tbody tr')];
   }
 
+  function deactivateButton(index: number): HTMLButtonElement {
+    return getByRole(rows()[index]!, 'button', { name: /^Deactivate / });
+  }
+
+  /** The inline self-deactivation refusal, or null. */
+  function refusal(): HTMLElement | null {
+    return queryByText(element(), SELF_DEACTIVATE_MESSAGE);
+  }
+
   async function open(users: UserDto[], totalCount = users.length): Promise<void> {
     await harness.navigateByUrl('/admin/users', AdminUsers);
     // The permission filter's catalog, requested on mount.
@@ -77,11 +88,10 @@ describe('Deactivate a user', () => {
 
   /** Presses Deactivate on a row and confirms the modal. */
   async function deactivate(index: number): Promise<TestRequest> {
-    rows()[index]!.querySelector<HTMLButtonElement>('.admin-users__deactivate')!.click();
+    deactivateButton(index).click();
     await harness.fixture.whenStable();
 
-    const confirm = [...element().querySelectorAll<HTMLButtonElement>('.btn-danger')].at(-1);
-    confirm!.click();
+    getByRole(dialogNamed('Deactivate user'), 'button', { name: 'Deactivate' }).click();
     await harness.fixture.whenStable();
 
     return backend.expectOne(
@@ -93,14 +103,14 @@ describe('Deactivate a user', () => {
     const user = directoryUserFixture({ fullName: 'Grace Hopper' });
     await open([user]);
 
-    rows()[0]!.querySelector<HTMLButtonElement>('.admin-users__deactivate')!.click();
+    deactivateButton(0).click();
     await harness.fixture.whenStable();
 
-    const dialog = element().querySelector('app-deactivate-user-dialog');
-    expect(dialog?.textContent).toContain('Grace Hopper');
-    expect(dialog?.querySelector('.btn-danger')?.textContent?.trim()).toBe('Deactivate');
+    const dialog = dialogNamed('Deactivate user');
+    expect(dialog.textContent).toContain('Grace Hopper');
+    expect(getByRole(dialog, 'button', { name: 'Deactivate' }).classList).toContain('btn-danger');
     // Enter on a fresh destructive confirmation must revoke nobody's access.
-    expect(dialog?.querySelector('[data-modal-autofocus]')?.textContent?.trim()).toBe('Cancel');
+    expect(dialog.querySelector('[data-modal-autofocus]')?.textContent?.trim()).toBe('Cancel');
   });
 
   it('removes the row on the 204 and raises a success toast', async () => {
@@ -156,14 +166,12 @@ describe('Deactivate a user', () => {
 
     // Restored, with the app's own wording rather than the server's.
     expect(rows()).toHaveLength(1);
-    const refusal = element().querySelector('.admin-users__refusal');
-    expect(refusal?.textContent).toContain(SELF_DEACTIVATE_MESSAGE);
+    expect(refusal()?.getAttribute('role')).toBe('alert');
     expect(element().textContent).not.toContain('Administrators cannot deactivate');
     expect(toast).not.toHaveBeenCalled();
 
     // Attached to the control it refused, whichever way the reader meets it.
-    const button = rows()[0]!.querySelector('.admin-users__deactivate');
-    expect(button?.getAttribute('aria-describedby')).toBe(refusal?.id);
+    expect(deactivateButton(0).getAttribute('aria-describedby')).toBe(refusal()?.id);
   });
 
   it('clears a standing refusal when the row is tried again', async () => {
@@ -180,12 +188,12 @@ describe('Deactivate a user', () => {
       { status: 400, statusText: 'Bad Request' },
     );
     await harness.fixture.whenStable();
-    expect(element().querySelector('.admin-users__refusal')).not.toBeNull();
+    expect(refusal()).not.toBeNull();
 
-    rows()[0]!.querySelector<HTMLButtonElement>('.admin-users__deactivate')!.click();
+    deactivateButton(0).click();
     await harness.fixture.whenStable();
 
-    expect(element().querySelector('.admin-users__refusal')).toBeNull();
+    expect(refusal()).toBeNull();
     TestBed.inject(UserActionsStore).cancelDeactivate();
     await harness.fixture.whenStable();
   });
@@ -220,6 +228,6 @@ describe('Deactivate a user', () => {
     await harness.fixture.whenStable();
 
     expect(toast).toHaveBeenCalled();
-    expect(element().querySelector('.admin-users__refusal')).toBeNull();
+    expect(refusal()).toBeNull();
   });
 });

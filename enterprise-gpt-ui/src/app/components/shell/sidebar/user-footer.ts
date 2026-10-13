@@ -14,8 +14,13 @@ import { ThemeToggle } from '@shared/components/theme-toggle/theme-toggle';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, ThemeToggle],
   templateUrl: './user-footer.html',
-  styleUrl: './user-footer.scss',
-  host: { '[class.user-footer--compact]': 'compact()' },
+  host: {
+    class: 'd-flex align-items-center py-2 border-top',
+    '[class.gap-2]': '!compact()',
+    '[class.px-3]': '!compact()',
+    '[class.flex-column]': 'compact()',
+    '[class.gap-1]': 'compact()',
+  },
 })
 export class UserFooter {
   private readonly _auth = inject(AuthService);

@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { getByRole } from '@testing-library/dom';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EmailDraft } from '@shared/utils/email/email-draft';
 import { THEMES, applyTheme, clearTheme, expectNoSeriousViolations } from '@testing/a11y';
@@ -37,13 +38,12 @@ describe('EmailCard accessibility', () => {
       await fixture.whenStable();
 
       const host = fixture.nativeElement as HTMLElement;
-      const trigger = host.querySelector<HTMLButtonElement>('.menu__trigger');
+      const trigger = getByRole(host, 'button', { name: /^Other ways to email/ });
 
-      expect(trigger).not.toBeNull();
-      trigger!.click();
+      trigger.click();
       await fixture.whenStable();
 
-      expect(trigger!.getAttribute('aria-expanded')).toBe('true');
+      expect(trigger.getAttribute('aria-expanded')).toBe('true');
 
       await expectNoSeriousViolations(host, `EmailCard (${theme})`);
     });

@@ -1,4 +1,4 @@
-<h1 class="documents__title font-display">Documents</h1>
+<h1 class="fs-5 fw-bold mb-0 font-display">Documents</h1>
 
 @if (library.error(); as error) {
   <!-- Instead of the list, whose rows belong to the query that failed. The toolbar is withheld
@@ -10,17 +10,17 @@
     (retried)="library.retry()"
   />
 } @else {
-  <div class="documents__toolbar">
+  <div class="d-flex flex-wrap align-items-center gap-3">
     <!-- "Filter", not "Search": it is what the reader is doing to the listing. -->
     <app-search-input
-      class="documents__search"
+      class="flex-grow-1 mw-sm min-w-0"
       label="Filter documents by name"
       placeholder="Filter by name"
       [value]="name()"
       (searched)="onSearched($event)"
     />
 
-    <div class="form-check form-switch documents__group-toggle">
+    <div class="form-check form-switch mb-0 small text-body-secondary">
       <input
         id="documents-group-switch"
         class="form-check-input"
@@ -33,7 +33,7 @@
     </div>
 
     <!-- A switch rather than a pressed button, matching the grouping switch beside it. -->
-    <div class="form-check form-switch documents__source-toggle">
+    <div class="form-check form-switch mb-0 small text-body-secondary">
       <input
         #sourceSwitch
         id="documents-source-switch"
@@ -46,10 +46,15 @@
       <label class="form-check-label" for="documents-source-switch">Generated only</label>
     </div>
 
-    <!-- aria-hidden: the status region announces it. Withheld before the first response, where
-         "No documents" would be a claim, not a count. -->
+    <!-- aria-hidden: the status region announces it, which is also why it can go on mobile.
+         Withheld before the first response, where "No documents" would be a claim, not a count. -->
     @if (!library.isFirstLoad()) {
-      <p class="documents__count" aria-hidden="true">{{ library.countSummary() }}</p>
+      <p
+        class="d-none d-md-block small text-body-secondary mb-0 text-nowrap ms-auto"
+        aria-hidden="true"
+      >
+        {{ library.countSummary() }}
+      </p>
     }
   </div>
 
@@ -57,16 +62,20 @@
        state so a screen reader never announces one change twice. -->
   <p class="visually-hidden" role="status">{{ announcement() }}</p>
 
+  <!-- `flex-shrink-0` on the cards, or one shrinks to the scrolling host's leftover space and its
+       `overflow-hidden` clips the rows past the fold out of reach. -->
   @if (library.isFirstLoad()) {
-    <div class="documents__card" aria-busy="true">
-      @for (row of skeletonRows; track $index) {
-        <div class="documents__skeleton">
-          <app-skeleton variant="circle" width="16px" height="16px" />
-          <app-skeleton width="60%" />
-          <app-skeleton width="50px" />
-          <app-skeleton width="50px" />
-        </div>
-      }
+    <div class="card rounded-4 flex-shrink-0 overflow-hidden" aria-busy="true">
+      <div class="list-group list-group-flush">
+        @for (row of skeletonRows; track $index) {
+          <div class="list-group-item d-flex align-items-center gap-3 py-3">
+            <app-skeleton variant="circle" width="16px" height="16px" />
+            <app-skeleton class="flex-grow-1" width="60%" />
+            <app-skeleton width="50px" />
+            <app-skeleton width="50px" />
+          </div>
+        }
+      </div>
     </div>
   } @else if (library.hasNoMatches()) {
     <!-- The scope line is unqualified: the server searched the whole library. -->
@@ -112,14 +121,16 @@
       />
     }
   } @else {
-    <div class="documents__card">
+    <div class="card rounded-4 flex-shrink-0 overflow-hidden">
       @if (grouped()) {
         @for (group of library.groups(); track trackGroup(group)) {
-          <div class="documents__group-header">
+          <div
+            class="d-flex align-items-center gap-2 px-3 py-2 bg-body-tertiary border-bottom small"
+          >
             <!-- aria-controls only while its target renders: a collapsed group's list leaves the
                  DOM, and a dangling id reference fails axe. -->
             <button
-              class="documents__group-chevron"
+              class="btn btn-ghost btn-icon btn-icon-sm"
               type="button"
               [attr.aria-expanded]="isExpanded(group.conversationId)"
               [attr.aria-controls]="
@@ -133,32 +144,39 @@
               />
             </button>
 
-            <app-icon class="documents__group-glyph" name="bi-chat-left" />
+            <app-icon class="flex-shrink-0 text-primary" name="bi-chat-left" />
 
-            <a class="documents__group-name" [routerLink]="[chatRoute, group.conversationId]">
+            <a
+              class="min-w-0 text-truncate fw-semibold link-body-emphasis link-underline-opacity-0 link-underline-opacity-100-hover"
+              [routerLink]="[chatRoute, group.conversationId]"
+            >
               {{ group.conversationName }}
             </a>
 
-            <span class="documents__group-count">{{ group.countLabel }}</span>
+            <span class="flex-shrink-0 ms-auto small text-body-secondary">
+              {{ group.countLabel }}
+            </span>
           </div>
 
           @if (isExpanded(group.conversationId)) {
             <ul
-              class="documents__list documents__group-list"
+              class="list-group list-group-flush"
               role="list"
               [id]="groupBodyId(group.conversationId)"
               [attr.aria-label]="'Documents in ' + group.conversationName"
             >
               @for (doc of group.documents; track doc.id) {
-                <li><app-document-row [document]="doc" [showConversation]="false" /></li>
+                <li class="list-group-item p-0">
+                  <app-document-row class="ps-4" [document]="doc" [showConversation]="false" />
+                </li>
               }
             </ul>
           }
         }
       } @else {
-        <ul class="documents__list" role="list" aria-label="Documents">
+        <ul class="list-group list-group-flush" role="list" aria-label="Documents">
           @for (doc of library.entities(); track doc.id) {
-            <li><app-document-row [document]="doc" /></li>
+            <li class="list-group-item p-0"><app-document-row [document]="doc" /></li>
           }
         </ul>
       }
@@ -166,17 +184,17 @@
 
     <!-- Outside the card, so it serves both views. Removed, not disabled, once all is loaded: a
          disabled control still implies there is more. -->
-    <div class="documents__more">
+    <div class="d-flex justify-content-center d-empty-none">
       @if (library.hasMore()) {
         <!-- Mirrors `loadMore()`'s guard, so it can't look operable while a press would no-op. -->
         <button
-          class="btn btn-outline-secondary btn-sm"
+          class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2"
           type="button"
           [attr.aria-disabled]="library.loadingMore() || library.isPending() ? 'true' : null"
           (click)="onLoadMore()"
         >
           @if (library.loadingMore()) {
-            <span class="kit-spinner" aria-hidden="true"></span>
+            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
             <span>Loading…</span>
           } @else {
             <span>Load more</span>

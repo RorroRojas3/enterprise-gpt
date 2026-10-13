@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ToastStore } from '@core/notifications/toast-store';
 import { ToastRegion } from './toast-region';
@@ -48,8 +49,7 @@ describe('ToastRegion', () => {
     store.show({ tone: 'error', title: 'Upload failed' });
     await fixture.whenStable();
 
-    const dismiss = host.querySelector('.toast__dismiss');
-    expect(dismiss?.getAttribute('aria-label')).toBe('Dismiss: Upload failed');
+    expect(getByRole(host, 'button', { name: 'Dismiss: Upload failed' })).toBeTruthy();
   });
 
   it('renders a draining indicator only for toasts that dismiss themselves', async () => {
@@ -69,7 +69,7 @@ describe('ToastRegion', () => {
     store.show({ tone: 'error', title: 'Upload failed' });
     await fixture.whenStable();
 
-    host.querySelector<HTMLButtonElement>('.toast__dismiss')?.click();
+    getByRole(host, 'button', { name: 'Dismiss: Upload failed' }).click();
     await fixture.whenStable();
 
     expect(host.querySelector('app-toast-item')).toBeNull();

@@ -19,7 +19,6 @@ import { Modal } from '@shared/components/modal/modal';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal],
   templateUrl: './deactivate-user-dialog.html',
-  styleUrl: './deactivate-user-dialog.scss',
 })
 export class DeactivateUserDialog {
   protected readonly actions = inject(UserActionsStore);

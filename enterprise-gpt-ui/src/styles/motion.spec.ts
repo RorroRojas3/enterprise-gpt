@@ -10,8 +10,8 @@ import { describe, expect, it } from 'vitest';
 const UI_ROOT = resolve(import.meta.dirname, '../..');
 const STYLES = join(UI_ROOT, 'src/styles');
 
-/** The only four keyframes the app may run. */
-const KEYFRAMES = ['blink', 'spin', 'ringpulse', 'ridgedash'];
+/** The app's own keyframes; Bootstrap's run only through its classes, never an `animation` here. */
+const KEYFRAMES = ['blink', 'ringpulse', 'ridgedash'];
 
 function scssFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -64,9 +64,9 @@ describe('the reduced-motion contract', () => {
     expect(imports.at(-1)).toBe('motion');
   });
 
-  it('runs no animation whose keyframe is not among the four', () => {
-    // `check-forbidden-apis.mjs` refuses a fifth definition; this refuses a use that names none
-    // of the four, since a typo in an `animation` shorthand fails silently.
+  it('runs no animation whose keyframe is not among the three', () => {
+    // `check-forbidden-apis.mjs` refuses a fourth definition; this refuses a use that names none
+    // of the three, since a typo in an `animation` shorthand fails silently.
     const offenders: string[] = [];
 
     for (const file of scssFiles(join(UI_ROOT, 'src'))) {

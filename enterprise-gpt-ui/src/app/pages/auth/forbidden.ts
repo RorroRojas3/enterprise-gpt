@@ -13,8 +13,8 @@ import { AuthPage } from '@components/auth/auth-page';
   selector: 'app-forbidden',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AuthPage, Icon, RouterLink],
+  host: { class: 'd-block' },
   templateUrl: './forbidden.html',
-  styleUrl: './forbidden.scss',
 })
 export class Forbidden {
   private readonly _heading = viewChild.required<ElementRef<HTMLElement>>('heading');

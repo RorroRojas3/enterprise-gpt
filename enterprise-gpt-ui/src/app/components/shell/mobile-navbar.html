@@ -1,6 +1,6 @@
 <!-- No aria-expanded: it opens a modal <dialog> that inerts this button, not a nearby region. -->
 <button
-  class="navbar__menu"
+  class="btn btn-ghost btn-icon btn-icon-lg"
   type="button"
   aria-label="Open navigation"
   aria-haspopup="dialog"
@@ -10,13 +10,13 @@
 </button>
 
 <!-- Decorative: the text beside it already names the product. -->
-<app-brand-logo class="navbar__mark" variant="mark" alt="" />
+<app-brand-logo class="navbar__mark flex-shrink-0" variant="mark" alt="" />
 
 <!-- A <span>, never a heading: the routed screen owns the document's only <h1>. -->
-<span class="navbar__title">{{ chrome().title ?? 'Enterprise GPT' }}</span>
+<span class="font-display fw-bold text-truncate">{{ chrome().title ?? 'Enterprise GPT' }}</span>
 
 @if (chrome().actions; as actions) {
-  <div class="navbar__actions">
+  <div class="d-flex flex-shrink-0 align-items-center gap-1 ms-auto">
     <ng-container [ngTemplateOutlet]="actions" />
   </div>
 }

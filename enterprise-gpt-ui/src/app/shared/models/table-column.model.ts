@@ -19,7 +19,7 @@ export interface TableColumn<T> {
   readonly text?: (row: T) => string;
   readonly mobile?: MobileSlot;
   /**
-   * Dropped from the table between 768 and 1023px, where the remaining tracks would
+   * Dropped from the table between 768 and 991px, where the remaining tracks would
    * otherwise ellipsise to nothing. The card branch below 768px still renders it.
    */
   readonly hideOnTablet?: boolean;

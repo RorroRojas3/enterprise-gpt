@@ -13,33 +13,30 @@
 >
   @for (option of options; track option.format) {
     @let busy = preparing() === option.format;
-    <!-- `aria-disabled`, not native, so roving focus is not stranded; `onChoose` re-checks.
-         The busy row is neither dimmed nor disabled. `aria-describedby` reads out the note,
-         which menu mode would otherwise skip. -->
+    <!-- `aria-disabled`, not native, so roving focus is not stranded; `onChoose` re-checks, and
+         the kit dims it. The busy row is neither dimmed nor disabled. `aria-describedby` reads
+         out the note, which menu mode would otherwise skip. -->
     <button
       appMenuItem
       type="button"
-      class="download-menu__item"
-      [class.download-menu__item--dimmed]="exportInFlight() && !busy"
       [attr.aria-disabled]="exportInFlight() && !busy ? 'true' : null"
       [attr.aria-busy]="busy ? 'true' : null"
       [attr.aria-describedby]="noteId"
       (click)="onChoose(option.format)"
     >
       @if (busy) {
-        <!-- A drawn ring on the shared `spin` keyframe, so the reduced-motion block in
-             `_motion.scss` covers it without this component knowing about it. -->
-        <span class="download-menu__spinner" aria-hidden="true"></span>
+        <span class="spinner-border spinner-border-sm flex-shrink-0" aria-hidden="true"></span>
         Preparing {{ option.label }}…
       } @else {
-        <app-icon [name]="option.icon" [class]="'download-menu__glyph--' + option.format" />
+        <!-- Each glyph has its own colour, which tells the rows apart once the labels wrap. -->
+        <app-icon [name]="option.icon" [class]="option.tone" />
         {{ option.label }}
       }
     </button>
   }
 
   <!-- Not an `appMenuItem`: a note must not become a stop in the panel's roving focus. -->
-  <p class="download-menu__note" [id]="noteId">
+  <p class="dropdown-item-text small text-body-secondary border-top mt-1 pt-2 mb-0" [id]="noteId">
     The stopped, unsaved answer on screen won’t be included.
   </p>
 </app-menu>

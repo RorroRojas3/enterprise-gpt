@@ -54,9 +54,9 @@ type ShellMode = 'desktop' | 'tablet' | 'mobile';
   templateUrl: './shell.html',
   styleUrl: './shell.scss',
   host: {
+    class: 'd-flex flex-column flex-md-row position-relative overflow-hidden',
     '[class.shell--collapsed]': "sidebarMode() === 'strip'",
     '[class.shell--animated]': 'animated()',
-    '[class.shell--mobile]': "mode() === 'mobile'",
     '[class.shell--overlay]': 'tabletOverlayOpen()',
     '(keydown.escape)': 'onEscape()',
   },
@@ -66,7 +66,7 @@ export class Shell {
   private readonly _injector = inject(Injector);
   private readonly _animated = signal(false);
   private readonly _main = viewChild.required<ElementRef<HTMLElement>>('main');
-  // Asks the sidebar to focus its own control: `.strip__button` is shared by many controls, so a
+  // Asks the sidebar to focus its own control: the strip's buttons share their classes, so a
   // document-order query here would silently follow a template reorder.
   private readonly _sidebar = viewChild(Sidebar);
 

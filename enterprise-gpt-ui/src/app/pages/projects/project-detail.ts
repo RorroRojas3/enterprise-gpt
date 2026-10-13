@@ -55,6 +55,8 @@ import { Composer } from '@components/composer/composer';
     ProjectComposerHost,
     provideComposerHost(ProjectComposerHost),
   ],
+  // The shell's `<main>` clips its overflow, so a routed screen scrolls itself.
+  host: { class: 'd-flex flex-column gap-3 p-3 p-md-4 overflow-y-auto' },
   templateUrl: './project-detail.html',
   styleUrl: './project-detail.scss',
 })

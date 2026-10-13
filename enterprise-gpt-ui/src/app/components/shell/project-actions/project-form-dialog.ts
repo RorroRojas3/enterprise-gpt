@@ -23,7 +23,6 @@ import { Modal } from '@shared/components/modal/modal';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormField, Modal],
   templateUrl: './project-form-dialog.html',
-  styleUrl: './project-form-dialog.scss',
 })
 export class ProjectFormDialog {
   protected readonly actions = inject(ProjectActionsStore);

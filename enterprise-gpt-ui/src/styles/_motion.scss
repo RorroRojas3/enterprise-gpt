@@ -1,4 +1,5 @@
-// Exactly four keyframes; anything else that moves uses a `transition`.
+// Exactly three keyframes of the app's own, besides Bootstrap's spinners and placeholders;
+// anything else that moves uses a `transition`.
 
 // 150ms for hover and colour, 200ms for layout. Messages appear without motion on purpose: an
 // insertion animation would disturb the live region that must not re-announce a settled turn.
@@ -16,13 +17,6 @@
   56%,
   100% {
     opacity: 0;
-  }
-}
-
-// Spinners, everywhere.
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
   }
 }
 

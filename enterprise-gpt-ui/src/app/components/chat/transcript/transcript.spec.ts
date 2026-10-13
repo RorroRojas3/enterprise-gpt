@@ -2,6 +2,15 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
+import {
+  getAllByRole,
+  getAllByText,
+  getByRole,
+  getByText,
+  queryByRole,
+  queryByText,
+  within,
+} from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CHAT_ROLE } from '@shared/models/api/conversation.model';
 import { TokenService } from '@core/auth/token-service';
@@ -14,6 +23,7 @@ import { TurnSelection, TurnSettingsStore } from '@state/turn-settings-store';
 import { provideChatMarkdown } from '@components/chat/markdown/markdown-providers';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { messageFixture } from '@testing/conversations';
+import { iconOf } from '@testing/overlays';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import {
   StreamingResponseHandle,
@@ -124,11 +134,33 @@ describe('Transcript', () => {
     await settle(STREAM_BATCH_WINDOW_MS);
   }
 
-  function cardNames(): string[] {
-    return [...host.querySelectorAll('.activity-card__name')].map(
-      (name) => name.textContent?.trim() ?? '',
-    );
+  /** Every activity card, outermost first; each is a group named by its label. */
+  function cards(root: ParentNode = host): HTMLElement[] {
+    return [...root.querySelectorAll<HTMLElement>('app-activity-card > [role="group"]')];
   }
+
+  function nameOf(card: HTMLElement): string {
+    const name = document.getElementById(card.getAttribute('aria-labelledby') ?? '');
+
+    return name?.textContent?.trim() ?? '';
+  }
+
+  function cardNames(): string[] {
+    return cards().map(nameOf);
+  }
+
+  /** The state glyph in a card's own header, ignoring any nested card's. */
+  function ownState(card: HTMLElement): string | null {
+    return iconOf(card.firstElementChild!);
+  }
+
+  /** The first answer's column beside the avatar, which is its live region while it streams. */
+  function answer(): Element | null {
+    return host.querySelector('.assistant-turn')?.lastElementChild ?? null;
+  }
+
+  /** A settled activity's duration, set apart in mono. */
+  const DURATION = /^\d+\.\ds$/;
 
   describe('the activity timeline', () => {
     it('renders cards and text in exact arrival order, nested work included', async () => {
@@ -139,8 +171,7 @@ describe('Transcript', () => {
 
       // agent-1 is mcp-1's child, so three cards open two top-level nodes. No reasoning
       // region: the turn's single `ReasoningDelta` is the server's seed, which is not rendered.
-      const content = host.querySelector('.assistant-turn__content');
-      const sequence = [...(content?.children ?? [])].map((child) =>
+      const sequence = [...(answer()?.children ?? [])].map((child) =>
         child.classList.contains('assistant-turn__footer') ? 'footer' : child.tagName.toLowerCase(),
       );
       expect(sequence).toEqual(['app-activity-card', 'app-activity-card', 'markdown', 'footer']);
@@ -178,13 +209,10 @@ describe('Transcript', () => {
     it('renders the source verbatim and the sub-statuses as an indented list', async () => {
       await streamFullTurn();
 
-      const sources = [...host.querySelectorAll('.activity-card__source')].map(
-        (source) => source.textContent?.trim() ?? '',
-      );
-      expect(sources).toEqual(['Weather', 'agent:forecast']);
-      expect(host.querySelector('.activity-card__substatus')?.textContent?.trim()).toBe(
-        'Fetching forecast…',
-      );
+      const [mcp, agent] = cards();
+      expect(within(mcp!).getByText('Weather')).not.toBeNull();
+      expect(within(agent!).getByText('agent:forecast')).not.toBeNull();
+      expect(getByText(host, 'Fetching forecast…').closest('ul')).not.toBeNull();
     });
 
     it('shows the running ring, then completion and failure with mono durations', async () => {
@@ -192,8 +220,10 @@ describe('Transcript', () => {
       handle.enqueue(frame(assistantEvent('ActivityStarted', { scopeId: 'mcp-1' })));
       await settle(STREAM_BATCH_WINDOW_MS);
 
-      expect(host.querySelector('.activity-card__ring')).not.toBeNull();
-      expect(host.querySelector('.activity-card__duration')).toBeNull();
+      // The ring is decoration; the state is the card's hidden text, and no glyph is drawn yet.
+      expect(getByText(host, 'Running')).not.toBeNull();
+      expect(ownState(cards()[0]!)).toBeNull();
+      expect(queryByText(host, DURATION)).toBeNull();
 
       handle.enqueue(frame(assistantEvent('ActivityCompleted', { scopeId: 'mcp-1' })));
       handle.enqueue(
@@ -204,31 +234,33 @@ describe('Transcript', () => {
       );
       await settle(STREAM_BATCH_WINDOW_MS);
 
-      expect(host.querySelector('.activity-card__ring')).toBeNull();
-      expect(host.querySelector('.activity-card__state--ok')).not.toBeNull();
-      expect(host.querySelector('.activity-card__state--warn')).not.toBeNull();
-      const durations = [...host.querySelectorAll('.activity-card__duration')].map(
-        (duration) => duration.textContent?.trim() ?? '',
+      expect(queryByText(host, 'Running')).toBeNull();
+      expect(cards().map(ownState)).toEqual([
+        'bi-check-circle-fill',
+        'bi-exclamation-triangle-fill',
+      ]);
+      const durations = getAllByText(host, DURATION);
+      expect(durations.map((duration) => duration.textContent?.trim())).toEqual(['1.4s', '0.6s']);
+      expect(durations.every((duration) => duration.classList.contains('font-monospace'))).toBe(
+        true,
       );
-      expect(durations).toEqual(['1.4s', '0.6s']);
     });
   });
 
   describe('nested activity work', () => {
     /** Top-level cards only — the ones the timeline opened a node for. */
     function topLevelCards(): HTMLElement[] {
-      return [
-        ...host.querySelectorAll<HTMLElement>('.assistant-turn__content > app-activity-card'),
-      ];
+      return [...(answer()?.querySelectorAll<HTMLElement>(':scope > app-activity-card') ?? [])];
     }
 
     it('renders a child inside its parent card instead of opening a top-level node', async () => {
       await streamFullTurn();
 
       const top = topLevelCards();
-      expect(
-        top.map((card) => card.querySelector('.activity-card__name')?.textContent?.trim()),
-      ).toEqual(['Get forecast', 'Search Documents']);
+      expect(top.map((card) => nameOf(cards(card)[0] ?? card))).toEqual([
+        'Get forecast',
+        'Search Documents',
+      ]);
 
       const nested = top[0]?.querySelectorAll('app-activity-card') ?? [];
       expect([...nested].map((card) => card.textContent)).toHaveLength(1);
@@ -283,13 +315,18 @@ describe('Transcript', () => {
       await settle(STREAM_BATCH_WINDOW_MS);
 
       expect(topLevelCards()).toHaveLength(1);
-      const cards = [...host.querySelectorAll<HTMLElement>('.activity-card')];
-      expect(cards.map((card) => card.className.replace('activity-card', '').trim())).toEqual([
-        '',
-        'activity-card--depth-1',
-        'activity-card--depth-2',
+      // The depth has no ARIA state; its fill and radius are the whole visual contract.
+      const surface = (card: HTMLElement) =>
+        [...card.classList]
+          .filter((name) => /^(bg|rounded)-/.test(name))
+          .sort()
+          .join(' ');
+      expect(cards().map(surface)).toEqual([
+        'bg-surface rounded-4',
+        'bg-body-tertiary rounded-3',
+        'bg-surface rounded-3',
         // A fourth level reuses the third, because an agent tree can nest arbitrarily.
-        'activity-card--depth-2',
+        'bg-surface rounded-3',
       ]);
     });
   });
@@ -352,8 +389,9 @@ describe('Transcript', () => {
       expect(buttons[1]?.textContent).toBe('Copy');
     });
 
+    /** Its own region, the transcript's last: the turn's region is emptied for the turn. */
     function copyStatus(): HTMLElement {
-      return host.querySelector<HTMLElement>('.transcript__copy-status')!;
+      return getAllByRole(host, 'status').at(-1)!;
     }
 
     it('announces the copy in a live region, since the label alone is not enough', async () => {
@@ -489,13 +527,17 @@ describe('Transcript', () => {
       await settle();
 
       expect(writeText).toHaveBeenCalledExactlyOnceWith('What is the weather?');
-      expect(host.querySelector('.transcript__copy-status')?.textContent).toBe('');
+      expect(getAllByRole(host, 'status').at(-1)?.textContent).toBe('');
     });
   });
 
   describe('the reasoning region', () => {
     /** The opening pair every turn carries. */
     const SEED = 'Reviewing the request and preparing a response.\n\n';
+
+    function reasoningToggle(): HTMLButtonElement {
+      return getByRole<HTMLButtonElement>(host, 'button', { name: /^Reasoning/ });
+    }
 
     it('shows the region while reasoning streams, before any answer text', async () => {
       const handle = await startTurn();
@@ -514,7 +556,7 @@ describe('Transcript', () => {
       expect(host.querySelector('app-reasoning-region')).not.toBeNull();
       expect(host.querySelector('app-ridgeline')).toBeNull();
       // Still open, so no duration is claimed yet.
-      expect(host.querySelector('.reasoning__duration')).toBeNull();
+      expect(reasoningToggle().textContent?.trim()).toBe('Reasoning');
     });
 
     it('measures from the model’s first delta, not the server’s seed', async () => {
@@ -529,12 +571,13 @@ describe('Transcript', () => {
       handle.enqueue(frame(assistantEvent('TextDelta', { text: 'The answer.' })));
       await settle(STREAM_BATCH_WINDOW_MS);
 
-      const region = host.querySelector('app-reasoning-region');
-      expect(region?.querySelector('.reasoning__duration')?.textContent?.trim()).toBe('4.2s');
+      const toggle = reasoningToggle();
+      expect(within(toggle).getByText('4.2s').classList.contains('font-monospace')).toBe(true);
       // Collapsed: the summary is not in the document until it is asked for.
-      expect(region?.querySelector('.reasoning__body')).toBeNull();
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      expect(queryByText(host, /Weighing the options/)).toBeNull();
       // Text this short has no block boundary yet, so the tail carries it.
-      expect(host.querySelector('.assistant-turn__content')?.textContent).toContain('The answer.');
+      expect(answer()?.textContent).toContain('The answer.');
     });
 
     it('expands to the model’s words only, and stays open for the rest of the turn', async () => {
@@ -550,20 +593,20 @@ describe('Transcript', () => {
       );
       await settle(STREAM_BATCH_WINDOW_MS);
 
-      const toggle = host.querySelector<HTMLButtonElement>('.reasoning__toggle');
-      toggle?.click();
+      const toggle = reasoningToggle();
+      toggle.click();
       await settle();
 
-      const body = host.querySelector('.reasoning__body');
+      const body = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
       expect(body?.textContent).toBe('Weighing the options. ');
       expect(body?.textContent).not.toContain('Reviewing the request');
-      expect(toggle?.getAttribute('aria-controls')).toBe(body?.id);
 
       handle.enqueue(frame(assistantEvent('TextDelta', { text: 'answer.' })));
       await settle(STREAM_BATCH_WINDOW_MS);
 
       // Still open: the live turn is one component instance for its duration.
-      expect(host.querySelector('.reasoning__body')?.textContent).toContain('Weighing');
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+      expect(getByText(host, /^Weighing/)).not.toBeNull();
     });
 
     it('renders no region for a turn whose only reasoning was the seed', async () => {
@@ -698,9 +741,9 @@ describe('Transcript', () => {
     it('shows the turn total in the message footer once Finished arrives', async () => {
       await streamFullTurn();
 
-      expect(host.querySelector('.assistant-turn__usage')?.textContent?.trim()).toBe(
-        '1,842 in · 512 out · 2,354 total',
-      );
+      expect(
+        host.querySelector('.assistant-turn__footer .font-monospace')?.textContent?.trim(),
+      ).toBe('1,842 in · 512 out · 2,354 total');
     });
 
     it('claims nothing for a turn that ended without Finished', async () => {
@@ -712,7 +755,7 @@ describe('Transcript', () => {
       // A cut-off turn never folded a Finished, so there is no total to claim —
       // and inventing one from the partial answer would be a fabricated figure.
       expect(host.querySelector('app-turn-notice-card')).not.toBeNull();
-      expect(host.querySelector('.assistant-turn__usage')).toBeNull();
+      expect(host.querySelector('.assistant-turn__footer .font-monospace')).toBeNull();
     });
 
     it('opens an activity onto its cost strip, and closes it again', async () => {
@@ -727,24 +770,25 @@ describe('Transcript', () => {
       );
       await settle(STREAM_BATCH_WINDOW_MS);
 
-      const toggle = host.querySelector<HTMLButtonElement>('.activity-card__toggle');
-      expect(toggle?.getAttribute('aria-expanded')).toBe('false');
-      expect(host.querySelector('.activity-card__usage')).toBeNull();
+      const toggle = getByRole(host, 'button', { name: /^Cost of/ });
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      expect(toggle.getAttribute('aria-controls')).toBeNull();
+      expect(queryByText(host, /^duration/)).toBeNull();
 
-      toggle?.click();
+      toggle.click();
       await settle();
 
-      expect(toggle?.getAttribute('aria-expanded')).toBe('true');
-      const strip = host.querySelector('.activity-card__usage');
-      expect(toggle?.getAttribute('aria-controls')).toBe(strip?.id);
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+      const strip = document.getElementById(toggle.getAttribute('aria-controls') ?? '');
       // No server attributes tokens per activity yet, so the duration is the
       // whole of the strip — the token columns arrive with the field.
       expect(strip?.textContent?.trim()).toBe('duration\u00a0\u00a01.4s');
 
-      toggle?.click();
+      toggle.click();
       await settle();
 
-      expect(host.querySelector('.activity-card__usage')).toBeNull();
+      expect(strip?.isConnected).toBe(false);
+      expect(queryByText(host, /^duration/)).toBeNull();
     });
 
     // SC 2.5.3: the raw `displayName` would name it "Cost of Weather_get_forecast" beside a
@@ -761,13 +805,8 @@ describe('Transcript', () => {
       );
       await settle(STREAM_BATCH_WINDOW_MS);
 
-      const cardName = host.querySelector('.activity-card__name')?.textContent?.trim();
-      const toggleName = host
-        .querySelector('.activity-card__toggle .visually-hidden')
-        ?.textContent?.trim();
-
-      expect(cardName).toBe('Get forecast');
-      expect(toggleName).toBe('Cost of Get forecast');
+      expect(nameOf(cards()[0]!)).toBe('Get forecast');
+      expect(getByRole(host, 'button', { name: 'Cost of Get forecast' })).not.toBeNull();
     });
 
     it('offers no chevron on an activity that is still running', async () => {
@@ -775,20 +814,11 @@ describe('Transcript', () => {
       handle.enqueue(frame(assistantEvent('ActivityStarted', { scopeId: 'mcp-1' })));
       await settle(STREAM_BATCH_WINDOW_MS);
 
-      expect(host.querySelector('.activity-card__toggle')).toBeNull();
+      expect(queryByRole(host, 'button', { name: /^Cost of/ })).toBeNull();
     });
   });
 
   describe('an activity that failed', () => {
-    /** The state glyph in a card's *own* header, ignoring any nested card's. */
-    function ownState(card: Element): string | null {
-      const state = card.querySelector(
-        ':scope > .activity-card > .activity-card__header > app-icon',
-      );
-
-      return state?.className.replace('activity-card__state', '').trim() ?? null;
-    }
-
     it('marks the card failed, with a warning glyph and the duration in text', async () => {
       const handle = await startTurn();
       handle.enqueue(
@@ -801,12 +831,10 @@ describe('Transcript', () => {
       );
       await settle(STREAM_BATCH_WINDOW_MS);
 
-      expect(host.querySelector('.activity-card__state--warn')).not.toBeNull();
-      expect(host.querySelector('.activity-card__duration')?.textContent?.trim()).toBe('0.6s');
+      expect(ownState(cards()[0]!)).toBe('bi-exclamation-triangle-fill');
+      expect(getByText(host, DURATION).textContent?.trim()).toBe('0.6s');
       // Colour is never the only channel: the sr-only line carries both.
-      expect(host.querySelector('.activity-card .visually-hidden')?.textContent).toBe(
-        'Failed after 0.6s',
-      );
+      expect(getByText(host, 'Failed after 0.6s').classList.contains('visually-hidden')).toBe(true);
     });
 
     it('leaves the parent of a failed child alone unless the parent failed too', async () => {
@@ -827,10 +855,11 @@ describe('Transcript', () => {
       );
       await settle(STREAM_BATCH_WINDOW_MS);
 
-      const parent = host.querySelector('.assistant-turn__content > app-activity-card');
-      const child = parent?.querySelector('app-activity-card');
-      expect(ownState(parent!)).toBe('activity-card__state--ok');
-      expect(ownState(child!)).toBe('activity-card__state--warn');
+      const [parent, child] = cards();
+      expect(nameOf(child!)).toBe('Confluence Search');
+      expect(parent!.contains(child!)).toBe(true);
+      expect(ownState(parent!)).toBe('bi-check-circle-fill');
+      expect(ownState(child!)).toBe('bi-exclamation-triangle-fill');
     });
 
     it('lets the answer complete normally, keeping the failed card in place', async () => {
@@ -842,11 +871,15 @@ describe('Transcript', () => {
       expect(host.getAttribute('aria-busy')).toBeNull();
       expect(host.querySelector('app-turn-notice-card')).toBeNull();
       expect(cardNames()).toEqual(['Get forecast', 'Forecast Agent', 'Search Documents']);
-      expect(host.querySelector('.activity-card__state--warn')).not.toBeNull();
+      expect(cards().map(ownState)).toContain('bi-exclamation-triangle-fill');
     });
   });
 
   describe('watching the answer arrive', () => {
+    function noticeCard(): HTMLElement | null {
+      return host.querySelector<HTMLElement>('app-turn-notice-card > *');
+    }
+
     it('shows the thinking ridgeline until renderable content arrives', async () => {
       const handle = await startTurn();
 
@@ -860,7 +893,7 @@ describe('Transcript', () => {
 
       expect(host.querySelector('app-ridgeline')).toBeNull();
       // Text this short has no block boundary yet, so the tail carries it.
-      expect(host.querySelector('.assistant-turn__content')?.textContent).toContain('Hello');
+      expect(answer()?.textContent).toContain('Hello');
       expect(host.querySelector('.assistant-turn__md--caret')).not.toBeNull();
     });
 
@@ -876,9 +909,7 @@ describe('Transcript', () => {
       handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Hello.' })));
       await settle(STREAM_BATCH_WINDOW_MS);
 
-      expect(host.querySelector('.assistant-turn__content')?.getAttribute('aria-live')).toBe(
-        'polite',
-      );
+      expect(answer()?.getAttribute('aria-live')).toBe('polite');
 
       handle.enqueue(frame(assistantEvent('Finished')));
       handle.close();
@@ -886,8 +917,8 @@ describe('Transcript', () => {
 
       // The settled entry is a different instance; passing it `[streaming]` would announce
       // every answer twice, which the component's own spec cannot catch.
-      expect(host.querySelector('.assistant-turn__content')?.getAttribute('aria-live')).toBeNull();
-      expect(host.querySelector('.assistant-turn__content')?.getAttribute('aria-busy')).toBeNull();
+      expect(answer()?.getAttribute('aria-live')).toBeNull();
+      expect(answer()?.getAttribute('aria-busy')).toBeNull();
     });
 
     it('keeps the activity cards out of what the answer region announces', async () => {
@@ -908,7 +939,7 @@ describe('Transcript', () => {
       handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Hello.' })));
       await settle(STREAM_BATCH_WINDOW_MS);
 
-      const region = host.querySelector('.assistant-turn__content[aria-live="polite"]');
+      const region = host.querySelector('.assistant-turn > [aria-live="polite"]');
       expect(region).not.toBeNull();
 
       // More than one, so the nested card, which carries no `aria-live` of its own, exercises
@@ -945,11 +976,11 @@ describe('Transcript', () => {
       handle.close();
       await settle(STREAM_BATCH_WINDOW_MS);
 
-      const notice = host.querySelector('app-turn-notice-card .notice');
-      expect(notice?.classList.contains('notice--warn')).toBe(true);
+      const notice = noticeCard();
+      expect(notice?.classList.contains('alert-warning')).toBe(true);
       expect(notice?.textContent).toContain('This response was cut off');
       expect(notice?.textContent).toContain('the answer below may be incomplete');
-      expect(notice?.querySelector('.notice__retry')).not.toBeNull();
+      expect(within(notice!).getByRole('button', { name: 'Retry' })).not.toBeNull();
       expect(host.querySelector('.assistant-turn__md')?.textContent?.trim()).toBe('Partial ans');
       // The persistent live region carries the announcement — the card is not
       // a live region, because it appears together with its content.
@@ -959,6 +990,10 @@ describe('Transcript', () => {
   });
 
   describe('pre-stream failure notices', () => {
+    function noticeCard(): HTMLElement | null {
+      return host.querySelector<HTMLElement>('app-turn-notice-card > *');
+    }
+
     async function failWith(problem: object, status: number): Promise<void> {
       fetchMock.mockResolvedValue(problemResponse(problem, status).response);
       store.bindRoute(CONVERSATION_ID);
@@ -972,29 +1007,30 @@ describe('Transcript', () => {
     it('renders the 409 as the busy row with a Retry', async () => {
       await failWith(PROBLEM_FIXTURES.conversationBusy, 409);
 
-      const notice = host.querySelector('app-turn-notice-card .notice');
-      expect(notice?.classList.contains('notice--warn')).toBe(true);
-      expect(notice?.classList.contains('notice--row')).toBe(true);
+      const notice = noticeCard();
+      expect(notice?.classList.contains('alert-warning')).toBe(true);
+      // The one-line form: Retry shares the message's row.
+      expect(notice?.classList.contains('d-flex')).toBe(true);
       expect(notice?.textContent).toContain('Another response is still running in this');
-      expect(notice?.querySelector('.notice__retry')).not.toBeNull();
+      expect(within(notice!).getByRole('button', { name: 'Retry' })).not.toBeNull();
     });
 
     it('re-sends on Retry and hands the control back when it fails again', async () => {
       await failWith(PROBLEM_FIXTURES.conversationBusy, 409);
 
-      host.querySelector<HTMLButtonElement>('.notice__retry')?.click();
+      getByRole(host, 'button', { name: 'Retry' }).click();
       await settle();
 
       // The same 409 comes back, and the replacement Retry takes the focus its destroyed
       // predecessor left on <body>.
       expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(document.activeElement).toBe(host.querySelector('.notice__retry'));
+      expect(document.activeElement).toBe(getByRole(host, 'button', { name: 'Retry' }));
     });
 
     it('renders a 403 as the generic warning with no Retry', async () => {
       await failWith(PROBLEM_FIXTURES.forbidden, 403);
 
-      const notice = host.querySelector('app-turn-notice-card .notice');
+      const notice = noticeCard();
       expect(notice).not.toBeNull();
       // Retry is withheld by `canRetry`, not by the card: a denied grant
       // answers the same however often it is asked.
@@ -1019,7 +1055,7 @@ describe('Transcript', () => {
     it('renders the detached dashed card and removes the user bubble', async () => {
       await stopMidStream();
 
-      const stopped = host.querySelector('.stopped');
+      const stopped = host.querySelector('app-stopped-card');
       expect(stopped).not.toBeNull();
       expect(stopped?.textContent).toContain('Stopped — not saved to this conversation');
       expect(stopped?.textContent).toContain('Partial ans');
@@ -1033,9 +1069,7 @@ describe('Transcript', () => {
     it('copies the partial text and confirms for two seconds', async () => {
       await stopMidStream();
 
-      const copy = [...host.querySelectorAll('.stopped__action')].find((button) =>
-        button.textContent?.includes('Copy'),
-      ) as HTMLButtonElement;
+      const copy = getByRole(host, 'button', { name: 'Copy' });
       copy.click();
       await settle();
 
@@ -1048,10 +1082,7 @@ describe('Transcript', () => {
     it('restores the prompt and settings through Retry', async () => {
       await stopMidStream();
 
-      const retry = [...host.querySelectorAll('.stopped__action')].find((button) =>
-        button.textContent?.includes('Retry'),
-      ) as HTMLButtonElement;
-      retry.click();
+      getByRole(host, 'button', { name: 'Retry' }).click();
       await settle();
 
       expect(applyConversationSettings).toHaveBeenCalledExactlyOnceWith({
@@ -1059,7 +1090,7 @@ describe('Transcript', () => {
         mcpServerIds: SELECTION.mcpServerIds,
       });
       expect(store.composerSeed()?.text).toBe('What is the weather?');
-      expect(host.querySelector('.stopped')).toBeNull();
+      expect(host.querySelector('app-stopped-card')).toBeNull();
     });
   });
 });

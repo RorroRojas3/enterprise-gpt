@@ -44,7 +44,6 @@ import { Modal } from '@shared/components/modal/modal';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [BrandIcon, FormField, Modal],
   templateUrl: './mcp-server-form-dialog.html',
-  styleUrl: './mcp-server-form-dialog.scss',
 })
 export class McpServerFormDialog {
   protected readonly actions = inject(McpServerActionsStore);

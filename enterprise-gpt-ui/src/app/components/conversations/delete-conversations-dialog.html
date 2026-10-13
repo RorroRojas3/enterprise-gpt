@@ -1,6 +1,6 @@
 <app-modal [heading]="heading()" size="sm" [open]="open()" (closed)="onClosed()">
   <!-- Counted rather than named: the count is what decides whether to go ahead. -->
-  <p class="delete-conversations__body">{{ body() }}</p>
+  <p class="mb-0">{{ body() }}</p>
 
   <!-- Autofocus on Cancel, so Enter on a freshly opened destructive confirm destroys nothing. -->
   <button

@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { getByRole, getByText } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ALLOWED_PREFERENCE_KEYS, PREFERENCE_KEYS } from '@shared/utils/storage/local-preferences';
 import { AuthService } from '@core/auth/auth-service';
@@ -63,39 +64,43 @@ describe('UserFooter', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
+  function signOutButton(fixture: ComponentFixture<UserFooter>): HTMLButtonElement {
+    return getByRole(host(fixture), 'button', { name: 'Sign out' });
+  }
+
   it('names the signed-in user and abbreviates them to two initials', async () => {
     const element = host(await render());
 
     expect(element.textContent).toContain('Ada Lovelace');
-    expect(element.querySelector('.user-footer__avatar')?.textContent).toBe('AL');
+    expect(getByText(element, 'AL')).toBeTruthy();
   });
 
   it('falls back to one initial for a single-word name', async () => {
     const element = host(await render('Prince'));
 
-    expect(element.querySelector('.user-footer__avatar')?.textContent).toBe('P');
+    expect(getByText(element, 'P')).toBeTruthy();
   });
 
   it('hides the avatar from assistive technology, which already hears the name', async () => {
     const element = host(await render());
 
-    expect(element.querySelector('.user-footer__avatar')?.getAttribute('aria-hidden')).toBe('true');
+    expect(getByText(element, 'AL').getAttribute('aria-hidden')).toBe('true');
   });
 
   it('signs out on one press, and refuses a second', async () => {
     const fixture = await render();
     const auth = TestBed.inject(AuthService);
     const signOut = vi.spyOn(auth, 'signOut');
-    const button = host(fixture).querySelector<HTMLButtonElement>('.user-footer__action');
+    const button = signOutButton(fixture);
 
-    button?.click();
+    button.click();
     await fixture.whenStable();
 
     expect(auth.isSigningOut()).toBe(true);
     // Latched in the DOM too, so there is nothing to press a second time.
-    expect(button?.disabled).toBe(true);
+    expect(button.disabled).toBe(true);
 
-    button?.click();
+    button.click();
 
     expect(signOut).toHaveBeenCalledOnce();
   });
@@ -103,12 +108,12 @@ describe('UserFooter', () => {
   it('clears the session but keeps the browser preferences', async () => {
     // The theme is written first so the assertion proves survival rather than absence.
     const fixture = await render();
-    host(fixture).querySelector<HTMLButtonElement>('.theme-toggle')?.click();
+    getByRole(host(fixture), 'button', { name: /Switch to (dark|light) theme/ }).click();
     await fixture.whenStable();
 
     expect(localStorage.getItem(PREFERENCE_KEYS.theme)).toBe('dark');
 
-    host(fixture).querySelector<HTMLButtonElement>('.user-footer__action')?.click();
+    signOutButton(fixture).click();
     await fixture.whenStable();
 
     expect(localStorage.getItem(PREFERENCE_KEYS.theme)).toBe('dark');
@@ -121,7 +126,7 @@ describe('UserFooter', () => {
     const fixture = await render();
     localStorage.setItem('egpt.leftover', 'what a regression looks like');
 
-    host(fixture).querySelector<HTMLButtonElement>('.user-footer__action')?.click();
+    signOutButton(fixture).click();
     await fixture.whenStable();
 
     expect(localStorage.getItem('egpt.leftover')).toBe('what a regression looks like');

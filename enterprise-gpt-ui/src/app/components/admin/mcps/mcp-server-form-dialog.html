@@ -6,26 +6,26 @@
   (closed)="actions.cancelForm()"
 >
   <!-- novalidate: the browser's required bubble would fight the schema's inline messages. -->
-  <form id="mcp-server-form" class="mcp-form" novalidate (submit)="submit($event)">
+  <form id="mcp-server-form" novalidate (submit)="submit($event)">
     @if (actions.formFailure(); as failure) {
       <!-- Names the server the failed save was about, since create and edit share this dialog.
            It covers transport failures too, which is why this surface raises no toast. -->
-      <div class="mcp-form__summary" role="alert">
-        <p class="mcp-form__summary-line">
+      <div class="alert alert-danger py-2 small vstack gap-1" role="alert">
+        <p class="mb-0">
           Couldn’t save <strong>{{ failure.serverName }}</strong
           >. {{ failure.reason }} Everything you typed is kept below.
         </p>
         @for (message of unmatched(); track $index) {
-          <p class="mcp-form__error">{{ message }}</p>
+          <p class="mb-0">{{ message }}</p>
         }
         @if (failure.traceLine; as trace) {
-          <p class="mcp-form__trace">{{ trace }}</p>
+          <p class="mb-0">{{ trace }}</p>
         }
       </div>
     }
 
-    <div class="mcp-form__grid">
-      <div class="mcp-form__field">
+    <div class="row g-3 small">
+      <div class="col-12 col-sm-6">
         <label class="form-label" for="mcp-form-name">Name</label>
         <!-- No literal maxlength: [formField] derives it from the schema (NG8022). -->
         <input
@@ -42,19 +42,19 @@
           "
         />
         @if (fieldErrors().name.show) {
-          <div class="mcp-form__errors" id="mcp-form-name-errors" role="alert">
+          <div class="invalid-feedback d-block" id="mcp-form-name-errors" role="alert">
             @for (message of fieldErrors().name.messages; track $index) {
-              <p class="mcp-form__error">{{ message }}</p>
+              <p class="mb-0">{{ message }}</p>
             }
           </div>
         }
         <!-- Explains why a name can collide with a permission the admin never created. -->
-        <p class="mcp-form__note" id="mcp-form-name-note">
+        <p class="form-text mb-0" id="mcp-form-name-note">
           A permission with this name is created alongside the server, and renamed with it.
         </p>
       </div>
 
-      <div class="mcp-form__field">
+      <div class="col-12 col-sm-6">
         <label class="form-label" for="mcp-form-auth">Auth type</label>
         <!-- The values are numbers on the wire (the API has no string enum converter), bound
              here as strings because a native select binds strings. -->
@@ -72,23 +72,23 @@
           }
         </select>
         @if (fieldErrors().authType.show || unsupportedAuthType()) {
-          <div class="mcp-form__errors" id="mcp-form-auth-errors" role="alert">
+          <div class="invalid-feedback d-block" id="mcp-form-auth-errors" role="alert">
             @if (fieldErrors().authType.show) {
               @for (message of fieldErrors().authType.messages; track $index) {
-                <p class="mcp-form__error">{{ message }}</p>
+                <p class="mb-0">{{ message }}</p>
               }
             }
             <!-- A seeded auth type the select has no option for. -->
             @if (unsupportedAuthType(); as message) {
-              <p class="mcp-form__error">{{ message }}</p>
+              <p class="mb-0">{{ message }}</p>
             }
           </div>
         }
       </div>
 
-      <div class="mcp-form__field">
+      <div class="col-12 col-sm-6">
         <label class="form-label" for="mcp-form-icon">Icon</label>
-        <div class="mcp-form__icon-row">
+        <div class="d-flex align-items-center gap-2">
           <select
             id="mcp-form-icon"
             class="form-select"
@@ -102,23 +102,23 @@
           </select>
           <!-- Decorative: the select's value is already announced. -->
           @if (iconPreview(); as mark) {
-            <app-brand-icon class="mcp-form__icon-preview" [name]="mark" />
+            <app-brand-icon class="flex-shrink-0 fs-5" [name]="mark" />
           }
         </div>
         @if (fieldErrors().iconKey.show) {
-          <div class="mcp-form__errors" id="mcp-form-icon-errors" role="alert">
+          <div class="invalid-feedback d-block" id="mcp-form-icon-errors" role="alert">
             @for (message of fieldErrors().iconKey.messages; track $index) {
-              <p class="mcp-form__error">{{ message }}</p>
+              <p class="mb-0">{{ message }}</p>
             }
           </div>
         }
         <!-- `role="status"`, not "alert": the key round-trips unchanged and Save stays enabled. -->
         @if (unsupportedIcon(); as message) {
-          <p class="mcp-form__note" id="mcp-form-icon-note" role="status">{{ message }}</p>
+          <p class="form-text mb-0" id="mcp-form-icon-note" role="status">{{ message }}</p>
         }
       </div>
 
-      <div class="mcp-form__field mcp-form__field--wide">
+      <div class="col-12">
         <label class="form-label" for="mcp-form-description">Description</label>
         <input
           id="mcp-form-description"
@@ -131,19 +131,19 @@
           "
         />
         @if (fieldErrors().description.show) {
-          <div class="mcp-form__errors" id="mcp-form-description-errors" role="alert">
+          <div class="invalid-feedback d-block" id="mcp-form-description-errors" role="alert">
             @for (message of fieldErrors().description.messages; track $index) {
-              <p class="mcp-form__error">{{ message }}</p>
+              <p class="mb-0">{{ message }}</p>
             }
           </div>
         }
       </div>
 
-      <div class="mcp-form__field mcp-form__field--wide">
+      <div class="col-12">
         <label class="form-label" for="mcp-form-url">URL</label>
         <input
           id="mcp-form-url"
-          class="form-control font-mono"
+          class="form-control font-monospace"
           type="text"
           inputmode="url"
           autocomplete="off"
@@ -153,9 +153,9 @@
           [attr.aria-describedby]="fieldErrors().url.show ? 'mcp-form-url-errors' : null"
         />
         @if (fieldErrors().url.show) {
-          <div class="mcp-form__errors" id="mcp-form-url-errors" role="alert">
+          <div class="invalid-feedback d-block" id="mcp-form-url-errors" role="alert">
             @for (message of fieldErrors().url.messages; track $index) {
-              <p class="mcp-form__error">{{ message }}</p>
+              <p class="mb-0">{{ message }}</p>
             }
           </div>
         }
@@ -163,11 +163,11 @@
 
       <!-- Required for Entra ID and refused for None, so it is hidden and cleared on a switch. -->
       @if (showScope()) {
-        <div class="mcp-form__field mcp-form__field--wide">
+        <div class="col-12">
           <label class="form-label" for="mcp-form-scope">Scope</label>
           <input
             id="mcp-form-scope"
-            class="form-control font-mono"
+            class="form-control font-monospace"
             type="text"
             autocomplete="off"
             spellcheck="false"
@@ -180,15 +180,15 @@
             "
           />
           @if (fieldErrors().scope.show) {
-            <div class="mcp-form__errors" id="mcp-form-scope-errors" role="alert">
+            <div class="invalid-feedback d-block" id="mcp-form-scope-errors" role="alert">
               @for (message of fieldErrors().scope.messages; track $index) {
-                <p class="mcp-form__error">{{ message }}</p>
+                <p class="mb-0">{{ message }}</p>
               }
             </div>
           }
-          <p class="mcp-form__note" id="mcp-form-scope-note">
+          <p class="form-text mb-0" id="mcp-form-scope-note">
             The delegated scope this API requests on the signed-in user’s behalf, such as
-            <span class="font-mono">api://…/.default</span>. One scope only.
+            <span class="font-monospace">api://…/.default</span>. One scope only.
           </p>
         </div>
       }
@@ -196,11 +196,11 @@
       <!-- `Name: value` lines rather than a row editor: Signal Forms' array support is
            `@experimental`, and indexed keys like `Headers[0].Name` would not match
            `serverMessagesFor`. No literal maxlength: `headersError` owns the budget. -->
-      <div class="mcp-form__field mcp-form__field--wide">
+      <div class="col-12">
         <label class="form-label" for="mcp-form-headers">Headers</label>
         <textarea
           id="mcp-form-headers"
-          class="form-control font-mono"
+          class="form-control font-monospace"
           rows="3"
           autocomplete="off"
           spellcheck="false"
@@ -213,24 +213,24 @@
           "
         ></textarea>
         @if (fieldErrors().headers.show) {
-          <div class="mcp-form__errors" id="mcp-form-headers-errors" role="alert">
+          <div class="invalid-feedback d-block" id="mcp-form-headers-errors" role="alert">
             @for (message of fieldErrors().headers.messages; track $index) {
-              <p class="mcp-form__error">{{ message }}</p>
+              <p class="mb-0">{{ message }}</p>
             }
           </div>
         }
         <!-- Only the normative sentence is referenced by `aria-describedby`; the rationale
              below would otherwise be read out on every focus. -->
-        <p class="mcp-form__note" id="mcp-form-headers-note">
-          One per line, as <span class="font-mono">Name: value</span> — up to
+        <p class="form-text mb-0" id="mcp-form-headers-note">
+          One per line, as <span class="font-monospace">Name: value</span> — up to
           {{ headerLimits.count }}. Configuration only: values are stored and shown in plain text.
         </p>
-        <p class="mcp-form__note">
+        <p class="form-text mb-0">
           Sent on every call to this server, so they are how a server that configures itself through
           headers is restricted — the remote Azure DevOps server reads
-          <span class="font-mono">X-MCP-Readonly</span> and
-          <span class="font-mono">X-MCP-Toolsets</span> this way. Headers the API or the MCP
-          transport set themselves, such as <span class="font-mono">Authorization</span>, are
+          <span class="font-monospace">X-MCP-Readonly</span> and
+          <span class="font-monospace">X-MCP-Toolsets</span> this way. Headers the API or the MCP
+          transport set themselves, such as <span class="font-monospace">Authorization</span>, are
           refused here.
         </p>
       </div>
@@ -256,7 +256,7 @@
     [disabled]="!canSubmit()"
   >
     @if (actions.formBusy()) {
-      <span class="kit-spinner" aria-hidden="true"></span>
+      <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
     }
     {{ submitLabel() }}
   </button>

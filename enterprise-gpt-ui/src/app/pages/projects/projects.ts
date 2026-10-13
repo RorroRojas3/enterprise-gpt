@@ -62,8 +62,9 @@ const SKELETON_CARDS = 6;
     Skeleton,
   ],
   providers: [ProjectListStore],
+  // The shell's `<main>` clips its overflow, so a routed screen scrolls itself.
+  host: { class: 'd-flex flex-column gap-3 p-3 p-md-4 overflow-y-auto' },
   templateUrl: './projects.html',
-  styleUrl: './projects.scss',
 })
 export class Projects {
   /** Trimmed: the router writes `undefined` when the key leaves, and `?name=%20` is unfiltered. */
@@ -243,7 +244,7 @@ export class Projects {
       return;
     }
 
-    const cards = this._host.nativeElement.querySelectorAll<HTMLElement>('.project-card__name');
+    const cards = this._host.nativeElement.querySelectorAll<HTMLElement>('[data-row-anchor]');
     const last = cards.item(cards.length - 1);
 
     if (last === null) {

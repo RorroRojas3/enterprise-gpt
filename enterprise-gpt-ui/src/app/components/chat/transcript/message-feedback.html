@@ -1,9 +1,11 @@
 <!-- Static names with the state on `aria-pressed`; a swapping name would announce it twice.
      `aria-disabled`, not native: a disabled button blurs on press, stranding focus on `<body>`
-     and fading the `:focus-within` footer mid-request. -->
+     and fading the `:focus-within` footer mid-request. The fill and colour only reinforce the
+     `-fill` glyph: alone they would fail SC 1.4.1 in the dark theme. -->
 <button
   type="button"
-  class="message-feedback__thumb"
+  class="btn btn-ghost btn-icon btn-icon-sm"
+  [class.active]="isUp()"
   [attr.aria-pressed]="isUp()"
   [attr.aria-disabled]="pending() ? 'true' : null"
   aria-label="Helpful"
@@ -13,7 +15,8 @@
 </button>
 <button
   type="button"
-  class="message-feedback__thumb"
+  class="btn btn-ghost btn-icon btn-icon-sm"
+  [class.active]="isDown()"
   [attr.aria-pressed]="isDown()"
   [attr.aria-disabled]="pending() ? 'true' : null"
   aria-label="Not helpful"

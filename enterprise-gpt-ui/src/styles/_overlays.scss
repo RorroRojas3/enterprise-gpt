@@ -1,0 +1,57 @@
+// Bootstrap's modal and offcanvas CSS on native <dialog>, which `showModal()` puts in the top
+// layer: real inertness instead of Bootstrap's JS focus trap. These undo the UA dialog styles and
+// the rules that assume Bootstrap's JS toggles `display` and `.show`.
+
+dialog {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+// Compile-time colour: custom-property inheritance on `::backdrop` is too recent to rely on.
+dialog::backdrop {
+  background-color: rgba($modal-backdrop-bg, $modal-backdrop-opacity);
+}
+
+// No scroll behind an open modal; `:has` avoids a script-managed body class that could leak.
+html:has(dialog[open]) {
+  overflow: hidden;
+}
+
+// <dialog class="modal"> > .modal-dialog > .modal-content. `.modal-dialog` is pointer-events:none,
+// so a click beside the content lands on the dialog itself, which is the dismiss check.
+dialog.modal {
+  max-width: none;
+  max-height: none;
+  margin: 0;
+
+  &[open] {
+    display: block;
+  }
+}
+
+// <dialog class="offcanvas offcanvas-start|end">. Bootstrap's `display: flex` beats the UA's
+// closed-dialog rule, and the UA's inset and auto margins would centre the panel.
+dialog.offcanvas {
+  height: auto;
+  max-height: none;
+  margin: 0;
+
+  &:not([open]) {
+    display: none;
+  }
+
+  &[open] {
+    visibility: visible;
+    transform: none;
+  }
+
+  &.offcanvas-start {
+    right: auto;
+  }
+
+  &.offcanvas-end {
+    left: auto;
+  }
+}

@@ -1,6 +1,5 @@
 <a
-  class="email-open-menu__open"
-  [class.email-open-menu__open--compact]="compact()"
+  [class]="openClass()"
   [attr.aria-label]="openLabel()"
   [href]="mailtoUrl()"
   (click)="onOpenDefault()"
@@ -11,17 +10,11 @@
 
 <!-- `stayOpen` is off: every row leaves for somewhere else. -->
 <app-menu icon="bi-chevron-down" [label]="menuLabel()" [panelWidth]="232" [(open)]="menuOpen">
-  <a
-    appMenuItem
-    class="email-open-menu__item"
-    target="_blank"
-    rel="noopener"
-    [href]="outlookWebUrl()"
-  >
+  <a appMenuItem target="_blank" rel="noopener" [href]="outlookWebUrl()">
     <app-brand-icon name="brand-outlook" />
     Outlook on the web
   </a>
-  <button appMenuItem type="button" class="email-open-menu__item" (click)="onCopy()">
+  <button appMenuItem type="button" (click)="onCopy()">
     <app-icon name="bi-copy" />
     Copy email
   </button>

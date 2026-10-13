@@ -1,17 +1,19 @@
 <!-- Hidden: the initials restate the name beside them, which would be read twice. -->
-<span class="user-footer__avatar" aria-hidden="true">{{ initials() }}</span>
+<span class="avatar-circle text-bg-primary small fw-semibold" aria-hidden="true">{{
+  initials()
+}}</span>
 
 <!-- The compact strip carries the name off-screen rather than dropping it. -->
 @if (compact()) {
   <span class="visually-hidden">Signed in as {{ session.displayName() }}</span>
 } @else {
-  <span class="user-footer__name">{{ session.displayName() }}</span>
+  <span class="text-truncate small fw-semibold flex-grow-1">{{ session.displayName() }}</span>
 }
 
 <app-theme-toggle />
 
 <button
-  class="user-footer__action"
+  class="btn btn-ghost btn-icon"
   type="button"
   [disabled]="signingOut()"
   aria-label="Sign out"

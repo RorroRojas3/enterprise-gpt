@@ -43,14 +43,17 @@ function mapEntries(source, name) {
   return pairs;
 }
 
-const actual = { light: mapEntries(tokensScss, 'light'), dark: mapEntries(tokensScss, 'dark') };
+const actual = {
+  light: mapEntries(tokensScss, 'tokens-light'),
+  dark: mapEntries(tokensScss, 'tokens-dark'),
+};
 
 const problems = [];
 
-if (actual.light.get('brand') !== '#14324f' || actual.dark.get('brand') !== '#21a8d8') {
+if (actual.light.get('bs-primary') !== '#14324f' || actual.dark.get('bs-primary') !== '#21a8d8') {
   problems.push(
-    `--brand must flip #14324F → #21A8D8; it is ` +
-      `${actual.light.get('brand')} → ${actual.dark.get('brand')}`,
+    `--bs-primary must flip #14324F → #21A8D8; it is ` +
+      `${actual.light.get('bs-primary')} → ${actual.dark.get('bs-primary')}`,
   );
 }
 
@@ -111,6 +114,12 @@ const TEXT_MINIMUM = 4.5;
 const NON_TEXT_MINIMUM = 3;
 const HOVER_WASH = { colour: '#ffffff', alpha: 0.08 };
 
+// Theme colours with a filled variant, each needing a measured label colour.
+const flipping = [
+  ...(tokensScss.match(/\$flipping-colors:\s*\(([^)]*)\)/)?.[1] ?? '').matchAll(/'([\w-]+)'/g),
+].map(([, name]) => name);
+if (flipping.length === 0) die('Could not read $flipping-colors.', `file: ${TOKENS}`);
+
 const CONTRAST_PAIRS = [
   { background: 'code-bg', foregrounds: ['code-fg'], minimum: TEXT_MINIMUM },
   {
@@ -136,37 +145,34 @@ const CONTRAST_PAIRS = [
     foregrounds: ['code-head-fg', 'code-head-muted'],
     minimum: TEXT_MINIMUM,
   },
-  // SC 1.4.11: the Copy control's focus ring and the streaming caret are --accent on code.
-  { background: 'code-head', foregrounds: ['accent'], minimum: NON_TEXT_MINIMUM },
-  // The Generated badge is small bold text on --surface, so it takes --brand: --accent
-  // measures 2.74:1 there in light.
-  { background: 'surface', foregrounds: ['brand'], minimum: TEXT_MINIMUM },
-  { background: 'code-bg', foregrounds: ['accent'], minimum: NON_TEXT_MINIMUM },
-  // Usage dashboard marks (SC 1.4.11) on the card and the bar track. The line takes --brand
+  // SC 1.4.11: the Copy control's focus ring and the streaming caret are --bs-info on code.
+  { background: 'code-head', foregrounds: ['bs-info'], minimum: NON_TEXT_MINIMUM },
+  { background: 'code-bg', foregrounds: ['bs-info'], minimum: NON_TEXT_MINIMUM },
+  // Usage dashboard marks (SC 1.4.11) on the card and the bar track. The line takes --bs-primary
   // because it is the daily series' only presentation; bars two to ten keep an unmeasured
-  // --accent fill because each carries its value as text.
+  // --bs-info fill because each carries its value as text.
   {
     background: 'surface',
-    foregrounds: ['brand', 'ok', 'muted', 'warn'],
+    foregrounds: ['bs-primary', 'bs-success', 'bs-secondary-color', 'bs-warning'],
     minimum: NON_TEXT_MINIMUM,
   },
   {
-    background: 'surface-2',
-    foregrounds: ['brand', 'ok', 'muted', 'warn'],
+    background: 'bs-tertiary-bg',
+    foregrounds: ['bs-primary', 'bs-success', 'bs-secondary-color', 'bs-warning'],
     minimum: NON_TEXT_MINIMUM,
   },
   // --focus-ring on every surface a ring is drawn on; FOCUS_SURFACE_EXCLUSIONS records the rest.
-  // An offset ring sits behind its control, not on the fill, so an inset ring on a filled
-  // control would escape this table: the two that exist (menu.scss, project-picker.scss) set
-  // the measured --surface-2. --fail is the invalid field's ring (_kit.scss).
-  { background: 'surface', foregrounds: ['fail'], minimum: NON_TEXT_MINIMUM },
+  // An offset ring sits behind its control, not on the fill; the inset rings of full-width rows
+  // (`.dropdown-item`, `.list-group-item-action`, `.focus-inset`) land on the hover and active
+  // fills, --bs-tertiary-bg and --bs-secondary-bg. --bs-danger is the invalid field's border.
+  { background: 'surface', foregrounds: ['bs-danger'], minimum: NON_TEXT_MINIMUM },
   {
     background: 'surface',
     foregrounds: ['focus-ring'],
     minimum: NON_TEXT_MINIMUM,
   },
   {
-    background: 'surface-2',
+    background: 'bs-tertiary-bg',
     foregrounds: ['focus-ring'],
     minimum: NON_TEXT_MINIMUM,
   },
@@ -176,7 +182,7 @@ const CONTRAST_PAIRS = [
     minimum: NON_TEXT_MINIMUM,
   },
   {
-    background: 'active-bg',
+    background: 'bs-secondary-bg',
     foregrounds: ['focus-ring'],
     minimum: NON_TEXT_MINIMUM,
   },
@@ -185,18 +191,57 @@ const CONTRAST_PAIRS = [
     foregrounds: ['focus-ring'],
     minimum: NON_TEXT_MINIMUM,
   },
-  // --warn is running text as well as icons, so it takes the text minimum. `under` resolves
-  // dark --warn-bg, an rgba, over the card it sits on.
-  { background: 'surface', foregrounds: ['warn'], minimum: TEXT_MINIMUM },
-  { background: 'bs-body-bg', foregrounds: ['warn'], minimum: TEXT_MINIMUM },
-  { background: 'warn-bg', under: 'surface', foregrounds: ['warn'], minimum: TEXT_MINIMUM },
-  // The active rail entry, sidebar link and paginator page draw --brand text on --active-bg.
-  // The surfaces guard below checks only the ring against each background, never its text.
-  { background: 'active-bg', foregrounds: ['brand'], minimum: TEXT_MINIMUM },
-  // --brand marks on card and page (selected thumb, starred conversation, active filter). Text
-  // minimum even for icons: the token is running text on these backgrounds too.
-  { background: 'surface', foregrounds: ['brand'], minimum: TEXT_MINIMUM },
-  { background: 'bs-body-bg', foregrounds: ['brand'], minimum: TEXT_MINIMUM },
+  // Warning text and alerts. `under` resolves dark --bs-warning-bg-subtle, an rgba, over the card
+  // it sits on.
+  {
+    background: 'surface',
+    foregrounds: ['bs-warning-text-emphasis'],
+    minimum: TEXT_MINIMUM,
+  },
+  {
+    background: 'bs-body-bg',
+    foregrounds: ['bs-warning-text-emphasis'],
+    minimum: TEXT_MINIMUM,
+  },
+  {
+    background: 'bs-warning-bg-subtle',
+    under: 'surface',
+    foregrounds: ['bs-warning-text-emphasis'],
+    minimum: TEXT_MINIMUM,
+  },
+  // Running text on the page, the raised surface and the hover fill. Danger text takes
+  // --bs-danger-text-emphasis: --bs-danger is 4.39:1 on the dark surface.
+  {
+    background: 'surface',
+    foregrounds: [
+      'bs-body-color',
+      'bs-secondary-color',
+      'bs-primary',
+      'bs-link-color',
+      'bs-danger-text-emphasis',
+    ],
+    minimum: TEXT_MINIMUM,
+  },
+  {
+    background: 'bs-body-bg',
+    foregrounds: ['bs-body-color', 'bs-secondary-color', 'bs-primary', 'bs-link-color'],
+    minimum: TEXT_MINIMUM,
+  },
+  {
+    background: 'bs-tertiary-bg',
+    foregrounds: ['bs-body-color', 'bs-secondary-color'],
+    minimum: TEXT_MINIMUM,
+  },
+  // Active rows (sidebar link, dropdown item, paginator page) draw --bs-primary text on
+  // --bs-secondary-bg. The surfaces guard below checks only the ring against each background.
+  { background: 'bs-secondary-bg', foregrounds: ['bs-primary'], minimum: TEXT_MINIMUM },
+  { background: 'tooltip-bg', foregrounds: ['tooltip-fg'], minimum: TEXT_MINIMUM },
+  // The label on each filled control (`.btn-*`, `.text-bg-*`, badges), in both themes.
+  ...flipping.map((color) => ({
+    background: `bs-${color}`,
+    foregrounds: [`${color}-fg`],
+    minimum: TEXT_MINIMUM,
+  })),
 ];
 
 /** WCAG 2.1 relative luminance of a `#rrggbb` value. */
@@ -234,10 +279,7 @@ function asWash(value) {
   const hex = (channel) => Number(channel).toString(16).padStart(2, '0');
   return { colour: '#' + hex(parts[1]) + hex(parts[2]) + hex(parts[3]), alpha: Number(parts[4]) };
 }
-const palette = {
-  light: new Map([...actual.light, ...mapEntries(tokensScss, 'extra-light')]),
-  dark: new Map([...actual.dark, ...mapEntries(tokensScss, 'extra-dark')]),
-};
+const palette = actual;
 
 /** Reports a value this check cannot measure, which is a gap in the gate, not a token defect. */
 function unmeasurable(theme, name, value) {
@@ -292,42 +334,60 @@ for (const theme of ['light', 'dark']) {
 }
 
 // A new surface would leave its ring measured by nothing, so surfaces are read from the
-// stylesheets, not token names (--brand and --accent sit under focusable content too). Each
-// must be measured against the ring or excluded here.
+// stylesheets and the templates' `bg-*` utilities, not token names (--bs-primary and --bs-info
+// sit under focusable content too). Each must be measured against the ring or excluded here.
 const FOCUS_RING = 'focus-ring';
 
 /** Why a surface the ring could land on is not measured against it. */
 const FOCUS_SURFACE_EXCLUSIONS = {
   bubble: 'no focusable content on it; the message footer sits below the bubble',
-  'btnP-bg':
-    'the ring is offset, so it sits on the page behind the button, not the fill — and as the ' +
-    "switch's on-state track it is inside a menu row whose ring is inset at the row's own " +
-    'edge, nine pixels clear of the 28x16 track',
-  'btnP-hover': 'the same button, hovered or active — and the ring is offset off it too',
-  brand: 'the same — offset rings on the skip link, the sub-nav pill and the user footer',
-  accent: 'the same, plus the code surface, where the ring *is* --accent and is measured above',
-  'code-bg': 'the code surface draws its ring from --accent, measured above',
-  'warn-bg': 'a translucent wash in dark; this check reads six-digit hex only',
-  fail: 'measured above, as the invalid field ring rather than as a surface',
+  'bs-primary':
+    'the ring is offset, so it sits on the page behind a filled control (button, pill, checked ' +
+    'box, skip link), not on the fill; the avatar it fills is not focusable',
+  'bs-info': 'the same, plus the code surface, where the ring *is* --bs-info and is measured above',
+  'code-bg': 'the code surface draws its ring from --bs-info, measured above',
+  'bs-warning-bg-subtle': 'a translucent wash in dark; this check reads six-digit hex only',
   'tooltip-bg':
     'the flyout is an aria-hidden span holding text and nothing else — no control ' +
     'is ever focused on it, and the host it names is on the page surface',
-  'surface-2': 'measured above',
-  'code-head': 'the code block head draws its ring from --accent, measured above',
-  // Shapes, not surfaces: nothing is focused on them, and a control beside one sits on the
-  // measured surface underneath.
-  ok: 'a StatusDot fill — an 8px dot, not a surface',
-  warn: 'a StatusDot fill, and a 10% wash on the two deactivate dialogs',
-  muted:
-    'a StatusDot fill, and the switch thumb and its off-state track border — the menu row ' +
-    'holding the switch draws its ring inset at its own edge, never adjacent to the track',
-  'provider-azure-openai': 'a provider dot in frame 2b',
-  'provider-bedrock': 'a provider dot in frame 2b',
-  'provider-anthropic': 'a provider dot in frame 2b',
+  'code-head': 'the code block head draws its ring from --bs-info, measured above',
+  // Shapes and labels, not surfaces: nothing is focused on them, and a control beside one sits on
+  // the measured surface underneath. Their text is measured as the `{c}-fg` pairs above.
+  'bs-success': 'a StatusDot fill — an 8px dot — and a badge',
+  'bs-warning': 'a 10% wash on the two deactivate dialogs, and a badge',
+  'bs-danger': 'a badge',
+  'bs-secondary': 'a StatusDot fill and a badge',
+  'bs-secondary-color':
+    'the switch thumb and its off-state track border — the menu row holding the switch draws ' +
+    'its ring inset at its own edge, never adjacent to the track',
+  // Bootstrap derives the remaining -subtle fills from the palette, so this check cannot read
+  // them; each holds text only, or a control whose offset ring sits on the card around it.
+  'bs-info-bg-subtle': "badges, and the composer's recording pill",
+  'bs-primary-bg-subtle': "the model list's Default badge",
+  'bs-success-bg-subtle': 'a badge',
+  'bs-danger-bg-subtle': 'a badge',
   'toast-accent': "the toast's 4px left edge",
-  'bs-border-color': 'a 1px separator rule in the menu and the picker',
-  'btnP-fg': 'the switch thumb — a 10px circle inside a track, and the track is not focusable',
+  'primary-fg': 'the switch thumb — a 10px circle inside a track, and the track is not focusable',
 };
+
+/** `bg-*` / `text-bg-*` names that are not `bs-` + the class suffix. */
+const UTILITY_SURFACES = {
+  body: 'bs-body-bg',
+  'body-secondary': 'bs-secondary-bg',
+  'body-tertiary': 'bs-tertiary-bg',
+  surface: 'surface',
+};
+
+/** The token a `bg-*` / `text-bg-*` suffix paints, or null for one that paints no colour. */
+function utilitySurface(suffix) {
+  if (suffix === 'transparent' || suffix === 'gradient' || suffix.startsWith('opacity')) {
+    return null;
+  }
+  if (Object.hasOwn(UTILITY_SURFACES, suffix)) return UTILITY_SURFACES[suffix];
+  return suffix.endsWith('-subtle')
+    ? `bs-${suffix.replace(/-subtle$/, '-bg-subtle')}`
+    : `bs-${suffix}`;
+}
 
 const focusSurfaces = new Set(
   CONTRAST_PAIRS.filter(({ foregrounds }) => foregrounds.includes(FOCUS_RING)).map(
@@ -337,17 +397,33 @@ const focusSurfaces = new Set(
 
 /**
  * Every token a stylesheet paints as a background. `--*-bg: var(--x)` counts too: Bootstrap
- * fills are set that way (`--bs-btn-hover-bg: var(--btnP-hover)`).
+ * fills are set that way (`--bs-btn-hover-bg: var(--bs-tertiary-bg)`).
  */
 const painted = new Set();
 for (const file of walk(join(UI_ROOT, 'src'))) {
   if (!file.endsWith('.scss')) continue;
   const source = stripComments(readFileSync(file, 'utf8'));
-  const declarations = source.matchAll(/(?:background(?:-color|-image)?|--[\w-]*bg)\s*:([^;}]*)/g);
+  // Sass `$…-bg: var(--x)` too: `_bootstrap-config.scss` paints Bootstrap's components that way.
+  const declarations = source.matchAll(
+    /(?:background(?:-color|-image)?|--[\w-]*bg|\$[\w-]*(?:-bg|-bg-color|-background-color))\s*:([^;}]*)/g,
+  );
   for (const [, value] of declarations) {
     for (const [, name] of value.matchAll(/var\(--([\w-]+)\)/g)) {
       painted.add(name);
     }
+  }
+}
+
+// Templates and class strings in TS paint through Bootstrap's background utilities. A class
+// built at run time (`'bg-' + tone`) is invisible here; spell such maps out in full.
+for (const file of walk(join(UI_ROOT, 'src', 'app'))) {
+  if (!/\.(html|ts)$/.test(file) || file.endsWith('.spec.ts')) continue;
+  const source = stripComments(readFileSync(file, 'utf8'), { html: file.endsWith('.html') });
+  for (const [, suffix] of source.matchAll(
+    /(?<![\w-])(?:text-)?bg-([a-z][a-z-]*[a-z])(?![\w-])/g,
+  )) {
+    const token = utilitySurface(suffix);
+    if (token !== null) painted.add(token);
   }
 }
 

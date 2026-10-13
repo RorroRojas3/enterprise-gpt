@@ -9,12 +9,20 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import {
+  getAllByRole,
+  getByRole,
+  getByText,
+  queryAllByRole,
+  queryByRole,
+} from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UserDocumentDto } from '@shared/models/api/document.model';
 import { formatShortDate } from '@shared/utils/format/relative-time';
 import { DOCUMENT_PAGE_SIZE } from '@state/documents/document-library-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { documentPage, userDocumentFixture } from '@testing/documents';
+import { iconOf } from '@testing/overlays';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { Documents } from './documents';
 
@@ -67,6 +75,40 @@ describe('Documents', () => {
     return harness.routeNativeElement as HTMLElement;
   }
 
+  function searchField(): HTMLInputElement {
+    return getByRole<HTMLInputElement>(element(), 'searchbox', {
+      name: 'Filter documents by name',
+    });
+  }
+
+  /** Named "Loading…" while a page is on the wire, so either label finds it. */
+  function loadMoreButton(): HTMLButtonElement | null {
+    return queryByRole<HTMLButtonElement>(element(), 'button', { name: /^(Load more|Loading…)$/ });
+  }
+
+  /** The row names, read off each row's download button, the one control every row has. */
+  function rowNames(): (string | undefined)[] {
+    return queryAllByRole(element(), 'button', { name: /^Download / }).map((button) =>
+      button.getAttribute('aria-label')?.replace(/^Download /, ''),
+    );
+  }
+
+  /** One chevron per group header. */
+  function groupToggles(): HTMLButtonElement[] {
+    return queryAllByRole<HTMLButtonElement>(element(), 'button', { name: /^(Collapse|Expand) / });
+  }
+
+  /** The count the toolbar draws; aria-hidden, so it has no role to be found by. */
+  function visibleCount(): HTMLElement | null {
+    return element().querySelector('p[aria-hidden="true"]');
+  }
+
+  function emptyState(): HTMLElement {
+    const empty = element().querySelector<HTMLElement>('app-empty-state');
+    expect(empty).not.toBeNull();
+    return empty!;
+  }
+
   /** The unfiltered listing; refuses a request carrying `type=`, so a stale origin filter fails. */
   function expectListing(): TestRequest {
     return backend.expectOne(
@@ -97,10 +139,9 @@ describe('Documents', () => {
 
   /** Types into the field and waits out the debounce on real timers. */
   async function type(term: string): Promise<void> {
-    const field = element().querySelector<HTMLInputElement>('.search__field');
-    expect(field).not.toBeNull();
-    field!.value = term;
-    field!.dispatchEvent(new Event('input'));
+    const field = searchField();
+    field.value = term;
+    field.dispatchEvent(new Event('input'));
     await harness.fixture.whenStable();
 
     await new Promise((resolve) => setTimeout(resolve, DEBOUNCE_MS));
@@ -127,7 +168,7 @@ describe('Documents', () => {
 
     // `afterEach`'s `verify()` is what makes this "exactly one".
     expect(element().querySelectorAll('app-document-row')).toHaveLength(2);
-    expect(element().querySelector('h1')?.textContent?.trim()).toBe('Documents');
+    expect(getByRole(element(), 'heading', { level: 1 }).textContent?.trim()).toBe('Documents');
   });
 
   it('renders each flat row: glyph, name, size, date, badge, and the conversation link', async () => {
@@ -147,22 +188,22 @@ describe('Documents', () => {
     const rows = [...element().querySelectorAll('app-document-row')];
     expect(rows).toHaveLength(2);
 
-    const first = rows[0]!;
-    expect(first.querySelector('.document-row__glyph--fail')).not.toBeNull();
-    expect(first.querySelector('.document-row__name')?.textContent?.trim()).toBe('q3-report.pdf');
-    expect(first.querySelector('.document-row__size')?.textContent?.trim()).toBe('2.3 MB');
-    expect(first.querySelector('.document-row__date')?.textContent?.trim()).toBe(
-      formatShortDate(doc.dateCreated, true),
-    );
+    const first = rows[0]! as HTMLElement;
+    // The tone is the glyph's whole visual contract; there is no state to assert instead.
+    const glyph = first.querySelector('app-icon')!;
+    expect(iconOf(glyph)).toBe('bi-file-earmark-pdf');
+    expect(glyph.classList.contains('text-danger')).toBe(true);
+    expect(getByText(first, 'q3-report.pdf')).toBeTruthy();
+    expect(getByText(first, '2.3 MB')).toBeTruthy();
+    expect(getByText(first, formatShortDate(doc.dateCreated, true))).toBeTruthy();
 
     // The badge reads the row's own origin rather than a constant.
     for (const row of rows) {
       expect(row.querySelector('app-source-badge')?.textContent?.trim()).toBe('Uploaded');
     }
 
-    const link = first.querySelector<HTMLAnchorElement>('.document-row__conversation');
-    expect(link?.textContent?.trim()).toBe('Quarterly review');
-    expect(link?.getAttribute('href')).toBe(`/chat/${doc.conversationId}`);
+    const link = getByRole(first, 'link', { name: 'Quarterly review' });
+    expect(link.getAttribute('href')).toBe(`/chat/${doc.conversationId}`);
   });
 
   it('mints the signed download link on click, and never on render', async () => {
@@ -171,19 +212,18 @@ describe('Documents', () => {
 
     backend.expectNone((request) => request.url.includes('/api/documents/conversations/'));
 
-    const button = element().querySelector<HTMLButtonElement>(
-      '[aria-label="Download q3-report.pdf"]',
-    );
-    expect(button).not.toBeNull();
-    button!.click();
+    const button = getByRole<HTMLButtonElement>(element(), 'button', {
+      name: 'Download q3-report.pdf',
+    });
+    button.click();
     await harness.fixture.whenStable();
 
     const request = backend.expectOne(
       `${TEST_API_BASE_URL}/api/documents/conversations/${doc.conversationId}/${doc.id}`,
     );
     expect(request.request.method).toBe('GET');
-    expect(button!.disabled).toBe(true);
-    expect(button!.querySelector('.kit-spinner')).not.toBeNull();
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute('aria-busy')).toBe('true');
 
     request.flush({
       downloadUrl: 'https://acct.blob.core.windows.net/documents/8f3/q3-report.pdf?sig=secret',
@@ -194,7 +234,7 @@ describe('Documents', () => {
 
     expect(clicks).toHaveLength(1);
     expect(clicks[0]?.download).toBe('q3-report.pdf');
-    expect(button!.disabled).toBe(false);
+    expect(button.disabled).toBe(false);
   });
 
   it('offers a retry on a failure, instead of the listing — and instead of the toolbar', async () => {
@@ -205,17 +245,15 @@ describe('Documents', () => {
     });
     await harness.fixture.whenStable();
 
-    const panel = element().querySelector('app-error-panel');
+    const panel = element().querySelector<HTMLElement>('app-error-panel')!;
     expect(panel).not.toBeNull();
-    expect(panel?.querySelector('.error-panel__heading')?.textContent?.trim()).toBe(
-      'Documents couldn’t load',
-    );
-    expect(panel?.querySelector('.error-panel__trace')?.textContent).toContain('Trace ID:');
-    expect(element().querySelector('.documents__list')).toBeNull();
+    expect(getByText(panel, 'Documents couldn’t load')).toBeTruthy();
+    expect(getByText(panel, /Trace ID:/)).toBeTruthy();
+    expect(queryByRole(element(), 'list')).toBeNull();
     expect(element().querySelector('app-search-input')).toBeNull();
-    expect(element().querySelector('.documents__group-toggle')).toBeNull();
+    expect(queryByRole(element(), 'switch')).toBeNull();
 
-    panel?.querySelector<HTMLButtonElement>('button')?.click();
+    getByRole(panel, 'button', { name: 'Retry' }).click();
     await harness.fixture.whenStable();
 
     const retried = expectListing();
@@ -228,16 +266,6 @@ describe('Documents', () => {
   });
 
   describe('paging', () => {
-    function loadMoreButton(): HTMLButtonElement | null {
-      return element().querySelector<HTMLButtonElement>('.documents__more button');
-    }
-
-    function rowNames(): (string | undefined)[] {
-      return [...element().querySelectorAll('.document-row__name')].map((row) =>
-        row.textContent?.trim(),
-      );
-    }
-
     /** Opens with a full first page that leaves more behind. */
     async function openPaged(totalCount = 60): Promise<void> {
       await harness.navigateByUrl('/documents?view=flat', Documents);
@@ -304,13 +332,13 @@ describe('Documents', () => {
     it('announces the busy state through the region that already carries the count', async () => {
       await openPaged(312);
 
-      const status = element().querySelector('[role="status"]');
-      expect(status?.textContent?.trim()).toBe('Showing 25 of 312 documents');
+      const status = getByRole(element(), 'status');
+      expect(status.textContent?.trim()).toBe('Showing 25 of 312 documents');
 
       loadMoreButton()!.click();
       await harness.fixture.whenStable();
 
-      expect(status?.textContent?.trim()).toBe('Showing 25 of 312 documents, loading more…');
+      expect(status.textContent?.trim()).toBe('Showing 25 of 312 documents, loading more…');
 
       expectListing().flush(
         documentPage([], { totalCount: 312, pageSize: DOCUMENT_PAGE_SIZE, skip: 25 }),
@@ -381,7 +409,7 @@ describe('Documents', () => {
       loadMoreButton()!.click();
       await harness.fixture.whenStable();
 
-      const field = element().querySelector<HTMLInputElement>('.search__field')!;
+      const field = searchField();
       field.focus();
 
       expectListing().flush(
@@ -413,11 +441,7 @@ describe('Documents', () => {
       );
       await harness.fixture.whenStable();
 
-      const rows = [...element().querySelectorAll('app-document-row')];
-      expect(rows).toHaveLength(1);
-      expect(rows[0]?.querySelector('.document-row__name')?.textContent?.trim()).toBe(
-        'alpha-plan.pdf',
-      );
+      expect(rowNames()).toEqual(['alpha-plan.pdf']);
     });
 
     it('replaces history while refining, and pushes at on and off', async () => {
@@ -467,20 +491,14 @@ describe('Documents', () => {
       );
       await harness.fixture.whenStable();
 
-      const rows = [...element().querySelectorAll('app-document-row')];
-      expect(rows).toHaveLength(1);
-      expect(rows[0]?.querySelector('.document-row__name')?.textContent?.trim()).toBe(
-        'beta-notes.txt',
-      );
-      expect(element().querySelector<HTMLInputElement>('.search__field')?.value).toBe('beta');
+      expect(rowNames()).toEqual(['beta-notes.txt']);
+      expect(searchField().value).toBe('beta');
     });
   });
 
   describe('the view toggle', () => {
     function groupSwitch(): HTMLInputElement {
-      const input = element().querySelector<HTMLInputElement>('.documents__group-toggle input');
-      expect(input).not.toBeNull();
-      return input!;
+      return getByRole<HTMLInputElement>(element(), 'switch', { name: 'Group by conversation' });
     }
 
     it('defaults to grouped, records only the deviation, and always pushes', async () => {
@@ -488,21 +506,21 @@ describe('Documents', () => {
 
       expect(groupSwitch().checked).toBe(true);
       expect(groupSwitch().getAttribute('role')).toBe('switch');
-      expect(element().querySelectorAll('.documents__group-header')).toHaveLength(2);
+      expect(groupToggles()).toHaveLength(2);
 
       groupSwitch().click();
       await harness.fixture.whenStable();
 
       expect(url()).toBe('/documents?view=flat');
       expect(groupSwitch().checked).toBe(false);
-      expect(element().querySelectorAll('.documents__group-header')).toHaveLength(0);
+      expect(groupToggles()).toHaveLength(0);
 
       groupSwitch().click();
       await harness.fixture.whenStable();
 
       // Toggling back removes the key rather than writing `view=grouped`.
       expect(url()).toBe('/documents');
-      expect(element().querySelectorAll('.documents__group-header')).toHaveLength(2);
+      expect(groupToggles()).toHaveLength(2);
 
       // Both transitions pushed, so back walks through them.
       await goBack();
@@ -515,7 +533,7 @@ describe('Documents', () => {
       await open('/documents?view=list', twoConversations());
 
       expect(groupSwitch().checked).toBe(true);
-      expect(element().querySelectorAll('.documents__group-header')).toHaveLength(2);
+      expect(groupToggles()).toHaveLength(2);
     });
 
     it('lets the term and the view survive each other', async () => {
@@ -535,9 +553,7 @@ describe('Documents', () => {
 
   describe('the assistant-created filter', () => {
     function sourceSwitch(): HTMLInputElement {
-      const input = element().querySelector<HTMLInputElement>('.documents__source-toggle input');
-      expect(input).not.toBeNull();
-      return input!;
+      return getByRole<HTMLInputElement>(element(), 'switch', { name: 'Generated only' });
     }
 
     it('is off by default and sends no origin with the request', async () => {
@@ -557,9 +573,7 @@ describe('Documents', () => {
       );
       await harness.fixture.whenStable();
 
-      expect(element().querySelector('.documents__count')?.textContent?.trim()).toBe(
-        'Showing 1 of 1 generated document',
-      );
+      expect(visibleCount()?.textContent?.trim()).toBe('Showing 1 of 1 generated document');
     });
 
     it('narrows the listing at the server, records only the deviation, and always pushes', async () => {
@@ -620,11 +634,11 @@ describe('Documents', () => {
       expectGeneratedListing().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
       await harness.fixture.whenStable();
 
-      const empty = element().querySelector('app-empty-state');
-      expect(empty?.textContent).toContain('No generated documents yet');
-      expect(empty?.textContent).not.toContain('Nothing uploaded yet');
+      const empty = emptyState();
+      expect(empty.textContent).toContain('No generated documents yet');
+      expect(empty.textContent).not.toContain('Nothing uploaded yet');
 
-      empty?.querySelector<HTMLButtonElement>('button')?.click();
+      getByRole(empty, 'button', { name: 'Show every document' }).click();
       await harness.fixture.whenStable();
 
       // The button went with its branch.
@@ -640,11 +654,11 @@ describe('Documents', () => {
       expectGeneratedListing().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
       await harness.fixture.whenStable();
 
-      expect(element().querySelector('.empty-state__heading')?.textContent?.trim()).toBe(
+      expect(getByRole(emptyState(), 'heading').textContent?.trim()).toBe(
         'No documents match “summary”',
       );
 
-      element().querySelector<HTMLButtonElement>('app-empty-state button')?.click();
+      getByRole(emptyState(), 'button', { name: 'Clear filter' }).click();
       await harness.fixture.whenStable();
 
       expect(url()).toBe('/documents?source=generated');
@@ -713,20 +727,15 @@ describe('Documents', () => {
       });
       await open('/documents', [alpha, beta, alphaOlder]);
 
-      const headers = [...element().querySelectorAll('.documents__group-header')];
-      expect(headers).toHaveLength(2);
+      expect(groupToggles()).toHaveLength(2);
 
-      const name = headers[0]?.querySelector<HTMLAnchorElement>('.documents__group-name');
-      expect(name?.textContent?.trim()).toBe('Alpha');
-      expect(name?.getAttribute('href')).toBe(`/chat/${alpha.conversationId}`);
-      expect(headers[0]?.querySelector('.documents__group-count')?.textContent?.trim()).toBe(
-        '2 files',
-      );
-      expect(headers[1]?.querySelector('.documents__group-count')?.textContent?.trim()).toBe(
-        '1 file',
-      );
+      // The headers' links are the only ones: grouped rows drop their conversation link.
+      const links = getAllByRole(element(), 'link');
+      expect(links.map((link) => link.textContent?.trim())).toEqual(['Alpha', 'Beta']);
+      expect(links[0]?.getAttribute('href')).toBe(`/chat/${alpha.conversationId}`);
+      expect(getByText(element(), '2 files')).toBeTruthy();
+      expect(getByText(element(), '1 file')).toBeTruthy();
 
-      expect(element().querySelector('.document-row__conversation')).toBeNull();
       expect(element().querySelectorAll('app-source-badge')).toHaveLength(3);
     });
 
@@ -738,9 +747,7 @@ describe('Documents', () => {
       });
       await open('/documents', [alpha]);
 
-      expect(element().querySelector('.documents__group-count')?.textContent?.trim()).toBe(
-        '1 of 8 files',
-      );
+      expect(getByText(element(), '1 of 8 files')).toBeTruthy();
     });
 
     it('updates a group’s count as Load more appends rows to it', async () => {
@@ -755,7 +762,7 @@ describe('Documents', () => {
       );
       await harness.fixture.whenStable();
 
-      element().querySelector<HTMLButtonElement>('.documents__more button')!.click();
+      loadMoreButton()!.click();
       await harness.fixture.whenStable();
 
       expectListing().flush(
@@ -773,31 +780,30 @@ describe('Documents', () => {
       );
       await harness.fixture.whenStable();
 
-      expect(element().querySelector('.documents__group-count')?.textContent?.trim()).toBe(
-        '2 of 8 files',
-      );
-      expect(element().querySelectorAll('.documents__group-header')).toHaveLength(1);
+      expect(getByText(element(), '2 of 8 files')).toBeTruthy();
+      expect(groupToggles()).toHaveLength(1);
     });
 
     it('collapses a group from its chevron, removing its rows from the DOM', async () => {
       await open('/documents', twoConversations());
       expect(element().querySelectorAll('app-document-row')).toHaveLength(2);
 
-      const chevron = element().querySelector<HTMLButtonElement>('.documents__group-chevron');
-      expect(chevron?.getAttribute('aria-expanded')).toBe('true');
-      expect(chevron?.getAttribute('aria-controls')).not.toBeNull();
+      const chevron = getByRole(element(), 'button', { name: 'Collapse Alpha' });
+      expect(chevron.getAttribute('aria-expanded')).toBe('true');
+      expect(chevron.getAttribute('aria-controls')).not.toBeNull();
 
-      chevron!.click();
+      chevron.click();
       await harness.fixture.whenStable();
 
-      expect(chevron?.getAttribute('aria-expanded')).toBe('false');
+      expect(chevron.getAttribute('aria-expanded')).toBe('false');
+      expect(chevron.getAttribute('aria-label')).toBe('Expand Alpha');
       expect(element().querySelectorAll('app-document-row')).toHaveLength(1);
-      expect(element().querySelectorAll('.documents__group-header')).toHaveLength(2);
+      expect(groupToggles()).toHaveLength(2);
 
-      chevron!.click();
+      chevron.click();
       await harness.fixture.whenStable();
 
-      expect(chevron?.getAttribute('aria-expanded')).toBe('true');
+      expect(chevron.getAttribute('aria-expanded')).toBe('true');
       expect(element().querySelectorAll('app-document-row')).toHaveLength(2);
     });
   });
@@ -806,17 +812,14 @@ describe('Documents', () => {
     it('renders the never-uploaded state, with its exact copy and no action', async () => {
       await open('/documents', []);
 
-      const empty = element().querySelector('app-empty-state');
-      expect(empty).not.toBeNull();
-      expect(empty?.querySelector('app-ridgeline')).not.toBeNull();
-      expect(empty?.querySelector('.empty-state__heading')?.textContent?.trim()).toBe(
-        'Nothing uploaded yet',
-      );
-      expect(empty?.querySelector('.empty-state__message')?.textContent?.trim()).toBe(
-        'Attach files in any conversation and they’ll appear here.',
-      );
-      expect(empty?.querySelector('button')).toBeNull();
-      expect(empty?.querySelector('a')).toBeNull();
+      const empty = emptyState();
+      expect(empty.querySelector('app-ridgeline')).not.toBeNull();
+      expect(getByRole(empty, 'heading').textContent?.trim()).toBe('Nothing uploaded yet');
+      expect(
+        getByText(empty, 'Attach files in any conversation and they’ll appear here.'),
+      ).toBeTruthy();
+      expect(queryByRole(empty, 'button')).toBeNull();
+      expect(queryByRole(empty, 'link')).toBeNull();
     });
 
     it('names the term on a zero-result deep link rather than the empty library', async () => {
@@ -824,7 +827,7 @@ describe('Documents', () => {
       expectListing().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
       await harness.fixture.whenStable();
 
-      expect(element().querySelector('.empty-state__heading')?.textContent?.trim()).toBe(
+      expect(getByRole(emptyState(), 'heading').textContent?.trim()).toBe(
         'No documents match “ghost”',
       );
     });
@@ -836,15 +839,11 @@ describe('Documents', () => {
       expectListing().flush(documentPage([], { pageSize: DOCUMENT_PAGE_SIZE }));
       await harness.fixture.whenStable();
 
-      const empty = element().querySelector('app-empty-state');
-      expect(empty?.querySelector('.empty-state__heading')?.textContent?.trim()).toBe(
-        'No documents match “zzz”',
-      );
-      expect(empty?.querySelector('.empty-state__message')?.textContent?.trim()).toBe(
-        'Filters cover file names only.',
-      );
+      const empty = emptyState();
+      expect(getByRole(empty, 'heading').textContent?.trim()).toBe('No documents match “zzz”');
+      expect(getByText(empty, 'Filters cover file names only.')).toBeTruthy();
 
-      empty?.querySelector<HTMLButtonElement>('button')?.click();
+      getByRole(empty, 'button', { name: 'Clear filter' }).click();
       await harness.fixture.whenStable();
 
       expect(url()).toBe('/documents');
@@ -852,7 +851,7 @@ describe('Documents', () => {
       await harness.fixture.whenStable();
       expect(element().querySelectorAll('app-document-row')).toHaveLength(2);
       // The button went with the empty state.
-      expect(document.activeElement?.classList.contains('search__field')).toBe(true);
+      expect(document.activeElement).toBe(searchField());
     });
   });
 
@@ -864,28 +863,25 @@ describe('Documents', () => {
       );
       await harness.fixture.whenStable();
 
-      const visible = element().querySelector('.documents__count');
+      const visible = visibleCount();
       expect(visible?.textContent?.trim()).toBe('Showing 2 of 312 documents');
       expect(visible?.getAttribute('aria-hidden')).toBe('true');
 
-      const status = element().querySelector('[role="status"]');
-      expect(status?.textContent?.trim()).toBe('Showing 2 of 312 documents');
+      expect(getByRole(element(), 'status').textContent?.trim()).toBe('Showing 2 of 312 documents');
     });
 
     it('withholds the count while the first page loads', async () => {
       await harness.navigateByUrl('/documents', Documents);
 
-      expect(element().querySelector('.documents__count')).toBeNull();
-      expect(element().querySelector('[role="status"]')?.textContent?.trim()).toBe('');
+      expect(visibleCount()).toBeNull();
+      expect(getByRole(element(), 'status').textContent?.trim()).toBe('');
 
       expectListing().flush(
         documentPage([userDocumentFixture()], { pageSize: DOCUMENT_PAGE_SIZE }),
       );
       await harness.fixture.whenStable();
 
-      expect(element().querySelector('.documents__count')?.textContent?.trim()).toBe(
-        'Showing 1 of 1 document',
-      );
+      expect(visibleCount()?.textContent?.trim()).toBe('Showing 1 of 1 document');
     });
   });
 });

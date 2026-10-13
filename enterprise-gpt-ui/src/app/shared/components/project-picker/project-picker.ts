@@ -37,7 +37,6 @@ const PANEL_WIDTH = 320;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
   templateUrl: './project-picker.html',
-  styleUrl: './project-picker.scss',
 })
 export class ProjectPicker {
   private readonly document = inject(DOCUMENT);
@@ -230,7 +229,7 @@ export class ProjectPicker {
   private rows(): HTMLElement[] {
     const panel = this.panelRef();
 
-    return panel ? [...panel.nativeElement.querySelectorAll<HTMLElement>('.picker__option')] : [];
+    return panel ? [...panel.nativeElement.querySelectorAll<HTMLElement>('[data-picker-row]')] : [];
   }
 
   /** The index of the focused row, or -1 when focus is in the search field. */

@@ -1,22 +1,26 @@
-<div class="reasoning" [class.reasoning--expanded]="expanded()">
+<div class="reasoning rounded-3" [class.reasoning--expanded]="expanded()" [class.pb-3]="expanded()">
   <button
     type="button"
-    class="reasoning__toggle"
+    class="d-flex align-items-center gap-2 w-100 px-3 pt-2 border-0 rounded-3 bg-transparent text-body-secondary text-start small"
+    [class.pb-2]="!expanded()"
     [attr.aria-expanded]="expanded()"
     [attr.aria-controls]="expanded() ? bodyId : null"
     (click)="toggle()"
   >
     <app-icon
-      class="reasoning__chevron"
+      class="flex-shrink-0 small"
       [name]="expanded() ? 'bi-chevron-down' : 'bi-chevron-right'"
     />
-    <span class="reasoning__label">Reasoning</span>
+    <span class="fw-semibold">Reasoning</span>
     @if (duration(); as duration) {
-      <span class="reasoning__duration font-mono">{{ duration }}</span>
+      <span class="font-monospace small">{{ duration }}</span>
     }
   </button>
 
   @if (expanded()) {
-    <div class="reasoning__body" [id]="bodyId">{{ text() }}</div>
+    <!-- The span hugs its text: under `pre-wrap` an indent would render. -->
+    <div class="small text-body-secondary mx-3 mt-2" [id]="bodyId">
+      <span class="text-pre-wrap text-break">{{ text() }}</span>
+    </div>
   }
 </div>

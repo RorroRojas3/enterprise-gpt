@@ -27,6 +27,7 @@ import { SidebarProjectRow } from './project-row';
   imports: [Icon, SidebarProjectRow],
   templateUrl: './favorite-projects.html',
   styleUrl: './favorite-projects.scss',
+  host: { class: 'd-block' },
 })
 export class SidebarFavorites {
   private readonly _injector = inject(Injector);

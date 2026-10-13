@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { getByRole, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { McpDto } from '@shared/models/api/mcp.model';
 import { McpCredentialStore } from '@state/mcp-credential-store';
@@ -55,7 +56,7 @@ describe('McpCredentialDialog', () => {
   }
 
   function submitButton(): HTMLButtonElement {
-    return host().querySelector('button[type="submit"]') as HTMLButtonElement;
+    return getByRole(host(), 'button', { name: /^(Save|Replace) key$/ });
   }
 
   async function open(server: McpDto = githubFixture()): Promise<McpDto> {
@@ -90,14 +91,16 @@ describe('McpCredentialDialog', () => {
     await open();
 
     expect(host().textContent).toContain('GitHub');
-    expect(host().querySelector('.btn-outline-danger')).toBeNull();
+    expect(queryByRole(host(), 'button', { name: 'Remove key' })).toBeNull();
     expect(submitButton().textContent?.trim()).toBe('Save key');
   });
 
   it('offers removal and a replace verb once a key is stored', async () => {
     await open(githubFixture({ hasUserApiKey: true, apiKeyHint: 'wxyz' }));
 
-    expect(host().querySelector('.btn-outline-danger')?.textContent?.trim()).toBe('Remove key');
+    expect(getByRole(host(), 'button', { name: 'Remove key' }).classList).toContain(
+      'btn-outline-danger',
+    );
     expect(submitButton().textContent?.trim()).toBe('Replace key');
   });
 
@@ -181,7 +184,7 @@ describe('McpCredentialDialog', () => {
       .flush(PROBLEM_FIXTURES.forbidden, { status: 403, statusText: 'Forbidden' });
     await fixture.whenStable();
 
-    expect(host().querySelector('.mcp-key__summary')?.textContent).toBeTruthy();
+    expect(getByRole(host(), 'alert').textContent?.trim()).toBeTruthy();
     expect(host().querySelector('#mcp-key-input')).not.toBeNull();
   });
 

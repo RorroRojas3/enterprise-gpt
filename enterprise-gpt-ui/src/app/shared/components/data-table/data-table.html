@@ -1,7 +1,11 @@
-<div class="table-notice"><ng-content select="[tableNotice]" /></div>
+<div class="d-empty-none mb-2"><ng-content select="[tableNotice]" /></div>
 
 @if (loading()) {
-  <div class="table-skeleton" [attr.aria-busy]="true" [attr.aria-label]="'Loading ' + label()">
+  <div
+    class="vstack gap-3 p-3 border rounded-4 bg-surface"
+    [attr.aria-busy]="true"
+    [attr.aria-label]="'Loading ' + label()"
+  >
     @for (placeholder of skeletonPlaceholders(); track $index) {
       <app-skeleton variant="text" height="18px" />
     }
@@ -10,7 +14,7 @@
   <ng-content select="[tableEmpty]" />
 } @else if (isNarrow()) {
   <!-- Cards restructure the row, so the table semantics give way to a list. -->
-  <ul class="table-cards" [attr.aria-label]="label()">
+  <ul class="list-unstyled vstack gap-2 mb-0" [attr.aria-label]="label()">
     @for (view of rowViews(); track view.key) {
       @let slots = columnsBySlot();
       <li>
@@ -50,11 +54,11 @@
             }
           </div>
           <!-- Labelled: a card has no column header to give each value its meaning. -->
-          <dl cardRowMeta class="card-meta">
+          <dl cardRowMeta class="card-meta mt-1 mb-0">
             @for (column of slots.meta; track column.key) {
-              <div class="card-meta__pair">
-                <dt class="card-meta__label">{{ column.header }}</dt>
-                <dd class="card-meta__value">
+              <div>
+                <dt class="fw-medium">{{ column.header }}</dt>
+                <dd class="text-body mb-0">
                   @let template = cellTemplates().get(column.key) ?? null;
                   @if (template) {
                     <ng-container [ngTemplateOutlet]="template" [ngTemplateOutletContext]="view" />
@@ -85,7 +89,7 @@
               }
             }
           </div>
-          <div cardRowActions>
+          <div cardRowActions class="flex-fill">
             @for (column of slots.actions; track column.key) {
               @let template = cellTemplates().get(column.key) ?? null;
               @if (template) {
@@ -102,18 +106,18 @@
 } @else {
   <!-- Explicit roles: `display: grid` strips a table's implicit ones in Chrome and Firefox. -->
   <table
-    class="data-table"
+    class="data-table table small mb-0 border rounded-4 bg-surface overflow-hidden"
     role="table"
     [attr.aria-label]="label()"
     [attr.aria-describedby]="summaryId"
     [style.--table-cols]="gridTemplate()"
   >
     <thead role="rowgroup">
-      <tr role="row">
+      <tr class="bg-body-tertiary" role="row">
         @if (selectable()) {
           <!-- The cell stays even when the control does not: it holds the 40px track
                the body rows are laid out against. -->
-          <th role="columnheader" scope="col">
+          <th class="eyebrow text-body-secondary" role="columnheader" scope="col">
             @if (headerSelectAll()) {
               <input
                 class="form-check-input"
@@ -129,7 +133,12 @@
           </th>
         }
         @for (column of visibleColumns(); track column.key) {
-          <th role="columnheader" scope="col" [class]="'align-' + (column.align ?? 'start')">
+          <th
+            class="eyebrow text-body-secondary"
+            role="columnheader"
+            scope="col"
+            [class]="alignClass[column.align ?? 'start']"
+          >
             <span [class.visually-hidden]="column.headerHidden">{{ column.header }}</span>
           </th>
         }
@@ -152,7 +161,7 @@
           }
           @for (column of visibleColumns(); track column.key) {
             @let template = cellTemplates().get(column.key) ?? null;
-            <td role="cell" [class]="'align-' + (column.align ?? 'start')">
+            <td role="cell" [class]="alignClass[column.align ?? 'start']">
               @if (template) {
                 <ng-container [ngTemplateOutlet]="template" [ngTemplateOutletContext]="view" />
               } @else {
@@ -170,4 +179,4 @@
   {{ loading() ? '' : resultSummary() }}
 </p>
 
-<div class="table-footer"><ng-content select="[tableFooter]" /></div>
+<div class="table-footer d-empty-none mt-3"><ng-content select="[tableFooter]" /></div>

@@ -1,10 +1,12 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { getAllByRole, getByRole, getByText, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MessageAttachmentDto } from '@shared/models/api/conversation.model';
 import { DocumentDownloadDto } from '@shared/models/api/document.model';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { iconOf } from '@testing/overlays';
 import { GeneratedFiles } from './generated-files';
 
 const CONVERSATION_ID = '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b';
@@ -68,23 +70,27 @@ describe('GeneratedFiles', () => {
     vi.restoreAllMocks();
   });
 
+  /** The download control of the one chip on screen, idle or in flight. */
+  function action(): HTMLButtonElement {
+    return getByRole(host, 'button', { name: /^Download(ing)? generated file / });
+  }
+
   it('shows the file name, its extension glyph and its size', async () => {
-    expect(host.querySelector('.chip__name')?.textContent?.trim()).toBe('regional-summary.xlsx');
-    expect(host.querySelector('app-icon use')?.getAttribute('href')).toBe('#bi-file-earmark-excel');
-    expect(host.textContent).toContain('2 MB');
+    const chip = getByRole(host, 'group', { name: 'Generated file, regional-summary.xlsx' });
+    expect(getByText(chip, 'regional-summary.xlsx')).not.toBeNull();
+    expect(iconOf(chip)).toBe('bi-file-earmark-excel');
+    expect(chip.textContent).toContain('2 MB');
   });
 
   it('says the file was generated, in text as well as by its glyph', async () => {
     // Colour and an icon alone would not reach a reader who cannot see either.
-    expect(host.querySelector('.source-badge')?.textContent?.trim()).toBe('Generated');
-    expect(host.querySelector('.chip')?.getAttribute('aria-label')).toBe(
-      'Generated file, regional-summary.xlsx',
-    );
+    const chip = getByRole(host, 'group', { name: 'Generated file, regional-summary.xlsx' });
+    expect(getByText(chip, 'Generated')).not.toBeNull();
   });
 
   it('does not offer to remove a file the assistant made', async () => {
     // There is nothing to cancel and nothing to dismiss: it is already stored.
-    expect(host.querySelector('.chip__remove')).toBeNull();
+    expect(queryByRole(host, 'button', { name: /^(Remove|Dismiss) / })).toBeNull();
   });
 
   it('asks for no link until the chip is clicked', () => {
@@ -92,7 +98,7 @@ describe('GeneratedFiles', () => {
   });
 
   it('mints a link on click and hands it straight to the browser', async () => {
-    host.querySelector<HTMLButtonElement>('.chip__action')?.click();
+    action().click();
     await fixture.whenStable();
 
     backend.expectOne(downloadUrl(SPREADSHEET.id)).flush(SIGNED);
@@ -103,7 +109,7 @@ describe('GeneratedFiles', () => {
   });
 
   it('leaves the signed link nowhere it could outlive its few minutes', async () => {
-    host.querySelector<HTMLButtonElement>('.chip__action')?.click();
+    action().click();
     await fixture.whenStable();
     backend.expectOne(downloadUrl(SPREADSHEET.id)).flush(SIGNED);
     await fixture.whenStable();
@@ -117,7 +123,8 @@ describe('GeneratedFiles', () => {
     fixture.componentRef.setInput('attachments', [SPREADSHEET, DECK]);
     await fixture.whenStable();
 
-    const buttons = [...host.querySelectorAll<HTMLButtonElement>('.chip__action')];
+    const buttons = getAllByRole(host, 'button', { name: /^Download generated file / });
+    expect(buttons).toHaveLength(2);
     buttons[0]?.click();
     await fixture.whenStable();
 
@@ -132,17 +139,16 @@ describe('GeneratedFiles', () => {
     fixture.componentRef.setInput('attachments', []);
     await fixture.whenStable();
 
-    expect(host.querySelector('.chip')).toBeNull();
+    expect(queryByRole(host, 'group')).toBeNull();
+    expect(queryByRole(host, 'list')).toBeNull();
   });
 
   // A real button gives tab order and Enter/Space activation with no keydown handler to get wrong.
   it('is reachable and operable without a mouse', () => {
-    const action = host.querySelector<HTMLButtonElement>('.chip__action');
-
-    expect(action?.tagName).toBe('BUTTON');
-    expect(action?.type).toBe('button');
-    expect(action?.disabled).toBe(false);
-    expect(action?.hasAttribute('tabindex')).toBe(false);
+    expect(action().tagName).toBe('BUTTON');
+    expect(action().type).toBe('button');
+    expect(action().disabled).toBe(false);
+    expect(action().hasAttribute('tabindex')).toBe(false);
   });
 
   /**
@@ -150,27 +156,25 @@ describe('GeneratedFiles', () => {
    * `aria-disabled` plus a guard. jsdom has no focus fixup, so this asserts the mechanism instead.
    */
   it('stays focusable while the download is in flight', async () => {
-    const action = host.querySelector<HTMLButtonElement>('.chip__action');
-    action?.click();
+    action().click();
     await fixture.whenStable();
 
-    const inFlight = host.querySelector<HTMLButtonElement>('.chip__action');
+    const inFlight = action();
 
-    expect(inFlight?.disabled).toBe(false);
-    expect(inFlight?.getAttribute('aria-disabled')).toBe('true');
-    expect(inFlight?.getAttribute('aria-busy')).toBe('true');
+    expect(inFlight.disabled).toBe(false);
+    expect(inFlight.getAttribute('aria-disabled')).toBe('true');
+    expect(inFlight.getAttribute('aria-busy')).toBe('true');
 
     backend.expectOne(downloadUrl(SPREADSHEET.id)).flush(SIGNED);
     await fixture.whenStable();
   });
 
   it('ignores a second activation while the first is still in flight', async () => {
-    const action = host.querySelector<HTMLButtonElement>('.chip__action');
-    action?.click();
+    action().click();
     await fixture.whenStable();
 
     // The handler's guard: one request, not two.
-    host.querySelector<HTMLButtonElement>('.chip__action')?.click();
+    action().click();
     await fixture.whenStable();
 
     backend.expectOne(downloadUrl(SPREADSHEET.id)).flush(SIGNED);
@@ -178,18 +182,16 @@ describe('GeneratedFiles', () => {
   });
 
   it('says the assistant made the file on the control that takes focus', async () => {
-    const action = host.querySelector<HTMLButtonElement>('.chip__action');
-
     // Not only on the wrapping group: its name is announced on entry by some readers and not others,
     // and this is the element a keyboard user actually lands on.
-    expect(action?.getAttribute('aria-label')).toBe(
+    expect(action().getAttribute('aria-label')).toBe(
       'Download generated file regional-summary.xlsx',
     );
 
-    action?.click();
+    action().click();
     await fixture.whenStable();
 
-    expect(host.querySelector('.chip__action')?.getAttribute('aria-label')).toBe(
+    expect(action().getAttribute('aria-label')).toBe(
       'Downloading generated file regional-summary.xlsx',
     );
 

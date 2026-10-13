@@ -151,14 +151,14 @@ export class LazyRendererLoader {
     };
 
     set('background', '--surface');
-    set('primaryColor', '--surface-2');
+    set('primaryColor', '--bs-tertiary-bg');
     set('primaryTextColor', '--bs-body-color');
     set('textColor', '--bs-body-color');
     set('primaryBorderColor', '--bs-border-color');
     set('nodeBorder', '--bs-border-color');
-    set('lineColor', '--muted');
+    set('lineColor', '--bs-secondary-color');
     set('secondaryColor', '--think-bg');
-    set('tertiaryColor', '--active-bg');
+    set('tertiaryColor', '--bs-secondary-bg');
 
     return {
       startOnLoad: false,
@@ -182,7 +182,9 @@ export class LazyRendererLoader {
 
   private _mathOptions(): KatexOptions {
     // Omitted when unresolved: KaTeX takes `errorColor: ''` literally, hiding malformed math.
-    const fail = getComputedStyle(this._document.documentElement).getPropertyValue('--fail').trim();
+    const fail = getComputedStyle(this._document.documentElement)
+      .getPropertyValue('--bs-danger')
+      .trim();
 
     return {
       output: 'htmlAndMathml',

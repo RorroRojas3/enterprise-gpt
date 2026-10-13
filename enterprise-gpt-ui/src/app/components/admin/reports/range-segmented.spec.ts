@@ -40,7 +40,6 @@ describe('RangeSegmented', () => {
 
     expect(pressed).toHaveLength(1);
     expect(pressed[0]!.textContent?.trim()).toBe('90 days');
-    expect(pressed[0]!.classList.contains('segmented__option--active')).toBe(true);
   });
 
   it('emits the range a reader chose', async () => {

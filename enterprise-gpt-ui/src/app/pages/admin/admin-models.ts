@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, viewChild } from '@angular/core';
 import { ModelDto } from '@shared/models/api/chat-model.model';
 import { ProviderMeta } from '@shared/models/api/provider.model';
-import { TableColumn } from '@shared/models/table-column.model';
 import { isRetired } from '@shared/utils/catalog/model-status';
 import { providerMeta } from '@shared/utils/catalog/provider-meta';
 import { canRetry } from '@core/errors/error-message';
@@ -18,6 +17,7 @@ import { MenuItem } from '@shared/directives/menu-item';
 import { TableCell } from '@shared/directives/table-cell';
 import { DeactivateModelDialog } from '@components/admin/models/deactivate-model-dialog';
 import { ModelFormDialog } from '@components/admin/models/model-form-dialog';
+import { injectAdminColumns } from './admin-columns';
 import { formatContext, formatTokens } from './model-format';
 
 /**
@@ -41,6 +41,7 @@ import { formatContext, formatTokens } from './model-format';
     TableCell,
   ],
   providers: [AdminModelsStore],
+  host: { class: 'd-block' },
   templateUrl: './admin-models.html',
   styleUrl: './admin-models.scss',
 })
@@ -62,7 +63,7 @@ export class AdminModels {
   );
 
   /** A field, since an array allocated in the template is a new binding on every check. */
-  protected readonly columns: readonly TableColumn<ModelDto>[] = [
+  protected readonly columns = injectAdminColumns<ModelDto>([
     { key: 'model', header: 'Model', width: 'minmax(0, 1.5fr)', mobile: 'title' },
     { key: 'provider', header: 'Provider', width: 'minmax(0, 1.1fr)', mobile: 'subtitle' },
     {
@@ -100,7 +101,7 @@ export class AdminModels {
       align: 'end',
       mobile: 'trailing',
     },
-  ];
+  ]);
 
   protected readonly trackKey = (model: ModelDto): string => model.id;
   protected readonly rowLabel = (model: ModelDto): string => model.name;

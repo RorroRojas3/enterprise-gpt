@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { getByRole, getByText, queryByRole } from '@testing-library/dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { AppError } from '@core/errors/app-error';
 import { buildAppError } from '@core/errors/build-app-error';
@@ -29,7 +30,7 @@ describe('TurnNoticeCard (frame 1h)', () => {
   }
 
   function card(): HTMLElement {
-    const element = host.querySelector<HTMLElement>('.notice');
+    const element = host.firstElementChild as HTMLElement | null;
     expect(element).not.toBeNull();
     return element as HTMLElement;
   }
@@ -38,8 +39,8 @@ describe('TurnNoticeCard (frame 1h)', () => {
     return [...host.querySelectorAll('use')].map((use) => use.getAttribute('href') ?? '');
   }
 
-  function title(): string {
-    return host.querySelector('.notice__title')?.textContent?.trim() ?? '';
+  function retry(): HTMLButtonElement | null {
+    return queryByRole<HTMLButtonElement>(host, 'button', { name: 'Retry' });
   }
 
   describe('the conversation-busy warning', () => {
@@ -48,9 +49,12 @@ describe('TurnNoticeCard (frame 1h)', () => {
     it('renders the warning panel as a single hourglass row with the frame copy', async () => {
       await render(busy, true);
 
-      expect(card().classList).toContain('notice--warn');
-      expect(card().classList).toContain('notice--row');
-      expect(title()).toBe('Another response is still running in this conversation.');
+      expect(card().classList).toContain('alert-warning');
+      // The one-line form: Retry shares the message's row.
+      expect(card().classList).toContain('d-flex');
+      // A sentence rather than a heading, so it keeps body weight.
+      const title = getByText(host, 'Another response is still running in this conversation.');
+      expect(title.classList).not.toContain('fw-semibold');
       expect(iconHrefs()).toContain('#bi-hourglass-split');
     });
 
@@ -60,16 +64,14 @@ describe('TurnNoticeCard (frame 1h)', () => {
       // No spinner, body or trace: nothing is awaited, and a second tab holding the lock is
       // not a defect.
       expect(host.querySelector('.spinner-border')).toBeNull();
-      expect(host.querySelector('.notice__body')).toBeNull();
-      expect(host.querySelector('.notice__trace')).toBeNull();
+      expect(host.querySelectorAll('p')).toHaveLength(0);
     });
 
     it('offers a manual Retry, drawn without an icon as the row variant is', async () => {
       await render(busy, true);
 
-      const retry = host.querySelector<HTMLButtonElement>('.notice__retry');
-      expect(retry?.textContent?.trim()).toBe('Retry');
-      expect(retry?.disabled).toBe(false);
+      expect(retry()?.textContent?.trim()).toBe('Retry');
+      expect(retry()?.disabled).toBe(false);
       expect(iconHrefs()).not.toContain('#bi-arrow-clockwise');
     });
 
@@ -78,7 +80,7 @@ describe('TurnNoticeCard (frame 1h)', () => {
       let retries = 0;
       fixture.componentInstance.retried.subscribe(() => (retries += 1));
 
-      host.querySelector<HTMLButtonElement>('.notice__retry')?.click();
+      getByRole(host, 'button', { name: 'Retry' }).click();
 
       expect(retries).toBe(1);
     });
@@ -88,9 +90,9 @@ describe('TurnNoticeCard (frame 1h)', () => {
     it('keeps the cut-off warning stacked, with its icon on the Retry', async () => {
       await render({ kind: 'cut-off' }, true);
 
-      expect(card().classList).toContain('notice--warn');
-      expect(card().classList).not.toContain('notice--row');
-      expect(title()).toBe('This response was cut off');
+      expect(card().classList).toContain('alert-warning');
+      expect(card().classList).not.toContain('d-flex');
+      expect(getByText(host, 'This response was cut off').classList).toContain('fw-semibold');
       expect(iconHrefs()).toContain('#bi-arrow-clockwise');
     });
 
@@ -100,15 +102,15 @@ describe('TurnNoticeCard (frame 1h)', () => {
         true,
       );
 
-      expect(card().classList).not.toContain('notice--warn');
-      expect(title()).toBe('Weather is unavailable');
-      expect(host.querySelector('.notice__title--fail')).not.toBeNull();
+      expect(card().classList).not.toContain('alert-warning');
+      expect(card().classList).toContain('card');
+      expect(getByText(host, 'Weather is unavailable').classList).toContain('text-danger-emphasis');
     });
 
     it('withholds Retry entirely when the caller does not offer one', async () => {
       await render({ kind: 'error', error: errorFrom(PROBLEM_FIXTURES.conversationBusy) }, false);
 
-      expect(host.querySelector('.notice__retry')).toBeNull();
+      expect(retry()).toBeNull();
     });
   });
 });

@@ -1,11 +1,5 @@
-:host {
-  display: block;
-  line-height: 0;
-}
-
 .ridge {
-  display: block;
-  stroke: var(--muted);
+  stroke: var(--bs-secondary-color);
 }
 
 .ridge--divider {
@@ -17,8 +11,8 @@
 .ridge--thinking {
   width: 76px;
   height: 16px;
-  // A dim accent, not --muted: the indicator reads as activity, not decoration.
-  stroke: var(--accent);
+  // A dim accent, not --bs-secondary-color: the indicator reads as activity, not decoration.
+  stroke: var(--bs-info);
   opacity: 0.28;
 }
 
@@ -36,7 +30,7 @@
 
 // The summit segment sits at full strength over the dimmed range behind it.
 .ridge__summit {
-  stroke: var(--accent);
+  stroke: var(--bs-info);
   opacity: 1;
 }
 

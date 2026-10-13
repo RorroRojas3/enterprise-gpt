@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { getByRole, queryByRole } from '@testing-library/dom';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BulkActionBar } from './bulk-action-bar';
 
 describe('BulkActionBar', () => {
@@ -16,7 +17,7 @@ describe('BulkActionBar', () => {
   it('stays out of the way until something is selected', async () => {
     const { host } = await render(0);
 
-    expect(host.querySelector('.bulk-bar')).toBeNull();
+    expect(queryByRole(host, 'region', { name: 'Bulk actions' })).toBeNull();
   });
 
   it('announces the count politely rather than taking focus', async () => {
@@ -31,6 +32,16 @@ describe('BulkActionBar', () => {
   it('names itself as a region so it can be reached deliberately', async () => {
     const { host } = await render(3);
 
-    expect(host.querySelector('[role="region"]')?.getAttribute('aria-label')).toBe('Bulk actions');
+    expect(getByRole(host, 'region', { name: 'Bulk actions' }).textContent).toContain('3 selected');
+  });
+
+  it('clears the selection on request', async () => {
+    const { fixture, host } = await render(3);
+    const cleared = vi.fn();
+    fixture.componentInstance.cleared.subscribe(cleared);
+
+    getByRole(host, 'button', { name: 'Clear' }).click();
+
+    expect(cleared).toHaveBeenCalledOnce();
   });
 });

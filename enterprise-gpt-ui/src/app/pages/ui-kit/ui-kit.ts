@@ -1,9 +1,10 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Attachment } from '@shared/models/attachment.model';
 import { TableColumn } from '@shared/models/table-column.model';
 import { AppError } from '@core/errors/app-error';
 import { ToastStore } from '@core/notifications/toast-store';
 import { AttachmentChip } from '@shared/components/attachment-chip/attachment-chip';
+import { AvatarInitials } from '@shared/components/avatar-initials/avatar-initials';
 import { BrandIcon } from '@shared/components/brand-icon/brand-icon';
 import { BrandLogo } from '@shared/components/brand-logo/brand-logo';
 import { BulkActionBar } from '@shared/components/bulk-action-bar/bulk-action-bar';
@@ -24,10 +25,12 @@ import { Skeleton } from '@shared/components/skeleton/skeleton';
 import { SourceBadge } from '@shared/components/source-badge/source-badge';
 import { StatusDot } from '@shared/components/status-dot/status-dot';
 import { Switch } from '@shared/components/switch/switch';
+import { ThemeToggle } from '@shared/components/theme-toggle/theme-toggle';
 import { UnavailablePanel } from '@shared/components/unavailable-panel/unavailable-panel';
 import { FileDropTarget } from '@shared/directives/file-drop-target';
 import { MenuItem } from '@shared/directives/menu-item';
 import { MenuSeparator } from '@shared/directives/menu-separator';
+import { MenuTriggerContent } from '@shared/directives/menu-trigger-content';
 import { TableCell } from '@shared/directives/table-cell';
 import { Tooltip } from '@shared/directives/tooltip';
 import { PermissionBadge } from '@components/admin/permission-badge';
@@ -40,15 +43,26 @@ interface DemoRow {
   readonly owner: string;
 }
 
+/** One set per pane, so each overlay opens inside, and in the theme of, the pane that asked. */
+function paneOverlays() {
+  return {
+    modalSm: signal(false),
+    modalMd: signal(false),
+    offcanvasStart: signal(false),
+    offcanvasEnd: signal(false),
+  };
+}
+
 /**
- * Both themes side by side, for what unit tests cannot check: dark-theme legibility and motion
- * stopping under `prefers-reduced-motion`. Development only.
+ * Both themes side by side, for what unit tests cannot check: dark-theme legibility, the top-layer
+ * overlays, and motion stopping under `prefers-reduced-motion`. Development only.
  */
 @Component({
   selector: 'app-ui-kit',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AttachmentChip,
+    AvatarInitials,
     BrandIcon,
     BrandLogo,
     BulkActionBar,
@@ -63,6 +77,7 @@ interface DemoRow {
     Menu,
     MenuItem,
     MenuSeparator,
+    MenuTriggerContent,
     Modal,
     Offcanvas,
     Paginator,
@@ -76,20 +91,39 @@ interface DemoRow {
     StatusDot,
     Switch,
     TableCell,
+    ThemeToggle,
     Tooltip,
     UnavailablePanel,
   ],
+  host: { class: 'd-block px-4 pt-4 pb-5' },
   templateUrl: './ui-kit.html',
-  styleUrl: './ui-kit.scss',
 })
 export class UiKit {
   protected readonly toasts = inject(ToastStore);
 
-  protected readonly modalOpen = signal(false);
-  protected readonly offcanvasOpen = signal(false);
+  protected readonly themes = ['light', 'dark'] as const;
+  protected readonly overlays = { light: paneOverlays(), dark: paneOverlays() };
+
   protected readonly selectedIds = signal<ReadonlySet<string>>(new Set<string>());
   protected readonly search = signal('');
   protected readonly page = signal(7);
+  protected readonly pageSizes: readonly number[] = [25, 50, 100];
+  protected readonly sizedPage = signal(1);
+  protected readonly pageSize = signal(25);
+  protected readonly pageCount = computed(() => Math.ceil(312 / this.pageSize()));
+
+  protected readonly favourite = signal(true);
+  protected readonly digest = signal(true);
+  protected readonly ranges: readonly number[] = [7, 30, 90];
+  protected readonly period = signal(30);
+  protected readonly models: readonly string[] = [
+    'GPT-5 Enterprise',
+    'Claude Sonnet',
+    'GPT-4.1 mini',
+  ];
+  protected readonly model = signal('GPT-5 Enterprise');
+  protected readonly activePill = signal('users');
+  protected readonly activeRow = signal('a');
 
   protected readonly switchOn = signal(true);
   /** Stands in for `SessionStore.canUploadFiles()`, which no dev session can toggle. */
@@ -178,6 +212,21 @@ export class UiKit {
 
   protected clearSelection(): void {
     this.selectedIds.set(new Set());
+  }
+
+  protected resize(size: number): void {
+    this.pageSize.set(size);
+    this.sizedPage.set(1);
+  }
+
+  protected pickPill(event: Event, id: string): void {
+    event.preventDefault();
+    this.activePill.set(id);
+  }
+
+  protected pickRow(event: Event, id: string): void {
+    event.preventDefault();
+    this.activeRow.set(id);
   }
 
   protected readonly demoError: AppError = {
