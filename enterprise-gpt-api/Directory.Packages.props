@@ -83,7 +83,13 @@
          Safe because Testcontainers declares a floor, not an exact pin, and uses SSH.NET only for its
          port-forwarding container — a path these tests never take. -->
     <PackageVersion Include="SSH.NET" Version="2026.0.0" />
-    <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.11" />
+    <!-- Direct pins: Microsoft.Data.SqlClient 7.0.2 brings Pkcs 9.0.13, and
+         Microsoft.AspNetCore.DataProtection 10.0.11 brings Xml (and through it Pkcs) 10.0.11, all
+         with known vulnerabilities (Pkcs: GHSA-2fmv-rv2c-59x7, GHSA-846f-f764-76mx; Xml:
+         GHSA-7hqp-7c5m-4vq6, GHSA-c399-9853-6jmj, GHSA-r955-8q5j-3h83). Drop them once those
+         packages require 10.0.13 themselves. -->
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
+    <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.13" />
     <PackageVersion Include="Testcontainers.MsSql" Version="4.13.0" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
   </ItemGroup>

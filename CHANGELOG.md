@@ -138,6 +138,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   appear on hover and on keyboard focus, rather than on any focus — so a click that moves focus
   programmatically no longer leaves a flyout behind for the pointer to clear.
 
+### Security
+
+- NuGet restore no longer fails on vulnerable transitive packages (NU1902/NU1903 are errors in this
+  build): `System.Security.Cryptography.Pkcs` and `System.Security.Cryptography.Xml` are now pinned to
+  10.0.13 in `Directory.Packages.props`, replacing the 9.0.13 and 10.0.11 versions pulled in through
+  `Microsoft.Data.SqlClient`, `Microsoft.AspNetCore.DataProtection` and `Microsoft.Identity.Web`. This
+  clears the .NET denial-of-service advisories GHSA-2fmv-rv2c-59x7 (CVE-2026-70162),
+  GHSA-846f-f764-76mx (CVE-2026-84008), GHSA-7hqp-7c5m-4vq6 (CVE-2026-96960), GHSA-c399-9853-6jmj
+  (CVE-2026-96959) and GHSA-r955-8q5j-3h83 (CVE-2026-96958).
+
 ## [1.0.0] - 2026-08-30
 
 First release of Enterprise GPT: a .NET 10 API and an Angular 21 client for enterprise AI chat with
