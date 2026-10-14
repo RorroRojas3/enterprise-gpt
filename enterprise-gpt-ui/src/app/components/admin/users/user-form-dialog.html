@@ -6,9 +6,9 @@
   (closed)="actions.cancelForm()"
 >
   <!-- novalidate: schema rules own validation; the browser's bubble would fight the inline one. -->
-  <form id="user-form" class="user-form" novalidate (submit)="submit($event)">
-    <div class="user-form__field">
-      <label class="form-label" for="user-form-email">Work email</label>
+  <form id="user-form" class="vstack gap-3" novalidate (submit)="submit($event)">
+    <div>
+      <label class="form-label small fw-semibold mb-1" for="user-form-email">Work email</label>
       <!-- No literal maxlength (NG8022): [formField] derives it from the schema's rule. -->
       <input
         id="user-form-email"
@@ -25,21 +25,21 @@
       @if (showErrorRegion()) {
         <!-- role="alert", since focus does not move on submit. track $index: two rules can
              emit identical text. -->
-        <div class="user-form__errors" id="user-form-email-errors" role="alert">
+        <div class="invalid-feedback d-block" id="user-form-email-errors" role="alert">
           @if (showEmailErrors()) {
             @for (message of emailErrors(); track $index) {
-              <p class="user-form__error">{{ message }}</p>
+              <p class="mb-0">{{ message }}</p>
             }
           }
           @for (message of unmatched(); track $index) {
-            <p class="user-form__error">{{ message }}</p>
+            <p class="mb-0">{{ message }}</p>
           }
         </div>
       }
     </div>
 
-    <div class="user-form__field">
-      <p class="form-label" id="user-form-permissions">Permissions</p>
+    <div>
+      <p class="form-label small fw-semibold mb-1" id="user-form-permissions">Permissions</p>
       <!-- A group label, not <label for>: a checklist has no single control to point at. -->
       <div role="group" aria-labelledby="user-form-permissions">
         <app-permission-checklist
@@ -51,7 +51,7 @@
           [retried]="retryPermissions"
         />
       </div>
-      <p class="user-form__note">
+      <p class="form-text mb-0">
         Every default permission is granted as well, whether or not it is checked here.
       </p>
     </div>
@@ -76,7 +76,7 @@
     [disabled]="!canSubmit()"
   >
     @if (actions.formBusy()) {
-      <span class="kit-spinner" aria-hidden="true"></span>
+      <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
     }
     Add user
   </button>

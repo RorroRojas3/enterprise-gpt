@@ -12,7 +12,7 @@ import { Icon } from '@shared/components/icon/icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [BrandLogo, Icon],
   templateUrl: './chat-empty-state.html',
-  styleUrl: './chat-empty-state.scss',
+  host: { class: 'd-flex flex-grow-1' },
 })
 export class ChatEmptyState {
   /**

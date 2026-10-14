@@ -12,7 +12,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { ProjectDocumentDto } from '@shared/models/api/project.model';
-import { fileGlyph } from '@shared/utils/documents/file-glyph';
+import { FILE_GLYPH_TEXT, fileGlyph } from '@shared/utils/documents/file-glyph';
 import { formatBytes } from '@shared/utils/format/bytes';
 import { formatShortDate } from '@shared/utils/format/relative-time';
 import { canRetry } from '@core/errors/error-message';
@@ -41,6 +41,7 @@ import { FileDropTarget } from '@shared/directives/file-drop-target';
   // Neither store is provided here: `ProjectDocumentsStore` is on the route so the tab count
   // survives a panel switch, and `UploadStore` on `ProjectDetail` so a tab switch does not cancel
   // a transfer. The composer uploads through its own instance.
+  host: { class: 'd-flex flex-column gap-3 mw-prose' },
   templateUrl: './project-files.html',
   styleUrl: './project-files.scss',
 })
@@ -59,6 +60,7 @@ export class ProjectFiles {
 
   protected readonly canRetry = canRetry;
   protected readonly glyph = fileGlyph;
+  protected readonly glyphText = FILE_GLYPH_TEXT;
 
   /** The document the removal confirmation names. Null keeps it closed. */
   protected readonly removeTarget = signal<ProjectDocumentDto | null>(null);
@@ -157,8 +159,8 @@ export class ProjectFiles {
     }
 
     const next =
-      this._host.nativeElement.querySelector<HTMLElement>('.files__browse') ??
-      this._host.nativeElement.querySelector<HTMLElement>('.files__action');
+      this._host.nativeElement.querySelector<HTMLElement>('[data-focus-next]') ??
+      this._host.nativeElement.querySelector<HTMLElement>('[data-row-anchor]');
 
     if (next !== null) {
       next.focus();

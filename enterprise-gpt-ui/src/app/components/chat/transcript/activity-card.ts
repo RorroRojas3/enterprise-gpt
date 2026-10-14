@@ -13,14 +13,14 @@ let nextId = 0;
 /**
  * The kind is a separate badge so no card reads "Calling Jira Cloud MCP", and `source` keeps the
  * server visible once `activityLabel` strips it from the label. Children render open; the
- * chevron reveals only the cost strip.
+ * chevron reveals only the cost strip. A group named by its label, so the tree reads as one.
  */
 @Component({
   selector: 'app-activity-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, KindBadge],
   templateUrl: './activity-card.html',
-  styleUrl: './activity-card.scss',
+  host: { class: 'd-block' },
 })
 export class ActivityCard {
   readonly activity = input.required<AssistantActivity>();
@@ -28,7 +28,9 @@ export class ActivityCard {
   /** How deep this card sits; 0 is a top-level card in the timeline. */
   readonly depth = input(0);
 
-  protected readonly detailId = `activity-usage-${nextId++}`;
+  private readonly id = nextId++;
+  protected readonly detailId = `activity-usage-${this.id}`;
+  protected readonly nameId = `activity-name-${this.id}`;
 
   /** The live region derives its own label from the same function; this one is not announced. */
   protected readonly label = computed(() => activityLabel(this.activity()));
@@ -53,6 +55,31 @@ export class ActivityCard {
 
   /** The styling level, so an agent nested five deep still renders legibly. */
   protected readonly level = computed(() => Math.min(this.depth(), MAX_STYLED_DEPTH));
+
+  /** Alternates the fill per level, so each child stands off the card it sits on. */
+  protected readonly cardClass = computed(() => {
+    switch (this.level()) {
+      case 0:
+        return 'border rounded-4 bg-surface px-3 py-2';
+      case 1:
+        return 'border rounded-3 bg-body-tertiary px-2 py-2';
+      default:
+        return 'border rounded-3 bg-surface px-2 py-2';
+    }
+  });
+
+  /** The cost strip borrows the fill its card is not using, or it would vanish into it. */
+  protected readonly usageFill = computed(() =>
+    this.level() === 1 ? 'bg-surface' : 'bg-body-tertiary',
+  );
+
+  /**
+   * Only the outermost rail insets below md: compounding ~40px per level leaves a third-level
+   * card no room for its label at 390px. Deeper rails keep the border.
+   */
+  protected readonly childrenInset = computed(() =>
+    this.level() === 0 ? 'ms-4 ps-3' : 'ms-0 ms-md-4 ps-2 ps-md-3',
+  );
 
   protected readonly usageEntries = computed(() => {
     const activity = this.activity();

@@ -1,16 +1,29 @@
-<article class="card-row">
-  <div class="card-row__main">
-    <div class="card-row__lead"><ng-content select="[cardRowLead]" /></div>
+<article class="card">
+  <div class="card-body vstack gap-2 py-2 px-3">
+    <div class="d-flex align-items-start gap-2">
+      <div class="d-empty-none"><ng-content select="[cardRowLead]" /></div>
 
-    <div class="card-row__text">
-      <div class="card-row__title"><ng-content select="[cardRowTitle]" /></div>
-      <div class="card-row__subtitle"><ng-content select="[cardRowSubtitle]" /></div>
-      <div class="card-row__meta"><ng-content select="[cardRowMeta]" /></div>
+      <div class="flex-fill min-w-0">
+        <div class="small fw-semibold"><ng-content select="[cardRowTitle]" /></div>
+        <div class="small text-body-secondary" data-card-slot="subtitle">
+          <ng-content select="[cardRowSubtitle]" />
+        </div>
+        <div class="small text-body-secondary" data-card-slot="meta">
+          <ng-content select="[cardRowMeta]" />
+        </div>
+      </div>
+
+      <!-- A single icon control belongs beside the title, where the table put it at the row's end. -->
+      <div class="d-flex flex-shrink-0 align-items-center gap-1" data-card-slot="trailing">
+        <ng-content select="[cardRowTrailing]" />
+      </div>
     </div>
 
-    <div class="card-row__trailing"><ng-content select="[cardRowTrailing]" /></div>
+    <div class="d-flex flex-wrap gap-2" data-card-slot="badges">
+      <ng-content select="[cardRowBadges]" />
+    </div>
+    <div class="d-flex gap-2" data-card-slot="actions">
+      <ng-content select="[cardRowActions]" />
+    </div>
   </div>
-
-  <div class="card-row__badges"><ng-content select="[cardRowBadges]" /></div>
-  <div class="card-row__actions"><ng-content select="[cardRowActions]" /></div>
 </article>

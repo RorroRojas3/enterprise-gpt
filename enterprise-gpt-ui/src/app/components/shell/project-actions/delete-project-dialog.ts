@@ -18,7 +18,6 @@ import { Modal } from '@shared/components/modal/modal';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal],
   templateUrl: './delete-project-dialog.html',
-  styleUrl: './delete-project-dialog.scss',
 })
 export class DeleteProjectDialog {
   protected readonly actions = inject(ProjectActionsStore);

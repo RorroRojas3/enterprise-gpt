@@ -1,5 +1,9 @@
-<div class="toast-region">
-  <div class="toast-region__group" role="status" aria-live="polite" aria-atomic="false">
+<!-- `mb-0` cancels `.toast-container`'s spacing between children; the gap spaces them. -->
+<div
+  class="toast-container position-fixed d-flex flex-column gap-2"
+  style="top: var(--toast-top); right: var(--toast-right)"
+>
+  <div class="d-flex flex-column gap-2 mb-0" role="status" aria-live="polite" aria-atomic="false">
     @for (toast of store.politeToasts(); track toast.id) {
       <app-toast-item
         [toast]="toast"
@@ -9,7 +13,7 @@
     }
   </div>
 
-  <div class="toast-region__group" role="alert" aria-live="assertive" aria-atomic="false">
+  <div class="d-flex flex-column gap-2 mb-0" role="alert" aria-live="assertive" aria-atomic="false">
     @for (toast of store.assertiveToasts(); track toast.id) {
       <app-toast-item
         [toast]="toast"

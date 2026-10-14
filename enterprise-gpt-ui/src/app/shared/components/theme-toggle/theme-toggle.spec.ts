@@ -1,7 +1,9 @@
 import { TestBed } from '@angular/core/testing';
+import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PREFERENCE_KEYS } from '@shared/utils/storage/local-preferences';
 import { PREFERS_DARK, resetMediaQueries, setMediaQuery } from '@testing/media-query';
+import { iconOf } from '@testing/overlays';
 import { ThemeToggle } from './theme-toggle';
 
 describe('ThemeToggle', () => {
@@ -11,7 +13,9 @@ describe('ThemeToggle', () => {
     const host = fixture.nativeElement as HTMLElement;
     return {
       fixture,
-      button: host.querySelector('button') as HTMLButtonElement,
+      button: getByRole<HTMLButtonElement>(host, 'button', {
+        name: /^Switch to (dark|light) theme$/,
+      }),
       icons: [...host.querySelectorAll('app-icon')],
     };
   }
@@ -49,7 +53,7 @@ describe('ThemeToggle', () => {
   it('keeps both icons in the DOM, proving the swap is CSS and not @if', async () => {
     const { icons, button, fixture } = await render();
 
-    expect(icons).toHaveLength(2);
+    expect(icons.map(iconOf)).toEqual(['bi-moon', 'bi-sun']);
 
     button.click();
     await fixture.whenStable();

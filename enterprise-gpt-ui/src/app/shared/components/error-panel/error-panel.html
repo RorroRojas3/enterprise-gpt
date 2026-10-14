@@ -1,19 +1,22 @@
 <!-- role="alert" only where nothing takes focus: it implies aria-atomic, so a focused heading
      would be read twice. -->
-<div class="error-panel" [attr.role]="headingLevel() === null ? 'alert' : null">
-  <app-icon class="error-panel__icon" name="bi-exclamation-octagon" />
+<div
+  class="card card-body align-items-center gap-2 mw-sm mx-auto p-4 rounded-4 text-center"
+  [attr.role]="headingLevel() === null ? 'alert' : null"
+>
+  <app-icon class="text-danger fs-4" name="bi-exclamation-octagon" />
 
   <p
     #headingText
-    class="error-panel__heading font-display"
+    class="font-display fs-6 fw-semibold mt-1 mb-0"
     [attr.role]="headingLevel() === null ? null : 'heading'"
     [attr.aria-level]="headingLevel()"
     [attr.tabindex]="headingLevel() === null ? null : -1"
   >
     {{ heading() }}
   </p>
-  <p class="error-panel__message">{{ message() }}</p>
-  <p class="error-panel__trace font-mono">{{ trace() }}</p>
+  <p class="small text-body-secondary mb-0">{{ message() }}</p>
+  <p class="font-monospace small text-body-secondary text-break mb-1">{{ trace() }}</p>
 
   @if (canRetry()) {
     <button class="btn btn-outline-secondary btn-sm" type="button" (click)="retried.emit()">

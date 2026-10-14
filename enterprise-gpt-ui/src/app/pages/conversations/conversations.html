@@ -1,9 +1,9 @@
-<h1 class="conversations__title font-display">Conversations</h1>
+<h1 class="fs-5 fw-bold mb-0 font-display">Conversations</h1>
 
-<div class="conversations__toolbar">
+<div class="d-flex flex-wrap align-items-center gap-3">
   <!-- Named apart from the sidebar's "Search conversations" field, which is on screen too. -->
   <app-search-input
-    class="conversations__search"
+    class="flex-grow-1 mw-sm min-w-0"
     label="Search conversations by name"
     placeholder="Search by name"
     [value]="name()"
@@ -14,20 +14,24 @@
   <!-- aria-pressed, since the text never changes. British "Favourites", like every other
        favourite control in the app. -->
   <button
-    class="btn btn-outline-secondary btn-sm conversations__filter"
+    class="btn btn-outline-secondary d-inline-flex align-items-center gap-2"
     type="button"
-    [class.conversations__filter--on]="favorites()"
+    [class.active]="favorites()"
     [attr.aria-pressed]="favorites()"
     (click)="toggleFavorites()"
   >
-    <app-icon [name]="favorites() ? 'bi-star-fill' : 'bi-star'" />
+    <app-icon
+      [class.text-primary]="favorites()"
+      [name]="favorites() ? 'bi-star-fill' : 'bi-star'"
+    />
     Favourites
   </button>
 
   <!-- Select-all lives here, not in the table header (which mobile lacks), so `DataTable` is
        told not to render a second one bound to the same state. -->
-  <label class="conversations__select-all">
+  <div class="form-check mb-0 ms-2 small text-body-secondary">
     <input
+      id="conversations-select-all"
       class="form-check-input"
       type="checkbox"
       [disabled]="library.entities().length === 0"
@@ -35,30 +39,32 @@
       [indeterminate]="library.someLoadedSelected()"
       (change)="library.toggleSelectAll()"
     />
-    Select all
-  </label>
+    <label class="form-check-label" for="conversations-select-all">Select all</label>
+  </div>
 
   <!--
     The label is hidden, not absent: "Newest first" reads as a value. Selected per option, not
     via the select's `[value]`, or a `?sort=name` deep link would display "Newest first".
+    `ms-auto` pushes the select and the counter to the far end.
   -->
-  <label class="conversations__sort">
-    <span class="visually-hidden">Sort conversations</span>
-    <select class="form-select" (change)="onSorted($event)">
-      @for (option of sortOptions; track option.value) {
-        <option [value]="option.value" [selected]="option.value === sort().value">
-          {{ option.label }}
-        </option>
-      }
-    </select>
-  </label>
+  <label class="visually-hidden" for="conversations-sort">Sort conversations</label>
+  <select id="conversations-sort" class="form-select w-auto ms-auto" (change)="onSorted($event)">
+    @for (option of sortOptions; track option.value) {
+      <option [value]="option.value" [selected]="option.value === sort().value">
+        {{ option.label }}
+      </option>
+    }
+  </select>
 
   <!--
-    aria-hidden: the table's live region announces the same string. Withheld before the first
-    response and beside an error panel, where it would describe rows no longer shown.
+    aria-hidden: the table's live region announces the same string, which is also why it can go
+    on mobile while the sort stays. Withheld before the first response and beside an error panel,
+    where it would describe rows no longer shown.
   -->
   @if (!library.isFirstLoad() && !library.error()) {
-    <p class="conversations__count" aria-hidden="true">{{ library.countSummary() }}</p>
+    <p class="d-none d-md-block small text-body-secondary mb-0 text-nowrap" aria-hidden="true">
+      {{ library.countSummary() }}
+    </p>
   }
 </div>
 
@@ -85,23 +91,33 @@
     [selectedIds]="library.selectedIds()"
     (selectedIdsChange)="library.setSelection($event)"
   >
+    <!-- Block, or the truncation is ignored in the mobile card title and a long name overflows. -->
     <ng-template appTableCell="name" [appTableCellFor]="library.entities()" let-row>
-      <a class="conversations__name" [routerLink]="[chatRoute, row.id]">{{ row.name }}</a>
+      <a
+        class="d-block text-truncate fw-medium link-body-emphasis link-underline-opacity-0 link-underline-opacity-100-hover"
+        data-row-anchor
+        [routerLink]="[chatRoute, row.id]"
+      >
+        {{ row.name }}
+      </a>
     </ng-template>
 
     <!-- Absent rather than a dash for a standalone conversation: "no project" is a real state,
-         while the model column's dash means the catalogue doesn't know the id. -->
+         while the model column's dash means the catalogue doesn't know the id. Ellipsised, so a
+         long name cannot break the uniform row height. -->
     <ng-template appTableCell="project" [appTableCellFor]="library.entities()" let-row>
       @if (projectName(row); as project) {
-        <span class="conversations__project">
-          <app-icon name="bi-folder-fill" />
-          <span class="conversations__project-name">{{ project }}</span>
+        <span
+          class="d-inline-flex align-items-center gap-2 mw-100 min-w-0 small text-body-secondary"
+        >
+          <app-icon class="flex-shrink-0 text-primary" name="bi-folder-fill" />
+          <span class="text-truncate">{{ project }}</span>
         </span>
       }
     </ng-template>
 
     <ng-template appTableCell="model" [appTableCellFor]="library.entities()" let-row>
-      <span class="conversations__model">{{ modelName(row) }}</span>
+      <span class="small text-body-secondary">{{ modelName(row) }}</span>
     </ng-template>
 
     <ng-template appTableCell="favorite" [appTableCellFor]="library.entities()" let-row>
@@ -110,9 +126,9 @@
         the button mid-press. The glyph waits for the server: an optimistic flip has no rollback.
       -->
       <button
-        class="conversations__star"
+        class="btn btn-ghost btn-icon btn-icon-sm touch-target"
         type="button"
-        [class.conversations__star--on]="row.isFavorite"
+        [class.text-primary]="row.isFavorite"
         [attr.aria-label]="favoriteLabel(row)"
         [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
         (click)="onToggleFavorite(row)"
@@ -150,8 +166,8 @@
           (click)="openPicker(row, rowMenu)"
         >
           <app-icon name="bi-folder-symlink" />
-          <span class="conversations__menu-label">Move to project</span>
-          <app-icon class="conversations__menu-chevron" name="bi-chevron-right" />
+          <span class="flex-grow-1">Move to project</span>
+          <app-icon class="small" name="bi-chevron-right" />
         </button>
         @if (row.projectId !== null) {
           <button
@@ -168,7 +184,7 @@
         <button
           appMenuItem
           type="button"
-          class="menu__item--danger"
+          class="text-danger-emphasis"
           [attr.aria-disabled]="actions.isRowPending(row.id) ? 'true' : null"
           (click)="actions.beginDelete(row)"
         >
@@ -227,17 +243,17 @@
       lack `tableFooter` and be dropped. Removed, not disabled, once all is loaded: a disabled
       control still implies there is more.
     -->
-    <div tableFooter class="conversations__more">
+    <div tableFooter class="d-flex justify-content-center d-empty-none">
       @if (library.hasMore()) {
         <!-- Mirrors `loadMore()`'s guard, so it can't look operable while a press would no-op. -->
         <button
-          class="btn btn-outline-secondary btn-sm"
+          class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2"
           type="button"
           [attr.aria-disabled]="library.loadingMore() || library.isPending() ? 'true' : null"
           (click)="onLoadMore()"
         >
           @if (library.loadingMore()) {
-            <span class="kit-spinner" aria-hidden="true"></span>
+            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
             <span>Loading…</span>
           } @else {
             <span>Load more</span>

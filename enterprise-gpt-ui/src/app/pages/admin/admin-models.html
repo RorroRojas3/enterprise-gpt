@@ -1,27 +1,30 @@
-<h1 class="admin-models__title font-display">Models</h1>
+<h1 class="fs-5 fw-semibold mb-3 font-display">Models</h1>
 
-<div class="admin-models__toolbar">
+<div class="row g-2 align-items-center mb-3">
   <!-- Filters in memory: `models/all` is unpaginated, so the rows are the whole catalog. -->
-  <app-search-input
-    class="admin-models__search"
-    label="Search models by provider or name"
-    placeholder="Search provider or model"
-    [value]="models.query()"
-    [busy]="models.isPending()"
-    (searched)="onSearched($event)"
-  />
+  <div class="col-12 col-md-4">
+    <app-search-input
+      label="Search models by provider or name"
+      placeholder="Search provider or model"
+      [value]="models.query()"
+      [busy]="models.isPending()"
+      (searched)="onSearched($event)"
+    />
+  </div>
 
   <!-- `aria-disabled` while a submit is in flight, so the button keeps its tab stop. -->
-  <button
-    class="btn btn-primary btn-sm admin-models__add"
-    type="button"
-    aria-haspopup="dialog"
-    [attr.aria-disabled]="actions.formBusy() ? 'true' : null"
-    (click)="actions.beginCreate()"
-  >
-    <app-icon name="bi-plus-lg" />
-    Add model
-  </button>
+  <div class="col-12 col-md-auto ms-md-auto">
+    <button
+      class="btn btn-primary w-100 touch-target d-inline-flex align-items-center justify-content-center gap-2 fw-semibold"
+      type="button"
+      aria-haspopup="dialog"
+      [attr.aria-disabled]="actions.formBusy() ? 'true' : null"
+      (click)="actions.beginCreate()"
+    >
+      <app-icon name="bi-plus-lg" />
+      Add model
+    </button>
+  </div>
 </div>
 
 @if (models.error(); as error) {
@@ -36,7 +39,7 @@
   <app-data-table
     label="Models"
     [rows]="models.results()"
-    [columns]="columns"
+    [columns]="columns()"
     [trackKey]="trackKey"
     [rowLabel]="rowLabel"
     [loading]="models.isFirstLoad()"
@@ -44,10 +47,13 @@
     [pendingIds]="actions.pendingIds()"
   >
     <ng-template appTableCell="model" [appTableCellFor]="models.results()" let-row>
-      <span class="admin-models__identity" [class.admin-models__identity--retired]="isRetired(row)">
-        <span class="admin-models__name">{{ row.name }}</span>
+      <!-- Dimmed as a second channel besides the Status column; the `Default` pill recedes with it. -->
+      <span class="d-flex align-items-center gap-2 min-w-0" [class.opacity-75]="isRetired(row)">
+        <span class="admin-models__name text-truncate fw-semibold small">{{ row.name }}</span>
         @if (row.isDefault) {
-          <span class="admin-models__default">Default</span>
+          <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis flex-shrink-0">
+            Default
+          </span>
         }
       </span>
     </ng-template>
@@ -57,31 +63,38 @@
         <app-status-dot [tone]="meta.tone" [label]="meta.name" />
       } @else {
         <!-- A provider newer than this build: muted and named by its id, not blank. -->
-        <app-status-dot tone="muted" [label]="row.providerId" />
+        <app-status-dot tone="secondary" [label]="row.providerId" />
       }
     </ng-template>
 
     <ng-template appTableCell="deployment" [appTableCellFor]="models.results()" let-row>
-      <span class="admin-models__deployment font-mono">{{ row.deploymentName }}</span>
+      <span
+        class="admin-models__deployment d-block text-truncate small font-monospace text-body-secondary"
+        >{{ row.deploymentName }}</span
+      >
     </ng-template>
 
     <ng-template appTableCell="context" [appTableCellFor]="models.results()" let-row>
-      <span class="admin-models__number font-mono">{{ formatContext(row.contextWindowSize) }}</span>
+      <span class="d-block text-truncate small font-monospace text-body-secondary">{{
+        formatContext(row.contextWindowSize)
+      }}</span>
     </ng-template>
 
     <ng-template appTableCell="output" [appTableCellFor]="models.results()" let-row>
-      <span class="admin-models__number font-mono">{{ formatTokens(row.maxOutputTokens) }}</span>
+      <span class="d-block text-truncate small font-monospace text-body-secondary">{{
+        formatTokens(row.maxOutputTokens)
+      }}</span>
     </ng-template>
 
     <ng-template appTableCell="tools" [appTableCellFor]="models.results()" let-row>
       <!-- The hidden text carries the meaning; a bare glyph reads as nothing. -->
       @if (row.isToolEnabled) {
-        <span class="admin-models__tools admin-models__tools--on">
+        <span class="d-inline-flex small text-success-emphasis">
           <app-icon name="bi-check-circle-fill" />
           <span class="visually-hidden">Tools enabled</span>
         </span>
       } @else {
-        <span class="admin-models__tools">
+        <span class="d-inline-flex small text-body-secondary">
           <app-icon name="bi-dash-circle" />
           <span class="visually-hidden">Tools not enabled</span>
         </span>
@@ -90,12 +103,12 @@
 
     <ng-template appTableCell="status" [appTableCellFor]="models.results()" let-row>
       @if (isRetired(row)) {
-        <app-status-dot tone="muted" label="Retired" />
+        <app-status-dot tone="secondary" label="Retired" />
       } @else if (!row.isUserSelectable) {
         <!-- Active but out of the picker: a third state, still served by id. -->
-        <app-status-dot tone="warn" label="Hidden" />
+        <app-status-dot tone="warning" label="Hidden" />
       } @else {
-        <app-status-dot tone="ok" label="Active" />
+        <app-status-dot tone="success" label="Active" />
       }
     </ng-template>
 
@@ -118,7 +131,7 @@
           <button
             appMenuItem
             type="button"
-            class="menu__item--danger"
+            class="text-danger-emphasis"
             (click)="actions.beginDeactivate(row)"
           >
             Delete

@@ -1,10 +1,11 @@
 <button
   type="button"
-  class="theme-toggle"
+  class="btn btn-ghost btn-icon"
   [attr.aria-label]="label()"
   [attr.title]="label()"
   (click)="toggle()"
 >
-  <app-icon class="on-light" name="bi-moon" />
-  <app-icon class="on-dark" name="bi-sun" />
+  <!-- Both icons stay in the DOM; the theme token decides which one has a box. -->
+  <app-icon class="theme-light-only" name="bi-moon" />
+  <app-icon class="theme-dark-only" name="bi-sun" />
 </button>

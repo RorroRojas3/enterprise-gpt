@@ -8,6 +8,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 @Component({
   selector: 'app-switch',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { class: 'd-inline-flex' },
   templateUrl: './switch.html',
   styleUrl: './switch.scss',
 })

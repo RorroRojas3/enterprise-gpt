@@ -1,41 +1,31 @@
 <!-- Not a live region: the Transcript's persistent status region announces
      abnormal endings, because a region created with its content is unreliable. -->
-<div
-  class="notice"
-  [class.notice--warn]="view().tone === 'warn'"
-  [class.notice--row]="view().layout === 'row'"
->
-  <div class="notice__header">
-    <app-icon
-      class="notice__icon"
-      [class.notice__icon--fail]="view().titleTone === 'fail'"
-      [name]="view().icon"
-    />
-    <span
-      class="notice__title"
-      [class.notice__title--warn]="view().titleTone === 'warn'"
-      [class.notice__title--fail]="view().titleTone === 'fail'"
-      [class.notice__title--body]="view().titleTone === 'body'"
-      >{{ view().title }}</span
-    >
+<div [class]="frameClass()">
+  <div
+    class="d-flex align-items-center gap-2 small"
+    [class.flex-fill]="isRow()"
+    [class.min-w-0]="isRow()"
+  >
+    <app-icon class="flex-shrink-0" [class]="iconClass()" [name]="view().icon" />
+    <span [class]="titleClass()">{{ view().title }}</span>
   </div>
 
   @if (view().body; as body) {
-    <p class="notice__body">{{ body }}</p>
+    <p class="small ms-4 mt-2 mb-0" [class]="mutedClass()">{{ body }}</p>
   }
   @if (view().trace; as trace) {
-    <p class="notice__trace font-mono">{{ trace }}</p>
+    <p class="small font-monospace ms-4 mt-1 mb-0" [class]="mutedClass()">{{ trace }}</p>
   }
 
   @if (retryable()) {
-    <div class="notice__actions">
+    <div [class]="actionsClass()">
       <button
         #retry
         type="button"
-        class="btn btn-outline-secondary btn-sm notice__retry"
+        class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2"
         (click)="retried.emit()"
       >
-        @if (view().layout === 'stack') {
+        @if (!isRow()) {
           <app-icon name="bi-arrow-clockwise" />
         }
         Retry

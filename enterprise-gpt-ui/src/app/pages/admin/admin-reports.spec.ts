@@ -9,6 +9,7 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_USAGE_GROUPING,
@@ -75,6 +76,11 @@ describe('AdminReports', () => {
 
   function url(): string {
     return TestBed.inject(Router).url;
+  }
+
+  function rangeButton(name: string): HTMLButtonElement {
+    const group = getByRole(element(), 'group', { name: 'Reporting period' });
+    return getByRole(group, 'button', { name });
   }
 
   async function open(target = '/admin/reports', report = usageReportFixture()): Promise<void> {
@@ -152,8 +158,7 @@ describe('AdminReports', () => {
   it('reflects the range in the URL and asks again', async () => {
     await open();
 
-    const buttons = [...element().querySelectorAll<HTMLButtonElement>('.segmented__option')];
-    buttons.find((button) => button.textContent?.includes('90 days'))!.click();
+    rangeButton('90 days').click();
     await harness.fixture.whenStable();
 
     expect(url()).toBe('/admin/reports?range=90');
@@ -164,8 +169,7 @@ describe('AdminReports', () => {
   it('drops the range parameter again when the default is chosen, rather than spelling it out', async () => {
     await open('/admin/reports?range=7');
 
-    const buttons = [...element().querySelectorAll<HTMLButtonElement>('.segmented__option')];
-    buttons.find((button) => button.textContent?.includes('30 days'))!.click();
+    rangeButton('30 days').click();
     await harness.fixture.whenStable();
 
     expect(url()).toBe('/admin/reports');
@@ -191,8 +195,7 @@ describe('AdminReports', () => {
   it('restores the previous selection on back, without a line of code doing it', async () => {
     await open();
 
-    const buttons = [...element().querySelectorAll<HTMLButtonElement>('.segmented__option')];
-    buttons.find((button) => button.textContent?.includes('7 days'))!.click();
+    rangeButton('7 days').click();
     await harness.fixture.whenStable();
     expectReport().flush(usageReportFixture());
     await harness.fixture.whenStable();
@@ -216,8 +219,8 @@ describe('AdminReports', () => {
     await harness.fixture.whenStable();
 
     // The control shows the range in force.
-    const active = element().querySelector('.segmented__option--active');
-    expect(active?.textContent?.trim()).toBe('30 days');
+    const group = getByRole(element(), 'group', { name: 'Reporting period' });
+    expect(getByRole(group, 'button', { pressed: true }).textContent?.trim()).toBe('30 days');
   });
 
   it('reads a grouping it does not offer as the default', async () => {
@@ -292,12 +295,13 @@ describe('AdminReports', () => {
     );
     await open('/admin/reports', usageReportFixture({ groups, topModels: groups }));
 
-    const steps = [...element().querySelectorAll<HTMLButtonElement>('.paginator__step')];
-    expect(steps[0]!.disabled).toBe(true);
-    expect(steps[steps.length - 1]!.disabled).toBe(false);
+    const previous = getByRole<HTMLButtonElement>(element(), 'button', { name: 'Previous page' });
+    const next = getByRole<HTMLButtonElement>(element(), 'button', { name: 'Next page' });
+    expect(previous.disabled).toBe(true);
+    expect(next.disabled).toBe(false);
     expect(element().textContent).toContain('Showing 1–5 of 7 models');
 
-    steps[steps.length - 1]!.click();
+    next.click();
     await harness.fixture.whenStable();
 
     expect(element().textContent).toContain('Showing 6–7 of 7 models');

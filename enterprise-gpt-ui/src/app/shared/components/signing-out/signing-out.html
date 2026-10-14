@@ -1,8 +1,9 @@
 <app-ridgeline variant="auth" />
 
-<span class="kit-spinner" aria-hidden="true"></span>
+<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
 
-<!-- Focused, not live-announced: a region inserted with its text announces nothing. -->
-<h1 #heading class="signing-out__heading font-display" tabindex="-1">Signing you out…</h1>
+<!-- Focused, not live-announced: a region inserted with its text announces nothing. No
+     `outline: none`, as on every `focusOnRender` heading: the ring shows where focus moved. -->
+<h1 #heading class="fs-6 mt-1 mb-0" tabindex="-1">Signing you out…</h1>
 
-<p class="signing-out__detail">Clearing this browser and ending your Entra ID session</p>
+<p class="small text-body-secondary mb-0">Clearing this browser and ending your Entra ID session</p>

@@ -5,32 +5,32 @@
   (closed)="actions.cancelForm()"
 >
   @if (target(); as user) {
-    <div class="edit-user">
+    <div class="vstack gap-3">
       <!-- In the body, not the header: `Offcanvas` owns its own <h2>. No "last active" line,
            since `UserDto` carries no sign-in timestamp. -->
-      <div class="edit-user__identity">
+      <div class="d-flex align-items-center gap-3 min-w-0">
         <app-avatar-initials
           [name]="user.fullName"
           [fallback]="user.email"
           [seed]="user.id"
           [size]="40"
         />
-        <div class="edit-user__who">
-          <p class="edit-user__name">{{ displayName() }}</p>
-          <p class="edit-user__email">{{ user.email }}</p>
+        <div class="min-w-0">
+          <p class="mb-0 text-truncate fw-semibold">{{ displayName() }}</p>
+          <p class="mb-0 text-truncate small text-body-secondary">{{ user.email }}</p>
         </div>
       </div>
 
       <!-- The PUT treats `permissionIds` as the complete set, so leaving one unchecked revokes. -->
-      <div class="edit-user__warning">
-        <app-icon name="bi-exclamation-triangle-fill" />
-        <p>
+      <div class="alert alert-warning d-flex gap-2 py-2 mb-0 small">
+        <app-icon class="flex-shrink-0 mt-1 text-warning" name="bi-exclamation-triangle-fill" />
+        <p class="mb-0">
           <strong>Saving replaces this user’s entire permission set.</strong>
           Unchecking a permission revokes it.
         </p>
       </div>
 
-      <p class="edit-user__legend" id="edit-user-permissions">Permissions</p>
+      <p class="mb-0 small fw-semibold" id="edit-user-permissions">Permissions</p>
       <div role="group" aria-labelledby="edit-user-permissions">
         <app-permission-checklist
           captionStyle="block"
@@ -45,9 +45,9 @@
       </div>
 
       @if (unmatched().length > 0) {
-        <div class="edit-user__errors" role="alert">
+        <div class="alert alert-danger py-2 mb-0 small" role="alert">
           @for (message of unmatched(); track $index) {
-            <p class="edit-user__error">{{ message }}</p>
+            <p class="mb-0">{{ message }}</p>
           }
         </div>
       }
@@ -71,7 +71,7 @@
     (click)="submit()"
   >
     @if (actions.formBusy()) {
-      <span class="kit-spinner" aria-hidden="true"></span>
+      <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
     }
     Save changes
   </button>

@@ -9,8 +9,8 @@ import { Ridgeline } from '@shared/components/ridgeline/ridgeline';
   selector: 'app-empty-state',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Ridgeline],
+  host: { class: 'd-flex flex-column align-items-center gap-2 mw-sm mx-auto p-4 text-center' },
   templateUrl: './empty-state.html',
-  styleUrl: './empty-state.scss',
 })
 export class EmptyState {
   readonly heading = input.required<string>();

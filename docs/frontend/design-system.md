@@ -5,19 +5,66 @@ guarantees.
 
 ## Tokens
 
-`src/styles/_tokens.scss` is the **source of record** for every colour, as two Sass maps (`$light`,
-`$dark`) emitted as `:root` custom properties.
+`src/styles/_tokens.scss` is the **source of record** for every colour, and it is **data only**: two
+Sass maps, `$tokens-light` and `$tokens-dark`, that emit nothing. Two files consume them:
 
-Property names keep their original casing — `--btnP-bg` is unusual, but custom properties are
-case-sensitive.
+- `_bootstrap-config.scss` feeds the palette into Bootstrap's own Sass variables, so its components
+  compile against the app's colours.
+- `_theme.scss` emits the maps as custom properties under the same selectors as Bootstrap's `root`
+  (`:root, [data-bs-theme='light']` and `[data-bs-theme='dark']`), later in the output so it wins. It
+  has to: Bootstrap's dark root omits the theme colours and their `-rgb` channels, so without it
+  `.text-primary` would keep its light value in dark. It also emits the `-rgb` companions and a
+  `--{c}-hover` / `--{c}-active` pair per theme colour, using Bootstrap's own shade and tint amounts.
 
-**Never `@use` this file from a component stylesheet.** It emits `:root` blocks, and under emulated
-encapsulation a component would re-emit them scoped to its own attribute — matching nothing and
-costing bytes in every component. Components read tokens with `var(--...)` and import nothing.
+Colours carry **Bootstrap's names** wherever Bootstrap has one: `--bs-body-bg`, `--bs-body-color`,
+`--bs-emphasis-color`, `--bs-secondary-color`, `--bs-secondary-bg`, `--bs-tertiary-bg`,
+`--bs-border-color`, `--bs-link-*`, `--bs-primary` through `--bs-danger`, and the `warning` and
+`danger` subtle and emphasis set. Each theme colour also has a `--{c}-fg`, the label colour on a
+filled control. What remains app-only: `--surface`, `--think-bg`, `--bubble` and `--bubble-fg`,
+`--ring`, `--focus-ring`, `--tooltip-bg` and `--tooltip-fg`, `--code-*`, `--provider-*`, and
+`--show-light` / `--show-dark`.
 
-`scripts/check-tokens.mjs` gates three things: the colours duplicated into `index.html` stay in step
-with the tokens, the code-surface and focus-ring pairs clear their WCAG minimum in both themes, and
-the two copies of the breakpoint table agree.
+Property names keep their original casing, because custom properties are case-sensitive.
+
+An older name does not come back. `check:forbidden` bans each of these, so a stale `var(--muted)`
+fails lint rather than resolving to nothing:
+
+| Removed | Use |
+| --- | --- |
+| `--muted` | `--bs-secondary-color` |
+| `--surface-2` | `--bs-tertiary-bg` |
+| `--active-bg` | `--bs-secondary-bg` |
+| `--brand`, `--btnP-bg` | `--bs-primary` |
+| `--btnP-fg` | `--primary-fg` |
+| `--accent` | `--bs-info` |
+| `--ok` | `--bs-success` |
+| `--warn`, `--warn-bg`, `--warn-border` | `--bs-warning`, `--bs-warning-bg-subtle`, `--bs-warning-border-subtle` |
+| `--fail` | `--bs-danger` |
+
+**How the palette reaches Bootstrap.** A Sass variable holds a `var(--...)` only where Bootstrap merely
+interpolates it. Anything Bootstrap passes to `shade-color`, `tint-color`, `color-contrast`, `to-rgb`
+or an SVG data URI stays a Sass colour read from the light map (or the dark map, for the `-dark`
+variables). Component surfaces and states that Bootstrap only interpolates are `var()`, so they flip
+with the theme: card, modal, offcanvas, dropdown, list-group and toast backgrounds are `var(--surface)`;
+active states are `--bs-secondary-bg` with `--bs-primary` text; the tooltip reads `--tooltip-*`.
+The dark subtle and emphasis colours are derived from the **dark** palette, not Bootstrap's.
+
+**Never `@use` `tokens` or `theme` from a component stylesheet.** `_theme.scss` emits `:root` blocks,
+and under emulated encapsulation a component would re-emit them scoped to its own attribute,
+matching nothing and costing bytes in every component. Components read tokens with `var(--...)`.
+`@use 'breakpoints' as bp` is fine: it emits nothing.
+
+`scripts/check-tokens.mjs` gates:
+
+- the colours duplicated into `index.html` stay in step with the tokens;
+- the text, code-surface, tooltip and focus-ring pairs (98 in all) clear their WCAG minimum in both
+  themes, including a generated `{c}-fg` on `bs-{c}` pair at 4.5:1 for every theme colour;
+- `--bs-primary` flips between themes, the property the filled-control pairs depend on;
+- the two copies of the breakpoint table agree.
+
+The painted-surface scan counts every Sass `$...-bg: var(--...)` declaration **and** every `bg-*` or
+`text-bg-*` utility class in a template or `.ts` file, so a new surface cannot dodge the focus-ring
+measurement. A class assembled at run time is invisible to it: write the map out in full.
 
 ## Theming and the pre-paint contract
 
@@ -113,18 +160,27 @@ template.
 Four rules make the visible ring actually reach things:
 
 1. **A floor, once, in `_focus.scss`.** One `:focus-visible` rule imported after Bootstrap's
-   components so it beats their focus styles, and before `kit` and every component stylesheet so
-   theirs beat it. It is a floor, not a policy: at `(0,1,0)` it loses to anything declared on a
-   class. What it catches is the element with **no rule at all**.
-2. **Bootstrap's three components are overridden by name, because the floor cannot reach them.**
-   `.btn`, `.nav-link` and `.form-check-input` each declare `outline: 0` at `(0,2,0)`, which beats a
-   bare `:focus-visible` whatever the source order. What they drew instead was off-palette and well
-   under 3:1.
+   components so it beats their focus styles, and before `bootstrap-overrides`, `kit` and every
+   component stylesheet so theirs beat it. It is a floor, not a policy: at `(0,1,0)` it loses to
+   anything declared on a class. What it catches is the element with **no rule at all**.
+2. **Bootstrap's focus styles are overridden by name, because the floor cannot reach them.**
+   Config sets every Bootstrap focus variable to the measured 2px `--focus-ring` or to `none` (not
+   `null`, which `!default` would overwrite). The rest is in `_bootstrap-overrides.scss`, in two
+   groups:
+   - **Offset outline** (`2px solid var(--focus-ring)`, offset 2px): `.btn`, `.btn-check + .btn`,
+     `.nav-link`, `.page-link`, `.form-check-input`, `.btn-close`, `.navbar-toggler`, the carousel
+     controls and `.form-control-plaintext`.
+   - **Inset** (offset -2px): `.dropdown-item`, `.list-group-item-action` and `.accordion-button`.
+     These are full-width rows, where an offset ring would overlap the neighbours. `.focus-inset`
+     in the kit does the same for any other control inside a scroll container.
 3. **The ring is an `outline` with an offset, never a flush `box-shadow` on a filled control.** A
    ring drawn *on* a filled button measures 1.00:1 in dark, where the button fill *is* the focus
-   token. Offset, it sits on the page behind, which is the surface the gate measures. The corollary
-   is the trap: an **inset** ring on a filled control would be invisible and the gate would not catch
-   it — the two inset rings that exist set a measured surface on the same rule.
+   token. Offset, it sits on the page behind, which is the surface the gate measures. The
+   corollary is the trap: an **inset** ring on a filled control would be invisible and the gate would
+   not catch it. The inset rows above are safe because each sets a measured surface on the same rule.
+   Bootstrap's `.focus-ring` helper is compiled and tuned to the measured ring (2px, opacity 1), but
+   it draws flush: **never put it on a filled control.** Its colour classes are removed from the
+   utilities API, because at opacity 1 they would paint unmeasured colours.
 4. **The checkbox takes two rules, and their order is load-bearing.** Chrome does not match
    `:focus-visible` on a checkbox focused by pointer, so `:focus` clears Bootstrap's wash and
    `:focus-visible` **after it** draws the ring. Both are `(0,2,0)`, so the later wins; reversing
@@ -143,33 +199,121 @@ the card's `:has(.composer__prompt:focus)` ring is its only indicator — an acc
 tied to a class name in a selector. A spec pins it, because a rename would otherwise remove the
 indicator silently with `check:forbidden` still green.
 
+## Colour that flips
+
+Bootstrap compiles its button, `.text-bg-*`, link-hover and table variants as static colours. A loop
+over `$flipping-colors` in `_bootstrap-overrides.scss` re-points `.btn-*`, `.btn-outline-*`,
+`.text-bg-*`, `.link-*` hover and `.table-*` at the per-theme tokens, so they flip. Four decisions
+there are contrast fixes, not taste:
+
+- **The label colour is the token, not white.** `--{c}-fg` is dark ink on every dark-theme fill, and
+  in light for success and info. White text on a dark-theme `.btn-danger` measured 3.33:1.
+- **`.btn-outline-danger` text is `--bs-danger-text-emphasis`.** The base `--bs-danger` is 4.39:1 as
+  text on the dark surface.
+- **`.btn-outline-secondary` is a neutral app variant**: body text, a border-colour border, and the
+  tertiary and secondary backgrounds on hover and active.
+- **Checked checkbox, radio, indeterminate and switch glyphs are rebuilt in dark.** Bootstrap's white
+  glyph on the dark `--bs-primary` measured 2.74:1.
+
+`text-info`, `text-success`, `link-info`, `link-success`, `btn-outline-info`, `btn-outline-success`
+and `border-info` fail contrast in light (info 2.74:1, success 3.49:1 on white), so `check:forbidden`
+bans them. Use the `-emphasis` or `-subtle` variants.
+
 ## Motion
 
-Exactly four keyframes: `blink`, `spin`, `ringpulse`, `ridgedash`. `check:forbidden` refuses a
-fifth, which is why Bootstrap's `_spinners.scss` and `_placeholders.scss` are excluded from the
-stylesheet — each would add one. Anything else that has to move uses a transition on the
-`--t-fast` / `--t-slow` scale, which `_motion.scss`'s reduced-motion block already suppresses.
+The app owns exactly three keyframes: `blink`, `ringpulse` and `ridgedash`. `check:forbidden`
+refuses a fourth. Bootstrap's own keyframes (`spinner-border`, `spinner-grow`, `placeholder-glow`,
+`placeholder-wave`, `progress-bar-stripes`) compile from `node_modules`, outside that scan; spinners
+are `.spinner-border`, never a hand-rolled rotation. Anything else that has to move uses a
+transition on the `--t-fast` / `--t-slow` scale, which `_motion.scss`'s reduced-motion block already
+suppresses.
 
 `_motion.scss` is imported **last** so that block wins over everything above it.
 
 ## The kit
 
+**Bootstrap first.** Templates use Bootstrap's components and utilities. The kit adds a class only
+where Bootstrap has no equivalent, and a component stylesheet keeps only rules that are genuinely
+bespoke. Bootstrap's default spacing, type and radius scales apply: there are no app-specific sizes.
+
+Global classes in `_kit.scss`, imported after the overrides so a modifier beats the Bootstrap rule it
+adjusts:
+
+| Class | Purpose |
+| --- | --- |
+| `.btn-ghost` | Transparent button; secondary text, tertiary background on hover, pressed look on `.active` or `[aria-pressed=true]` |
+| `.btn-icon`, `-sm`, `-lg` | Square icon-only buttons; `-sm` is 24px, the floor for axe's target-size rule, and `-lg` is 44px |
+| `.touch-target` | 44px minimum in both dimensions below `md` |
+| `.focus-inset` | Draws the focus ring inside the control |
+| `.btn[aria-disabled]`, `.dropdown-item[aria-disabled]` | Disabled look on a control that stays focusable |
+| `.nav-pills-subtle` | Pills whose active state is the secondary background and primary text, not a solid fill |
+| `.list-row` | A row holding a link plus its own controls |
+| `.reveal-host` / `.reveal-target` | Controls shown on hover, focus-within or `.active`, and always shown where hover does not exist |
+| `.dropdown-menu-fixed` | Fixed-position panel above the bulk-action bar |
+| `.eyebrow` | The small uppercase label above a group |
+| `.d-empty-none` | Hides a slot that projected nothing |
+| `.avatar-circle` | A circle sized by `--avatar-size` |
+| `.theme-light-only` / `.theme-dark-only` | Theme-specific artwork, switched by token rather than script |
+| `.skip-link` | The shell's skip-to-content link |
+
+Utilities are extended through the Bootstrap API rather than new rules: `.font-display`,
+`.bg-surface`, `.mw-sm` / `.mw-md` / `.mw-prose`, `.min-w-0` (every flex ellipsis row needs it),
+`.min-h-0`, `.text-pre-wrap`, `.min-dvh-100`, `.overscroll-contain` and `.border-dashed`. Monospace
+text is Bootstrap's `.font-monospace`. `_kit.scss` also defines the `--safe-*` inset tokens and the
+toast region's `--toast-top` / `--toast-right`.
+
 `shared/components/` and `shared/directives/` hold the presentational, feature-agnostic building
 blocks: avatars, badges, chips, the data table and paginator, empty and error states, the icon
 component, overlay primitives (menu, modal, offcanvas, tooltip), the search input, the ridgeline,
 the theme toggle and the upload drop target. Anything one feature owns lives with that feature
-instead — the composer in `components/composer/`, the project card in `components/projects/`. A
-dev-only `/ui-kit` route (`pages/ui-kit/`) renders the gallery.
+instead: the composer in `components/composer/`, the project card in `components/projects/`. A
+dev-only `/ui-kit` route (`pages/ui-kit/`) renders the gallery, including every kit class and
+every overlay, and is the manual check that the top layer behaves.
+
+### Overlay primitives
+
+The Angular logic is the app's own; the skin is Bootstrap's CSS. There is no Bootstrap JavaScript,
+Popper or ng-bootstrap, and `check:forbidden` fails an import of any of them.
+
+- **Modal.** `<dialog class="modal">` > `.modal-dialog` (centred, scrollable, `.modal-sm` / `.modal-lg`)
+  > `.modal-content` with a header, `.modal-body` and a `.modal-footer` that is `d-empty-none`. A
+  dismissible modal shows a `.btn-close[data-modal-dismiss]`, disabled while the modal is busy.
+- **Offcanvas.** `<dialog class="offcanvas offcanvas-start|end">` with header, body and footer. In
+  bare mode the header is visually hidden.
+- **Dialog bridge.** `_overlays.scss` joins native `<dialog>` to Bootstrap's modal CSS: the
+  user-agent reset, `::backdrop`, the scroll lock (`html:has(dialog[open])`), `display` for an open
+  modal, and for the offcanvas hidden when closed, visible and pinned to its side when open. A
+  closed offcanvas that is still `display: flex`, or an end offcanvas pinned left, leaks silently,
+  so specs exercise both sides.
+- **Initial focus.** `focusInitialTarget()` in `shared/utils/a11y/tabbable.ts` picks the autofocus
+  target, else the first tabbable that is not the close button, else the heading.
+- **Menu.** The trigger is `btn-ghost btn-icon-sm`, or a bare reset when it wraps projected content.
+  The panel is `.dropdown-menu.dropdown-menu-fixed.show`; `MenuItem` hosts as `.dropdown-item` and
+  `MenuSeparator` as `.dropdown-divider`. Danger items use `text-danger-emphasis`.
+- **Tooltip.** Renders `.tooltip.show.position-fixed` > `.tooltip-inner`, without an arrow.
+- **Toasts.** `.toast-container` > `.toast.show` > `.toast-body` with a `.btn-close`. The tone edge and
+  the drain bar are bespoke.
+- **Project picker.** A `.dropdown-menu` of `.dropdown-item` rows marked `data-picker-row`.
+
+Specs find elements by role and accessible name through `@testing-library/dom`, and
+`src/testing/overlays.ts` holds the only places a spec names these overlay classes; see
+[../development/testing-and-ci.md](../development/testing-and-ci.md).
 
 ## Key files
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-ui/src/styles/_tokens.scss` | The token maps |
+| `enterprise-gpt-ui/src/styles/_tokens.scss` | The token maps, as data |
+| `enterprise-gpt-ui/src/styles/_theme.scss` | Emits the maps per theme, plus `-rgb`, hover and active |
+| `enterprise-gpt-ui/src/styles/_bootstrap-config.scss` | Feeds the palette and scales into Bootstrap's Sass; the utilities API and its extensions |
+| `enterprise-gpt-ui/src/styles/_bootstrap-components.scss` | Imports every Bootstrap module |
 | `enterprise-gpt-ui/src/styles/_focus.scss` | The focus floor |
-| `enterprise-gpt-ui/src/styles/_bootstrap-overrides.scss` | The three components the floor cannot reach |
-| `enterprise-gpt-ui/src/styles/_motion.scss` | The four keyframes and the reduced-motion block |
+| `enterprise-gpt-ui/src/styles/_overlays.scss` | The native `<dialog>` bridge for modal and offcanvas |
+| `enterprise-gpt-ui/src/styles/_bootstrap-overrides.scss` | The colour flip loop, dark glyphs and the named focus rules |
+| `enterprise-gpt-ui/src/styles/_kit.scss` | Classes Bootstrap lacks |
+| `enterprise-gpt-ui/src/styles/_motion.scss` | The three app keyframes and the reduced-motion block |
 | `enterprise-gpt-ui/src/app/shared/utils/icons/icon-names.ts` | The sprite manifest |
+| `enterprise-gpt-ui/src/testing/overlays.ts` | Spec helpers for menus, tooltips, dialogs and icons |
 | `enterprise-gpt-ui/scripts/check-tokens.mjs` | Shell parity, contrast, breakpoint parity |
 | `enterprise-gpt-ui/src/styles/motion.spec.ts` | No animation names a keyframe that does not exist |
 

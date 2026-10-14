@@ -152,14 +152,25 @@ export class Tooltip {
 
   private render(text: string): void {
     if (!this.flyout) {
-      this.flyout = this.renderer.createElement('span') as HTMLElement;
+      // Spans, as the host is usually a button and takes phrasing content only.
+      const flyout = this.renderer.createElement('span') as HTMLElement;
       // Decoration: the text is already on the host as its accessible name.
-      this.renderer.setAttribute(this.flyout, 'aria-hidden', 'true');
-      this.renderer.addClass(this.flyout, 'app-tooltip');
-      this.renderer.appendChild(this.host.nativeElement, this.flyout);
+      this.renderer.setAttribute(flyout, 'aria-hidden', 'true');
+      for (const name of ['tooltip', 'show', 'position-fixed', 'pe-none']) {
+        this.renderer.addClass(flyout, name);
+      }
+      // Inline, not `top-0 start-0`: those are `!important` and would pin it over `place`.
+      this.renderer.setStyle(flyout, 'top', '0');
+      this.renderer.setStyle(flyout, 'left', '0');
+      const inner = this.renderer.createElement('span') as HTMLElement;
+      this.renderer.addClass(inner, 'tooltip-inner');
+      this.renderer.addClass(inner, 'd-block');
+      this.renderer.appendChild(flyout, inner);
+      this.renderer.appendChild(this.host.nativeElement, flyout);
+      this.flyout = flyout;
     }
 
-    this.renderer.setProperty(this.flyout, 'textContent', text);
+    this.renderer.setProperty(this.flyout.firstElementChild, 'textContent', text);
     // Nothing styles this — `place` writes the geometry. It records the placement that
     // was *asked* for, which a clamp against a viewport edge can then contradict.
     this.renderer.setAttribute(this.flyout, 'data-placement', this.appTooltipPlacement());

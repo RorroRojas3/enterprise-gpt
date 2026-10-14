@@ -4,6 +4,7 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TokenService } from '@core/auth/token-service';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
@@ -78,8 +79,9 @@ describe('transcript pinning', () => {
     return element().querySelector('.chat__body') as HTMLElement;
   }
 
+  /** The scroll box's last child; its first is the content wrapper the directive measures. */
   function sentinel(): HTMLElement {
-    return element().querySelector('.chat__sentinel') as HTMLElement;
+    return body().lastElementChild as HTMLElement;
   }
 
   function jump(): HTMLElement | null {
@@ -111,7 +113,7 @@ describe('transcript pinning', () => {
   /** Separate from the batch: markdown lays out after change detection, as in the browser. */
   function layOutTallerContent(): void {
     contentHeight += 250;
-    resizeElement(element().querySelector('.chat__content') as HTMLElement);
+    resizeElement(body().firstElementChild as HTMLElement);
   }
 
   async function settle(ms = 0): Promise<void> {
@@ -204,7 +206,7 @@ describe('transcript pinning', () => {
     await settle();
     scrollWrites = [];
 
-    element().querySelector<HTMLButtonElement>('.chat__jump-button')?.click();
+    getByRole(element(), 'button', { name: 'Jump to latest message' }).click();
     await settle();
 
     expect(scrollWrites.at(-1)).toBe(contentHeight);
@@ -221,11 +223,11 @@ describe('transcript pinning', () => {
     setIntersecting(sentinel(), false);
     await settle();
 
-    const button = element().querySelector<HTMLButtonElement>('.chat__jump-button');
-    button?.focus();
+    const button = getByRole(element(), 'button', { name: 'Jump to latest message' });
+    button.focus();
     expect(document.activeElement).toBe(button);
 
-    button?.click();
+    button.click();
     await settle();
 
     expect(jump()).toBeNull();

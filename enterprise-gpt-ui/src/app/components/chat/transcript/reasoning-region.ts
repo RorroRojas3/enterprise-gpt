@@ -14,6 +14,7 @@ let nextId = 0;
   imports: [Icon],
   templateUrl: './reasoning-region.html',
   styleUrl: './reasoning-region.scss',
+  host: { class: 'd-block' },
 })
 export class ReasoningRegion {
   readonly text = input.required<string>();

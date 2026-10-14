@@ -54,11 +54,11 @@
           'Segoe UI',
           sans-serif;
       }
-      #app-shell .card {
+      #app-shell .app-shell__card {
         max-width: 34rem;
         padding: 2rem;
       }
-      #app-shell[data-state='failed'] .card {
+      #app-shell[data-state='failed'] .app-shell__card {
         border: 1px solid currentColor;
         border-radius: 0.5rem;
       }
@@ -92,7 +92,7 @@
         background: #f4f5f6;
         color: #1b1f23;
       }
-      #app-shell[data-state='failed'] .card {
+      #app-shell[data-state='failed'] .app-shell__card {
         background: #fff;
         border-color: #d9dcdf;
       }
@@ -133,7 +133,7 @@
       the bundle fails to load, since nothing would run to reveal it.
     -->
     <div id="app-shell" data-state="starting">
-      <div class="card">
+      <div class="app-shell__card">
         <h1 tabindex="-1" id="app-shell-heading">Starting Enterprise GPT…</h1>
         <div class="on-failed">
           <!--

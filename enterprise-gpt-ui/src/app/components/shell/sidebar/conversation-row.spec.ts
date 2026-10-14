@@ -2,11 +2,13 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { getByRole, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { ConversationActionsStore } from '@state/conversation-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture } from '@testing/conversations';
+import { iconOf, menuItems, openMenu } from '@testing/overlays';
 import { ConversationRow } from './conversation-row';
 
 describe('ConversationRow', () => {
@@ -42,23 +44,33 @@ describe('ConversationRow', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
+  const KEBAB = 'Actions for Helios 2.4 release status';
+
+  function kebab(): HTMLButtonElement {
+    return getByRole(element(), 'button', { name: KEBAB });
+  }
+
+  async function openKebab(name = KEBAB): Promise<HTMLButtonElement[]> {
+    return menuItems(await openMenu(fixture, name)) as HTMLButtonElement[];
+  }
+
   it('keeps the kebab outside the navigation link', () => {
-    expect(element().querySelector('a app-menu')).toBeNull();
-    expect(element().querySelector('.row app-menu')).not.toBeNull();
+    const link = getByRole(element(), 'link', { name: /Helios 2.4 release status/ });
+
+    expect(link.contains(kebab())).toBe(false);
+    // Siblings in one row, so the row's hover and selection reach both.
+    expect(link.parentElement?.contains(kebab())).toBe(true);
   });
 
   it('names the kebab after the conversation', () => {
-    const trigger = element().querySelector<HTMLButtonElement>('.menu__trigger');
-
-    expect(trigger?.textContent).toContain('Actions for Helios 2.4 release status');
+    // `kebab()` finds it by exactly that name.
+    expect(kebab().getAttribute('aria-haspopup')).toBe('menu');
   });
 
   it('routes Delete through the shared actions store, as the only red item', async () => {
-    element().querySelector<HTMLButtonElement>('.menu__trigger')?.click();
-    await fixture.whenStable();
+    const items = await openKebab();
 
-    const items = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')];
-    const danger = items.filter((item) => item.classList.contains('menu__item--danger'));
+    const danger = items.filter((item) => item.classList.contains('text-danger-emphasis'));
     expect(danger).toHaveLength(1);
     expect(danger[0]?.textContent).toContain('Delete');
     expect(items.every((item) => item.querySelector('app-icon') !== null)).toBe(true);
@@ -71,10 +83,8 @@ describe('ConversationRow', () => {
 
   it('marks its items aria-disabled while the row’s own action is in flight', async () => {
     TestBed.inject(ConversationListStore).setRowPending(conversation.id, true);
-    element().querySelector<HTMLButtonElement>('.menu__trigger')?.click();
-    await fixture.whenStable();
+    const items = await openKebab();
 
-    const items = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')];
     expect(items.length).toBeGreaterThan(0);
     // aria-disabled, not native: the items stay focusable for the roving focus.
     expect(items.every((item) => item.getAttribute('aria-disabled') === 'true')).toBe(true);
@@ -82,27 +92,19 @@ describe('ConversationRow', () => {
   });
 
   it('routes Rename through the shared actions store', async () => {
-    element().querySelector<HTMLButtonElement>('.menu__trigger')?.click();
-    await fixture.whenStable();
+    const menu = await openMenu(fixture, KEBAB);
 
-    const rename = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')].find(
-      (item) => item.textContent?.includes('Rename'),
-    );
-    expect(rename).toBeDefined();
-
-    rename?.click();
+    getByRole(menu, 'menuitem', { name: 'Rename' }).click();
     await fixture.whenStable();
 
     expect(actions.renameTarget()).toEqual(conversation);
     // Activation closes the menu — the dialog is the next surface.
-    expect(element().querySelector('.menu__panel')).toBeNull();
+    expect(queryByRole(element(), 'menu')).toBeNull();
   });
 
   it('offers Favourite between Rename and Delete, and toggles it through the store', async () => {
-    element().querySelector<HTMLButtonElement>('.menu__trigger')?.click();
-    await fixture.whenStable();
+    const items = await openKebab();
 
-    const items = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')];
     // No Remove from project: this fixture is standalone.
     expect(items.map((item) => item.textContent?.trim())).toEqual([
       'Rename',
@@ -110,7 +112,7 @@ describe('ConversationRow', () => {
       'Move to project',
       'Delete',
     ]);
-    expect(items[1]?.querySelector('use')?.getAttribute('href')).toBe('#bi-star');
+    expect(iconOf(items[1]!)).toBe('bi-star');
 
     items[1]?.click();
     await fixture.whenStable();
@@ -124,37 +126,35 @@ describe('ConversationRow', () => {
   });
 
   it('reads Unfavourite with a filled star on a row already favourited', async () => {
-    fixture.componentRef.setInput('conversation', conversationFixture({ isFavorite: true }));
-    element().querySelector<HTMLButtonElement>('.menu__trigger')?.click();
+    const favourite = conversationFixture({ isFavorite: true });
+    fixture.componentRef.setInput('conversation', favourite);
     await fixture.whenStable();
 
-    const item = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')].find(
-      (candidate) => candidate.textContent?.includes('Unfavourite'),
-    );
-    expect(item).toBeDefined();
-    expect(item?.querySelector('use')?.getAttribute('href')).toBe('#bi-star-fill');
+    // The row's own star is labelled, as it is the only mark of a favourite.
+    expect(getByRole(element(), 'img', { name: 'Favourite' })).toBeTruthy();
+
+    const menu = await openMenu(fixture, `Actions for ${favourite.name}`);
+    const item = getByRole(menu, 'menuitem', { name: 'Unfavourite' });
+    expect(iconOf(item)).toBe('bi-star-fill');
   });
 
   it('opens the picker from the kebab, anchored where the kebab was', async () => {
-    const trigger = element().querySelector<HTMLButtonElement>('.menu__trigger');
-    trigger?.click();
+    const trigger = kebab();
+    const menu = await openMenu(fixture, KEBAB);
+
+    getByRole(menu, 'menuitem', { name: 'Move to project' }).click();
     await fixture.whenStable();
 
-    [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')]
-      .find((item) => item.textContent?.includes('Move to project'))
-      ?.click();
-    await fixture.whenStable();
-
-    expect(element().querySelector('.menu__panel')).toBeNull();
-    const picker = element().querySelector('.picker');
-    expect(picker?.getAttribute('role')).toBe('dialog');
-    expect(picker?.getAttribute('aria-label')).toBe(`Move ${conversation.name} to a project`);
+    expect(queryByRole(element(), 'menu')).toBeNull();
+    const picker = getByRole(element(), 'dialog', {
+      name: `Move ${conversation.name} to a project`,
+    });
 
     // Escape returns focus to the control the panel was anchored to.
-    picker?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    picker.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await fixture.whenStable();
 
-    expect(element().querySelector('.picker')).toBeNull();
+    expect(queryByRole(element(), 'dialog')).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
 });

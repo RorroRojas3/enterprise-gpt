@@ -73,7 +73,7 @@ Vitest through the Angular `@angular/build:unit-test` builder — there is no se
 | Target | Environment | Includes |
 | --- | --- | --- |
 | `test` | jsdom | everything except `*.a11y.spec.ts` |
-| `test-a11y` | **real headless Chromium**, 1280x900 | only `*.a11y.spec.ts` |
+| `test-a11y` | **real headless Chromium**, 1280x900 by default | only `*.a11y.spec.ts` |
 
 `src/testing/test-providers.ts` is installed into every unit test: `provideZonelessChangeDetection()`
 and `provideCheckNoChangesConfig({ exhaustive: true })`, which makes a view reading mutated
@@ -88,6 +88,20 @@ computed style — contrast, visibility, target size — which jsdom reports as 
 That reads as a clean bill of health and is not one. Its `setupFiles` is deliberately **empty**: the
 jsdom fakes would shadow Chromium's real `matchMedia` and observers and answer `false` to every media
 query.
+
+The audits run in both themes at the viewports in `src/testing/a11y.ts`: `desktop` (1280), `desktopMin`
+(992x800, the narrowest width at which the persistent sidebar is in the flow), `tablet` (900) and `mobile`
+(390). Page-level tests also assert `expectNoHorizontalOverflow` and `expectScrollsToItsLastRow`, so a page
+whose host cannot scroll fails.
+
+**Specs find elements the way a user does.** Query by role and accessible name, label or text through
+`@testing-library/dom` (`getByRole`, `getByLabelText`, `getByText`), not by BEM class. Assert state
+(`aria-pressed`, `aria-current`, `aria-expanded`, `aria-disabled`) rather than a modifier class. A spec
+may assert a Bootstrap class only where that class *is* the contract and no ARIA state exists, such as
+`text-danger`, `is-invalid` or `offcanvas-start`. `getBy*` throws on no match, so a click on an element
+that is not there fails instead of silently doing nothing. `src/testing/overlays.ts` holds the only
+places a spec names Bootstrap's overlay classes: `openMenu`, `menuItems`, `tooltipOf`, `dialogNamed` and
+`iconOf`.
 
 `a11y-coverage.spec.ts` runs in the jsdom suite and asserts the audit covers every shipped route, so
 a new route cannot be added without being audited. It reads the route list from a separate module so
@@ -106,8 +120,8 @@ npm run test:a11y # the axe target — not included in npm test
 | Script | Asserts |
 | --- | --- |
 | `check:icons` | Every `bi-*` glyph named in a template or `.ts` exists in the checked-in manifest. Covers what `strictTemplates` cannot see — raw `class="bi bi-..."` in a template, and `bi-*` literals flowing into class bindings. |
-| `check:forbidden` | A text backstop over `src/` for `bypassSecurityTrustHtml`, Google Fonts and CDN origins, Prism stylesheets, direct `localStorage.setItem`, a fifth keyframe, and a hardcoded application breakpoint. A **text** scan on purpose: it sees a runtime-assembled property name and an inline `eslint-disable`, which the structural rule cannot. |
-| `check:tokens` | The pre-paint colours duplicated into `index.html` match the tokens; the code-surface and focus-ring pairs clear their WCAG minimum in both themes; the two copies of the breakpoint table agree. |
+| `check:forbidden` | A text backstop over `src/` for `bypassSecurityTrustHtml`, Google Fonts and CDN origins, Prism stylesheets, direct `localStorage.setItem`, a keyframe outside the allow-list, a hardcoded application breakpoint, Bootstrap JavaScript, Popper or ng-bootstrap, a removed colour token, and the theme colours that fail contrast as text. A **text** scan on purpose: it sees a runtime-assembled property name and an inline `eslint-disable`, which the structural rule cannot. |
+| `check:tokens` | The pre-paint colours duplicated into `index.html` match the tokens; the text, filled-control, tooltip, code-surface and focus-ring pairs clear their WCAG minimum in both themes; `--bs-primary` flips between themes; the two copies of the breakpoint table agree. |
 | `check-initial-chunk.mjs` | Reads the esbuild metafile and fails if a must-stay-lazy library landed in the initial graph — **naming the library and the import path that put it there**. A bundle budget provably cannot do this: a chunk from `import('mermaid')` has neither `initialFiles` nor an `entryPoint`, so it sums to zero bytes. It also fails if a `pages/`, `components/` or `state/<feature>/` file other than the eager auth pages reaches the initial graph. |
 | `check:contract` | The vendored Andes contract is byte-identical to the installed NuGet package below a sentinel, its pinned version matches the API's `PackageReference`, and nobody has hand-written a duplicate of its public symbols. Not in `lint` — it needs the API's NuGet cache. |
 

@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { getByLabelText, getByRole, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TableColumn } from '@shared/models/table-column.model';
 import { TableCell } from '@shared/directives/table-cell';
@@ -191,7 +192,7 @@ describe('DataTable', () => {
     component.loading.set(true);
     await fixture.whenStable();
 
-    expect(host.querySelector('.table-skeleton')?.getAttribute('aria-busy')).toBe('true');
+    expect(getByLabelText(host, 'Loading Conversations').getAttribute('aria-busy')).toBe('true');
     expect(host.querySelectorAll('app-skeleton').length).toBeGreaterThan(0);
     expect(host.querySelector('[role="table"]')).toBeNull();
   });
@@ -309,10 +310,8 @@ describe('DataTable card slots', () => {
     const { host } = await renderNarrow();
 
     const [first] = [...host.querySelectorAll('app-card-row')];
-    const labels = [...(first?.querySelectorAll('.card-meta__label') ?? [])].map(
-      (node) => node.textContent,
-    );
-    const values = [...(first?.querySelectorAll('.card-meta__value') ?? [])].map((node) =>
+    const labels = [...(first?.querySelectorAll('dt') ?? [])].map((node) => node.textContent);
+    const values = [...(first?.querySelectorAll('dd') ?? [])].map((node) =>
       node.textContent?.trim(),
     );
 
@@ -325,9 +324,11 @@ describe('DataTable card slots', () => {
   it('puts a trailing column beside the title rather than in the action foot', async () => {
     const { host } = await renderNarrow();
 
-    const [first] = [...host.querySelectorAll('app-card-row')];
-    expect(first?.querySelector('.card-row__trailing .row-menu')).not.toBeNull();
-    expect(first?.querySelector('.card-row__actions .row-menu')).toBeNull();
+    const [first] = [...host.querySelectorAll<HTMLElement>('app-card-row')];
+    const slot = (name: string) => first!.querySelector<HTMLElement>(`[data-card-slot="${name}"]`)!;
+
+    expect(getByRole(slot('trailing'), 'button', { name: 'More' })).not.toBeNull();
+    expect(queryByRole(slot('actions'), 'button', { name: 'More' })).toBeNull();
   });
 
   it('leaves a slot genuinely empty when its column renders nothing', async () => {
@@ -336,7 +337,7 @@ describe('DataTable card slots', () => {
     // The collapse itself is `:has(> :empty)` in the stylesheet, which jsdom applies no
     // layout for; what is pinned here is the precondition that rule matches on.
     const [, second] = [...host.querySelectorAll('app-card-row')];
-    const projected = second?.querySelector('.card-row__trailing')?.firstElementChild;
+    const projected = second?.querySelector('[data-card-slot="trailing"]')?.firstElementChild;
 
     expect(projected).not.toBeNull();
     expect(projected?.childElementCount).toBe(0);

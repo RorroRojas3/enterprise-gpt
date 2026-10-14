@@ -25,8 +25,9 @@ describe('BrandLogo', () => {
     expect(images).toHaveLength(2);
     expect(images[0]?.getAttribute('src')).toBe('brand/logo-full.webp');
     expect(images[1]?.getAttribute('src')).toBe('brand/logo-full-dark.webp');
-    expect(images[0]?.className).toContain('brand--light');
-    expect(images[1]?.className).toContain('brand--dark');
+    // The kit classes are the swap: each shows only under its theme's token.
+    expect(images[0]?.classList.contains('theme-light-only')).toBe(true);
+    expect(images[1]?.classList.contains('theme-dark-only')).toBe(true);
   });
 
   it('gives both images the same alt, so neither theme reads the wordmark twice', async () => {

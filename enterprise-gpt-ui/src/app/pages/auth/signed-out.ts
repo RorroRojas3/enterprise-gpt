@@ -22,8 +22,8 @@ import { AuthPage } from '@components/auth/auth-page';
   selector: 'app-signed-out',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AuthPage, BrandLogo, Ridgeline],
+  host: { class: 'd-block' },
   templateUrl: './signed-out.html',
-  styleUrl: './signed-out.scss',
 })
 export class SignedOut {
   private readonly _auth = inject(AuthService);

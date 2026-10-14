@@ -5,6 +5,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { getAllByRole, getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MCP_AUTH_TYPE, McpServerDto } from '@shared/models/api/mcp.model';
 import { McpServerActionsStore } from '@state/mcp-server-actions-store';
@@ -12,6 +13,7 @@ import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpServerFixture } from '@testing/catalog';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
+import { menuItems, openMenu } from '@testing/overlays';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { AdminMcps } from './admin-mcps';
 
@@ -75,9 +77,11 @@ describe('AdminMcps', () => {
   }
 
   async function type(term: string): Promise<void> {
-    const field = element().querySelector<HTMLInputElement>('.search__field');
-    field!.value = term;
-    field!.dispatchEvent(new Event('input'));
+    const field = getByRole<HTMLInputElement>(element(), 'searchbox', {
+      name: 'Search servers by name, description, or URL',
+    });
+    field.value = term;
+    field.dispatchEvent(new Event('input'));
     await harness.fixture.whenStable();
     await new Promise((resolve) => setTimeout(resolve, DEBOUNCE_MS));
     await harness.fixture.whenStable();
@@ -94,9 +98,7 @@ describe('AdminMcps', () => {
       }),
     ]);
 
-    const headers = [...element().querySelectorAll('.data-table__head *, th')].map((node) =>
-      node.textContent?.trim(),
-    );
+    const headers = getAllByRole(element(), 'columnheader').map((node) => node.textContent?.trim());
     expect(rowText()).toContain('SAP Ledger');
     expect(rowText()).toContain('Cost-center and PO queries for finance');
     expect(rowText()).toContain('https://mcp.example.test/sap');
@@ -115,7 +117,7 @@ describe('AdminMcps', () => {
       }),
     ]);
 
-    const mono = [...element().querySelectorAll('.font-mono')].map((node) =>
+    const mono = [...element().querySelectorAll('.font-monospace')].map((node) =>
       node.textContent?.trim(),
     );
     expect(mono).toContain('https://mcp.example.test/sap');
@@ -149,7 +151,8 @@ describe('AdminMcps', () => {
     ]);
 
     expect(rowText()).toContain('Inactive');
-    expect(element().querySelectorAll('.admin-mcps__server--retired')).toHaveLength(1);
+    // Dimmed: the second channel besides the Status column.
+    expect(element().querySelectorAll('[role="cell"] .opacity-75')).toHaveLength(1);
     // No reactivate route, so a deactivated row gets no menu: one live row, one menu.
     expect(element().querySelectorAll('app-menu')).toHaveLength(1);
     // The cascade takes the permission with the server, so there is no badge to render.
@@ -159,13 +162,8 @@ describe('AdminMcps', () => {
   it('offers Edit and Deactivate on a live row', async () => {
     await open([mcpServerFixture({ name: 'SAP Ledger' })]);
 
-    element().querySelector<HTMLButtonElement>('app-menu button')?.click();
-    await harness.fixture.whenStable();
-
-    const items = [...element().querySelectorAll('[appMenuItem]')].map((node) =>
-      node.textContent?.trim(),
-    );
-    expect(items).toEqual(['Edit', 'Deactivate']);
+    const menu = await openMenu(harness.fixture, 'Actions for SAP Ledger', element());
+    expect(menuItems(menu).map((node) => node.textContent?.trim())).toEqual(['Edit', 'Deactivate']);
   });
 
   it('filters on the URL as well as the name, without a second request', async () => {
@@ -188,7 +186,7 @@ describe('AdminMcps', () => {
 
     expect(rowText()).toContain('No servers match “llama”');
 
-    element().querySelector<HTMLButtonElement>('[emptyStateAction]')?.click();
+    getByRole(element(), 'button', { name: 'Clear search' }).click();
     await harness.fixture.whenStable();
 
     expect(rowText()).toContain('Jira Cloud');
@@ -274,8 +272,8 @@ describe('AdminMcps', () => {
     await harness.fixture.whenStable();
     resetMediaQueries();
 
-    expect(element().querySelector('.card-row__trailing app-menu')).not.toBeNull();
-    expect(element().querySelector('.card-row__actions app-menu')).toBeNull();
+    expect(element().querySelector('[data-card-slot="trailing"] app-menu')).not.toBeNull();
+    expect(element().querySelector('[data-card-slot="actions"] app-menu')).toBeNull();
   });
 
   it('labels every card meta value with its column header', async () => {
@@ -285,9 +283,7 @@ describe('AdminMcps', () => {
     await harness.fixture.whenStable();
     resetMediaQueries();
 
-    const labels = [...element().querySelectorAll('.card-meta__label')].map(
-      (node) => node.textContent,
-    );
+    const labels = [...element().querySelectorAll('dt')].map((node) => node.textContent);
     expect(labels).toEqual(['URL', 'Auth', 'Scope']);
   });
 });

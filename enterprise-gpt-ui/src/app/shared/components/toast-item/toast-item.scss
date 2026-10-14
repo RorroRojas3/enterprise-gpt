@@ -1,103 +1,6 @@
+// The tone's edge; Bootstrap's toast has no variant for it.
 .toast {
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  width: 360px;
-  max-width: calc(100vw - 40px);
-  padding: 10px 12px;
-  border: 1px solid var(--bs-border-color);
   border-left: 4px solid var(--toast-accent);
-  border-radius: 10px;
-  background: var(--surface);
-  box-shadow: 0 8px 24px rgba(11, 31, 51, 0.14);
-  overflow: hidden;
-  pointer-events: auto;
-}
-
-.toast--success {
-  --toast-accent: var(--ok);
-}
-
-.toast--error {
-  --toast-accent: var(--fail);
-}
-
-.toast--warning {
-  --toast-accent: var(--warn);
-}
-
-.toast--info {
-  --toast-accent: var(--accent);
-}
-
-.toast__icon {
-  flex: 0 0 auto;
-  margin-top: 1px;
-  color: var(--toast-accent);
-  font-size: 15px;
-}
-
-.toast__content {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.toast__title {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-.toast__detail {
-  margin: 3px 0 0;
-  color: var(--muted);
-  font-size: 12.5px;
-  line-height: 1.45;
-}
-
-.toast__trace {
-  margin: 5px 0 0;
-  color: var(--muted);
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
-
-.toast__retry {
-  margin-top: 6px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--brand);
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-
-  &:hover {
-    text-decoration: underline;
-  }
-}
-
-.toast__dismiss {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 13px;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--surface-2);
-    color: var(--bs-body-color);
-  }
 }
 
 .toast__drain {
@@ -107,7 +10,7 @@
   block-size: 3px;
   inline-size: 100%;
   transform-origin: left;
-  // A transition, not a keyframe, to keep the app's four keyframes; `@starting-style` gives a
+  // A transition, not a keyframe, to keep the app's own keyframes few; `@starting-style` gives a
   // freshly inserted bar a state to animate from. Where unsupported, the bar sits empty.
   transform: scaleX(0);
   transition: transform var(--toast-duration, 5000ms) linear;

@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { getByRole, getByText, queryByRole, queryByText } from '@testing-library/dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TokenService } from '@core/auth/token-service';
 import { SessionStore } from '@core/session/session-store';
@@ -10,6 +11,7 @@ import { ProjectDocumentsStore } from '@state/projects/project-documents-store';
 import { ProjectStore } from '@state/projects/project-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
+import { dialogNamed } from '@testing/overlays';
 import { projectDetailFixture, projectDocumentFixture } from '@testing/projects';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
 import { ProjectFiles } from './project-files';
@@ -95,8 +97,8 @@ describe('ProjectFiles', () => {
   it('offers the drop zone, the browse control and the picker with the grant', async () => {
     await render({ canUpload: true });
 
-    expect(host().querySelector('.files__dropzone')).not.toBeNull();
-    expect(host().querySelector('.files__browse')).not.toBeNull();
+    expect(getByText(host(), /Drop files here/)).toBeTruthy();
+    expect(getByRole(host(), 'button', { name: 'browse' })).toBeTruthy();
     expect(host().querySelector('input[type="file"]')).not.toBeNull();
   });
 
@@ -104,27 +106,26 @@ describe('ProjectFiles', () => {
     await render({ canUpload: false });
 
     // Absent, not disabled, and the drop directive goes with it.
-    expect(host().querySelector('.files__dropzone')).toBeNull();
-    expect(host().querySelector('.files__browse')).toBeNull();
+    expect(queryByText(host(), /Drop files here/)).toBeNull();
+    expect(queryByRole(host(), 'button', { name: 'browse' })).toBeNull();
     expect(host().querySelector('input[type="file"]')).toBeNull();
 
     expect(host().querySelector('.files__row')).not.toBeNull();
-    expect(host().querySelector('[aria-label^="Download"]')).not.toBeNull();
+    expect(getByRole(host(), 'button', { name: 'Download plan.pdf' })).toBeTruthy();
     // Removing is an upload-permission action, so that control goes with the rest.
-    expect(host().querySelector('[aria-label^="Remove"]')).toBeNull();
+    expect(queryByRole(host(), 'button', { name: 'Remove plan.pdf' })).toBeNull();
   });
 
   it('confirms a removal before making it, and names the file', async () => {
     await render();
 
-    host().querySelector<HTMLButtonElement>('[aria-label^="Remove"]')?.click();
+    getByRole(host(), 'button', { name: 'Remove plan.pdf' }).click();
     await fixture.whenStable();
 
-    const dialog = host().querySelector('dialog');
-    expect(dialog?.open).toBe(true);
-    expect(dialog?.textContent).toContain('plan.pdf');
+    const dialog = dialogNamed('Remove file?');
+    expect(dialog.textContent).toContain('plan.pdf');
 
-    host().querySelector<HTMLButtonElement>('dialog .btn-danger')?.click();
+    getByRole(dialog, 'button', { name: 'Remove' }).click();
     await fixture.whenStable();
 
     const request = backend.expectOne((candidate) => candidate.method === 'DELETE');

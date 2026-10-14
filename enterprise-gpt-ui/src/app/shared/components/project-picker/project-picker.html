@@ -4,7 +4,7 @@
   <!-- Width inline at every viewport, so `PANEL_WIDTH` is the only place it is stated. -->
   <div
     #panel
-    class="picker"
+    class="dropdown-menu dropdown-menu-fixed show p-1 shadow"
     role="dialog"
     [id]="panelId"
     [attr.aria-label]="'Move ' + conversation().name + ' to a project'"
@@ -15,13 +15,16 @@
     (keydown)="onKeydown($event)"
     (focusout)="onFocusOut($event)"
   >
-    <div class="picker__search">
-      <app-icon class="picker__search-icon" name="bi-search" />
+    <div class="position-relative m-1 mb-2">
+      <app-icon
+        class="position-absolute top-50 start-0 translate-middle-y ms-2 pe-none small text-body-secondary"
+        name="bi-search"
+      />
       <!-- aria-controls only while the listbox exists, so the idref never dangles. -->
       <input
         #field
         type="text"
-        class="form-control picker__field"
+        class="form-control form-control-sm ps-4 border-0 bg-body-tertiary"
         placeholder="Search projects"
         autocomplete="off"
         aria-label="Search projects"
@@ -32,71 +35,92 @@
     </div>
 
     @if (projects.isFirstLoad()) {
-      <p class="picker__status">Loading projects…</p>
+      <p class="dropdown-item-text small text-body-secondary mb-0">Loading projects…</p>
     } @else if (projects.error() !== null) {
-      <p class="picker__status picker__status--error">
+      <p class="dropdown-item-text small mb-0">
         Projects could not be loaded.
-        <button type="button" class="picker__retry" (click)="projects.retry()">Try again</button>
+        <button
+          type="button"
+          class="btn btn-link btn-sm p-0 align-baseline"
+          (click)="projects.retry()"
+        >
+          Try again
+        </button>
       </p>
     } @else {
       <!-- A listbox, so aria-selected carries the check mark's meaning. The empty message
-           sits outside it: a listbox may own only options and groups. -->
+           sits outside it: a listbox may own only options and groups. It scrolls inside the
+           panel, as an empty term can match all 500 drained projects. -->
       @if (hasOptions()) {
-        <div class="picker__list" role="listbox" [id]="listId" aria-label="Projects">
+        <div
+          class="overflow-y-auto"
+          style="max-height: 16.5rem"
+          role="listbox"
+          aria-label="Projects"
+          [id]="listId"
+        >
           @for (project of matches(); track project.id) {
             <button
               type="button"
-              class="picker__option"
+              class="dropdown-item d-flex align-items-center gap-2 rounded-2"
               role="option"
               tabindex="-1"
-              [class.picker__option--selected]="project.id === conversation().projectId"
+              data-picker-row
+              [class.fw-semibold]="project.id === conversation().projectId"
               [attr.aria-selected]="project.id === conversation().projectId"
               (click)="select(project.id)"
             >
               <app-icon
+                [class.text-primary]="project.id === conversation().projectId"
                 [name]="project.id === conversation().projectId ? 'bi-folder-fill' : 'bi-folder'"
               />
-              <span class="picker__option-name">{{ project.name }}</span>
+              <span class="text-truncate flex-grow-1">{{ project.name }}</span>
               @if (project.id === conversation().projectId) {
-                <app-icon class="picker__check" name="bi-check-lg" />
+                <app-icon class="flex-shrink-0" name="bi-check-lg" />
               }
             </button>
           }
         </div>
       } @else if (hasNoMatches()) {
-        <p class="picker__status">No projects match “{{ term() }}”.</p>
+        <p class="dropdown-item-text small text-body-secondary mb-0">
+          No projects match “{{ term() }}”.
+        </p>
       } @else {
-        <p class="picker__status">No projects yet.</p>
+        <p class="dropdown-item-text small text-body-secondary mb-0">No projects yet.</p>
       }
 
       <!-- Absent rather than inert for a conversation in no project. -->
       @if (isAssigned()) {
         <button
           type="button"
-          class="picker__option picker__option--muted"
+          class="dropdown-item d-flex align-items-center gap-2 rounded-2 text-body-secondary"
           tabindex="-1"
+          data-picker-row
           (click)="select(null)"
         >
           <app-icon name="bi-folder-minus" />
-          <span class="picker__option-name">Remove from project</span>
+          <span class="text-truncate flex-grow-1">Remove from project</span>
         </button>
       }
 
       @if (projects.truncated()) {
-        <p class="picker__status picker__status--ceiling">{{ projects.ceilingNotice() }}</p>
+        <p class="dropdown-item-text small text-body-secondary mb-0">
+          {{ projects.ceilingNotice() }}
+        </p>
       }
     }
 
-    <hr class="picker__separator" />
+    <hr class="dropdown-divider" />
 
     <button
       type="button"
-      class="picker__option picker__option--brand"
+      class="dropdown-item d-flex align-items-center gap-2 rounded-2 text-primary fw-semibold"
       tabindex="-1"
+      data-picker-row
       (click)="createProject()"
     >
       <app-icon name="bi-plus-lg" />
-      <span class="picker__option-name">New project</span>
+      <span class="text-truncate flex-grow-1">New project</span>
     </button>
   </div>
 }

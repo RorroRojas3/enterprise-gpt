@@ -1,9 +1,9 @@
 <app-modal heading="Deactivate user" size="sm" [open]="open()" (closed)="onClosed()">
-  <p class="deactivate-user__body">
+  <p class="mb-0 small">
     <strong>{{ name() }}</strong> will lose access at their next sign-in, and their permissions are
     revoked with the account.
   </p>
-  <p class="deactivate-user__note">
+  <p class="mt-2 mb-0 small text-body-secondary">
     An unexpired session keeps working until its token runs out. To cut access off immediately,
     disable the account in Entra ID as well.
   </p>

@@ -18,6 +18,8 @@ import {
   clearTheme,
   expectNoHorizontalOverflow,
   expectNoSeriousViolations,
+  expectScrollsToItsLastRow,
+  mountLikeShell,
 } from '@testing/a11y';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpServerFixture, modelFixture } from '@testing/catalog';
@@ -127,10 +129,6 @@ describe('administration accessibility', () => {
       await expectNoSeriousViolations(element, `/admin/models (${theme})`);
     });
 
-    /**
-     * Opened on a hidden, non-default model: a hidden default renders `.model-form__error`, whose
-     * 4.39:1 dark-theme contrast is an app-wide token defect this test does not own.
-     */
     it(`finds nothing serious with the model form open in the ${theme} theme`, async () => {
       const element = await open('/admin/models', theme);
 
@@ -147,6 +145,24 @@ describe('administration accessibility', () => {
       expect(element.querySelector('#model-form-selectable')).not.toBeNull();
       expect(element.querySelector('#model-form-default-errors')).toBeNull();
       await expectNoSeriousViolations(element, `/admin/models form (${theme})`);
+    });
+
+    // A hidden default is the one state that renders field feedback without a request.
+    it(`finds nothing serious on the model form's field feedback in the ${theme} theme`, async () => {
+      const element = await open('/admin/models', theme);
+
+      backend
+        .expectOne((request) => request.url === MODELS_URL)
+        .flush([modelFixture({ name: 'gpt-4o', isDefault: true })]);
+      await harness.fixture.whenStable();
+
+      TestBed.inject(ModelActionsStore).beginEdit(
+        modelFixture({ name: 'gpt-4o', isDefault: true, isUserSelectable: false }),
+      );
+      await harness.fixture.whenStable();
+
+      expect(element.querySelector('#model-form-default-errors')).not.toBeNull();
+      await expectNoSeriousViolations(element, `/admin/models form feedback (${theme})`);
     });
 
     it(`finds nothing serious on the MCP registry in the ${theme} theme`, async () => {
@@ -207,7 +223,12 @@ describe('administration accessibility', () => {
    * The sidebar's width at each viewport; auditing against the bare viewport would give the
    * fitting tests room production does not have.
    */
-  const SIDEBAR_TRACK: Record<ViewportName, number> = { desktop: 260, tablet: 60, mobile: 0 };
+  const SIDEBAR_TRACK: Record<ViewportName, number> = {
+    desktop: 260,
+    desktopMin: 260,
+    tablet: 60,
+    mobile: 0,
+  };
 
   /** {@link open}, narrowed to the width the shell would actually leave. */
   async function openInShell(url: string, width: ViewportName): Promise<HTMLElement> {
@@ -285,7 +306,28 @@ describe('administration accessibility', () => {
     });
   }
 
-  // The charts must stack below 1024px; overflow is the failure, since a 640-unit chart, a
+  // The layout scrolls itself, since the shell's main column clips; a host that grew with its
+  // content instead would strand the last rows below the fold.
+  for (const width of Object.keys(VIEWPORTS) as ViewportName[]) {
+    it(`scrolls the user directory to its last row at the ${width} width`, async () => {
+      await atViewport(width);
+      applyTheme('light');
+      await harness.navigateByUrl('/admin/users');
+
+      const element = harness.routeNativeElement as HTMLElement;
+      attached = mountLikeShell(element);
+      flushPermissions(backend);
+      backend
+        .expectOne((request) => request.url === USERS_URL)
+        .flush(userPage(Array.from({ length: 25 }, () => directoryUserFixture())));
+      await harness.fixture.whenStable();
+
+      const rows = element.querySelectorAll<HTMLElement>('tbody tr, app-card-row');
+      expectScrollsToItsLastRow(element, rows[rows.length - 1]!, `/admin/users (${width})`);
+    });
+  }
+
+  // The charts must stack below 992px; overflow is the failure, since a 640-unit chart, a
   // 1.2fr/1fr split and a seven-column table all have to give way.
   for (const width of Object.keys(VIEWPORTS) as ViewportName[]) {
     it(`keeps the dashboard inside the viewport at the ${width} width`, async () => {

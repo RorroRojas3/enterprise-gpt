@@ -1,80 +1,131 @@
-// Theme rules that must follow Bootstrap's buttons and forms on source order, which
-// `_tokens.scss` cannot. They set `--bs-btn-*` variables so the components keep their states.
+// Theme rules that must follow Bootstrap's components on source order. Bootstrap compiles each
+// theme colour's buttons, text-bg, link hover and table variant as fixed values; these re-point
+// them at the per-theme tokens so they flip with `data-bs-theme`.
 
-.btn-primary {
-  --bs-btn-bg: var(--btnP-bg);
-  --bs-btn-border-color: var(--btnP-bg);
-  --bs-btn-color: var(--btnP-fg);
-  --bs-btn-hover-bg: var(--btnP-hover);
-  --bs-btn-hover-border-color: var(--btnP-hover);
-  --bs-btn-hover-color: var(--btnP-fg);
-  --bs-btn-active-bg: var(--btnP-hover);
-  --bs-btn-active-border-color: var(--btnP-hover);
-  --bs-btn-active-color: var(--btnP-fg);
-  --bs-btn-disabled-bg: var(--btnP-bg);
-  --bs-btn-disabled-border-color: var(--btnP-bg);
-  --bs-btn-disabled-color: var(--btnP-fg);
+@each $color in $flipping-colors {
+  .btn-#{$color} {
+    --bs-btn-color: var(--#{$color}-fg);
+    --bs-btn-bg: var(--bs-#{$color});
+    --bs-btn-border-color: var(--bs-#{$color});
+    --bs-btn-hover-color: var(--#{$color}-fg);
+    --bs-btn-hover-bg: var(--#{$color}-hover);
+    --bs-btn-hover-border-color: var(--#{$color}-hover);
+    --bs-btn-active-color: var(--#{$color}-fg);
+    --bs-btn-active-bg: var(--#{$color}-active);
+    --bs-btn-active-border-color: var(--#{$color}-active);
+    --bs-btn-disabled-color: var(--#{$color}-fg);
+    --bs-btn-disabled-bg: var(--bs-#{$color});
+    --bs-btn-disabled-border-color: var(--bs-#{$color});
+  }
+
+  .btn-outline-#{$color} {
+    --bs-btn-color: var(--bs-#{$color});
+    --bs-btn-border-color: var(--bs-#{$color});
+    --bs-btn-hover-color: var(--#{$color}-fg);
+    --bs-btn-hover-bg: var(--bs-#{$color});
+    --bs-btn-hover-border-color: var(--bs-#{$color});
+    --bs-btn-active-color: var(--#{$color}-fg);
+    --bs-btn-active-bg: var(--bs-#{$color});
+    --bs-btn-active-border-color: var(--bs-#{$color});
+    --bs-btn-disabled-color: var(--bs-#{$color});
+    --bs-btn-disabled-border-color: var(--bs-#{$color});
+  }
+
+  // `!important` to match the utilities these restate.
+  .text-bg-#{$color} {
+    color: var(--#{$color}-fg) !important;
+  }
+
+  .link-#{$color}:hover,
+  .link-#{$color}:focus {
+    color: var(--bs-#{$color}-text-emphasis) !important;
+    text-decoration-color: var(--bs-#{$color}-text-emphasis) !important;
+  }
+
+  .table-#{$color} {
+    --bs-table-color: var(--bs-emphasis-color);
+    --bs-table-bg: var(--bs-#{$color}-bg-subtle);
+    --bs-table-border-color: var(--bs-#{$color}-border-subtle);
+    color: var(--bs-table-color);
+    border-color: var(--bs-table-border-color);
+  }
 }
 
+// The app's neutral button, not Bootstrap's grey fill on hover.
 .btn-outline-secondary {
   --bs-btn-color: var(--bs-body-color);
   --bs-btn-border-color: var(--bs-border-color);
-  --bs-btn-hover-bg: var(--surface-2);
   --bs-btn-hover-color: var(--bs-body-color);
+  --bs-btn-hover-bg: var(--bs-tertiary-bg);
   --bs-btn-hover-border-color: var(--bs-border-color);
-  --bs-btn-active-bg: var(--surface-2);
   --bs-btn-active-color: var(--bs-body-color);
+  --bs-btn-active-bg: var(--bs-secondary-bg);
   --bs-btn-active-border-color: var(--bs-border-color);
+  --bs-btn-disabled-color: var(--bs-secondary-color);
+  --bs-btn-disabled-border-color: var(--bs-border-color);
 }
 
-.btn-danger {
-  --bs-btn-bg: var(--fail);
-  --bs-btn-border-color: var(--fail);
-  --bs-btn-color: #fff;
-  --bs-btn-hover-bg: #a93226;
-  --bs-btn-hover-border-color: #a93226;
-  --bs-btn-hover-color: #fff;
-  --bs-btn-active-bg: #a93226;
-  --bs-btn-active-border-color: #a93226;
-  --bs-btn-active-color: #fff;
+// The label only: `--bs-danger` is 4.39:1 as text on the dark surface. The border and the
+// hover fill keep the base colour.
+.btn-outline-danger {
+  --bs-btn-color: var(--bs-danger-text-emphasis);
+  --bs-btn-disabled-color: var(--bs-danger-text-emphasis);
 }
 
-.form-check-input:checked {
-  background-color: var(--btnP-bg);
-  border-color: var(--btnP-bg);
+// ── Dark-theme glyphs ────────────────────────────────────────────────────────
+// SVG data URIs cannot read custom properties, and Bootstrap's white glyph measures 2.74:1 on the
+// dark primary fill, so the dark theme redraws them in the fill's label colour.
+@function dark-glyph($svg) {
+  @return escape-svg(
+    str-replace($svg, '#{$component-active-color}', '#{map-get($tokens-dark, 'primary-fg')}')
+  );
 }
 
-// The tinted glow is ~1.2:1 and the field's only indicator (Bootstrap sets `outline: 0`),
-// failing SC 1.4.11. `check:tokens` reads only `:root` blocks, so it cannot catch this.
-.form-control:focus,
-.form-select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--focus-ring);
+[data-bs-theme='dark'] {
+  .form-check-input:checked[type='checkbox'] {
+    --bs-form-check-bg-image: #{dark-glyph($form-check-input-checked-bg-image)};
+  }
+
+  .form-check-input:checked[type='radio'] {
+    --bs-form-check-bg-image: #{dark-glyph($form-check-radio-checked-bg-image)};
+  }
+
+  .form-check-input[type='checkbox']:indeterminate {
+    --bs-form-check-bg-image: #{dark-glyph($form-check-input-indeterminate-bg-image)};
+  }
+
+  .form-switch .form-check-input:checked {
+    --bs-form-switch-bg: #{dark-glyph($form-switch-checked-bg-image)};
+  }
 }
 
-// Clears Bootstrap's off-palette wash and border on any focus, since Chrome skips
-// `:focus-visible` on a clicked checkbox. Must precede the equal-specificity ring rule below.
-.form-check-input:focus {
-  border-color: var(--accent);
-  // focus-check-ignore-next-line
-  outline: none;
-  box-shadow: none;
+// ── Focus ────────────────────────────────────────────────────────────────────
+// Each of these declares `outline: 0` at (0,2,0) or more, beating `_focus.scss`'s floor, so each is
+// named. An outline with an offset, never a flush shadow: on a filled control in dark the fill is
+// the focus colour and a flush ring measures 1:1.
+.btn {
+  --bs-btn-focus-box-shadow: none;
 }
 
-// Named because each has its own (0,2,0) `:focus-visible` that beats `_focus.scss`'s floor with
-// a sub-3:1 shadow. Offset, since a flush ring on `--btnP-bg` vanishes in the dark theme.
 .btn:focus-visible,
+.btn-check:focus-visible + .btn,
 .nav-link:focus-visible,
-.form-check-input:focus-visible {
+.page-link:focus-visible,
+.form-check-input:focus-visible,
+.btn-close:focus-visible,
+.navbar-toggler:focus-visible,
+.carousel-control-prev:focus-visible,
+.carousel-control-next:focus-visible,
+.form-control-plaintext:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
-  box-shadow: none;
 }
 
-a {
-  color: var(--bs-link-color);
-
-  &:hover {
-    color: var(--bs-link-hover-color);
-  }
+// Full-width rows: an offset ring would overlap their neighbours, so it sits inside, on the
+// measured `--bs-tertiary-bg` / `--bs-secondary-bg` they fill on hover and when active.
+.dropdown-item:focus-visible,
+.list-group-item-action:focus-visible,
+.accordion-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }

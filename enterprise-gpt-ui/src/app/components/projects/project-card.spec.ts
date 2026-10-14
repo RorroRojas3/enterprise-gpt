@@ -1,6 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { getByRole } from '@testing-library/dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { iconOf } from '@testing/overlays';
 import { ProjectCard } from './project-card';
 
 describe('ProjectCard', () => {
@@ -20,16 +22,14 @@ describe('ProjectCard', () => {
   it('makes the title a real link, not a clickable card', async () => {
     const { host } = await render();
 
-    const link = host.querySelector('a');
-    expect(link?.textContent).toContain('Helios 2.4');
-    expect(link?.getAttribute('href')).toBe('/projects/helios');
+    const link = getByRole(host, 'link', { name: 'Helios 2.4' });
+    expect(link.getAttribute('href')).toBe('/projects/helios');
   });
 
   it('labels its own heading for assistive technology', async () => {
     const { host } = await render();
 
-    const labelledBy = host.querySelector('article')?.getAttribute('aria-labelledby');
-    expect(host.querySelector(`#${labelledBy}`)?.textContent).toContain('Helios 2.4');
+    expect(getByRole(host, 'article', { name: 'Helios 2.4' })).toBeTruthy();
   });
 
   it('names the favourite toggle by what it will do, without double-encoding state', async () => {
@@ -37,12 +37,12 @@ describe('ProjectCard', () => {
     const toggled = vi.fn();
     fixture.componentInstance.favoriteToggled.subscribe(toggled);
 
-    const button = host.querySelector<HTMLButtonElement>('.project-card__favorite');
-    expect(button?.getAttribute('aria-pressed')).toBeNull();
-    expect(button?.getAttribute('aria-label')).toBe('Unfavourite Helios 2.4');
-    expect(button?.classList.contains('project-card__favorite--on')).toBe(true);
+    const button = getByRole(host, 'button', { name: 'Unfavourite Helios 2.4' });
+    expect(button.getAttribute('aria-pressed')).toBeNull();
+    // The filled glyph carries the state the label does not double-encode.
+    expect(iconOf(button)).toBe('bi-star-fill');
 
-    button?.click();
+    button.click();
     expect(toggled).toHaveBeenCalledOnce();
   });
 
@@ -52,8 +52,8 @@ describe('ProjectCard', () => {
     expect(host.querySelector('article')?.getAttribute('aria-busy')).toBe('true');
     // aria-disabled, not `disabled`, which would blur the button just pressed; the store guards
     // on the pending id, so the press is a no-op.
-    const star = host.querySelector<HTMLButtonElement>('.project-card__favorite');
-    expect(star?.getAttribute('aria-disabled')).toBe('true');
-    expect(star?.disabled).toBe(false);
+    const star = getByRole<HTMLButtonElement>(host, 'button', { name: 'Favourite Helios 2.4' });
+    expect(star.getAttribute('aria-disabled')).toBe('true');
+    expect(star.disabled).toBe(false);
   });
 });

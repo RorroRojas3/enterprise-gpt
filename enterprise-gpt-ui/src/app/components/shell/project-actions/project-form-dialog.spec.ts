@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PROJECT_FIELD_LENGTHS } from '@shared/models/api/project.model';
 import { DUPLICATE_NAME_MESSAGE } from '@core/projects/duplicate-name';
@@ -53,6 +54,10 @@ describe('ProjectFormDialog', () => {
 
   function instructionsField(): HTMLTextAreaElement {
     return host().querySelector('#project-form-instructions') as HTMLTextAreaElement;
+  }
+
+  function createButton(): HTMLButtonElement {
+    return getByRole(host(), 'button', { name: 'Create project' });
   }
 
   async function type(field: HTMLInputElement | HTMLTextAreaElement, text: string): Promise<void> {
@@ -118,11 +123,11 @@ describe('ProjectFormDialog', () => {
     actions.beginCreate();
     await fixture.whenStable();
 
-    const submit = host().querySelector<HTMLButtonElement>('button[type="submit"]');
-    expect(submit?.disabled).toBe(true);
+    const submit = createButton();
+    expect(submit.disabled).toBe(true);
 
     await type(nameField(), 'Helios');
-    expect(submit?.disabled).toBe(false);
+    expect(submit.disabled).toBe(false);
   });
 
   it('renders the board’s duplicate-name copy, not the server’s wording', async () => {
@@ -130,7 +135,7 @@ describe('ProjectFormDialog', () => {
     await fixture.whenStable();
     await type(nameField(), 'RFP Responses');
 
-    host().querySelector<HTMLButtonElement>('button[type="submit"]')?.click();
+    createButton().click();
     await fixture.whenStable();
 
     backend
@@ -151,7 +156,7 @@ describe('ProjectFormDialog', () => {
     await fixture.whenStable();
     await type(nameField(), 'RFP Responses');
 
-    host().querySelector<HTMLButtonElement>('button[type="submit"]')?.click();
+    createButton().click();
     await fixture.whenStable();
     backend
       .expectOne((request) => request.method === 'POST')

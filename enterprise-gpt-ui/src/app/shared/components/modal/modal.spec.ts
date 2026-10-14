@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { getByRole, queryByRole } from '@testing-library/dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { Modal } from './modal';
@@ -25,6 +26,21 @@ class ModalHost {
   readonly open = signal(false);
   readonly dismissible = signal(true);
   readonly busy = signal(false);
+}
+
+@Component({
+  selector: 'app-confirm-host',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [Modal],
+  template: `
+    <app-modal [(open)]="open" heading="Delete conversation?">
+      <p>This cannot be undone.</p>
+      <div modalFooter><button id="keep" type="button">Keep</button></div>
+    </app-modal>
+  `,
+})
+class ConfirmHost {
+  readonly open = signal(false);
 }
 
 describe('Modal', () => {
@@ -70,6 +86,40 @@ describe('Modal', () => {
     await fixture.whenStable();
 
     expect((document.activeElement as HTMLElement).id).toBe('name');
+  });
+
+  it('skips its close button when choosing the initial focus', async () => {
+    const fixture = TestBed.createComponent(ConfirmHost);
+    fixture.componentInstance.open.set(true);
+    await fixture.whenStable();
+
+    expect((document.activeElement as HTMLElement).id).toBe('keep');
+  });
+
+  it('closes from its close button, which is disabled while busy', async () => {
+    const { fixture, component, dialog } = await render();
+    component.open.set(true);
+    await fixture.whenStable();
+    const close = getByRole(dialog, 'button', { name: 'Close' }) as HTMLButtonElement;
+
+    component.busy.set(true);
+    await fixture.whenStable();
+    expect(close.disabled).toBe(true);
+
+    component.busy.set(false);
+    await fixture.whenStable();
+    close.click();
+    await fixture.whenStable();
+    expect(component.open()).toBe(false);
+  });
+
+  it('offers no close button when it is not dismissible', async () => {
+    const { fixture, component, dialog } = await render();
+    component.dismissible.set(false);
+    component.open.set(true);
+    await fixture.whenStable();
+
+    expect(queryByRole(dialog, 'button', { name: 'Close' })).toBeNull();
   });
 
   it('returns focus to the invoking control on close', async () => {
@@ -139,7 +189,9 @@ describe('Modal', () => {
     component.open.set(true);
     await fixture.whenStable();
 
-    dialog.querySelector('#cancel')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    getByRole(dialog, 'button', { name: 'Cancel' }).dispatchEvent(
+      new MouseEvent('click', { bubbles: true }),
+    );
     await fixture.whenStable();
     expect(component.open()).toBe(true);
 

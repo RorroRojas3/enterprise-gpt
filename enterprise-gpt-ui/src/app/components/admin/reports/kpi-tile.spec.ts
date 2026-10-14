@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
+import { getByText, queryByText } from '@testing-library/dom';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { iconOf } from '@testing/overlays';
 import { KpiTile } from './kpi-tile';
 
 describe('KpiTile', () => {
@@ -21,22 +23,22 @@ describe('KpiTile', () => {
   it('states the figure, the change and what it is measured against', async () => {
     const host = await render(12);
 
-    expect(host.querySelector('.kpi__label')?.textContent?.trim()).toBe('Total tokens');
-    expect(host.querySelector('.kpi__value')?.textContent?.trim()).toBe('48.2M');
-    expect(host.querySelector('.kpi__change')?.textContent?.trim()).toBe('+12%');
+    expect(getByText(host, 'Total tokens')).toBeTruthy();
+    expect(getByText(host, '48.2M')).toBeTruthy();
+    expect(getByText(host, '+12%')).toBeTruthy();
     expect(host.textContent).toContain('vs. prior 30 days');
   });
 
   it('signs the direction in text as well as in the arrow and the tone', async () => {
     // Colour is never the only channel (SC 1.4.1), and neither is a glyph.
     const up = await render(12);
-    expect(up.querySelector('.kpi__delta--up')).not.toBeNull();
-    expect(up.querySelector('use')?.getAttribute('href')).toBe('#bi-arrow-up-right');
+    expect(iconOf(up)).toBe('bi-arrow-up-right');
+    expect(up.querySelector('app-icon')?.classList).toContain('text-success-emphasis');
 
     const down = await render(-3);
-    expect(down.querySelector('.kpi__change')?.textContent?.trim()).toBe('-3%');
-    expect(down.querySelector('.kpi__delta--up')).toBeNull();
-    expect(down.querySelector('use')?.getAttribute('href')).toBe('#bi-arrow-down-right');
+    expect(getByText(down, '-3%')).toBeTruthy();
+    expect(iconOf(down)).toBe('bi-arrow-down-right');
+    expect(down.querySelector('app-icon')?.classList).not.toContain('text-success-emphasis');
   });
 
   it('draws no arrow at all for an unchanged figure', async () => {
@@ -44,13 +46,13 @@ describe('KpiTile', () => {
 
     // A down arrow beside "0%" would announce a decrease that did not happen.
     expect(host.querySelector('use')).toBeNull();
-    expect(host.querySelector('.kpi__change')?.textContent?.trim()).toBe('0%');
+    expect(getByText(host, '0%')).toBeTruthy();
   });
 
   it('says there was nothing to compare against rather than showing a change of zero', async () => {
     const host = await render(null);
 
     expect(host.textContent).toContain('No prior 30 days to compare with');
-    expect(host.querySelector('.kpi__change')).toBeNull();
+    expect(queryByText(host, /%$/)).toBeNull();
   });
 });

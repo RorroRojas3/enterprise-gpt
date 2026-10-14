@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { getAllByRole, getByRole, queryByRole, within } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ModelDto } from '@shared/models/api/chat-model.model';
 import { PROVIDER_ID } from '@shared/models/api/provider.model';
@@ -8,6 +9,7 @@ import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { TurnSettingsStore } from '@state/turn-settings-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
+import { iconOf, menuItems } from '@testing/overlays';
 import { ModelMenu, formatTokenCount } from './model-menu';
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
@@ -43,18 +45,29 @@ describe('ModelMenu', () => {
     document.body.append(fixture.nativeElement as HTMLElement);
     await fixture.whenStable();
     const host = fixture.nativeElement as HTMLElement;
+    const trigger = () => getByRole<HTMLButtonElement>(host, 'button', { name: /^Model:/ });
     return {
       fixture,
       host,
-      trigger: () => host.querySelector('.menu__trigger') as HTMLButtonElement,
-      pillText: () => host.querySelector('.model-menu__pill')?.textContent?.trim() ?? '',
-      panel: () => host.querySelector('[role="menu"]'),
+      trigger,
+      pillText: () => trigger().textContent?.trim() ?? '',
+      panel: () => queryByRole(host, 'menu'),
       async open() {
-        (host.querySelector('.menu__trigger') as HTMLButtonElement).click();
+        trigger().click();
         await fixture.whenStable();
       },
-      options: () => [...host.querySelectorAll<HTMLButtonElement>('.model-menu__option')],
+      options: () => getAllByRole<HTMLButtonElement>(host, 'menuitemradio'),
+      /** The status line: the one row that is disabled rather than chosen. */
+      status: () =>
+        menuItems(getByRole(host, 'menu')).find(
+          (item) => item.getAttribute('aria-disabled') === 'true',
+        ),
     };
+  }
+
+  /** An option's caption line, which the mono figure sits inside. */
+  function caption(option: HTMLElement): string | undefined {
+    return option.querySelector('.font-monospace')?.parentElement?.textContent ?? undefined;
   }
 
   async function loadModels(models: ModelDto[]): Promise<void> {
@@ -77,9 +90,7 @@ describe('ModelMenu', () => {
     expect(menu.pillText()).toContain('No models');
 
     await menu.open();
-    expect(menu.host.querySelector('.model-menu__status')?.textContent).toContain(
-      'No models are available.',
-    );
+    expect(menu.status()?.textContent).toContain('No models are available.');
   });
 
   it('preselects the default model on the pill, with its mono context figure', async () => {
@@ -91,15 +102,9 @@ describe('ModelMenu', () => {
     await menu.fixture.whenStable();
 
     expect(menu.pillText()).toContain('GPT-5 Enterprise');
-    // The stylesheet truncates the name through this hook, and jsdom loads no stylesheet, so
-    // pinning the class is the only guard against a rename silently undoing that.
-    expect(menu.host.querySelector('.model-menu__pill-name')?.textContent?.trim()).toBe(
-      'GPT-5 Enterprise',
+    expect(within(menu.trigger()).getByText('400k').classList.contains('font-monospace')).toBe(
+      true,
     );
-    expect(menu.host.querySelector('.model-menu__pill-context')?.textContent).toBe('400k');
-    expect(
-      menu.host.querySelector('.model-menu__pill-context')?.classList.contains('font-mono'),
-    ).toBe(true);
     expect(menu.trigger().getAttribute('aria-label')).toBe('Model: GPT-5 Enterprise');
   });
 
@@ -132,29 +137,24 @@ describe('ModelMenu', () => {
       'menuitemradio',
     ]);
 
-    const captions = options.map(
-      (option) => option.querySelector('.model-menu__option-caption')?.textContent,
-    );
+    // The mono class wraps the figure alone, so the caption is the figure's parent.
+    const captions = options.map((option) => caption(option));
     expect(captions[0]).toBe('Anthropic · 200k context');
     expect(captions[1]).toBe('Azure OpenAI · 400k context');
     expect(captions[2]).toBe('Azure OpenAI · 128k context · no tool calling');
-    // The mono class wraps the figure alone, not the caption.
-    expect(options[0]?.querySelector('.model-menu__option-caption .font-mono')?.textContent).toBe(
-      '200k',
-    );
+    expect(options[0]?.querySelector('.font-monospace')?.textContent).toBe('200k');
 
-    expect(menu.host.querySelectorAll('.model-menu__default-badge')).toHaveLength(1);
-    expect(options[1]?.querySelector('.model-menu__default-badge')).not.toBeNull();
+    const panel = getByRole(menu.host, 'menu');
+    expect(within(panel).getAllByText('Default')).toHaveLength(1);
+    expect(within(options[1]!).getByText('Default')).not.toBeNull();
 
-    // The default is the current selection: checked, marked, raised.
+    // The default is the current selection: checked, and marked with the check glyph.
     expect(options.map((option) => option.getAttribute('aria-checked'))).toEqual([
       'false',
       'true',
       'false',
     ]);
-    expect(options[1]?.querySelector('.model-menu__check')).not.toBeNull();
-    expect(options[0]?.querySelector('.model-menu__check')).toBeNull();
-    expect(options[1]?.classList.contains('model-menu__option--selected')).toBe(true);
+    expect(options.map((option) => iconOf(option))).toEqual([null, 'bi-check-lg', null]);
   });
 
   it('omits the provider segment and mutes the dot for a provider this build does not know', async () => {
@@ -169,9 +169,9 @@ describe('ModelMenu', () => {
     ]);
     await menu.open();
 
-    const option = menu.options()[0];
-    expect(option?.querySelector('.model-menu__option-caption')?.textContent).toBe('100k context');
-    expect(option?.querySelector('.status-dot__mark--muted')).not.toBeNull();
+    const option = menu.options()[0]!;
+    expect(caption(option)).toBe('100k context');
+    expect(option.querySelector('.bg-secondary')).not.toBeNull();
   });
 
   it('selects on click, closes, and returns focus to the pill', async () => {
@@ -202,17 +202,11 @@ describe('ModelMenu', () => {
     expect(menu.pillText()).toContain('Models unavailable');
 
     await menu.open();
-    expect(menu.host.querySelector('.model-menu__status')?.textContent).toContain(
-      'The model catalog failed to load.',
-    );
+    expect(menu.status()?.textContent).toContain('The model catalog failed to load.');
 
-    const retry = [...menu.host.querySelectorAll<HTMLButtonElement>('[appMenuItem]')].find((item) =>
-      item.textContent?.includes('Retry'),
-    );
-    expect(retry).toBeDefined();
-
-    retry?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-    retry?.click();
+    const retry = getByRole(menu.host, 'menuitem', { name: 'Retry' });
+    retry.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    retry.click();
     await menu.fixture.whenStable();
 
     // stayOpen while errored: the reload lands into the open panel.

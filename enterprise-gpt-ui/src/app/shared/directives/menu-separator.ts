@@ -5,7 +5,7 @@ import { Directive } from '@angular/core';
   selector: '[appMenuSeparator]',
   host: {
     role: 'separator',
-    class: 'menu__separator',
+    class: 'dropdown-divider',
   },
 })
 export class MenuSeparator {}

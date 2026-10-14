@@ -1,25 +1,9 @@
 // The host is the overlay itself, so the zone only has to be positioned.
 :host {
-  position: absolute;
   z-index: 5;
-  inset: 4px;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: center;
-  // Derived from --accent rather than a literal rgba, so check:tokens stays the one place a
-  // colour is asserted.
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
-  border: 2px dashed var(--accent);
-  border-radius: 11px;
-  color: var(--brand);
-  font-size: 14px;
-  font-weight: 600;
-  // The pointer is mid-drag over the zone beneath; an overlay that took hit-testing
-  // would fire its own dragenter and desync the depth counter.
-  pointer-events: none;
-}
-
-.drop-overlay__icon {
-  font-size: 18px;
+  inset: 0.25rem;
+  // Derived from --bs-info rather than a literal rgba, so check:tokens stays the one place a
+  // colour is asserted. Dashed: Bootstrap has no border-style utility.
+  background: color-mix(in srgb, var(--bs-info) 7%, transparent);
+  border: 2px dashed var(--bs-info);
 }

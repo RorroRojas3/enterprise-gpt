@@ -21,24 +21,32 @@
       "
     />
 
-    <div class="rename__meta">
+    <!-- One row, so the counter survives the invalid state beside the errors. -->
+    <div class="d-flex justify-content-between gap-3 mt-1">
       @if (showErrorRegion()) {
         <!--
           `role="alert"`: inserted with its content, so a rejection is announced while focus stays
           put. Tracked by `$index` because two rules can emit identical text.
         -->
-        <div class="rename__errors" id="rename-conversation-errors" role="alert">
+        <div
+          class="invalid-feedback d-block min-w-0 mt-0"
+          id="rename-conversation-errors"
+          role="alert"
+        >
           @if (showErrors()) {
             @for (message of errorMessages(); track $index) {
-              <p class="rename__error">{{ message }}</p>
+              <p class="mb-0">{{ message }}</p>
             }
           }
           @for (message of unmatched(); track $index) {
-            <p class="rename__error">{{ message }}</p>
+            <p class="mb-0">{{ message }}</p>
           }
         </div>
       }
-      <p class="rename__counter font-mono" id="rename-conversation-counter">
+      <p
+        class="font-monospace small text-body-secondary flex-shrink-0 ms-auto mb-0"
+        id="rename-conversation-counter"
+      >
         {{ charCount() }} / {{ nameMaxLength }}
       </p>
     </div>

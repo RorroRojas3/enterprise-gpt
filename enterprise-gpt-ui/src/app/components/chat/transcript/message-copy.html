@@ -1,4 +1,10 @@
-<button type="button" class="message-copy" [attr.aria-label]="label()" (click)="copy()">
+<!-- A link-styled button rather than a filled one: the footer is metadata. -->
+<button
+  type="button"
+  class="btn btn-link btn-sm p-0 text-reset text-decoration-none d-inline-flex align-items-center gap-1"
+  [attr.aria-label]="label()"
+  (click)="copy()"
+>
   <app-icon name="bi-copy" />
   {{ visibleLabel() }}
 </button>

@@ -178,10 +178,11 @@ Six projects plus two test projects under `test/`. `global.json` pins the SDK an
 
 Angular **21.2**, standalone components, **zoneless**. Zoneless is the v21 default, and `provideZonelessChangeDetection()` is stated explicitly in `app.config.ts` anyway. `@ngrx/signals` is pinned exact at **21.1.1**.
 
-- **Styles:** Bootstrap 5.3 + **SCSS**.
-  - `src/styles.scss` is an `@import` chain, not `@use`, because Bootstrap 5.3 still shares one global `!default` namespace across its partials.
-  - The order is load-bearing: Bootstrap's `root` before `tokens`, its components before `bootstrap-overrides`, and `motion` last.
-  - Components read tokens through `var(--…)` and **never** `@use 'tokens'`, which emits `:root` and would re-scope it to the component.
+- **Styles:** full Bootstrap 5.3 + **SCSS**: every component module, the whole utilities API and Bootstrap's default spacing, type and radius scales. No Bootstrap JavaScript, Popper or ng-bootstrap, and `check:forbidden` enforces it.
+  - `src/styles.scss` is an `@import` chain, not `@use`, because Bootstrap 5.3 still shares one global `!default` namespace across its partials. The order is load-bearing: `typography` → `bootstrap-config` → `theme` → `bootstrap-components` → `base` → `focus` → `overlays` → `bootstrap-overrides` → `kit` → `prism` → `markdown` → `bootstrap/scss/utilities/api` → `motion`, which is last so its reduced-motion block wins.
+  - `_tokens.scss` is **data only**: the `$tokens-light` / `$tokens-dark` maps, under Bootstrap's own names (`bs-body-bg`, `bs-primary`, `bs-secondary-color`, …) plus the app-only tokens. `_bootstrap-config.scss` feeds them into Bootstrap's Sass variables and `_theme.scss` emits them per theme, because Bootstrap's dark root omits the theme colours.
+  - Components read tokens through `var(--…)` and **never** `@use 'tokens'` or `@use 'theme'`, which emit `:root` and would re-scope it to the component. `@use 'breakpoints' as bp` is allowed: it emits nothing.
+  - **Bootstrap first:** templates use Bootstrap and `_kit.scss` classes. A component stylesheet exists only for rules that are genuinely bespoke, and a component that needs none has no `.scss`.
 - **Markdown:** `ngx-markdown` over marked + Prism, with DOMPurify behind its `SANITIZE` provider.
   - It is wired through `provideChatMarkdown()` on the `Chat` component, so the whole stack rides the lazy chat chunk. A build gate keeps it out of the initial graph.
   - Supplying a `SANITIZE` function *replaces* Angular's `DomSanitizer` in that pipeline, so DOMPurify's closed profile is the only DOM-boundary layer. A `renderer.html = () => ''` override backs it by dropping raw HTML at the parser.
@@ -221,7 +222,7 @@ Angular **21.2**, standalone components, **zoneless**. Zoneless is the v21 defau
     - `adminEvents`: user events carrying a DTO, plus two `type<void>()` catalog events, `modelCatalogChanged` and `mcpCatalogChanged`. Each has a route-scoped and a root observer, and both refetch.
     - `turnEvents`.
   - Clearing state is not cancelling work: a store that loads asynchronously must also `takeUntil(injectSignedOut())`.
-- **Bundle budget:** the production build warns above **680 kB** initial raw and fails above **720 kB**; the `styles` budget is 66/80 kB.
+- **Bundle budget:** the production build warns above **900 kB** initial raw and fails above **960 kB**; the `styles` budget is 264/282 kB (full Bootstrap) and `anyComponentStyle` 4/8 kB.
   - MSAL is ~249 kB of the initial graph, and none of it is deferrable, because `main.ts` must `initialize()` the instance before `bootstrapApplication`.
   - The rule to preserve is which libraries stay off the initial graph:
     - the markdown stack (`ngx-markdown`, `marked`, `prismjs`, `dompurify`) rides the lazy chat chunk;

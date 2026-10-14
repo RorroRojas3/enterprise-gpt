@@ -1,19 +1,20 @@
-<h1 class="admin-users__title font-display">Users</h1>
+<h1 class="fs-5 fw-semibold mb-3 font-display">Users</h1>
 
-<div class="admin-users__toolbar">
+<div class="row g-2 align-items-center mb-3">
   <!-- One field: the server matches names and email with the same LIKE. -->
-  <app-search-input
-    class="admin-users__search"
-    label="Search users by name or email"
-    placeholder="Search name or email"
-    [value]="name()"
-    [busy]="users.isPending()"
-    (searched)="onSearched($event)"
-  />
+  <div class="col-12 col-md-4">
+    <app-search-input
+      label="Search users by name or email"
+      placeholder="Search name or email"
+      [value]="name()"
+      [busy]="users.isPending()"
+      (searched)="onSearched($event)"
+    />
+  </div>
 
   <!-- `[selected]` on each option, not `[value]` on the select: that binds before `@for` adds
        the options, and the browser falls back to "any" while filtering by something else. -->
-  <label class="admin-users__permission">
+  <label class="col-12 col-md-auto">
     <span class="visually-hidden">Filter users by permission</span>
     <!-- Never disabled while the catalog loads: with only "any" it can do no harm. -->
     <select #permissionField class="form-select" (change)="onPermissionFiltered($event)">
@@ -36,30 +37,34 @@
   @if (!isTableLoading() && !users.error()) {
     <!-- The explanation rides as visually-hidden text so it never depends on hover; the info
          button repeats it visually, with a short name so it is not read as its label. -->
-    <p class="admin-users__order">
-      By last name
-      <span class="visually-hidden">. {{ ORDER_EXPLANATION }}</span>
-    </p>
-    <button
-      class="admin-users__order-info"
-      type="button"
-      aria-label="About this list"
-      [appTooltip]="ORDER_EXPLANATION"
-      appTooltipPlacement="top"
-    >
-      <app-icon name="bi-info-circle" />
-    </button>
+    <div class="col-auto d-flex align-items-center gap-1">
+      <p class="mb-0 small text-body-secondary text-nowrap">
+        By last name
+        <span class="visually-hidden">. {{ ORDER_EXPLANATION }}</span>
+      </p>
+      <button
+        class="btn btn-ghost btn-icon btn-icon-sm"
+        type="button"
+        aria-label="About this list"
+        [appTooltip]="ORDER_EXPLANATION"
+        appTooltipPlacement="top"
+      >
+        <app-icon name="bi-info-circle" />
+      </button>
+    </div>
   }
 
-  <button
-    class="btn btn-primary btn-sm admin-users__add"
-    type="button"
-    aria-haspopup="dialog"
-    (click)="actions.beginCreate()"
-  >
-    <app-icon name="bi-plus-lg" />
-    Add user
-  </button>
+  <div class="col-12 col-md-auto ms-md-auto">
+    <button
+      class="btn btn-primary w-100 touch-target d-inline-flex align-items-center justify-content-center gap-2 fw-semibold"
+      type="button"
+      aria-haspopup="dialog"
+      (click)="actions.beginCreate()"
+    >
+      <app-icon name="bi-plus-lg" />
+      Add user
+    </button>
+  </div>
 </div>
 
 @if (users.error(); as error) {
@@ -82,31 +87,37 @@
     [pendingIds]="actions.pendingIds()"
   >
     <ng-template appTableCell="user" [appTableCellFor]="users.entities()" let-row>
-      <span class="admin-users__identity">
+      <span class="d-flex align-items-center gap-2 min-w-0">
         <app-avatar-initials [name]="row.fullName" [fallback]="row.email" [seed]="row.id" />
-        <span class="admin-users__name">{{ displayName(row) }}</span>
+        <span class="admin-users__name text-truncate fw-semibold small">{{
+          displayName(row)
+        }}</span>
         @if (isSelf(row)) {
           <!-- The one row whose actions the server answers differently, so it says so up front. -->
-          <span class="admin-users__you">(you)</span>
+          <span class="flex-shrink-0 small fw-normal text-body-secondary">(you)</span>
         }
       </span>
 
       @if (actions.selfDeactivateRefusedId() === row.id) {
         <!-- Never a toast. In this cell because the 160px actions column would wrap it to four
              lines; Deactivate points here with `aria-describedby`. -->
-        <p class="admin-users__refusal" role="alert" [id]="refusalId(row)">
-          <app-icon name="bi-slash-circle" />
+        <p
+          class="d-flex align-items-start gap-2 mt-1 mb-0 ms-5 small text-danger-emphasis"
+          role="alert"
+          [id]="refusalId(row)"
+        >
+          <app-icon class="flex-shrink-0 mt-1" name="bi-slash-circle" />
           {{ SELF_DEACTIVATE_MESSAGE }}
         </p>
       }
     </ng-template>
 
     <ng-template appTableCell="email" [appTableCellFor]="users.entities()" let-row>
-      <span class="admin-users__email">{{ row.email }}</span>
+      <span class="d-block text-truncate small text-body-secondary">{{ row.email }}</span>
     </ng-template>
 
     <ng-template appTableCell="permissions" [appTableCellFor]="users.entities()" let-row>
-      <span class="admin-users__permissions">
+      <span class="d-flex flex-wrap gap-1">
         @for (permission of row.permissions; track permission.id) {
           <!-- An MCP-managed permission is kept in sync with its server's name, so no request
                is needed to name the server. -->
@@ -116,17 +127,17 @@
           />
         } @empty {
           <!-- A real state, not missing data: a user can hold no grants at all. -->
-          <span class="admin-users__no-permissions">No permissions</span>
+          <span class="small text-body-secondary">No permissions</span>
         }
       </span>
     </ng-template>
 
     <ng-template appTableCell="actions" [appTableCellFor]="users.entities()" let-row>
-      <span class="admin-users__actions">
+      <span class="d-flex gap-2 justify-content-end">
         <!-- `aria-disabled`, not `disabled`, which would blur the button and strand keyboard
              focus on `<body>`; `beginEdit` refuses re-entry on the pending id regardless. -->
         <button
-          class="btn btn-outline-secondary btn-sm"
+          class="btn btn-sm btn-outline-secondary flex-fill flex-md-grow-0 touch-target text-nowrap"
           type="button"
           aria-haspopup="dialog"
           [attr.aria-label]="'Edit ' + displayName(row)"
@@ -136,7 +147,7 @@
           Edit
         </button>
         <button
-          class="btn btn-outline-secondary btn-sm admin-users__deactivate"
+          class="btn btn-sm btn-outline-secondary flex-fill flex-md-grow-0 touch-target text-nowrap"
           type="button"
           aria-haspopup="dialog"
           [attr.aria-label]="'Deactivate ' + displayName(row)"
@@ -194,7 +205,7 @@
 
     <!-- The `@if` stays inside the projected element; around it, the `tableFooter` slot would
          silently drop it. `liveSummary` is off: `DataTable.summary` already announces it. -->
-    <div tableFooter class="admin-users__pager">
+    <div tableFooter>
       @if (users.totalCount() > 0) {
         <app-paginator
           itemLabel="users"

@@ -17,6 +17,8 @@ import { TableCell } from '@shared/directives/table-cell';
 
 let nextId = 0;
 
+const ALIGN_CLASS = { start: '', center: 'text-center', end: 'text-end' } as const;
+
 /** A row's template context, plus the values the table would otherwise recompute. */
 interface RowView<T> extends TableCellContext<T> {
   readonly key: string;
@@ -31,6 +33,7 @@ interface RowView<T> extends TableCellContext<T> {
   selector: 'app-data-table',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgTemplateOutlet, Skeleton, CardRow],
+  host: { class: 'd-block' },
   templateUrl: './data-table.html',
   styleUrl: './data-table.scss',
 })
@@ -66,6 +69,7 @@ export class DataTable<T> {
   readonly headerSelectAll = input<boolean>(true);
 
   protected readonly summaryId = `data-table-summary-${nextId++}`;
+  protected readonly alignClass = ALIGN_CLASS;
 
   // Cell templates are often wrapped in an @if or <ng-container>, and a missed one renders its
   // column blank.

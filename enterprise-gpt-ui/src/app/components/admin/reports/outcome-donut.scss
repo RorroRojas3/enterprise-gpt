@@ -25,19 +25,19 @@
 }
 
 .donut__track {
-  stroke: var(--surface-2);
+  stroke: var(--bs-tertiary-bg);
 }
 
-.donut__arc--ok {
-  stroke: var(--ok);
+.donut__arc--success {
+  stroke: var(--bs-success);
 }
 
-.donut__arc--muted {
-  stroke: var(--muted);
+.donut__arc--secondary {
+  stroke: var(--bs-secondary-color);
 }
 
-.donut__arc--warn {
-  stroke: var(--warn);
+.donut__arc--warning {
+  stroke: var(--bs-warning);
 }
 
 .donut__centre {
@@ -47,7 +47,7 @@
 }
 
 .donut__caption {
-  fill: var(--muted);
+  fill: var(--bs-secondary-color);
   font-size: 9.5px;
 }
 
@@ -73,7 +73,7 @@
 }
 
 .donut__figure {
-  color: var(--muted);
+  color: var(--bs-secondary-color);
   font-size: 11px;
 }
 
@@ -92,5 +92,5 @@
 }
 
 .donut__wasted-caption {
-  color: var(--muted);
+  color: var(--bs-secondary-color);
 }

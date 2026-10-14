@@ -1,18 +1,14 @@
-<div class="kpi">
-  <div class="kpi__label">{{ label() }}</div>
-  <div class="kpi__value font-display">{{ value() }}</div>
+<div class="eyebrow">{{ label() }}</div>
+<div class="fs-4 fw-bold font-display my-1">{{ value() }}</div>
 
-  @if (hasDelta()) {
-    <p class="kpi__delta" [class.kpi__delta--up]="isUp()">
-      @if (!isFlat()) {
-        <app-icon [name]="icon()" class="kpi__arrow" />
-      }
-      <span class="kpi__change">{{ deltaText() }}</span>
-      <span class="kpi__comparison">vs. {{ comparison() }}</span>
-    </p>
-  } @else {
-    <p class="kpi__delta">
-      <span class="kpi__comparison">No {{ comparison() }} to compare with</span>
-    </p>
-  }
-</div>
+@if (hasDelta()) {
+  <p class="d-flex align-items-center gap-1 mb-0 small text-body-secondary">
+    @if (!isFlat()) {
+      <app-icon [name]="icon()" [class.text-success-emphasis]="isUp()" />
+    }
+    <span class="fw-semibold text-body">{{ deltaText() }}</span>
+    <span>vs. {{ comparison() }}</span>
+  </p>
+} @else {
+  <p class="mb-0 small text-body-secondary">No {{ comparison() }} to compare with</p>
+}

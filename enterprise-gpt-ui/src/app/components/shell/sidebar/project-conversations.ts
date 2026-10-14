@@ -19,7 +19,7 @@ const SKELETON_ROWS = 2;
   imports: [ErrorPanel, Icon, RouterLink, RouterLinkActive, Skeleton],
   providers: [ProjectConversationsStore],
   templateUrl: './project-conversations.html',
-  styleUrl: './project-conversations.scss',
+  host: { class: 'd-block' },
 })
 export class SidebarProjectConversations {
   protected readonly conversations = inject(ProjectConversationsStore);

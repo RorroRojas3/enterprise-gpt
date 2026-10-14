@@ -1,32 +1,40 @@
-<div class="toast" [class]="'toast--' + toast().tone">
-  <app-icon class="toast__icon" [name]="icon()" />
+<div class="toast show position-relative overflow-hidden" [style.--toast-accent]="accent()">
+  <div class="toast-body d-flex align-items-start gap-2">
+    <app-icon [class]="iconClass()" [name]="icon()" />
 
-  <div class="toast__content">
-    <p class="toast__title">{{ toast().title }}</p>
+    <div class="flex-grow-1 min-w-0">
+      <p class="fw-semibold mb-0">{{ toast().title }}</p>
 
-    @if (toast().detail) {
-      <p class="toast__detail">{{ toast().detail }}</p>
-    }
+      @if (toast().detail) {
+        <p class="small text-body-secondary mt-1 mb-0">{{ toast().detail }}</p>
+      }
 
-    @if (toast().traceLine) {
-      <p class="toast__trace font-mono">{{ toast().traceLine }}</p>
-    }
+      @if (toast().traceLine) {
+        <p class="font-monospace small text-body-secondary text-break mt-1 mb-0">
+          {{ toast().traceLine }}
+        </p>
+      }
 
-    @if (toast().retryLabel) {
-      <button class="toast__retry" type="button" (click)="retried.emit(toast().id)">
-        {{ toast().retryLabel }}
-      </button>
-    }
+      @if (toast().retryLabel) {
+        <button
+          class="btn btn-link btn-sm p-0 mt-1 fw-semibold"
+          type="button"
+          (click)="retried.emit(toast().id)"
+        >
+          {{ toast().retryLabel }}
+        </button>
+      }
+    </div>
+
+    <!-- `fs-6`: `.btn-close` is sized in em, and at the toast's smaller text it falls under the
+         24px target size. -->
+    <button
+      class="btn-close fs-6 flex-shrink-0"
+      type="button"
+      [attr.aria-label]="dismissLabel()"
+      (click)="dismissed.emit(toast().id)"
+    ></button>
   </div>
-
-  <button
-    class="toast__dismiss"
-    type="button"
-    [attr.aria-label]="dismissLabel()"
-    (click)="dismissed.emit(toast().id)"
-  >
-    <app-icon name="bi-x" />
-  </button>
 
   @if (toast().dismissAfterMs > 0) {
     <!-- A CSS transition from one property set once, not a timer. Decorative: the dismissal

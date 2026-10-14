@@ -12,20 +12,19 @@ import {
   viewChild,
 } from '@angular/core';
 import { captureFocusOrigin } from '@shared/utils/a11y/focus-return';
-import { tabbableWithin } from '@shared/utils/a11y/tabbable';
+import { focusInitialTarget } from '@shared/utils/a11y/tabbable';
 
 let nextId = 0;
 
 /**
- * Native `<dialog>` + `showModal()`, not Bootstrap's modal: the top layer truly inerts the page
- * and supplies `aria-modal` and a cancellable Escape. The kit owns the heading so
+ * Bootstrap's modal CSS on a native `<dialog>` + `showModal()`, not its JS: the top layer truly
+ * inerts the page and supplies `aria-modal` and a cancellable Escape. The kit owns the heading so
  * `aria-labelledby` cannot be forgotten.
  */
 @Component({
   selector: 'app-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './modal.html',
-  styleUrl: './modal.scss',
 })
 export class Modal {
   private readonly destroyRef = inject(DestroyRef);
@@ -34,7 +33,7 @@ export class Modal {
   readonly open = model<boolean>(false);
   readonly heading = input.required<string>();
 
-  /** 420 / 460 / 520px. */
+  /** Bootstrap's `.modal-sm`, default and `.modal-lg` widths. */
   readonly size = input<'sm' | 'md' | 'lg'>('md');
 
   /** When false, neither Escape nor a backdrop click closes it. */
@@ -60,7 +59,7 @@ export class Modal {
         if (shouldBeOpen && !dialog.open) {
           this.restoreFocus = captureFocusOrigin(dialog.ownerDocument);
           dialog.showModal();
-          this.focusInitialTarget(dialog);
+          focusInitialTarget(dialog);
         } else if (!shouldBeOpen && dialog.open) {
           dialog.close();
         }
@@ -101,14 +100,5 @@ export class Modal {
     if (event.target === this.dialogRef().nativeElement && this.canDismiss()) {
       this.open.set(false);
     }
-  }
-
-  private focusInitialTarget(dialog: HTMLDialogElement): void {
-    // Not `autofocus`, which means "on document load" and is lint-banned; this means "on open".
-    const explicit = dialog.querySelector<HTMLElement>('[data-modal-autofocus]');
-    // The heading carries tabindex="-1" precisely so it can be the last resort — a
-    // dialog whose focus lands on <body> is one the screen reader never announces.
-    const target = explicit ?? tabbableWithin(dialog)[0] ?? dialog.querySelector<HTMLElement>('h2');
-    target?.focus();
   }
 }

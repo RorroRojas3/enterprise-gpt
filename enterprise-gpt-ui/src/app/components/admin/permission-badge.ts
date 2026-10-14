@@ -9,6 +9,8 @@ import { Icon } from '@shared/components/icon/icon';
   selector: 'app-permission-badge',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
+  // The name is unbounded, so the pill must shrink rather than overflow its grid track.
+  host: { class: 'd-inline-flex min-w-0 mw-100' },
   templateUrl: './permission-badge.html',
   styleUrl: './permission-badge.scss',
 })

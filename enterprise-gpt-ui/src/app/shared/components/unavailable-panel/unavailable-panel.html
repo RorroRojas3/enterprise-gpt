@@ -1,7 +1,10 @@
 <!-- A section, not a live region: this is the steady state of the screen, not news. -->
-<section class="unavailable-panel" [attr.aria-labelledby]="headingId">
+<section
+  class="card card-body align-items-center gap-2 mw-md mx-auto py-5 px-4 rounded-4 text-center"
+  [attr.aria-labelledby]="headingId"
+>
   <app-ridgeline variant="empty" />
 
-  <p class="unavailable-panel__heading font-display" [id]="headingId">{{ heading() }}</p>
-  <p class="unavailable-panel__message">{{ message() }}</p>
+  <p class="font-display fs-6 fw-semibold mt-1 mb-0" [id]="headingId">{{ heading() }}</p>
+  <p class="small text-body-secondary mb-0">{{ message() }}</p>
 </section>

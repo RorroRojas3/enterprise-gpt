@@ -7,13 +7,19 @@ export type DocumentSource = 'uploaded' | 'generated';
 @Component({
   selector: 'app-source-badge',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `<span class="source-badge" [class]="'source-badge--' + source()">{{ label() }}</span>`,
-  styleUrl: './source-badge.scss',
+  template: `
+    <span class="badge rounded-pill border fw-semibold" [class]="tone()">{{ label() }}</span>
+  `,
 })
 export class SourceBadge {
   readonly source = input.required<DocumentSource>();
 
   protected readonly label = computed(() =>
     this.source() === 'generated' ? 'Generated' : 'Uploaded',
+  );
+
+  // Primary text, not info: light info is 2.74:1 on the surface. The border keeps the accent.
+  protected readonly tone = computed(() =>
+    this.source() === 'generated' ? 'text-primary border-info-subtle' : 'text-body-secondary',
   );
 }

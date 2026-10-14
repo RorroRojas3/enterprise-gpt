@@ -1,51 +1,11 @@
-:host {
-  display: block;
-}
-
-.assistant-turn {
-  display: flex;
-  gap: 12px;
-}
-
 // The closest token to the design's #EAF2F8, which would vanish in dark mode.
 .assistant-turn__avatar {
-  display: flex;
-  flex: 0 0 28px;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--bs-border-color);
-  border-radius: 50%;
   background: var(--think-bg);
-
-  app-brand-logo {
-    display: flex;
-    width: 20px;
-  }
-}
-
-.assistant-turn__content {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-  padding-top: 3px;
-}
-
-// Keeps the head/tail pair one column item, spaced like the single render that replaces it.
-.assistant-turn__live {
-  min-width: 0;
 }
 
 // Revealed by opacity, not inserted: Copy stays focusable for `:focus-within`, and a height
 // change on hover would move the geometry the transcript's ResizeObserver pins with.
 .assistant-turn__footer {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  color: var(--muted);
   opacity: 0;
   transition: opacity var(--t-fast) ease;
 }
@@ -63,10 +23,6 @@
   .assistant-turn__footer {
     opacity: 1;
   }
-}
-
-.assistant-turn__usage {
-  font-size: 11px;
 }
 
 // Rendered markdown and its caret are styled in the global `_markdown.scss`: innerHTML

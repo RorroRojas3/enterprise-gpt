@@ -1,16 +1,18 @@
-<nav class="pill-subnav" [attr.aria-label]="ariaLabel()">
-  <ul class="pill-subnav__list">
+<nav [attr.aria-label]="ariaLabel()">
+  <!-- `p-1` leaves room for the focus ring, which the scroll container would otherwise clip. -->
+  <ul class="pill-subnav nav nav-pills flex-nowrap gap-2 overflow-x-auto p-1 small">
     @for (item of items(); track item.id) {
-      <li>
+      <li class="nav-item">
         <a
-          class="pill-subnav__pill"
-          routerLinkActive="pill-subnav__pill--active"
+          class="nav-link d-flex align-items-center rounded-pill fw-semibold text-nowrap touch-target"
+          routerLinkActive="active"
           ariaCurrentWhenActive="page"
           [routerLink]="item.link"
         >
           {{ item.label }}
           @if (item.count !== undefined && item.count !== null) {
-            <span class="pill-subnav__count">{{ item.count }}</span>
+            <!-- A smaller run beside the label, as on the wide strip, not a badge. -->
+            <span class="small ms-1">{{ item.count }}</span>
           }
         </a>
       </li>

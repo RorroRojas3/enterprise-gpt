@@ -33,11 +33,13 @@ export function clearTheme(): void {
 }
 
 /**
- * The app's three layout widths. The target sets `browserViewport` to desktop because Vitest
+ * The app's three layout widths, plus desktop at its 992px edge: the persistent sidebar leaves the
+ * least room for content there. The target sets `browserViewport` to desktop because Vitest
  * defaults to 414x896, a phone width.
  */
 export const VIEWPORTS = {
   desktop: { width: 1280, height: 900 },
+  desktopMin: { width: 992, height: 800 },
   tablet: { width: 900, height: 800 },
   mobile: { width: 390, height: 844 },
 } as const;
@@ -84,8 +86,8 @@ export function expectNoHorizontalOverflow(root: HTMLElement, label: string): vo
 }
 
 /**
- * Mounts a screen in a clipped flex column of definite height, as `.shell__main` does: on a bare
- * `body` the host just grows, so a screen that cannot scroll in the shell would still pass.
+ * Mounts a screen in a clipped flex column of definite height, as the shell's `<main>` does: on a
+ * bare `body` the host just grows, so a screen that cannot scroll in the shell would still pass.
  */
 export function mountLikeShell(element: HTMLElement): HTMLElement {
   const main = document.createElement('div');

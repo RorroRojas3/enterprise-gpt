@@ -32,7 +32,8 @@ export function formatTokenCount(size: number): string {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, Menu, MenuItem, MenuTriggerContent, StatusDot],
   templateUrl: './model-menu.html',
-  styleUrl: './model-menu.scss',
+  // `min-w-0` here and on the menu: the pill is the row's elastic item, and both links are needed.
+  host: { class: 'd-inline-flex min-w-0' },
 })
 export class ModelMenu {
   protected readonly settings = inject(TurnSettingsStore);
@@ -55,7 +56,7 @@ export class ModelMenu {
   protected readonly pillTone = computed<StatusTone>(() => {
     const model = this.settings.selectedModel();
 
-    return model === null ? 'muted' : (providerMeta(model.providerId)?.tone ?? 'muted');
+    return model === null ? 'secondary' : (providerMeta(model.providerId)?.tone ?? 'secondary');
   });
 
   /** The mono context figure beside the pill name; absent until a model resolves. */
@@ -73,7 +74,7 @@ export class ModelMenu {
   }
 
   protected toneOf(model: ModelDto): StatusTone {
-    return providerMeta(model.providerId)?.tone ?? 'muted';
+    return providerMeta(model.providerId)?.tone ?? 'secondary';
   }
 
   /** `"Azure OpenAI · "`, or empty for a provider this build does not know. */

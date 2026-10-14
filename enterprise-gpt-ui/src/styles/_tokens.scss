@@ -1,83 +1,50 @@
-// The source of record for every colour; `check-tokens.mjs` keeps `index.html`'s pre-paint copy
-// in step and measures contrast. Never `@use` it from a component: its `:root` blocks would be
-// re-emitted scoped to that component, matching nothing.
-@use 'sass:color';
+// The source of record for every colour, as data: `_bootstrap-config.scss` feeds Bootstrap's Sass
+// variables from these maps and `_theme.scss` emits them. Emits nothing itself.
+// `check-tokens.mjs` reads the maps as text, so values stay six-digit hex or `rgba()`.
 @use 'sass:map';
 
-// Property names keep their original casing: `--btnP-bg` is unusual, but custom
-// properties are case-sensitive.
-$light: (
+// Not `$light`/`$dark`: those are Bootstrap theme colours, and this file loads before them.
+$tokens-light: (
   'bs-body-bg': #f7fafc,
   'bs-body-color': #16283a,
-  'bs-border-color': #dce5ee,
+  'bs-emphasis-color': #0b1f33,
   'bs-secondary-color': #5a6e82,
+  'bs-secondary-bg': #e7eff7,
+  'bs-tertiary-bg': #eff4f9,
+  'bs-border-color': #dce5ee,
   'bs-link-color': #14324f,
   'bs-link-hover-color': #0b1f33,
+  'bs-primary': #14324f,
+  'bs-secondary': #5a6e82,
+  'bs-success': #2e9c58,
+  'bs-info': #21a8d8,
+  'bs-warning': #9c6210,
+  'bs-danger': #c0392b,
+  'bs-light': #eff4f9,
+  'bs-dark': #0b1f33,
+  'bs-warning-text-emphasis': #9c6210,
+  'bs-warning-bg-subtle': #fbf3e0,
+  'bs-warning-border-subtle': #e7ce9c,
+  'bs-danger-text-emphasis': #a93226,
+  // Label on a filled control of each theme colour; `check-tokens.mjs` measures each pair.
+  'primary-fg': #ffffff,
+  'secondary-fg': #ffffff,
+  'success-fg': #062231,
+  'info-fg': #062231,
+  'warning-fg': #ffffff,
+  'danger-fg': #ffffff,
   'surface': #ffffff,
-  'surface-2': #eff4f9,
-  'muted': #5a6e82,
-  'brand': #14324f,
-  'accent': #21a8d8,
-  'ok': #2e9c58,
-  'warn': #9c6210,
-  'warn-bg': #fbf3e0,
-  'warn-border': #e7ce9c,
-  'fail': #c0392b,
+  'think-bg': #eaf1f8,
   'bubble': #14324f,
   'bubble-fg': #ffffff,
-  'think-bg': #eaf1f8,
-  'active-bg': #e7eff7,
   'ring': rgba(33, 168, 216, 0.45),
-  'code-bg': #0b1f33,
-  'code-head': #122a42,
-  'code-fg': #d7e3ee,
-  'btnP-bg': #14324f,
-  'btnP-fg': #ffffff,
-  'btnP-hover': #0f2740,
-  'show-light': inline,
-  'show-dark': none,
-);
-
-$dark: (
-  'bs-body-bg': #0b1f33,
-  'bs-body-color': #e6edf4,
-  'bs-border-color': #1e3a55,
-  'bs-secondary-color': #8fa3b8,
-  'bs-link-color': #21a8d8,
-  'bs-link-hover-color': #63c6e6,
-  'surface': #122a42,
-  'surface-2': #17324d,
-  'muted': #8fa3b8,
-  'brand': #21a8d8,
-  'accent': #21a8d8,
-  'ok': #4cc47a,
-  'warn': #e3ac45,
-  'warn-bg': rgba(227, 172, 69, 0.13),
-  'warn-border': rgba(227, 172, 69, 0.4),
-  'fail': #e4655a,
-  'bubble': #1b4266,
-  'bubble-fg': #eaf2f9,
-  'think-bg': #0f2a44,
-  'active-bg': #16354d,
-  'ring': rgba(33, 168, 216, 0.5),
-  'code-bg': #081827,
-  'code-head': #0f2438,
-  'code-fg': #d7e3ee,
-  'btnP-bg': #21a8d8,
-  'btnP-fg': #062231,
-  'btnP-hover': #45b9e1,
-  'show-light': none,
-  'show-dark': inline,
-);
-
-// Tokens beyond Bootstrap's set. The tooltip pair replaces a literal #0B1F33, the dark body
-// background; the focus ring is not `--accent`, which is under 3:1 on light surfaces. Code
-// colours never flip, as the code surface is dark in both themes. Provider dots are pinned so a
-// provider keeps its colour. The avatar ramp stays in `AvatarInitials`, off every other page.
-$extra-light: (
+  // Not `--bs-info`, which is under 3:1 on light surfaces.
   'focus-ring': #0e7fa8,
   'tooltip-bg': #0b1f33,
   'tooltip-fg': #ffffff,
+  'code-bg': #0b1f33,
+  'code-head': #122a42,
+  'code-fg': #d7e3ee,
   'code-head-fg': #b9cbdc,
   'code-head-muted': #8fa9c0,
   'code-comment': #7b93aa,
@@ -89,12 +56,50 @@ $extra-light: (
   'provider-azure-openai': #21a8d8,
   'provider-anthropic': #8a6fd1,
   'provider-bedrock': #2e9c58,
+  'show-light': inline,
+  'show-dark': none,
 );
 
-$extra-dark: (
+$tokens-dark: (
+  'bs-body-bg': #0b1f33,
+  'bs-body-color': #e6edf4,
+  'bs-emphasis-color': #ffffff,
+  'bs-secondary-color': #8fa3b8,
+  'bs-secondary-bg': #16354d,
+  'bs-tertiary-bg': #17324d,
+  'bs-border-color': #1e3a55,
+  'bs-link-color': #21a8d8,
+  'bs-link-hover-color': #63c6e6,
+  'bs-primary': #21a8d8,
+  'bs-secondary': #8fa3b8,
+  'bs-success': #4cc47a,
+  'bs-info': #21a8d8,
+  'bs-warning': #e3ac45,
+  'bs-danger': #e4655a,
+  'bs-light': #eff4f9,
+  'bs-dark': #0b1f33,
+  'bs-warning-text-emphasis': #e3ac45,
+  'bs-warning-bg-subtle': rgba(227, 172, 69, 0.13),
+  'bs-warning-border-subtle': rgba(227, 172, 69, 0.4),
+  'bs-danger-text-emphasis': #efa39c,
+  'primary-fg': #062231,
+  'secondary-fg': #062231,
+  'success-fg': #062231,
+  'info-fg': #062231,
+  'warning-fg': #062231,
+  'danger-fg': #062231,
+  'surface': #122a42,
+  'think-bg': #0f2a44,
+  'bubble': #1b4266,
+  'bubble-fg': #eaf2f9,
+  'ring': rgba(33, 168, 216, 0.5),
   'focus-ring': #21a8d8,
   'tooltip-bg': #e6edf4,
   'tooltip-fg': #0b1f33,
+  // The code surface is dark in both themes, so its colours never flip.
+  'code-bg': #081827,
+  'code-head': #0f2438,
+  'code-fg': #d7e3ee,
   'code-head-fg': #b9cbdc,
   'code-head-muted': #8fa9c0,
   'code-comment': #7b93aa,
@@ -103,51 +108,53 @@ $extra-dark: (
   'code-number': #f08d49,
   'code-function': #f8c555,
   'code-punct': #a4b8cc,
+  // Pinned so a provider keeps its colour across themes.
   'provider-azure-openai': #21a8d8,
   'provider-anthropic': #8a6fd1,
   'provider-bedrock': #4cc47a,
+  'show-light': none,
+  'show-dark': inline,
 );
 
-// Channel triples Bootstrap's opacity utilities read; without them they keep its default blues.
-$rgb-companions: ('bs-body-bg', 'bs-body-color', 'bs-link-color', 'bs-link-hover-color');
+// Theme colours whose fills and labels flip with the theme; Bootstrap compiles them statically.
+$flipping-colors: ('primary', 'secondary', 'success', 'info', 'warning', 'danger');
 
-$light-all: map.merge($light, $extra-light);
-$dark-all: map.merge($dark, $extra-dark);
+// Channel triples Bootstrap's utilities read through `rgba(var(--bs-*-rgb), …)`.
+$rgb-companions: (
+  'bs-body-bg',
+  'bs-body-color',
+  'bs-emphasis-color',
+  'bs-secondary-color',
+  'bs-secondary-bg',
+  'bs-tertiary-bg',
+  'bs-link-color',
+  'bs-link-hover-color',
+  'bs-primary',
+  'bs-secondary',
+  'bs-success',
+  'bs-info',
+  'bs-warning',
+  'bs-danger',
+  'bs-light',
+  'bs-dark'
+);
 
-// A token defined in one theme and forgotten in the other is a compile error rather
-// than a screen that looks wrong only after dark mode is switched on.
-@each $key, $_ in $light-all {
-  @if not map.has-key($dark-all, $key) {
-    @error 'Token --#{$key} is defined in $light but missing from $dark.';
+// A token defined in one theme and forgotten in the other is a compile error rather than a
+// screen that looks wrong only after dark mode is switched on.
+@each $key, $_ in $tokens-light {
+  @if not map.has-key($tokens-dark, $key) {
+    @error 'Token --#{$key} is defined in $tokens-light but missing from $tokens-dark.';
   }
 }
-@each $key, $_ in $dark-all {
-  @if not map.has-key($light-all, $key) {
-    @error 'Token --#{$key} is defined in $dark but missing from $light.';
+@each $key, $_ in $tokens-dark {
+  @if not map.has-key($tokens-light, $key) {
+    @error 'Token --#{$key} is defined in $tokens-dark but missing from $tokens-light.';
   }
 }
-
-@function to-rgb($value) {
-  @return #{color.channel($value, 'red', $space: rgb)},
-    #{color.channel($value, 'green', $space: rgb)}, #{color.channel($value, 'blue', $space: rgb)};
-}
-
-@mixin emit($tokens) {
-  @each $key, $value in $tokens {
-    --#{$key}: #{$value};
+@each $color in $flipping-colors {
+  @each $key in ('bs-#{$color}', '#{$color}-fg') {
+    @if not map.has-key($tokens-light, $key) {
+      @error 'Theme colour #{$color} needs a --#{$key} token.';
+    }
   }
-  @each $key in $rgb-companions {
-    --#{$key}-rgb: #{to-rgb(map.get($tokens, $key))};
-  }
-}
-
-// Selectors byte-identical to Bootstrap's `_root.scss`, so the later source position wins
-// without `!important`.
-:root,
-[data-bs-theme='light'] {
-  @include emit($light-all);
-}
-
-[data-bs-theme='dark'] {
-  @include emit($dark-all);
 }

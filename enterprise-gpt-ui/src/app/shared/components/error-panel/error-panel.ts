@@ -19,8 +19,8 @@ import { Icon } from '@shared/components/icon/icon';
   selector: 'app-error-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
+  host: { class: 'd-block' },
   templateUrl: './error-panel.html',
-  styleUrl: './error-panel.scss',
 })
 export class ErrorPanel {
   readonly error = input.required<AppError>();

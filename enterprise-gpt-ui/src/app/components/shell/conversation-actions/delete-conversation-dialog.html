@@ -1,6 +1,6 @@
 <app-modal heading="Delete conversation?" size="sm" [open]="open()" (closed)="onClosed()">
   @if (actions.deleteTarget(); as target) {
-    <p class="delete__body">
+    <p class="small text-body-secondary mb-0">
       “{{ target.name }}” and its messages will be permanently deleted. Files it uploaded stay in
       your documents.
     </p>

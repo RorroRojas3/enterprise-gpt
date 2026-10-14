@@ -12,6 +12,14 @@ import {
 } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { Dispatcher } from '@ngrx/signals/events';
+import {
+  getAllByRole,
+  getByRole,
+  getByText,
+  queryByRole,
+  queryByText,
+  within,
+} from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CHAT_ROLE, ConversationDetailDto } from '@shared/models/api/conversation.model';
 import { TokenService } from '@core/auth/token-service';
@@ -35,6 +43,7 @@ import {
   messageFixture,
 } from '@testing/conversations';
 import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
+import { iconOf, menuItems, openMenu } from '@testing/overlays';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { streamingResponse } from '@testing/stream-frames';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
@@ -143,6 +152,37 @@ describe('Chat', () => {
     return harness.routeNativeElement as HTMLElement;
   }
 
+  /** The page's one level-one heading: the conversation name, or the landing prompt. */
+  function title(): HTMLElement {
+    return getByRole(element(), 'heading', { level: 1 });
+  }
+
+  function kebab(): HTMLButtonElement | null {
+    return queryByRole<HTMLButtonElement>(element(), 'button', { name: /^Actions for / });
+  }
+
+  async function openKebab(): Promise<HTMLElement> {
+    return openMenu(harness.fixture, /^Actions for /, element());
+  }
+
+  /** Named for what pressing it does, so "Unfavourite …" means it is on. */
+  function star(): HTMLButtonElement | null {
+    return queryByRole<HTMLButtonElement>(element(), 'button', { name: /favourite /i });
+  }
+
+  function expectStarOn(): void {
+    expect(star()?.getAttribute('aria-label')).toMatch(/^Unfavourite /);
+    expect(iconOf(star()!)).toBe('bi-star-fill');
+  }
+
+  function prompt(): HTMLTextAreaElement {
+    return getByRole<HTMLTextAreaElement>(element(), 'textbox', { name: 'Message Enterprise GPT' });
+  }
+
+  function suggestions(): HTMLElement | null {
+    return queryByRole(element(), 'group', { name: 'Suggested prompts' });
+  }
+
   it('retires a finished attachment chip once its turn is done', async () => {
     await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
     backend
@@ -185,8 +225,8 @@ describe('Chat', () => {
   it('renders the empty state with no header bar on the bare chat route', async () => {
     await harness.navigateByUrl('/chat', Chat);
 
-    expect(element().querySelector('.chat__header')).toBeNull();
-    expect(element().querySelector('h1')?.textContent).toContain('How can I help you today?');
+    expect(element().querySelector('header')).toBeNull();
+    expect(title().textContent).toContain('How can I help you today?');
     expect(element().querySelector('app-brand-logo')).not.toBeNull();
   });
 
@@ -205,11 +245,8 @@ describe('Chat', () => {
       .flush(conversationDetailFixture({ ...conversation }));
     await harness.fixture.whenStable();
 
-    expect(element().querySelector('.chat__title')?.textContent).toContain(
-      'Helios 2.4 release status',
-    );
     // Only one h1 on the screen: the empty state steps down while a conversation is open.
-    expect(element().querySelectorAll('h1')).toHaveLength(1);
+    expect(title().textContent).toContain('Helios 2.4 release status');
   });
 
   describe('the mobile navbar slot', () => {
@@ -224,9 +261,11 @@ describe('Chat', () => {
     it('renders the star and kebab in the header, and publishes them for the navbar', async () => {
       await openConversation();
 
-      // `.chat__menu`, not `app-menu`: the composer renders two menus of its own.
-      expect(element().querySelectorAll('.chat__menu')).toHaveLength(1);
-      expect(element().querySelector('.chat__header .chat__menu')).not.toBeNull();
+      // By name: the composer renders two menus of its own.
+      const header = element().querySelector('header')!;
+      expect(getAllByRole(element(), 'button', { name: /^Actions for / })).toHaveLength(1);
+      expect(within(header).getByRole('button', { name: /^Actions for / })).not.toBeNull();
+      expect(within(header).getByRole('button', { name: /favourite /i })).not.toBeNull();
       expect(TestBed.inject(ShellChrome).state().actions).not.toBeNull();
     });
 
@@ -234,10 +273,9 @@ describe('Chat', () => {
       setMediaQuery(NARROW_VIEWPORT, true);
       await openConversation();
 
-      expect(element().querySelector('.chat__header .chat__menu')).toBeNull();
-      expect(element().querySelectorAll('.chat__menu')).toHaveLength(0);
+      expect(kebab()).toBeNull();
       // The star too, the template's other half.
-      expect(element().querySelectorAll('.chat__star')).toHaveLength(0);
+      expect(star()).toBeNull();
       expect(TestBed.inject(ShellChrome).state().actions).not.toBeNull();
     });
 
@@ -245,11 +283,9 @@ describe('Chat', () => {
       setMediaQuery(NARROW_VIEWPORT, true);
       await openConversation();
 
-      // The stylesheet clips the h1 on mobile; jsdom applies none, so only presence is assertable.
-      const heading = element().querySelector('h1.chat__title');
-      expect(heading).not.toBeNull();
-      expect(heading?.textContent).toContain('Helios 2.4 release status');
-      expect(element().querySelectorAll('h1')).toHaveLength(1);
+      // Hidden, not removed: the navbar shows the name, and the page still needs its heading.
+      expect(title().textContent).toContain('Helios 2.4 release status');
+      expect(title().classList).toContain('visually-hidden');
     });
 
     it('clears the slot on destroy, so the kebab does not outlive the route', async () => {
@@ -275,9 +311,7 @@ describe('Chat', () => {
 
     await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
 
-    expect(element().querySelector('.chat__title')?.textContent).toContain(
-      'Helios 2.4 release status',
-    );
+    expect(title().textContent).toContain('Helios 2.4 release status');
 
     backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
     await harness.fixture.whenStable();
@@ -301,8 +335,8 @@ describe('Chat', () => {
     await harness.navigateByUrl('/chat', Chat);
 
     expect(request.cancelled).toBe(true);
-    expect(element().querySelector('.chat__header')).toBeNull();
-    expect(element().querySelector('h1')?.textContent).toContain('How can I help you today?');
+    expect(element().querySelector('header')).toBeNull();
+    expect(title().textContent).toContain('How can I help you today?');
   });
 
   it('explains a conversation that does not exist, and offers no Retry', async () => {
@@ -330,7 +364,7 @@ describe('Chat', () => {
     await harness.fixture.whenStable();
 
     expect(element().querySelector('app-error-panel')).toBeNull();
-    expect(element().querySelector('.chat__title')?.textContent).toContain('Helios 2.4');
+    expect(title().textContent).toContain('Helios 2.4');
   });
 
   it('re-renders the header when a rename is announced for the open conversation', async () => {
@@ -344,7 +378,7 @@ describe('Chat', () => {
     );
     await harness.fixture.whenStable();
 
-    expect(element().querySelector('.chat__title')?.textContent).toContain('Renamed elsewhere');
+    expect(title().textContent).toContain('Renamed elsewhere');
   });
 
   it('ignores an update announced for a different conversation', async () => {
@@ -357,9 +391,7 @@ describe('Chat', () => {
     );
     await harness.fixture.whenStable();
 
-    expect(element().querySelector('.chat__title')?.textContent).toContain(
-      'Helios 2.4 release status',
-    );
+    expect(title().textContent).toContain('Helios 2.4 release status');
   });
 
   it('navigates to the empty chat only after a delete of the open conversation completes', async () => {
@@ -381,8 +413,8 @@ describe('Chat', () => {
     await harness.fixture.whenStable();
 
     expect(TestBed.inject(Router).url).toBe('/chat');
-    expect(element().querySelector('.chat__header')).toBeNull();
-    expect(element().querySelector('h1')?.textContent).toContain('How can I help you today?');
+    expect(element().querySelector('header')).toBeNull();
+    expect(title().textContent).toContain('How can I help you today?');
   });
 
   it('moves fallen-through focus to the main landmark after a header-initiated delete', async () => {
@@ -396,8 +428,9 @@ describe('Chat', () => {
       backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
       await harness.fixture.whenStable();
 
-      const trigger = element().querySelector<HTMLButtonElement>('.chat__menu .menu__trigger');
-      trigger?.focus();
+      const trigger = kebab()!;
+      trigger.focus();
+      expect(document.activeElement).toBe(trigger);
 
       const actions = TestBed.inject(ConversationActionsStore);
       actions.beginDelete(conversation);
@@ -423,9 +456,7 @@ describe('Chat', () => {
     await harness.fixture.whenStable();
 
     expect(TestBed.inject(Router).url).toBe(`/chat/${conversation.id}`);
-    expect(element().querySelector('.chat__title')?.textContent).toContain(
-      'Helios 2.4 release status',
-    );
+    expect(title().textContent).toContain('Helios 2.4 release status');
   });
 
   it('offers rename and delete from the header kebab, routed through the shared store', async () => {
@@ -437,16 +468,14 @@ describe('Chat', () => {
       .flush(conversationDetailFixture({ ...conversation, projectId }));
     await harness.fixture.whenStable();
 
-    element().querySelector<HTMLButtonElement>('.chat__menu .menu__trigger')?.click();
-    await harness.fixture.whenStable();
+    const menu = await openKebab();
 
-    const items = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')];
-    const rename = items.find((item) => item.textContent?.includes('Rename'));
-    const danger = items.filter((item) => item.classList.contains('menu__item--danger'));
+    const items = menuItems(menu);
+    const danger = items.filter((item) => item.classList.contains('text-danger-emphasis'));
     expect(danger).toHaveLength(1);
     expect(danger[0]?.textContent).toContain('Delete');
 
-    rename?.click();
+    getByRole(menu, 'menuitem', { name: 'Rename' }).click();
     await harness.fixture.whenStable();
 
     expect(TestBed.inject(ConversationActionsStore).renameTarget()?.projectId).toBe(projectId);
@@ -460,10 +489,7 @@ describe('Chat', () => {
       .flush(conversationDetailFixture({ ...conversation, projectId }));
     await harness.fixture.whenStable();
 
-    element().querySelector<HTMLButtonElement>('.chat__menu .menu__trigger')?.click();
-    await harness.fixture.whenStable();
-
-    const items = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')];
+    const items = menuItems(await openKebab());
     expect(items.map((item) => item.textContent?.trim())).toEqual([
       'Rename',
       'Move to project',
@@ -494,12 +520,7 @@ describe('Chat', () => {
       .flush(conversationDetailFixture({ ...conversation, projectId: null }));
     await harness.fixture.whenStable();
 
-    element().querySelector<HTMLButtonElement>('.chat__menu .menu__trigger')?.click();
-    await harness.fixture.whenStable();
-
-    const labels = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')].map((item) =>
-      item.textContent?.trim(),
-    );
+    const labels = menuItems(await openKebab()).map((item) => item.textContent?.trim());
     expect(labels).not.toContain('Remove from project');
     expect(labels).toContain('Move to project');
   });
@@ -510,11 +531,10 @@ describe('Chat', () => {
     await harness.fixture.whenStable();
 
     TestBed.inject(ConversationListStore).setRowPending(conversation.id, true);
-    element().querySelector<HTMLButtonElement>('.chat__menu .menu__trigger')?.click();
     await harness.fixture.whenStable();
 
     // Still focusable, so the menu's roving focus keeps working.
-    const items = [...element().querySelectorAll<HTMLButtonElement>('[appMenuItem]')];
+    const items = menuItems(await openKebab()) as HTMLButtonElement[];
     expect(items.length).toBeGreaterThan(0);
     expect(items.every((item) => item.getAttribute('aria-disabled') === 'true')).toBe(true);
     expect(items.every((item) => !item.disabled)).toBe(true);
@@ -527,12 +547,12 @@ describe('Chat', () => {
   it('withholds the kebab for a deep link until the detail supplies a full DTO', async () => {
     await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
 
-    expect(element().querySelector('.chat__menu')).toBeNull();
+    expect(kebab()).toBeNull();
 
     backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
     await harness.fixture.whenStable();
 
-    expect(element().querySelector('.chat__menu')).not.toBeNull();
+    expect(kebab()).not.toBeNull();
   });
 
   it('fills the header star from the sidebar copy of a favourited conversation', async () => {
@@ -550,9 +570,8 @@ describe('Chat', () => {
       .flush(conversationDetailFixture({ ...conversation, isFavorite: true }));
     await harness.fixture.whenStable();
 
-    const star = element().querySelector<HTMLButtonElement>('.chat__star');
-    expect(star?.classList.contains('chat__star--on')).toBe(true);
-    expect(star?.getAttribute('aria-label')).toBe('Unfavourite Helios 2.4 release status');
+    expectStarOn();
+    expect(star()?.getAttribute('aria-label')).toBe('Unfavourite Helios 2.4 release status');
   });
 
   it('flips the header star and the sidebar row together, before the server answers', async () => {
@@ -569,10 +588,11 @@ describe('Chat', () => {
     backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
     await harness.fixture.whenStable();
 
-    element().querySelector<HTMLButtonElement>('.chat__star')?.click();
+    expect(iconOf(star()!)).toBe('bi-star');
+    star()?.click();
     await harness.fixture.whenStable();
 
-    expect(element().querySelector('.chat__star')?.classList.contains('chat__star--on')).toBe(true);
+    expectStarOn();
     expect(list.entities()[0]?.isFavorite).toBe(true);
 
     const request = backend.expectOne({
@@ -583,7 +603,7 @@ describe('Chat', () => {
     request.flush(null, { status: 204, statusText: 'No Content' });
     await harness.fixture.whenStable();
 
-    expect(element().querySelector('.chat__star')?.classList.contains('chat__star--on')).toBe(true);
+    expectStarOn();
   });
 
   it('disables the header star while the conversation’s own action is in flight', async () => {
@@ -595,21 +615,21 @@ describe('Chat', () => {
     await harness.fixture.whenStable();
 
     // Native disabled, unlike the kebab's items: the star is not in a roving-focus panel.
-    expect(element().querySelector<HTMLButtonElement>('.chat__star')?.disabled).toBe(true);
+    expect(star()?.disabled).toBe(true);
   });
 
   it('fills the star from the detail DTO for a deep link the list never held', async () => {
     // Unlike GET {id}/messages, the detail reports isFavorite truthfully.
     await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
 
-    expect(element().querySelector('.chat__star')).toBeNull();
+    expect(star()).toBeNull();
 
     backend
       .expectOne(detailUrl(conversation.id))
       .flush(conversationDetailFixture({ ...conversation, isFavorite: true }));
     await harness.fixture.whenStable();
 
-    expect(element().querySelector('.chat__star')?.classList.contains('chat__star--on')).toBe(true);
+    expectStarOn();
   });
 
   it('follows a favourite announced for the open conversation', async () => {
@@ -622,7 +642,7 @@ describe('Chat', () => {
     );
     await harness.fixture.whenStable();
 
-    expect(element().querySelector('.chat__star')?.classList.contains('chat__star--on')).toBe(true);
+    expectStarOn();
   });
 
   it('renders the composer on the empty route and on an open conversation alike', async () => {
@@ -649,9 +669,9 @@ describe('Chat', () => {
   it('offers the four suggested prompts on the landing screen only', async () => {
     await harness.navigateByUrl('/chat', Chat);
 
-    const labels = [...element().querySelectorAll('.chat-empty__chip')].map(
-      (chip) => chip.textContent?.trim() ?? '',
-    );
+    const labels = within(suggestions()!)
+      .getAllByRole('button')
+      .map((chip) => chip.textContent?.trim() ?? '');
     expect(labels).toEqual([
       'Summarize a document',
       'Draft a status update',
@@ -663,18 +683,17 @@ describe('Chat', () => {
     backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
     await harness.fixture.whenStable();
 
-    expect(element().querySelector('.chat-empty__chip')).toBeNull();
+    expect(suggestions()).toBeNull();
   });
 
   it('seeds the composer when a suggested prompt is chosen, creating nothing', async () => {
     await harness.navigateByUrl('/chat', Chat);
 
-    element().querySelector<HTMLButtonElement>('.chat-empty__chip')?.click();
+    within(suggestions()!).getByRole('button', { name: 'Summarize a document' }).click();
     await harness.fixture.whenStable();
 
-    const prompt = element().querySelector<HTMLTextAreaElement>('.composer__prompt');
-    expect(prompt?.value).toBe('Summarize a document');
-    expect(document.activeElement).toBe(prompt);
+    expect(prompt().value).toBe('Summarize a document');
+    expect(document.activeElement).toBe(prompt());
     backend.expectNone(CREATE_URL);
   });
 
@@ -698,11 +717,10 @@ describe('Chat', () => {
     await models;
     await harness.fixture.whenStable();
 
-    const prompt = element().querySelector<HTMLTextAreaElement>('.composer__prompt');
-    prompt!.value = 'First prompt';
-    prompt!.dispatchEvent(new Event('input', { bubbles: true }));
+    prompt().value = 'First prompt';
+    prompt().dispatchEvent(new Event('input', { bubbles: true }));
     await harness.fixture.whenStable();
-    element().querySelector<HTMLButtonElement>('.composer__send')?.click();
+    getByRole(element(), 'button', { name: 'Send' }).click();
     await harness.fixture.whenStable();
     const created = conversationFixture();
     backend.expectOne(CREATE_URL).flush(created);
@@ -742,11 +760,10 @@ describe('Chat', () => {
     await models;
     await harness.fixture.whenStable();
 
-    const prompt = element().querySelector<HTMLTextAreaElement>('.composer__prompt');
-    prompt!.value = 'First prompt';
-    prompt!.dispatchEvent(new Event('input', { bubbles: true }));
+    prompt().value = 'First prompt';
+    prompt().dispatchEvent(new Event('input', { bubbles: true }));
     await harness.fixture.whenStable();
-    element().querySelector<HTMLButtonElement>('.composer__send')?.click();
+    getByRole(element(), 'button', { name: 'Send' }).click();
     await harness.fixture.whenStable();
 
     const created = conversationFixture({ name: 'New conversation' });
@@ -763,11 +780,11 @@ describe('Chat', () => {
     expect(element().querySelector('.transcript__bubble')?.textContent).toBe('First prompt');
     expect(element().querySelector('app-ridgeline')).not.toBeNull();
     expect(element().querySelector('app-transcript')?.getAttribute('aria-busy')).toBe('true');
-    expect(element().querySelector('.chat-empty__chip')).toBeNull();
+    expect(suggestions()).toBeNull();
 
     backend.expectOne(detailUrl(created.id)).flush(conversationDetailFixture(created));
     await harness.fixture.whenStable();
-    expect(element().querySelector('.chat__title')?.textContent).toContain('New conversation');
+    expect(title().textContent).toContain('New conversation');
   });
 
   describe('picking up the name the server generates', () => {
@@ -805,9 +822,7 @@ describe('Chat', () => {
         .flush(conversationDetailFixture({ ...conversation, name: 'Helios 2.4 release status' }));
       await harness.fixture.whenStable();
 
-      expect(element().querySelector('.chat__title')?.textContent).toContain(
-        'Helios 2.4 release status',
-      );
+      expect(title().textContent).toContain('Helios 2.4 release status');
       expect(TestBed.inject(ConversationListStore).entityMap()[conversation.id]?.name).toBe(
         'Helios 2.4 release status',
       );
@@ -817,7 +832,7 @@ describe('Chat', () => {
       await openAndComplete(true);
 
       // Refreshing through `open` would clear the detail and flash the sidebar's copy back.
-      expect(element().querySelector('.chat__title')?.textContent).toContain('New conversation');
+      expect(title().textContent).toContain('New conversation');
       backend
         .expectOne(detailUrl(conversation.id))
         .flush(conversationDetailFixture({ ...conversation }));
@@ -850,11 +865,9 @@ describe('Chat', () => {
       await openWithTranscript();
 
       expect(element().querySelectorAll('app-conversation-download-menu')).toHaveLength(2);
+      expect(element().querySelectorAll('header app-conversation-download-menu')).toHaveLength(1);
       expect(
-        element().querySelectorAll('.chat__header app-conversation-download-menu'),
-      ).toHaveLength(1);
-      expect(
-        element().querySelectorAll('.chat__composer app-conversation-download-menu'),
+        element().querySelectorAll('app-composer app-conversation-download-menu'),
       ).toHaveLength(1);
     });
 
@@ -863,7 +876,8 @@ describe('Chat', () => {
 
       expect(element().querySelector('app-conversation-download-menu')).toBeNull();
       // The star and the kebab stay: they act on the row, which exists from creation.
-      expect(element().querySelector('.chat__star')).not.toBeNull();
+      expect(star()).not.toBeNull();
+      expect(kebab()).not.toBeNull();
     });
   });
 
@@ -893,8 +907,12 @@ describe('Chat', () => {
       const settings = TestBed.inject(TurnSettingsStore);
       expect(settings.selectedModel()?.id).toBe(previous.id);
       expect(settings.effectiveMcpServerIds()).toEqual([server.id]);
-      expect(element().querySelector('.model-menu__pill')?.textContent).toContain('Claude Sonnet');
-      expect(element().querySelector('.tools-menu__pill')?.textContent).toContain('1 Tool');
+      expect(getByRole(element(), 'button', { name: /^Model:/ }).textContent).toContain(
+        'Claude Sonnet',
+      );
+      expect(getByRole(element(), 'button', { name: /^Tool servers:/ }).textContent).toContain(
+        '1 Tool',
+      );
     });
 
     it('keeps the selection the user made for a conversation that has run no turn', async () => {
@@ -928,9 +946,11 @@ describe('Chat', () => {
 
       const settings = TestBed.inject(TurnSettingsStore);
       expect(settings.selectedModel()?.id).toBe(fallback.id);
-      expect(element().querySelector('.composer__note')?.textContent).toContain(
-        'The model this conversation last used is unavailable',
-      );
+      expect(
+        getByText(element(), /^The model this conversation last used is unavailable/).getAttribute(
+          'role',
+        ),
+      ).toBe('status');
     });
 
     it('says nothing while the catalog is still loading', async () => {
@@ -938,7 +958,7 @@ describe('Chat', () => {
       await openWith({ modelId: '00000000-dead-4bee-8ccc-dddddddddddd', mcpServerIds: [] });
 
       expect(TestBed.inject(TurnSettingsStore).restoredModelUnavailable()).toBe(false);
-      expect(element().querySelector('.composer__note')?.textContent?.trim()).toBe('');
+      expect(queryByText(element(), /last used is unavailable/)).toBeNull();
     });
 
     it('replays the stored messages into the transcript', async () => {
@@ -949,7 +969,7 @@ describe('Chat', () => {
 
       // The skeleton, not a flash of the landing screen, covers the round trip.
       await harness.fixture.whenStable();
-      expect(element().querySelector('.transcript__history-skeleton')).not.toBeNull();
+      expect(element().querySelector('app-transcript app-skeleton')).not.toBeNull();
       expect(element().querySelector('app-chat-empty-state')).toBeNull();
       // The skeleton is aria-hidden; aria-busy is how assistive tech perceives the wait.
       expect(element().querySelector('app-transcript')?.getAttribute('aria-busy')).toBe('true');
@@ -964,7 +984,7 @@ describe('Chat', () => {
       });
       await harness.fixture.whenStable();
 
-      expect(element().querySelector('.transcript__history-skeleton')).toBeNull();
+      expect(element().querySelector('app-transcript app-skeleton')).toBeNull();
       expect(element().querySelector('.transcript__bubble')?.textContent).toBe(
         'What is the weather?',
       );
@@ -986,7 +1006,7 @@ describe('Chat', () => {
       expect(element().querySelector('app-error-panel')?.textContent).toContain(
         "Earlier messages couldn't load",
       );
-      expect(element().querySelector('.composer__prompt')).not.toBeNull();
+      expect(prompt()).not.toBeNull();
     });
   });
 

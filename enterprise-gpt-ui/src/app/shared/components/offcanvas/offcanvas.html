@@ -3,25 +3,41 @@
 <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
 <dialog
   #dialog
-  class="offcanvas-panel"
-  [class.offcanvas-panel--start]="side() === 'start'"
-  [class.offcanvas-panel--bare]="bare()"
-  [style.--offcanvas-width]="width()"
+  class="offcanvas shadow-lg"
+  [class.offcanvas-start]="side() === 'start'"
+  [class.offcanvas-end]="side() === 'end'"
+  [style.--bs-offcanvas-width]="width()"
   [attr.aria-labelledby]="headingId"
   [attr.aria-busy]="busy() ? 'true' : null"
   (cancel)="onCancel($event)"
   (close)="onClose()"
   (click)="onBackdropClick($event)"
 >
-  <div class="offcanvas-panel__inner">
-    <h2 class="offcanvas-panel__heading" [id]="headingId" tabindex="-1">{{ heading() }}</h2>
+  <div class="offcanvas-header border-bottom" [class.visually-hidden]="bare()">
+    <h2 class="offcanvas-title fs-5" [id]="headingId" tabindex="-1">{{ heading() }}</h2>
+    @if (dismissible() && !bare()) {
+      <button
+        type="button"
+        class="btn-close"
+        aria-label="Close"
+        data-modal-dismiss
+        [disabled]="busy()"
+        (click)="open.set(false)"
+      ></button>
+    }
+  </div>
 
-    <div class="offcanvas-panel__body">
-      <ng-content />
-    </div>
+  <!-- Bare content owns its scrolling and positions its own close button against this body. -->
+  <div
+    class="offcanvas-body"
+    [class.p-0]="bare()"
+    [class.overflow-hidden]="bare()"
+    [class.position-relative]="bare()"
+  >
+    <ng-content />
+  </div>
 
-    <div class="offcanvas-panel__footer">
-      <ng-content select="[offcanvasFooter]" />
-    </div>
+  <div class="d-flex justify-content-end gap-2 p-3 border-top d-empty-none">
+    <ng-content select="[offcanvasFooter]" />
   </div>
 </dialog>

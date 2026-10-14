@@ -1,8 +1,10 @@
 <span
-  class="status-dot__mark"
-  [class]="'status-dot__mark--' + tone()"
+  class="d-inline-block rounded-circle flex-shrink-0"
+  [class]="markClass()"
+  [style.background-color]="markColor()"
   [style.width.px]="size()"
   [style.height.px]="size()"
   aria-hidden="true"
 ></span>
-<span class="status-dot__label" [class.visually-hidden]="labelHidden()">{{ label() }}</span>
+<!-- A provider name outgrows its track once the table narrows; the dot must not give way. -->
+<span class="text-truncate" [class.visually-hidden]="labelHidden()">{{ label() }}</span>

@@ -2,9 +2,11 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { getByText } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConversationExportStore } from '@state/conversation-export-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { iconOf } from '@testing/overlays';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { ConversationDownloadMenu } from './conversation-download-menu';
 
@@ -67,11 +69,11 @@ describe('ConversationDownloadMenu', () => {
     return {
       fixture,
       host,
-      trigger: () => host.querySelector('.menu__trigger') as HTMLButtonElement,
+      trigger: () => host.querySelector('[aria-haspopup="menu"]') as HTMLButtonElement,
       panel: () => host.querySelector('[role="menu"]'),
       items: () => [...host.querySelectorAll<HTMLButtonElement>('[appMenuItem]')],
       async open() {
-        (host.querySelector('.menu__trigger') as HTMLButtonElement).click();
+        (host.querySelector('[aria-haspopup="menu"]') as HTMLButtonElement).click();
         await fixture.whenStable();
       },
       async choose(label: string) {
@@ -96,10 +98,12 @@ describe('ConversationDownloadMenu', () => {
       'PDF',
       'HTML',
     ]);
-    expect(menu.host.querySelector('.download-menu__glyph--md')).not.toBeNull();
-    expect(menu.host.querySelector('.download-menu__glyph--docx')).not.toBeNull();
-    expect(menu.host.querySelector('.download-menu__glyph--pdf')).not.toBeNull();
-    expect(menu.host.querySelector('.download-menu__glyph--html')).not.toBeNull();
+    expect(items.map((item) => iconOf(item))).toEqual([
+      'bi-filetype-md',
+      'bi-file-earmark-word',
+      'bi-file-earmark-pdf',
+      'bi-filetype-html',
+    ]);
   });
 
   /** The row-to-token wiring, which is the whole of what choosing a format does. */
@@ -124,9 +128,8 @@ describe('ConversationDownloadMenu', () => {
     const menu = await render();
     await menu.open();
 
-    const note = menu.host.querySelector('.download-menu__note');
-    expect(note?.textContent).toContain('stopped, unsaved answer');
-    expect(note?.hasAttribute('appMenuItem')).toBe(false);
+    const note = getByText(menu.host, /stopped, unsaved answer/);
+    expect(note.hasAttribute('appMenuItem')).toBe(false);
     expect(menu.items()).toHaveLength(4);
   });
 
@@ -141,10 +144,10 @@ describe('ConversationDownloadMenu', () => {
     expect(menu.panel()).not.toBeNull();
     const items = menu.items();
     expect(items[2]?.textContent).toContain('Preparing PDF…');
-    expect(items[2]?.querySelector('.download-menu__spinner')).not.toBeNull();
-    expect(items[0]?.classList.contains('download-menu__item--dimmed')).toBe(true);
-    expect(items[1]?.classList.contains('download-menu__item--dimmed')).toBe(true);
-    expect(items[2]?.classList.contains('download-menu__item--dimmed')).toBe(false);
+    expect(items[2]?.getAttribute('aria-busy')).toBe('true');
+    expect(items[0]?.getAttribute('aria-disabled')).toBe('true');
+    expect(items[1]?.getAttribute('aria-disabled')).toBe('true');
+    expect(items[2]?.hasAttribute('aria-disabled')).toBe(false);
 
     request.flush(new Blob(['x']));
   });
@@ -174,9 +177,6 @@ describe('ConversationDownloadMenu', () => {
     await menu.fixture.whenStable();
 
     const items = menu.items();
-    expect(items.every((item) => item.classList.contains('download-menu__item--dimmed'))).toBe(
-      true,
-    );
     expect(items.every((item) => item.getAttribute('aria-disabled') === 'true')).toBe(true);
     expect(items.some((item) => item.textContent?.includes('Preparing'))).toBe(false);
 
@@ -204,7 +204,7 @@ describe('ConversationDownloadMenu', () => {
     const menu = await render();
     await menu.open();
 
-    const noteId = menu.host.querySelector('.download-menu__note')?.id;
+    const noteId = getByText(menu.host, /stopped, unsaved answer/).id;
     expect(noteId).toBeTruthy();
     expect(menu.items().every((item) => item.getAttribute('aria-describedby') === noteId)).toBe(
       true,
@@ -227,7 +227,7 @@ describe('ConversationDownloadMenu', () => {
 
     expect(menu.panel()).not.toBeNull();
     expect(menu.items()[2]?.textContent?.trim()).toBe('PDF');
-    expect(menu.items()[0]?.classList.contains('download-menu__item--dimmed')).toBe(false);
+    expect(menu.items()[0]?.hasAttribute('aria-disabled')).toBe(false);
   });
 
   /** A second press on another format while one prepares is a mis-click, not a request. */

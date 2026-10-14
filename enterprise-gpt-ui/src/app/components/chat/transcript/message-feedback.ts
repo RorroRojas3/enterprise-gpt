@@ -14,9 +14,11 @@ import { Icon } from '@shared/components/icon/icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
   templateUrl: './message-feedback.html',
-  styleUrl: './message-feedback.scss',
   // A rated turn keeps its hover-revealed footer up, so the rating is visible at rest.
-  host: { '[class.message-feedback--rated]': 'rating() !== null' },
+  host: {
+    class: 'd-inline-flex align-items-center',
+    '[class.message-feedback--rated]': 'rating() !== null',
+  },
 })
 export class MessageFeedback {
   readonly rating = input<MessageFeedbackRating | null>(null);

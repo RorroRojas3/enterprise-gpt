@@ -9,7 +9,6 @@ import { AttachmentChip } from '@shared/components/attachment-chip/attachment-ch
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [AttachmentChip],
   templateUrl: './generated-files.html',
-  styleUrl: './generated-files.scss',
 })
 export class GeneratedFiles {
   readonly attachments = input.required<readonly MessageAttachmentDto[]>();

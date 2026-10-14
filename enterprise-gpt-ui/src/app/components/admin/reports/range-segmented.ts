@@ -10,7 +10,6 @@ import { USAGE_RANGES, UsageRange } from '@shared/utils/navigation/admin-reports
   selector: 'app-range-segmented',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './range-segmented.html',
-  styleUrl: './range-segmented.scss',
 })
 export class RangeSegmented {
   readonly value = input.required<UsageRange>();

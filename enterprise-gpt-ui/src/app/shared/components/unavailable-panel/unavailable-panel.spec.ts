@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { getByRole, queryAllByRole, queryByRole } from '@testing-library/dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { UnavailablePanel } from './unavailable-panel';
 
@@ -19,27 +20,30 @@ describe('UnavailablePanel', () => {
   it('names the missing capability', async () => {
     const host = await render();
 
-    expect(host.textContent).toContain("Your documents aren't available yet");
-    expect(host.textContent).toContain('not enabled for this deployment');
+    const region = getByRole(host, 'region', { name: "Your documents aren't available yet" });
+    expect(region.textContent).toContain('not enabled for this deployment');
   });
 
   it('offers nothing to press — a missing API does not come back on retry', async () => {
     const host = await render();
 
-    expect(host.querySelector('button')).toBeNull();
-    expect(host.querySelector('a')).toBeNull();
+    expect(queryByRole(host, 'button')).toBeNull();
+    expect(queryByRole(host, 'link')).toBeNull();
   });
 
   it('is not a live region: it is the steady state of the screen, not news', async () => {
     const host = await render();
 
-    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(queryByRole(host, 'alert')).toBeNull();
+    expect(queryByRole(host, 'status')).toBeNull();
     expect(host.querySelector('[aria-live]')).toBeNull();
   });
 
   it('renders no rows, records or placeholder values', async () => {
     const host = await render();
 
-    expect(host.querySelectorAll('table, tr, li')).toHaveLength(0);
+    for (const role of ['table', 'row', 'listitem']) {
+      expect(queryAllByRole(host, role)).toHaveLength(0);
+    }
   });
 });

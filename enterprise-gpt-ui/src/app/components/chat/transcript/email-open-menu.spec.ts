@@ -1,8 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAILTO_SAFE_LENGTH } from '@shared/utils/email/compose-url';
 import { EmailDraft } from '@shared/utils/email/email-draft';
 import { ToastStore } from '@core/notifications/toast-store';
+import { openMenu } from '@testing/overlays';
 import { EmailOpenMenu } from './email-open-menu';
 
 const draft = (over: Partial<EmailDraft> = {}): EmailDraft => ({
@@ -35,6 +37,11 @@ describe('EmailOpenMenu', () => {
 
   function openLink(): HTMLAnchorElement {
     return host.querySelector('a[href^="mailto:"]') as HTMLAnchorElement;
+  }
+
+  /** The menu's own trigger, named for who it would mail. */
+  function menuTrigger(): HTMLButtonElement {
+    return getByRole(host, 'button', { name: /^Other ways to/ });
   }
 
   beforeEach(() => {
@@ -112,7 +119,7 @@ describe('EmailOpenMenu', () => {
     // Both controls, one spelling: they name the same person, and a lowercased
     // copy on one of them would announce two addresses for one recipient.
     expect(openLink().getAttribute('aria-label')).toBe('Open email to Alice.Smith@Contoso.com');
-    expect(host.querySelector('.menu__trigger')?.textContent).toContain('Alice.Smith@Contoso.com');
+    expect(menuTrigger().textContent).toContain('Alice.Smith@Contoso.com');
   });
 
   it('leaves the open control unlabelled when there is no recipient to name', async () => {
@@ -126,16 +133,16 @@ describe('EmailOpenMenu', () => {
 
     // The name is the trigger's own visually-hidden text, which is where `Menu`
     // puts it whenever a consumer does not project a trigger face of its own.
-    expect(host.querySelector('.menu__trigger')?.textContent).toContain('alice@contoso.com');
+    expect(menuTrigger().textContent).toContain('alice@contoso.com');
   });
 
   it('offers an Outlook web link that opens in its own tab', async () => {
     await render(draft({ to: ['alice@contoso.com'], subject: 'Q3' }));
-    (host.querySelector('.menu__trigger') as HTMLButtonElement).click();
-    await fixture.whenStable();
+    const menu = await openMenu(fixture, 'Other ways to email alice@contoso.com', host);
 
-    const web = host.querySelector<HTMLAnchorElement>('a[href*="outlook.office.com"]');
-    expect(web?.getAttribute('href')).toContain('to=alice%40contoso.com');
-    expect(web?.getAttribute('rel')).toBe('noopener');
+    const web = getByRole(menu, 'menuitem', { name: 'Outlook on the web' });
+    expect(web.getAttribute('href')).toContain('to=alice%40contoso.com');
+    expect(web.getAttribute('target')).toBe('_blank');
+    expect(web.getAttribute('rel')).toBe('noopener');
   });
 });

@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { getByRole, getByText } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConversationActionsStore } from '@state/conversation-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
@@ -45,11 +46,11 @@ describe('DeleteConversationDialog', () => {
   }
 
   function deleteButton(): HTMLButtonElement {
-    return fixture.nativeElement.querySelector('.btn-danger') as HTMLButtonElement;
+    return getByRole(dialog(), 'button', { name: 'Delete' });
   }
 
   function cancelButton(): HTMLButtonElement {
-    return fixture.nativeElement.querySelector('.btn-outline-secondary') as HTMLButtonElement;
+    return getByRole(dialog(), 'button', { name: 'Cancel' });
   }
 
   async function open(): Promise<void> {
@@ -60,10 +61,9 @@ describe('DeleteConversationDialog', () => {
   it('names the conversation and says what goes and what stays', async () => {
     await open();
 
-    const body = fixture.nativeElement.querySelector('.delete__body');
-    expect(body?.textContent).toContain('“Vendor SSO escalation email”');
-    expect(body?.textContent).toContain('its messages will be permanently deleted');
-    expect(body?.textContent).toContain('Files it uploaded stay in your documents');
+    const body = getByText(dialog(), /its messages will be permanently deleted/);
+    expect(body.textContent).toContain('“Vendor SSO escalation email”');
+    expect(body.textContent).toContain('Files it uploaded stay in your documents');
   });
 
   it('offers a red Delete and lands initial focus on Cancel', async () => {
@@ -74,9 +74,10 @@ describe('DeleteConversationDialog', () => {
     expect(cancelButton().hasAttribute('data-modal-autofocus')).toBe(true);
     expect(document.activeElement).toBe(cancelButton());
     expect(fixture.nativeElement.querySelectorAll('.btn-danger')).toHaveLength(1);
+    expect(deleteButton().classList.contains('btn-danger')).toBe(true);
     // Direct projection into the footer — a wrapper div would collapse the gap.
-    expect(deleteButton().parentElement?.classList.contains('modal-panel__footer')).toBe(true);
-    expect(cancelButton().parentElement?.classList.contains('modal-panel__footer')).toBe(true);
+    expect(deleteButton().parentElement?.classList.contains('modal-footer')).toBe(true);
+    expect(cancelButton().parentElement?.classList.contains('modal-footer')).toBe(true);
   });
 
   it('confirms, closes at once, and moves fallen-through focus to the main landmark', async () => {

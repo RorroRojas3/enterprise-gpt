@@ -6,6 +6,7 @@ import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { getByRole, within } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SessionStore } from '@core/session/session-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
@@ -67,6 +68,15 @@ describe('AdminLayout', () => {
     return harness.routeNativeElement as HTMLElement;
   }
 
+  /** The rail, or the pill strip that stands in for it below 768px. */
+  function areaNav(): HTMLElement {
+    return getByRole(element(), 'navigation', { name: 'Administration' });
+  }
+
+  function activeTab(): HTMLElement {
+    return within(areaNav()).getByRole('link', { current: 'page' });
+  }
+
   /** Opens a URL under /admin and answers whichever tab's first query it issues. */
   async function open(url: string): Promise<void> {
     await harness.navigateByUrl(url, AdminLayout);
@@ -97,17 +107,15 @@ describe('AdminLayout', () => {
   it('marks the open tab from the router rather than from local state', async () => {
     await open('/admin/users');
 
-    const active = element().querySelector('.admin-nav__link--active');
-    expect(active?.textContent).toContain('Users');
-    expect(active?.getAttribute('aria-current')).toBe('page');
+    expect(activeTab().textContent).toContain('Users');
   });
 
   it('lists only the tabs that exist', async () => {
     await open('/admin/users');
 
-    const labels = [...element().querySelectorAll('.admin-nav__link')].map((link) =>
-      link.textContent?.trim(),
-    );
+    const labels = within(areaNav())
+      .getAllByRole('link')
+      .map((link) => link.textContent?.trim());
     expect(labels).toEqual(['Users', 'Models', 'MCP servers', 'Reports']);
   });
 
@@ -116,16 +124,15 @@ describe('AdminLayout', () => {
     await open('/admin/users');
 
     expect(element().querySelector('app-pill-subnav')).not.toBeNull();
-    expect(element().querySelector('.admin-nav')).toBeNull();
+    expect(element().querySelector('.admin-rail')).toBeNull();
   });
 
   it('reaches every tab by URL below 768px too, where the rail is a pill strip', async () => {
     setMediaQuery(NARROW_VIEWPORT, true);
     await open('/admin/reports');
 
-    const active = element().querySelector('.pill-subnav__pill--active');
-    expect(active?.textContent).toContain('Reports');
-    expect(active?.getAttribute('aria-current')).toBe('page');
+    expect(areaNav().closest('app-pill-subnav')).not.toBeNull();
+    expect(activeTab().textContent).toContain('Reports');
   });
 
   it('renders the users tab inside the layout', async () => {
@@ -141,9 +148,7 @@ describe('AdminLayout', () => {
     // `backend.verify()` in afterEach asserts that no sibling tab's store issued a request.
     expect(element().querySelector('app-admin-users')).toBeNull();
 
-    const active = element().querySelector('.admin-nav__link--active');
-    expect(active?.textContent).toContain('Models');
-    expect(active?.getAttribute('aria-current')).toBe('page');
+    expect(activeTab().textContent).toContain('Models');
   });
 
   it('opens the MCP servers tab by URL, instantiating only its own store', async () => {
@@ -154,9 +159,7 @@ describe('AdminLayout', () => {
     expect(element().querySelector('app-admin-users')).toBeNull();
     expect(element().querySelector('app-admin-models')).toBeNull();
 
-    const active = element().querySelector('.admin-nav__link--active');
-    expect(active?.textContent).toContain('MCP servers');
-    expect(active?.getAttribute('aria-current')).toBe('page');
+    expect(activeTab().textContent).toContain('MCP servers');
   });
 
   it('opens the reports tab by URL, instantiating only its own store', async () => {
@@ -168,9 +171,7 @@ describe('AdminLayout', () => {
     expect(element().querySelector('app-admin-models')).toBeNull();
     expect(element().querySelector('app-admin-mcps')).toBeNull();
 
-    const active = element().querySelector('.admin-nav__link--active');
-    expect(active?.textContent).toContain('Reports');
-    expect(active?.getAttribute('aria-current')).toBe('page');
+    expect(activeTab().textContent).toContain('Reports');
   });
 
   it('keeps an unknown admin URL inside the admin area rather than ejecting it', async () => {

@@ -9,9 +9,9 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 /** The outcomes in the order the legend lists them, with the tone each arc takes. */
 const OUTCOME_TONES: ReadonlyArray<{ status: string; label: string; tone: StatusTone }> = [
-  { status: 'Completed', label: 'Completed', tone: 'ok' },
-  { status: 'Cancelled', label: 'Cancelled', tone: 'muted' },
-  { status: 'Failed', label: 'Failed', tone: 'warn' },
+  { status: 'Completed', label: 'Completed', tone: 'success' },
+  { status: 'Cancelled', label: 'Cancelled', tone: 'secondary' },
+  { status: 'Failed', label: 'Failed', tone: 'warning' },
 ];
 
 /**

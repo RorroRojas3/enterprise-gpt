@@ -11,8 +11,8 @@ let nextId = 0;
   selector: 'app-unavailable-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Ridgeline],
+  host: { class: 'd-block' },
   templateUrl: './unavailable-panel.html',
-  styleUrl: './unavailable-panel.scss',
 })
 export class UnavailablePanel {
   /** Names the capability: "Your documents aren't available yet". */

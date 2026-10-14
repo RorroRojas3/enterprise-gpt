@@ -1,22 +1,12 @@
-@use 'breakpoints' as bp;
-
-:host {
-  display: block;
-}
-
+// The card draws the borderless textarea's focus ring, scoped with `:has()` because every inner
+// control has its own and `:focus-within` would double them. `--focus-ring`, since `--ring`
+// composites to about 1.4:1 here. The border is only the "composer is active" cue. The resting
+// shadow lives here too: `.shadow-sm` is `!important` and would beat the ring.
 .composer {
-  position: relative;
-  padding: 8px 12px;
-  border: 1px solid var(--bs-border-color);
-  border-radius: 14px;
-  background: var(--surface);
-  box-shadow: 0 1px 3px rgba(11, 31, 51, 0.05);
+  box-shadow: var(--bs-box-shadow-sm);
 
-  // The card draws the borderless textarea's focus ring, scoped with `:has()` because every inner
-  // control has its own and `:focus-within` would double them. `--focus-ring`, since `--ring`
-  // composites to about 1.4:1 here. The border is only the "composer is active" cue.
   &:focus-within {
-    border-color: var(--accent);
+    border-color: var(--bs-info);
   }
 
   &:has(.composer__prompt:focus) {
@@ -24,43 +14,22 @@
   }
 }
 
-// A list, so screen readers announce the count.
-.composer__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 4px 0 8px;
-  padding: 0;
-  list-style: none;
-
-  li {
-    max-width: 290px;
-  }
-}
-
-// Off-screen: `display: none` or `visibility: hidden` makes `.click()` a no-op in some engines.
-.composer__file-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  clip-path: inset(50%);
-  overflow: hidden;
-  white-space: nowrap;
+// Capped so one long name cannot take the row, but never wider than a phone's card.
+.composer__chip {
+  max-width: min(290px, 100%);
 }
 
 .composer__prompt {
   display: block;
   width: 100%;
-  padding: 6px 4px 8px;
+  padding: 0.5rem 0.25rem;
   border: 0;
   background: transparent;
-  color: var(--bs-body-color);
-  font-size: 15px;
-  line-height: 1.5;
+  color: inherit;
   resize: none;
 
   &::placeholder {
-    color: var(--muted);
+    color: var(--bs-secondary-color);
   }
 
   &:focus {
@@ -71,67 +40,15 @@
   }
 }
 
-.composer__note {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 0;
-  padding: 0 4px;
-  color: var(--warn);
-  font-size: 12px;
-
-  app-icon {
-    flex: 0 0 auto;
-    font-size: 12px;
-  }
-
-  &--visible {
-    padding-bottom: 8px;
-  }
-}
-
-.composer__controls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.composer__spacer {
-  flex: 1;
-}
-
-// The one action button; `composer__send` / `composer__stop` are its states,
-// toggled on a persistent element so keyboard focus survives the morph.
-.composer__action {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  padding: 0;
-  border-radius: 50%;
-
-  app-icon {
-    font-size: 14px;
-    transform: translate(-1px, 1px);
-  }
-}
-
-// The doubled selectors outweigh `.btn`'s own hover and active styling.
-.composer__action.composer__stop {
-  border: 2px solid var(--brand);
+// The doubled selector outweighs `.btn`'s own hover and active fills.
+.btn.composer__stop {
+  border: 2px solid var(--bs-primary);
   background: transparent;
 
   &:hover,
   &:active {
-    border-color: var(--brand);
+    border-color: var(--bs-primary);
     background: transparent;
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
   }
 }
 
@@ -140,7 +57,7 @@
   width: 11px;
   height: 11px;
   border-radius: 2.5px;
-  background: var(--brand);
+  background: var(--bs-primary);
 }
 
 // The auxiliary controls dim while a turn runs.
@@ -156,155 +73,13 @@
   opacity: 1;
 }
 
-// Also the project screen's static chip, a <span> because there is nothing to open there.
-.composer__project {
-  display: inline-flex;
-  flex: 0 1 auto;
-  gap: 6px;
-  align-items: center;
-  min-width: 0;
-  height: 30px;
-  max-width: 200px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--bs-body-color);
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-
-  app-icon {
-    flex: 0 0 auto;
-    color: var(--muted);
-    font-size: 13px;
-  }
-
-  &:hover {
-    background: var(--active-bg);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
-  }
-
-  &--assigned app-icon:first-child {
-    color: var(--brand);
-  }
-
-  &--fixed {
-    cursor: default;
-
-    &:hover {
-      background: var(--surface-2);
-    }
-  }
-}
-
-.composer__project-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-// Tag-qualified so it outranks `.composer__project app-icon`'s 13px.
-app-icon.composer__project-caret {
-  font-size: 9px;
-}
-
-// The square every auxiliary control in the row uses.
-.composer__icon-button {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 16px;
-
-  &:hover:not(:disabled) {
-    background: var(--surface-2);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
-  }
-}
-
 // `ringpulse` is one of the design's four keyframes; it can drive box-shadow, as the pill has none.
 .composer__mic-pill {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 7px;
-  height: 34px;
-  padding: 0 11px;
-  border: 0;
-  border-radius: 999px;
-  background: rgba(33, 168, 216, 0.14);
-  color: var(--accent);
   animation: ringpulse 1.8s ease-out infinite;
-
-  app-icon {
-    font-size: 15px;
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
-  }
 }
 
-.composer__mic-elapsed {
-  font-size: 11.5px;
-}
-
-// `balance` rather than a smaller size on narrow screens: the line wraps on a phone
-// either way, and shrinking muted text is the wrong half of the trade.
+// `balance` rather than a smaller size on narrow screens: the line wraps on a phone either way,
+// and shrinking muted text is the wrong half of the trade.
 .composer__disclaimer {
-  margin: 6px 0 0;
-  padding: 0 8px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.4;
-  text-align: center;
   text-wrap: balance;
-}
-
-// The row is about twice too wide on a phone, pushing Send off the card, so every pill whose
-// glyph says what its label says gives the label up; the model name survives.
-@include bp.mobile {
-  .composer__controls {
-    gap: 5px;
-  }
-
-  // The 290px cap is wider than the card's own content box on a phone.
-  .composer__chips li {
-    max-width: 100%;
-  }
-
-  // Absent rather than dimmed: the narrow navbar renders this same menu.
-  app-conversation-download-menu {
-    display: none;
-  }
-
-  .composer__project {
-    padding: 0 8px;
-  }
-
-  .composer__project-name {
-    display: none;
-  }
-
-  // The whole chip: its only content is the label, and the header already names the project.
-  .composer__project--fixed {
-    display: none;
-  }
 }

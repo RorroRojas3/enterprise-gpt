@@ -75,6 +75,8 @@ const SKELETON_ROWS = 6;
   ],
   templateUrl: './sidebar.html',
   styleUrl: './sidebar.scss',
+  // No `overflow-hidden`: the strip's tooltip flyout is positioned outside this column.
+  host: { class: 'd-block min-w-0' },
 })
 export class Sidebar {
   private readonly _session = inject(SessionStore);

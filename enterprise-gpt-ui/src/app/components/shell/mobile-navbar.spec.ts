@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, TemplateRef, viewChild } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { getByRole, getByText, queryAllByRole, queryByRole } from '@testing-library/dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ShellChrome } from '@core/ui/shell-chrome-service';
 import { MobileNavbar } from './mobile-navbar';
@@ -10,7 +11,7 @@ import { MobileNavbar } from './mobile-navbar';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [MobileNavbar],
   template: `
-    <ng-template #actions><button class="published-action" type="button">Act</button></ng-template>
+    <ng-template #actions><button type="button">Act</button></ng-template>
     <app-mobile-navbar (menuRequested)="opened = opened + 1" />
   `,
 })
@@ -34,12 +35,13 @@ describe('MobileNavbar', () => {
     const element = fixture.nativeElement as HTMLElement;
 
     // The brand on chat, the area's name under /admin.
-    expect(element.querySelector('.navbar__title')?.textContent?.trim()).toBe('Enterprise GPT');
+    expect(getByText(element, 'Enterprise GPT')).toBeTruthy();
 
     chrome.publish({ title: 'Admin' });
     await fixture.whenStable();
 
-    expect(element.querySelector('.navbar__title')?.textContent?.trim()).toBe('Admin');
+    expect(getByText(element, 'Admin')).toBeTruthy();
+    expect(element.textContent).not.toContain('Enterprise GPT');
   });
 
   it('renders the trailing controls a screen published, and none when it publishes none', async () => {
@@ -48,31 +50,30 @@ describe('MobileNavbar', () => {
     const element = fixture.nativeElement as HTMLElement;
 
     // A screen with no trailing control is what `actions: null` is for.
-    expect(element.querySelector('.navbar__actions')).toBeNull();
+    expect(queryByRole(element, 'button', { name: 'Act' })).toBeNull();
 
     chrome.publish({ actions: fixture.componentInstance.actions() });
     await fixture.whenStable();
 
-    expect(element.querySelector('.navbar__actions .published-action')).not.toBeNull();
+    expect(getByRole(element, 'button', { name: 'Act' })).toBeTruthy();
 
     chrome.clear();
     await fixture.whenStable();
 
-    expect(element.querySelector('.navbar__actions')).toBeNull();
+    expect(queryByRole(element, 'button', { name: 'Act' })).toBeNull();
   });
 
   it('names the hamburger and says what it opens', async () => {
     const fixture = TestBed.createComponent(NavbarHost);
     await fixture.whenStable();
     const element = fixture.nativeElement as HTMLElement;
-    const hamburger = element.querySelector<HTMLButtonElement>('.navbar__menu');
+    const hamburger = getByRole(element, 'button', { name: 'Open navigation' });
 
-    expect(hamburger?.getAttribute('aria-label')).toBe('Open navigation');
     // No `aria-expanded`: a modal dialog inerts this button rather than revealing a region.
-    expect(hamburger?.getAttribute('aria-haspopup')).toBe('dialog');
-    expect(hamburger?.hasAttribute('aria-expanded')).toBe(false);
+    expect(hamburger.getAttribute('aria-haspopup')).toBe('dialog');
+    expect(hamburger.hasAttribute('aria-expanded')).toBe(false);
 
-    hamburger?.click();
+    hamburger.click();
     await fixture.whenStable();
 
     expect(fixture.componentInstance.opened).toBe(1);
@@ -83,6 +84,6 @@ describe('MobileNavbar', () => {
     await fixture.whenStable();
 
     // The routed screen owns the only <h1>; brand text as a heading would add a second.
-    expect((fixture.nativeElement as HTMLElement).querySelectorAll('h1, h2, h3')).toHaveLength(0);
+    expect(queryAllByRole(fixture.nativeElement as HTMLElement, 'heading')).toHaveLength(0);
   });
 });

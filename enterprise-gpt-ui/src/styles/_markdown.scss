@@ -26,7 +26,7 @@
     margin: 8px 0 0;
     padding-left: 12px;
     border-left: 2px solid var(--bs-border-color);
-    color: var(--muted);
+    color: var(--bs-secondary-color);
   }
 
   // No border or `overflow`: `.md-code` draws the outline, and an `overflow` here would beat
@@ -79,12 +79,12 @@
     font-size: 12.5px;
     line-height: 1.6;
 
-    // Inset, since the block's border would clip an outline; `--accent` because the code
+    // Inset, since the block's border would clip an outline; `--bs-info` because the code
     // surface is dark in both themes.
     &:focus-visible {
       // focus-check-ignore-next-line
       outline: none;
-      box-shadow: inset 0 0 0 2px var(--accent);
+      box-shadow: inset 0 0 0 2px var(--bs-info);
     }
   }
 }
@@ -123,9 +123,9 @@
     background: rgba(255, 255, 255, 0.08);
   }
 
-  // The code surface is dark in both themes, so `--accent` replaces the page's focus ring.
+  // The code surface is dark in both themes, so `--bs-info` replaces the page's focus ring.
   &:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--bs-info);
     outline-offset: 1px;
   }
 }
@@ -140,12 +140,12 @@
   }
 
   .md-code__head {
-    background: var(--surface-2);
+    background: var(--bs-tertiary-bg);
   }
 
   .md-code__lang,
   .md-code__copy {
-    color: var(--muted);
+    color: var(--bs-secondary-color);
   }
 }
 
@@ -167,8 +167,8 @@
 .md-diagram__notice {
   margin: 0;
   padding: 8px 14px;
-  border-top: 1px solid var(--warn-border);
-  background: var(--warn-bg);
+  border-top: 1px solid var(--bs-warning-border-subtle);
+  background: var(--bs-warning-bg-subtle);
   font-size: 12.5px;
 }
 
@@ -207,7 +207,7 @@
     height: 17px;
     margin-left: 3px;
     border-radius: 2px;
-    background: var(--accent);
+    background: var(--bs-info);
     vertical-align: -3px;
     animation: blink 1s steps(1) infinite;
   }

@@ -24,6 +24,10 @@
          same string. -->
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <!-- Security pin over the version Microsoft.AspNetCore.DataProtection brings; see
+         Directory.Packages.props. Here, the lowest layer that pulls it in, so it covers every project
+         above. -->
+    <PackageReference Include="System.Security.Cryptography.Xml" />
   </ItemGroup>
 
   <ItemGroup>

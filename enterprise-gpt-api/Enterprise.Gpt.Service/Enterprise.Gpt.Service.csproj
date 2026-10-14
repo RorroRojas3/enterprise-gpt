@@ -54,7 +54,6 @@
          ExportFontResolver.cs is what supplies faces. MIT, which is why this and not QuestPDF, whose
          Community tier is source-available rather than MIT and is gated on company revenue. -->
     <PackageReference Include="PDFsharp-MigraDoc" />
-    <PackageReference Include="System.Security.Cryptography.Xml" />
   </ItemGroup>
 
   <ItemGroup>

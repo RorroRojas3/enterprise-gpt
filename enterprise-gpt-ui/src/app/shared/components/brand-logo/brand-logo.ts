@@ -16,8 +16,8 @@ const INTRINSIC = {
 @Component({
   selector: 'app-brand-logo',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { class: 'd-inline-flex' },
   templateUrl: './brand-logo.html',
-  styleUrl: './brand-logo.scss',
 })
 export class BrandLogo {
   readonly variant = input<BrandVariant>('full');

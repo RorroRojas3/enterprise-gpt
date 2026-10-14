@@ -1,9 +1,14 @@
 @if (attachments().length > 0) {
   <!-- `role="list"`: Safari drops list semantics under `list-style: none`. Guarded here too,
        since an empty list is still announced. -->
-  <ul class="generated-files" role="list" aria-label="Files the assistant made">
+  <ul
+    class="list-unstyled d-flex flex-wrap gap-2 mb-0"
+    role="list"
+    aria-label="Files the assistant made"
+  >
     @for (file of rows(); track file.id) {
-      <li>
+      <!-- Capped at the column, so a long name truncates inside its chip rather than spilling. -->
+      <li class="mw-100">
         <app-attachment-chip
           [attachment]="file"
           [generated]="true"

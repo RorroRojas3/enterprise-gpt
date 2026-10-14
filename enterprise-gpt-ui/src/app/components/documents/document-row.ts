@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { DocumentType, UserDocumentDto } from '@shared/models/api/document.model';
-import { fileGlyph } from '@shared/utils/documents/file-glyph';
+import { FILE_GLYPH_TEXT, fileGlyph } from '@shared/utils/documents/file-glyph';
 import { formatBytes } from '@shared/utils/format/bytes';
 import { formatShortDate } from '@shared/utils/format/relative-time';
 import { CHAT_ROUTE } from '@core/navigation/route-paths';
@@ -22,8 +22,11 @@ const BADGE_SOURCES = {
   selector: 'app-document-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, RouterLink, SourceBadge],
-  // A host class, so the stylesheet owns the grid track the missing conversation cell drops.
-  host: { '[class.document-row--no-conversation]': '!showConversation()' },
+  host: {
+    class: 'd-grid align-items-center column-gap-2 row-gap-1 px-3 py-2 py-md-0',
+    // The stylesheet owns the grid track the missing conversation cell drops.
+    '[class.document-row--no-conversation]': '!showConversation()',
+  },
   templateUrl: './document-row.html',
   styleUrl: './document-row.scss',
 })
@@ -35,8 +38,10 @@ export class DocumentRow {
 
   private readonly _downloads = inject(DocumentDownloadStore);
 
-  protected readonly glyph = fileGlyph;
   protected readonly chatRoute = CHAT_ROUTE;
+
+  protected readonly glyph = computed(() => fileGlyph(this.document().name));
+  protected readonly glyphTone = computed(() => FILE_GLYPH_TEXT[this.glyph().tone]);
 
   /** The badge's own vocabulary, which `shared/models` cannot name without importing a component. */
   // Defaulted: the wire could add a type before the union does.

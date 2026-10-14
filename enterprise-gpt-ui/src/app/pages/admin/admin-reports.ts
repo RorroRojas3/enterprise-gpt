@@ -64,6 +64,7 @@ import { UsageBarList } from '@components/admin/reports/usage-bar-list';
     UsageBarList,
   ],
   providers: [ReportsStore],
+  host: { class: 'd-flex flex-column flex-fill gap-3' },
   templateUrl: './admin-reports.html',
   styleUrl: './admin-reports.scss',
 })

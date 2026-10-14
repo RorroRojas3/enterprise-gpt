@@ -5,15 +5,21 @@
 <p class="visually-hidden" aria-live="polite">{{ count() > 0 ? summary() : '' }}</p>
 
 @if (count() > 0) {
-  <div class="bulk-bar" role="region" aria-label="Bulk actions">
-    <p class="bulk-bar__count">{{ summary() }}</p>
+  <div
+    class="bulk-bar position-fixed start-50 translate-middle-x d-flex flex-wrap justify-content-center align-items-center gap-3 py-2 pe-3 ps-4 border rounded-pill bg-surface shadow-lg"
+    role="region"
+    aria-label="Bulk actions"
+  >
+    <p class="small fw-semibold text-nowrap mb-0">{{ summary() }}</p>
 
+    <!-- The one child allowed to wrap: the longest and least urgent, so it takes the second
+         line before the count or the actions do. -->
     @if (note()) {
-      <p class="bulk-bar__note">{{ note() }}</p>
+      <p class="small text-body-secondary mb-0">{{ note() }}</p>
     }
 
-    <div class="bulk-bar__actions"><ng-content /></div>
+    <div class="d-flex gap-2"><ng-content /></div>
 
-    <button class="bulk-bar__clear" type="button" (click)="cleared.emit()">Clear</button>
+    <button class="btn btn-ghost btn-sm" type="button" (click)="cleared.emit()">Clear</button>
   </div>
 }

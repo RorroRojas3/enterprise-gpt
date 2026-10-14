@@ -111,16 +111,24 @@ unguarded auth routes.
 `!default` namespace across its partials. Statement order is output order and is load-bearing:
 
 1. `_typography.scss` — self-hosted `@font-face` and the font stacks
-2. `_bootstrap-config.scss` — Bootstrap configuration, utilities trim, and `root`
-3. `_tokens.scss` — the design tokens, overriding the `--bs-*` values `root` just emitted
-4. `_bootstrap-components.scss`
-5. `_base.scss`, `_focus.scss` (after Bootstrap's components so it beats their focus styles), `_kit.scss`
-6. `_bootstrap-overrides.scss`, `_prism.scss`, `_markdown.scss`
-7. `bootstrap/scss/utilities/api` — second to last, so a utility beats a component rule
-8. `_motion.scss` — **last**, so its reduced-motion block suppresses everything above
+2. `_bootstrap-config.scss` — the palette and breakpoints fed into Bootstrap's Sass variables, the full
+   utilities API plus the app's extensions, and `root`
+3. `_theme.scss` — emits the token maps from `_tokens.scss` per theme, overriding the `--bs-*` values
+   `root` just emitted
+4. `_bootstrap-components.scss` — every Bootstrap module
+5. `_base.scss`, `_focus.scss` (after Bootstrap's components so it beats their focus styles)
+6. `_overlays.scss` — the native `<dialog>` bridge for Bootstrap's modal and offcanvas
+7. `_bootstrap-overrides.scss` — theme colours that must flip, and the named focus rules
+8. `_kit.scss` — classes Bootstrap lacks, after the overrides so a modifier wins
+9. `_prism.scss`, `_markdown.scss`
+10. `bootstrap/scss/utilities/api` — second to last, so a utility beats a component rule
+11. `_motion.scss` — **last**, so its reduced-motion block suppresses everything above
 
-Components read tokens through `var(--...)` and must **never** `@use 'tokens'`, which emits `:root`
-and would re-scope it to the component. See [../frontend/design-system.md](../frontend/design-system.md).
+`_tokens.scss` is data only (the `$tokens-light` / `$tokens-dark` maps); `_theme.scss` is what emits
+them. Components read tokens through `var(--...)` and must **never** `@use 'tokens'` or `@use 'theme'`,
+which emit `:root` and would re-scope it to the component; `@use 'breakpoints' as bp` is fine.
+Templates use Bootstrap and kit classes, and a component stylesheet keeps only bespoke rules. There is
+no Bootstrap JavaScript. See [../frontend/design-system.md](../frontend/design-system.md).
 
 ## Build gates
 
@@ -128,8 +136,8 @@ and would re-scope it to the component. See [../frontend/design-system.md](../fr
 metafile. `npm run lint` runs ESLint plus three Node checks. See
 [../development/testing-and-ci.md](../development/testing-and-ci.md) for what each asserts.
 
-The production build **warns above 680 kB** initial raw and **fails above 720 kB**, with a `styles`
-budget at 66/80 kB. MSAL is roughly 249 kB of the initial graph and none of it is deferrable, since
+The production build **warns above 900 kB** initial raw and **fails above 960 kB**, with a `styles`
+budget at 264/282 kB (full Bootstrap). MSAL is roughly 249 kB of the initial graph and none of it is deferrable, since
 `main.ts` must `initialize()` the instance before `bootstrapApplication`.
 
 The rule to preserve is which libraries stay off the initial graph: the markdown stack

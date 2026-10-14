@@ -6,11 +6,11 @@
     (retried)="project.retry()"
   />
 } @else if (project.isFirstLoad()) {
-  <div class="instructions" aria-busy="true">
+  <div class="mw-prose" aria-busy="true">
     <app-skeleton variant="block" height="168px" />
   </div>
 } @else if (project.project()) {
-  <div class="instructions">
+  <div class="d-flex flex-column gap-2 mw-prose">
     <label class="visually-hidden" for="project-instructions">Standing instructions</label>
     <!--
       A native `maxlength`: one field with one rule does not earn a form, and it stops over-long
@@ -18,7 +18,7 @@
     -->
     <textarea
       id="project-instructions"
-      class="form-control instructions__field"
+      class="form-control rounded-4"
       rows="7"
       [attr.maxlength]="maxLength"
       [value]="draft()"
@@ -27,11 +27,12 @@
       (input)="onDraftInput($event)"
     ></textarea>
 
-    <div class="instructions__actions">
-      <p class="instructions__help" id="project-instructions-help">
+    <!-- Wraps: the help line and two buttons do not fit a 360px viewport in one row. -->
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <p class="form-text flex-grow-1 my-0" id="project-instructions-help">
         Applies to every conversation in this project.
       </p>
-      <p class="instructions__counter font-mono" id="project-instructions-counter">
+      <p class="form-text font-monospace my-0" id="project-instructions-counter">
         {{ charCount() }} / {{ maxLength }}
       </p>
       <button
@@ -43,9 +44,14 @@
         Cancel
       </button>
       <!-- Busy for the whole round trip: the saved state renders only once the server confirms. -->
-      <button class="btn btn-primary btn-sm" type="button" [disabled]="!canSave()" (click)="save()">
+      <button
+        class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2"
+        type="button"
+        [disabled]="!canSave()"
+        (click)="save()"
+      >
         @if (saving()) {
-          <span class="kit-spinner" aria-hidden="true"></span>
+          <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
           <span>Saving…</span>
         } @else {
           <span>Save</span>
@@ -62,7 +68,7 @@
   [(open)]="confirmOpen"
   (closed)="keepEditing()"
 >
-  <p class="instructions__confirm">
+  <p class="small text-body-secondary mb-0">
     Your changes to this project’s instructions haven’t been saved. Leaving now discards them.
   </p>
 

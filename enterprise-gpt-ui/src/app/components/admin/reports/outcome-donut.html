@@ -34,7 +34,7 @@
     @for (row of legend(); track row.status) {
       <li class="donut__row">
         <app-status-dot class="donut__swatch" [tone]="row.tone" [label]="row.label" [size]="9" />
-        <span class="donut__figure font-mono">{{ row.figure }}</span>
+        <span class="donut__figure font-monospace">{{ row.figure }}</span>
       </li>
     }
     <li class="donut__total">

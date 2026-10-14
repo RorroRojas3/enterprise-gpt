@@ -3,8 +3,8 @@
 Angular 21 client for the Enterprise GPT API.
 
 Zoneless change detection, standalone components, `@ngrx/signals` for state, Bootstrap 5.3 SCSS —
-imported module by module, and with **no Bootstrap JavaScript** — MSAL for Entra ID, and Vitest via
-`@angular/build:unit-test`.
+full, with the app's palette fed into its variables, and **no Bootstrap JavaScript** — MSAL for Entra ID,
+and Vitest via `@angular/build:unit-test`.
 
 Companion references: [`docs/architecture/frontend.md`](../docs/architecture/frontend.md) for
 layering, bootstrap and routing, [`docs/frontend/state.md`](../docs/frontend/state.md) and
@@ -39,15 +39,15 @@ npm run lint       # lint:es + check:icons + check:forbidden + check:tokens
 `npm start`, `npm run build` and `npm test` each run `npm run assets` first, so the generated
 fonts and icon sprite are always present and current.
 
-| Command                   | What it does                                                                                                                      |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run lint:es`         | ESLint alone. Flat config in `eslint.config.mjs`; `--max-warnings=0`, so a warning fails                                          |
-| `npm run lint:fix`        | ESLint with `--fix`                                                                                                               |
-| `npm run check:contract`  | Compares the vendored streaming contract against the installed NuGet package, byte for byte. Needs `dotnet restore` to have run   |
-| `npm run check:icons`     | Every `bi-*` name under `src/` is in the sprite manifest                                                                          |
-| `npm run check:forbidden` | Text backstop for `bypassSecurityTrustHtml` and for any Google Fonts or CDN origin                                                |
-| `npm run check:tokens`    | `index.html`'s duplicated colours and storage key against the tokens, code-surface and focus-ring contrast, and breakpoint parity |
-| `npm run assets`          | `assets:fonts` + `assets:icons` + `assets:katex`. Runs automatically before start, build and test                                 |
+| Command                   | What it does                                                                                                                             |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run lint:es`         | ESLint alone. Flat config in `eslint.config.mjs`; `--max-warnings=0`, so a warning fails                                                 |
+| `npm run lint:fix`        | ESLint with `--fix`                                                                                                                      |
+| `npm run check:contract`  | Compares the vendored streaming contract against the installed NuGet package, byte for byte. Needs `dotnet restore` to have run          |
+| `npm run check:icons`     | Every `bi-*` name under `src/` is in the sprite manifest                                                                                 |
+| `npm run check:forbidden` | Text backstop for `bypassSecurityTrustHtml`, any Google Fonts or CDN origin, Bootstrap JavaScript, and removed colour tokens             |
+| `npm run check:tokens`    | `index.html`'s duplicated colours and storage key against the tokens, text, fill, tooltip and focus-ring contrast, and breakpoint parity |
+| `npm run assets`          | `assets:fonts` + `assets:icons` + `assets:katex`. Runs automatically before start, build and test                                        |
 
 The full set — format, lint, the contract check, tests and the build — is what
 [`.github/workflows/ui-ci.yml`](../.github/workflows/ui-ci.yml) runs on every pull request.
@@ -100,17 +100,17 @@ pages → components/<feature> → shared/{components,directives,pipes} → stat
 `pages/a` → `pages/b`) is banned too. `shared/utils` and `shared/models` import nothing from
 Angular or NgRx, so the stream codec and the activity fold stay testable in Node with no `TestBed`.
 
-| Path                  | Holds                                                                                                                                                                                                                      |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/app/pages/`      | Route destinations and route tables. Every page is lazy except the auth pages. `pages/admin` is guarded with `canMatch`, so its chunk is never fetched by a non-administrator.                                             |
-| `src/app/components/` | Components that one feature renders, one folder per feature. `components/composer` is a pageless feature that the chat and project pages both compose.                                                                     |
-| `src/app/state/`      | Root stores sit flat in `state/`. Stores provided on a page or route live in `state/<feature>/`.                                                                                                                           |
-| `src/app/services/`   | Streaming and upload transports, grouped by domain.                                                                                                                                                                        |
-| `src/app/core/`       | App-wide singletons and policy: runtime config, error normalization, HTTP, auth, session, navigation, theme, cross-store events, the composable signal-store features, and the stores that guards or core services inject. |
-| `src/app/shared/`     | `components/`, `directives/` and `pipes/` hold reusable building blocks. `models/` holds wire DTOs and the vendored streaming contract. `utils/` holds framework-free pure functions.                                      |
-| `src/styles/`         | Global Sass partials (`angular.json` puts this directory on the load path). Components read tokens as `var(--…)` and must **not** `@use 'tokens'` or `@use 'typography'`, which emit `:root` and `@font-face` blocks.      |
-| `src/icons/brand/`    | Brand-mark SVGs that `npm run assets:icons` folds into the sprite.                                                                                                                                                         |
-| `src/testing/`        | Test-only providers and shared fixtures. Excluded from `tsconfig.app.json`.                                                                                                                                                |
+| Path                  | Holds                                                                                                                                                                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/app/pages/`      | Route destinations and route tables. Every page is lazy except the auth pages. `pages/admin` is guarded with `canMatch`, so its chunk is never fetched by a non-administrator.                                                        |
+| `src/app/components/` | Components that one feature renders, one folder per feature. `components/composer` is a pageless feature that the chat and project pages both compose.                                                                                |
+| `src/app/state/`      | Root stores sit flat in `state/`. Stores provided on a page or route live in `state/<feature>/`.                                                                                                                                      |
+| `src/app/services/`   | Streaming and upload transports, grouped by domain.                                                                                                                                                                                   |
+| `src/app/core/`       | App-wide singletons and policy: runtime config, error normalization, HTTP, auth, session, navigation, theme, cross-store events, the composable signal-store features, and the stores that guards or core services inject.            |
+| `src/app/shared/`     | `components/`, `directives/` and `pipes/` hold reusable building blocks. `models/` holds wire DTOs and the vendored streaming contract. `utils/` holds framework-free pure functions.                                                 |
+| `src/styles/`         | Global Sass partials (`angular.json` puts this directory on the load path). Components read tokens as `var(--…)` and must **not** `@use 'tokens'`, `@use 'theme'` or `@use 'typography'`, which emit `:root` and `@font-face` blocks. |
+| `src/icons/brand/`    | Brand-mark SVGs that `npm run assets:icons` folds into the sprite.                                                                                                                                                                    |
+| `src/testing/`        | Test-only providers and shared fixtures. Excluded from `tsconfig.app.json`.                                                                                                                                                           |
 
 Path aliases `@pages/*`, `@components/*`, `@state/*`, `@services/*`, `@core/*`, `@shared/*` and
 `@testing/*` are configured in `tsconfig.json`. Imports cross folders through the alias, never

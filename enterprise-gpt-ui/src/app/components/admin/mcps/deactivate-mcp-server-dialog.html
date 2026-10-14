@@ -4,13 +4,13 @@
   [open]="open()"
   (closed)="actions.cancelDeactivate()"
 >
-  <p class="deactivate-mcp__body">
+  <p class="mb-0 small">
     <strong>{{ target()?.name }}</strong> is removed from every user’s tool picker, and its tools
     stop being offered to any turn that had selected it.
   </p>
 
   <!-- Not an aside: the same save revokes the linked permission and every grant of it. -->
-  <p class="deactivate-mcp__note deactivate-mcp__note--warn">
+  <p class="alert alert-warning py-2 small mt-2 mb-0">
     The permission named after this server is deactivated with it, and revoked from everyone who
     held it. It cannot be brought back from here.
   </p>

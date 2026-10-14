@@ -1,12 +1,5 @@
-// Document-level rules that need no Bootstrap and belong to no component.
+// Document-level rules Bootstrap's reboot leaves out.
 html,
 body {
   height: 100%;
-}
-
-body {
-  margin: 0;
-  background: var(--bs-body-bg);
-  color: var(--bs-body-color);
-  font-family: $font-sans;
 }

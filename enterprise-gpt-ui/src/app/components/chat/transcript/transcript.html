@@ -1,6 +1,6 @@
 @if (turn.historyPending()) {
   <!-- The host's aria-busy covers the wait, which is why the skeleton is aria-hidden. -->
-  <div class="transcript__history-skeleton">
+  <div class="d-flex flex-column gap-3">
     <app-skeleton [lines]="2" width="60%" />
     <app-skeleton [lines]="4" />
   </div>
@@ -9,7 +9,6 @@
 @if (turn.historyError(); as historyError) {
   <!-- The composer stays live beneath this: failing to read history does not block a new turn. -->
   <app-error-panel
-    class="transcript__history-error"
     [error]="historyError"
     [canRetry]="canRetry(historyError)"
     heading="Earlier messages couldn't load"
@@ -20,10 +19,10 @@
 @for (entry of turn.entries(); track entry.id) {
   @switch (entry.kind) {
     @case ('user') {
-      <div class="transcript__user-row">
+      <div class="transcript__user-row d-flex flex-column align-items-end gap-2">
         <div class="transcript__bubble">{{ entry.text }}</div>
         <!-- Only the settled prompt gets one: the optimistic bubble below is mid-turn. -->
-        <div class="transcript__user-footer">
+        <div class="transcript__user-footer d-flex align-items-center text-body-secondary">
           <app-message-copy [text]="entry.text" subject="prompt" />
         </div>
       </div>
@@ -62,21 +61,23 @@
 }
 
 @if (turn.pendingUserText(); as pending) {
-  <div class="transcript__user-row">
+  <div class="transcript__user-row d-flex flex-column align-items-end gap-2">
     <div class="transcript__bubble">{{ pending }}</div>
     <!-- Empty, not a Copy control: it holds the row at its settled height, so nothing shifts
          when the answer lands. -->
-    <div class="transcript__user-footer"></div>
+    <div class="transcript__user-footer d-flex align-items-center text-body-secondary"></div>
   </div>
 }
 
 @if (turn.showThinking()) {
   <!-- The gap before the first activity or text is a ridgeline, never a fabricated status. -->
-  <div class="transcript__thinking">
-    <div class="transcript__avatar">
-      <app-brand-logo variant="mark" />
+  <div class="d-flex gap-3">
+    <!-- The same avatar assistant-turn draws; duplicated because the thinking row exists before
+         any turn component does. -->
+    <div class="avatar-circle border transcript__avatar">
+      <app-brand-logo variant="mark" style="width: 20px" />
     </div>
-    <app-ridgeline class="transcript__ridgeline" variant="thinking" />
+    <app-ridgeline class="pt-2" variant="thinking" />
   </div>
 }
 
@@ -108,4 +109,4 @@
 <p class="visually-hidden" role="status">{{ announcement() }}</p>
 
 <!-- Separate from the region above, which is emptied for the turn; copies happen mid-turn. -->
-<p class="visually-hidden transcript__copy-status" role="status">{{ copyAnnouncement() }}</p>
+<p class="visually-hidden" role="status">{{ copyAnnouncement() }}</p>

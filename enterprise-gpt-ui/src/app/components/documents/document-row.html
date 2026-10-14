@@ -1,35 +1,35 @@
-<app-icon
-  class="document-row__glyph"
-  [class]="'document-row__glyph--' + glyph(document().name).tone"
-  [name]="glyph(document().name).icon"
-/>
-<span class="document-row__name">{{ document().name }}</span>
+<app-icon [class]="glyphTone()" [name]="glyph().icon" />
+<span class="min-w-0 text-truncate small fw-medium">{{ document().name }}</span>
 
 <!-- `display: contents` on desktop puts these in the row's grid tracks; on mobile the wrapper
      becomes the row's second line, with no template branch. -->
-<span class="document-row__meta">
-  <span class="document-row__size">{{ sizeLabel() }}</span>
-  <span class="document-row__date">{{ dateLabel() }}</span>
+<span class="document-row__meta flex-wrap align-items-center column-gap-3 row-gap-1 min-w-0">
+  <span class="small text-body-secondary">{{ sizeLabel() }}</span>
+  <span class="small text-body-secondary">{{ dateLabel() }}</span>
 
   <app-source-badge [source]="source()" />
 
   @if (showConversation()) {
-    <a class="document-row__conversation" [routerLink]="[chatRoute, document().conversationId]">
+    <a
+      class="min-w-0 text-truncate small link-secondary link-underline-opacity-0 link-underline-opacity-100-hover"
+      [routerLink]="[chatRoute, document().conversationId]"
+    >
       {{ document().conversationName }}
     </a>
   }
 </span>
 
 <button
-  class="document-row__action"
+  class="document-row__action btn btn-ghost btn-icon btn-icon-sm"
   type="button"
+  data-row-anchor
   [attr.aria-label]="'Download ' + document().name"
   [attr.aria-busy]="isDownloading()"
   [disabled]="isDownloading()"
   (click)="download()"
 >
   @if (isDownloading()) {
-    <span class="kit-spinner" aria-hidden="true"></span>
+    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
   } @else {
     <app-icon name="bi-download" />
   }

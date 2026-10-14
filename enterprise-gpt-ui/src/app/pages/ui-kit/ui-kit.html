@@ -1,289 +1,904 @@
-<header class="kit-header">
-  <h1 class="font-display">UI kit</h1>
-  <p>
-    Every shared component, light and dark side by side. Development only — the route is guarded
-    with <code>canMatch: [() =&gt; isDevMode()]</code>, so this chunk is never requested in
-    production.
+<header class="mw-prose mb-4">
+  <h1 class="font-display fs-5 fw-bold mb-2">UI kit</h1>
+  <p class="small text-body-secondary mb-0">
+    Every shared component, kit class and overlay, light and dark side by side. Development only —
+    the route is guarded with <code>canMatch: [() =&gt; isDevMode()]</code>, so this chunk is never
+    requested in production.
   </p>
 </header>
 
-<!-- Each pane forces its own theme; `data-bs-theme` is per-subtree. -->
-<div class="kit-split">
-  @for (theme of ['light', 'dark']; track theme) {
-    <section class="kit-pane" [attr.data-bs-theme]="theme" [attr.aria-label]="theme + ' theme'">
-      <h2 class="kit-pane__title font-display">{{ theme }}</h2>
+<!-- Each pane forces its own theme; `data-bs-theme` is per-subtree, overlays included. -->
+<div class="row row-cols-1 row-cols-xl-2 g-4 mb-5">
+  @for (theme of themes; track theme) {
+    <div class="col">
+      <!-- The pane paints its own theme's page colours: a card's surface is not the page, and
+           `.card-body` on the same element makes text inherit the page theme's colour. -->
+      <section
+        class="card card-body h-100 bg-body text-body"
+        [attr.data-bs-theme]="theme"
+        [attr.aria-label]="theme + ' theme'"
+      >
+        <h2 class="font-display fs-5 fw-bold text-capitalize mb-3">{{ theme }}</h2>
 
-      <section class="kit-group">
-        <h3>Brand and motif</h3>
-        <app-brand-logo alt="Andes Software Solutions" />
-        <app-brand-logo variant="mark" />
-        <app-ridgeline variant="divider" />
-        <app-ridgeline variant="thinking" />
-        <app-ridgeline variant="empty" />
-        <app-ridgeline variant="auth" />
-      </section>
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Brand and motif</h3>
+          <app-brand-logo alt="Andes Software Solutions" />
+          <app-brand-logo variant="mark" />
+          <app-ridgeline variant="divider" />
+          <app-ridgeline variant="thinking" />
+          <app-ridgeline variant="empty" />
+          <app-ridgeline variant="auth" />
+        </section>
 
-      <section class="kit-group">
-        <h3>Icons</h3>
-        <div class="kit-row">
-          <app-icon name="bi-search" />
-          <app-icon name="bi-star-fill" />
-          <app-icon name="bi-trash3" />
-          <app-icon name="bi-shield-lock" />
-          <app-icon name="bi-send-fill" />
-          <app-icon name="bi-paperclip" label="Attach a file" />
-        </div>
-      </section>
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Type and tone</h3>
+          <p class="eyebrow mb-1">Eyebrow</p>
+          <p class="font-display fs-5 fw-bold mb-1">Display heading</p>
+          <p class="mb-1">
+            Body text with a <a href="/ui-kit" (click)="$event.preventDefault()">link</a>.
+          </p>
+          <p class="small text-body-secondary mb-1">Muted small text</p>
+          <p class="font-monospace small mb-2">Trace ID: 8f42-a1c9-77d0-3b61</p>
+          <p class="d-flex flex-wrap gap-3 small mb-0">
+            <span class="text-primary">Primary</span>
+            <span class="text-info-emphasis">Info</span>
+            <span class="text-success-emphasis">Success</span>
+            <span class="text-warning-emphasis">Warning</span>
+            <span class="text-danger-emphasis">Danger</span>
+          </p>
+        </section>
 
-      <section class="kit-group">
-        <h3>Brand marks</h3>
-        <!-- Owner-coloured rather than `currentColor`, and sized up so they can be checked
-             against both surfaces. -->
-        <div class="kit-row kit-row--brand">
-          <app-brand-icon name="brand-azure" />
-          <app-brand-icon name="brand-context7" label="Context7" />
-          <!-- The one monochrome mark of the five, so it is the one to check on both
-               surfaces: it takes `currentColor` where the rest carry a brand hex. -->
-          <app-brand-icon name="brand-github" />
-          <app-brand-icon name="brand-microsoft" />
-          <app-brand-icon name="brand-salesforce" />
-        </div>
-      </section>
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Icons</h3>
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <app-icon name="bi-search" />
+            <app-icon name="bi-star-fill" />
+            <app-icon name="bi-trash3" />
+            <app-icon name="bi-shield-lock" />
+            <app-icon name="bi-send-fill" />
+            <app-icon name="bi-paperclip" label="Attach a file" />
+          </div>
+        </section>
 
-      <section class="kit-group">
-        <h3>Switch</h3>
-        <!-- Decoration only: shown inside the button that owns its semantics, as in real use. -->
-        <div class="kit-row">
-          <button
-            class="kit-switch"
-            type="button"
-            role="switch"
-            [attr.aria-checked]="switchOn()"
-            (click)="switchOn.set(!switchOn())"
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Brand marks</h3>
+          <!-- Owner-coloured rather than `currentColor`, and sized up so they can be checked
+               against both surfaces. -->
+          <div class="d-flex flex-wrap align-items-center gap-2 fs-3">
+            <app-brand-icon name="brand-azure" />
+            <app-brand-icon name="brand-context7" label="Context7" />
+            <!-- The one monochrome mark of the five, so it is the one to check on both
+                 surfaces: it takes `currentColor` where the rest carry a brand hex. -->
+            <app-brand-icon name="brand-github" />
+            <app-brand-icon name="brand-microsoft" />
+            <app-brand-icon name="brand-salesforce" />
+          </div>
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Buttons</h3>
+          <div class="vstack gap-2">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <button class="btn btn-primary" type="button">Primary</button>
+              <button class="btn btn-outline-secondary" type="button">Secondary</button>
+              <button class="btn btn-danger" type="button">Delete</button>
+              <button class="btn btn-primary" type="button" disabled>Disabled</button>
+              <button class="btn btn-outline-secondary" type="button" aria-disabled="true">
+                aria-disabled
+              </button>
+              <button class="btn btn-link" type="button">Link</button>
+            </div>
+
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <button class="btn btn-ghost" type="button">Ghost</button>
+              <button
+                class="btn btn-ghost d-inline-flex align-items-center gap-2"
+                type="button"
+                [class.active]="favourite()"
+                [attr.aria-pressed]="favourite()"
+                (click)="favourite.set(!favourite())"
+              >
+                <app-icon
+                  [class.text-primary]="favourite()"
+                  [name]="favourite() ? 'bi-star-fill' : 'bi-star'"
+                />
+                Favourite
+              </button>
+              <button class="btn btn-ghost btn-sm" type="button">Ghost small</button>
+              <button class="btn btn-ghost" type="button" disabled>Ghost disabled</button>
+            </div>
+
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <button
+                class="btn btn-ghost btn-icon btn-icon-sm"
+                type="button"
+                aria-label="Edit (24px)"
+              >
+                <app-icon name="bi-pencil" />
+              </button>
+              <button class="btn btn-ghost btn-icon" type="button" aria-label="Edit (32px)">
+                <app-icon name="bi-pencil" />
+              </button>
+              <button
+                class="btn btn-ghost btn-icon btn-icon-lg"
+                type="button"
+                aria-label="Edit (44px)"
+              >
+                <app-icon name="bi-pencil" />
+              </button>
+              <button
+                class="btn btn-ghost btn-icon btn-icon-sm touch-target"
+                type="button"
+                aria-label="Favourite (24px, 44px below md)"
+              >
+                <app-icon class="text-primary" name="bi-star-fill" />
+              </button>
+              <button class="btn btn-outline-secondary btn-icon" type="button" aria-label="Add">
+                <app-icon name="bi-plus-lg" />
+              </button>
+              <button class="btn btn-primary btn-icon" type="button" aria-label="Send">
+                <app-icon name="bi-send-fill" />
+              </button>
+            </div>
+            <p class="small text-body-secondary mb-0">
+              Icon buttons: <code>btn-icon-sm</code> 24px, <code>btn-icon</code> 32px,
+              <code>btn-icon-lg</code> 44px. The star adds <code>touch-target</code>: 44px below md.
+            </p>
+          </div>
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Segmented control</h3>
+          <div class="btn-group btn-group-sm" role="group" aria-label="Reporting period">
+            @for (range of ranges; track range) {
+              <button
+                class="btn btn-outline-secondary"
+                type="button"
+                [class.active]="range === period()"
+                [attr.aria-pressed]="range === period()"
+                (click)="period.set(range)"
+              >
+                {{ range }} days
+              </button>
+            }
+          </div>
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Forms</h3>
+          <div class="vstack gap-3">
+            <div>
+              <label class="form-label" for="kit-name-{{ theme }}">Display name</label>
+              <input id="kit-name-{{ theme }}" class="form-control" value="Sofía Herrera" />
+              <div class="form-text">Shown on shared conversations.</div>
+            </div>
+            <div>
+              <label class="form-label" for="kit-endpoint-{{ theme }}">Endpoint</label>
+              <input
+                id="kit-endpoint-{{ theme }}"
+                class="form-control is-invalid"
+                value="ftp://models.internal"
+                aria-invalid="true"
+                [attr.aria-describedby]="'kit-endpoint-error-' + theme"
+              />
+              <div id="kit-endpoint-error-{{ theme }}" class="invalid-feedback d-block">
+                Use an https:// URL.
+              </div>
+            </div>
+            <div>
+              <label class="form-label" for="kit-provider-{{ theme }}">Provider</label>
+              <select id="kit-provider-{{ theme }}" class="form-select form-select-sm w-auto">
+                <option>Azure OpenAI</option>
+                <option>Amazon Bedrock</option>
+                <option>Anthropic</option>
+              </select>
+            </div>
+            <div>
+              <div class="form-check">
+                <input
+                  id="kit-check-{{ theme }}"
+                  class="form-check-input"
+                  type="checkbox"
+                  checked
+                />
+                <label class="form-check-label" for="kit-check-{{ theme }}">Select all</label>
+              </div>
+              <div class="form-check form-switch">
+                <input
+                  id="kit-form-switch-{{ theme }}"
+                  class="form-check-input"
+                  type="checkbox"
+                  role="switch"
+                  [checked]="digest()"
+                  (change)="digest.set(!digest())"
+                />
+                <label class="form-check-label" for="kit-form-switch-{{ theme }}">
+                  Weekly digest
+                </label>
+              </div>
+              <div class="form-check form-switch">
+                <input
+                  id="kit-form-switch-off-{{ theme }}"
+                  class="form-check-input"
+                  type="checkbox"
+                  role="switch"
+                  disabled
+                />
+                <label class="form-check-label" for="kit-form-switch-off-{{ theme }}">
+                  Managed by policy
+                </label>
+              </div>
+            </div>
+            <!-- `app-switch` is decoration, for a menu row a native switch cannot sit in; the
+                 control owning it carries the semantics. -->
+            <div>
+              <button
+                class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2"
+                type="button"
+                role="switch"
+                [attr.aria-checked]="switchOn()"
+                (click)="switchOn.set(!switchOn())"
+              >
+                Tool server
+                <app-switch [checked]="switchOn()" />
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Badges</h3>
+          <div class="vstack gap-2">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <app-status-dot tone="success" label="Active" />
+              <app-status-dot tone="warning" label="Degraded" />
+              <app-status-dot tone="danger" label="Failed" />
+              <app-status-dot tone="secondary" label="Inactive" />
+              <app-kind-badge kind="McpTool" />
+              <app-kind-badge kind="Agent" />
+              <app-permission-badge name="Upload File" />
+              <app-permission-badge name="Administrator" managedBy="Jira Cloud MCP" />
+              <app-source-badge source="uploaded" />
+              <app-source-badge source="generated" />
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <span class="badge text-bg-primary">Primary</span>
+              <span class="badge text-bg-secondary">Secondary</span>
+              <span class="badge text-bg-success">Success</span>
+              <span class="badge text-bg-info">Info</span>
+              <span class="badge text-bg-warning">Warning</span>
+              <span class="badge text-bg-danger">Danger</span>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <span
+                class="badge rounded-pill bg-success-subtle text-success-emphasis border border-success-subtle"
+              >
+                Subtle success
+              </span>
+              <span
+                class="badge rounded-pill bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+              >
+                Subtle warning
+              </span>
+              <span
+                class="badge rounded-pill bg-danger-subtle text-danger-emphasis border border-danger-subtle"
+              >
+                Subtle danger
+              </span>
+              <span
+                class="badge rounded-pill bg-info-subtle text-info-emphasis border border-info-subtle"
+              >
+                Subtle info
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Alerts</h3>
+          <div class="vstack gap-2">
+            <div class="alert alert-info d-flex align-items-start gap-2 mb-0">
+              <app-icon class="mt-1" name="bi-info-circle" />
+              <span>Select-all covers the loaded rows only.</span>
+            </div>
+            <div class="alert alert-success d-flex align-items-start gap-2 mb-0">
+              <app-icon class="mt-1" name="bi-check-circle-fill" />
+              <span>The connection test passed.</span>
+            </div>
+            <div class="alert alert-warning d-flex align-items-start gap-2 mb-0">
+              <app-icon class="mt-1" name="bi-exclamation-triangle-fill" />
+              <span>Deactivating this model ends its 4 open conversations.</span>
+            </div>
+            <div class="alert alert-danger d-flex align-items-start gap-2 mb-0">
+              <app-icon class="mt-1" name="bi-exclamation-octagon" />
+              <span>Fix the 2 highlighted fields before saving.</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Spinners and placeholders</h3>
+          <div class="vstack gap-3">
+            <div class="d-flex flex-wrap align-items-center gap-3">
+              <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+              <span class="spinner-border text-primary" aria-hidden="true"></span>
+              <div class="spinner-border text-body-secondary" role="status">
+                <span class="visually-hidden">Loading…</span>
+              </div>
+              <button
+                class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2"
+                type="button"
+                disabled
+              >
+                <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                Saving…
+              </button>
+            </div>
+            <app-skeleton [lines]="3" height="16px" />
+            <div class="d-flex align-items-center gap-2">
+              <app-skeleton variant="circle" width="2rem" height="2rem" />
+              <app-skeleton class="flex-fill" height="1rem" />
+            </div>
+            <app-skeleton variant="block" height="4rem" />
+          </div>
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Avatars</h3>
+          <div class="d-flex flex-wrap align-items-center gap-3">
+            <span class="d-inline-flex align-items-center gap-2">
+              <app-avatar-initials name="Sofía Herrera" />
+              Sofía Herrera
+            </span>
+            <span class="d-inline-flex align-items-center gap-2">
+              <app-avatar-initials name="Marco Díaz" [size]="40" />
+              Marco Díaz
+            </span>
+            <span class="d-inline-flex align-items-center gap-2">
+              <span
+                class="avatar-circle text-bg-primary small fw-semibold"
+                style="--avatar-size: 2.5rem"
+                aria-hidden="true"
+                >AO</span
+              >
+              Ada Okafor
+            </span>
+          </div>
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Theme-only artwork</h3>
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <span class="theme-light-only badge text-bg-secondary">Light only</span>
+            <span class="theme-dark-only badge text-bg-secondary">Dark only</span>
+            <!-- Follows this pane's theme; pressing it flips the page, not the forced panes. -->
+            <app-theme-toggle />
+          </div>
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Navigation</h3>
+          <div class="vstack gap-3">
+            <ul class="nav nav-pills nav-pills-subtle flex-column gap-1">
+              @for (pill of pills; track pill.id) {
+                <li class="nav-item">
+                  <a
+                    class="nav-link"
+                    href="/ui-kit"
+                    [class.active]="pill.id === activePill()"
+                    [attr.aria-current]="pill.id === activePill() ? 'page' : null"
+                    (click)="pickPill($event, pill.id)"
+                    >{{ pill.label }}</a
+                  >
+                </li>
+              }
+            </ul>
+            <app-pill-subnav [items]="pills" ariaLabel="Admin sections" />
+          </div>
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">List rows</h3>
+          <p class="small text-body-secondary mb-2">
+            The kebab shows on hover, focus, the active row, and while its menu is open; always on
+            touch screens.
+          </p>
+          <ul class="list-unstyled vstack gap-1 mb-0">
+            @for (row of rows; track row.id) {
+              <li class="list-row reveal-host pe-1" [class.active]="row.id === activeRow()">
+                <a
+                  class="flex-fill min-w-0 text-truncate px-2 py-2 text-reset text-decoration-none focus-inset"
+                  href="/ui-kit"
+                  [attr.aria-current]="row.id === activeRow() ? 'page' : null"
+                  (click)="pickRow($event, row.id)"
+                  >{{ row.name }}</a
+                >
+                <app-menu class="reveal-target" [label]="'Actions for ' + row.name">
+                  <button appMenuItem type="button">Rename</button>
+                  <hr appMenuSeparator />
+                  <button appMenuItem class="text-danger-emphasis" type="button">Delete</button>
+                </app-menu>
+              </li>
+            }
+          </ul>
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Card and list group</h3>
+          <div class="vstack gap-3">
+            <div class="card">
+              <div class="card-header small fw-semibold">Model</div>
+              <div class="card-body">
+                <h4 class="card-title fs-6 fw-semibold">GPT-5 Enterprise</h4>
+                <p class="card-text small text-body-secondary">
+                  Azure OpenAI · 400k context · default for new conversations.
+                </p>
+                <button class="btn btn-outline-secondary btn-sm" type="button">Edit</button>
+              </div>
+            </div>
+
+            <div class="list-group">
+              @for (row of rows; track row.id) {
+                <button
+                  class="list-group-item list-group-item-action"
+                  type="button"
+                  [class.active]="row.id === activeRow()"
+                  [attr.aria-current]="row.id === activeRow() ? 'true' : null"
+                  (click)="activeRow.set(row.id)"
+                >
+                  {{ row.name }}
+                </button>
+              }
+              <button class="list-group-item list-group-item-action" type="button" disabled>
+                Archived conversation
+              </button>
+            </div>
+
+            <div class="card">
+              <ul class="list-group list-group-flush">
+                @for (row of rows; track row.id) {
+                  <li
+                    class="list-group-item d-flex align-items-center justify-content-between gap-2"
+                  >
+                    <span class="text-truncate min-w-0">{{ row.name }}</span>
+                    <span class="small text-body-secondary flex-shrink-0">{{ row.owner }}</span>
+                  </li>
+                }
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Search</h3>
+          <app-search-input label="Search conversations" placeholder="Search…" [(value)]="search" />
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Attachment chips — every state</h3>
+          <div class="vstack gap-2">
+            @for (attachment of attachments; track attachment.id) {
+              <app-attachment-chip [attachment]="attachment" />
+            }
+          </div>
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Progress</h3>
+          <div class="vstack gap-2">
+            <div
+              class="progress"
+              role="progressbar"
+              aria-label="Upload progress"
+              aria-valuenow="42"
+              aria-valuemin="0"
+              aria-valuemax="100"
+            >
+              <div class="progress-bar" style="width: 42%"></div>
+            </div>
+            <div
+              class="progress"
+              role="progressbar"
+              aria-label="Indexing progress"
+              aria-valuenow="100"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              style="height: 0.25rem"
+            >
+              <div class="progress-bar bg-success" style="width: 100%"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Drop zone</h3>
+          <p class="small text-body-secondary mb-2">
+            Toggle the grant and drag a file over the box. With it off nothing lights up and the
+            cursor reads “no drop”; a file dropped on the page background is swallowed either way,
+            so the browser never navigates away from the app.
+          </p>
+          <div class="form-check mb-2">
+            <input
+              id="kit-can-upload-{{ theme }}"
+              class="form-check-input"
+              type="checkbox"
+              [checked]="canUpload()"
+              (change)="canUpload.set(!canUpload())"
+            />
+            <label class="form-check-label" for="kit-can-upload-{{ theme }}">
+              Holds <code>Upload File</code>
+            </label>
+          </div>
+          <!-- The overlay is absolutely positioned, so the zone is its containing block. -->
+          <div
+            class="position-relative"
+            [appFileDropTarget]="canUpload()"
+            (filesDropped)="noteDrop($event)"
+            #drop="appFileDropTarget"
           >
-            <span>Tool server</span>
-            <app-switch [checked]="switchOn()" />
-          </button>
-        </div>
-      </section>
+            <textarea
+              class="form-control"
+              rows="2"
+              placeholder="Ask anything…"
+              aria-label="Message"
+            ></textarea>
+            @if (drop.isDragOver()) {
+              <app-drop-overlay />
+            }
+          </div>
+          <p class="small text-body-secondary mt-2 mb-0">{{ lastDrop() }}</p>
+        </section>
 
-      <section class="kit-group">
-        <h3>Buttons</h3>
-        <div class="kit-row">
-          <button class="btn btn-primary" type="button">Primary</button>
-          <button class="btn btn-outline-secondary" type="button">Secondary</button>
-          <button class="btn btn-danger" type="button">Delete</button>
-          <button class="btn btn-primary" type="button" disabled>Disabled</button>
-        </div>
-      </section>
-
-      <section class="kit-group">
-        <h3>Badges</h3>
-        <div class="kit-row">
-          <app-status-dot tone="ok" label="Active" />
-          <app-status-dot tone="fail" label="Failed" />
-          <app-kind-badge kind="McpTool" />
-          <app-kind-badge kind="Agent" />
-          <app-permission-badge name="Upload File" />
-          <app-permission-badge name="Administrator" managedBy="Jira Cloud MCP" />
-          <app-source-badge source="uploaded" />
-          <app-source-badge source="generated" />
-        </div>
-      </section>
-
-      <section class="kit-group">
-        <h3>Search</h3>
-        <app-search-input label="Search conversations" placeholder="Search…" [(value)]="search" />
-      </section>
-
-      <section class="kit-group">
-        <h3>Attachment chips — all five states</h3>
-        <div class="kit-stack">
-          @for (attachment of attachments; track attachment.id) {
-            <app-attachment-chip [attachment]="attachment" />
-          }
-        </div>
-      </section>
-
-      <section class="kit-group">
-        <h3>Drop zone</h3>
-        <p class="kit-note">
-          Toggle the grant and drag a file over the box. With it off nothing lights up and the
-          cursor reads “no drop”; a file dropped on the page background is swallowed either way, so
-          the browser never navigates away from the app.
-        </p>
-        <div class="form-check">
-          <input
-            id="kit-can-upload-{{ theme }}"
-            class="form-check-input"
-            type="checkbox"
-            [checked]="canUpload()"
-            (change)="canUpload.set(!canUpload())"
-          />
-          <label class="form-check-label" for="kit-can-upload-{{ theme }}">
-            Holds <code>Upload File</code>
-          </label>
-        </div>
-        <div
-          class="kit-dropzone"
-          [appFileDropTarget]="canUpload()"
-          (filesDropped)="noteDrop($event)"
-          #drop="appFileDropTarget"
-        >
-          <textarea class="form-control" rows="2" placeholder="Ask anything…"></textarea>
-          @if (drop.isDragOver()) {
-            <app-drop-overlay />
-          }
-        </div>
-        <p class="kit-note">{{ lastDrop() }}</p>
-      </section>
-
-      <section class="kit-group">
-        <h3>Project card</h3>
-        <app-project-card
-          name="Helios 2.4"
-          description="Release readiness, incident reviews and the rollout checklist."
-          updatedLabel="2h ago"
-          [link]="['/ui-kit']"
-          [favorite]="true"
-        >
-          <app-menu cardMenu label="Actions for Helios 2.4">
-            <button appMenuItem type="button">Rename</button>
-            <hr appMenuSeparator />
-            <button appMenuItem class="menu__item--danger" type="button">Delete</button>
-          </app-menu>
-        </app-project-card>
-      </section>
-
-      <section class="kit-group">
-        <h3>Data table</h3>
-        <app-data-table
-          label="Conversations"
-          [rows]="rows"
-          [columns]="columns"
-          [trackKey]="trackKey"
-          [rowLabel]="rowLabel"
-          [pendingIds]="pendingIds"
-          [selectable]="true"
-          [(selectedIds)]="selectedIds"
-        >
-          <p tableNotice class="kit-note">Select-all covers the 3 loaded rows only.</p>
-
-          <ng-template appTableCell="name" [appTableCellFor]="rows" let-row>
-            <a href="#" (click)="$event.preventDefault()">{{ row.name }}</a>
-          </ng-template>
-
-          <ng-template appTableCell="actions" [appTableCellFor]="rows" let-row>
-            <app-menu [label]="'Actions for ' + row.name">
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Project card</h3>
+          <app-project-card
+            name="Helios 2.4"
+            description="Release readiness, incident reviews and the rollout checklist."
+            updatedLabel="2h ago"
+            [link]="['/ui-kit']"
+            [favorite]="true"
+          >
+            <app-menu cardMenu label="Actions for Helios 2.4">
               <button appMenuItem type="button">Rename</button>
-              <button appMenuItem type="button">Favourite</button>
               <hr appMenuSeparator />
-              <button appMenuItem class="menu__item--danger" type="button">Delete</button>
+              <button appMenuItem class="text-danger-emphasis" type="button">Delete</button>
             </app-menu>
-          </ng-template>
+          </app-project-card>
+        </section>
 
-          <app-empty-state tableEmpty heading="No conversations yet" />
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Data table</h3>
+          <app-data-table
+            label="Conversations"
+            [rows]="rows"
+            [columns]="columns"
+            [trackKey]="trackKey"
+            [rowLabel]="rowLabel"
+            [pendingIds]="pendingIds"
+            [selectable]="true"
+            [(selectedIds)]="selectedIds"
+          >
+            <p tableNotice class="small text-body-secondary mb-0">
+              Select-all covers the 3 loaded rows only.
+            </p>
 
+            <ng-template appTableCell="name" [appTableCellFor]="rows" let-row>
+              <a href="/ui-kit" (click)="$event.preventDefault()">{{ row.name }}</a>
+            </ng-template>
+
+            <ng-template appTableCell="actions" [appTableCellFor]="rows" let-row>
+              <app-menu [label]="'Actions for ' + row.name">
+                <button appMenuItem type="button">Rename</button>
+                <button appMenuItem type="button">Favourite</button>
+                <hr appMenuSeparator />
+                <button appMenuItem class="text-danger-emphasis" type="button">Delete</button>
+              </app-menu>
+            </ng-template>
+
+            <app-empty-state tableEmpty heading="No conversations yet" />
+
+            <app-paginator
+              tableFooter
+              [page]="page()"
+              [totalPages]="13"
+              [totalCount]="312"
+              [pageSize]="25"
+              itemLabel="conversations"
+              (pageChanged)="page.set($event)"
+            />
+          </app-data-table>
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Pagination with a page size</h3>
           <app-paginator
-            tableFooter
-            [page]="page()"
-            [totalPages]="13"
+            [page]="sizedPage()"
+            [totalPages]="pageCount()"
             [totalCount]="312"
-            [pageSize]="25"
-            itemLabel="conversations"
-            (pageChanged)="page.set($event)"
+            [pageSize]="pageSize()"
+            [pageSizes]="pageSizes"
+            itemLabel="documents"
+            (pageChanged)="sizedPage.set($event)"
+            (pageSizeChanged)="resize($event)"
           />
-        </app-data-table>
-      </section>
+        </section>
 
-      <section class="kit-group">
-        <h3>Mobile card row and pill sub-nav</h3>
-        <app-pill-subnav [items]="pills" ariaLabel="Admin sections" />
-        <app-card-row>
-          <span cardRowTitle>Sofía Herrera</span>
-          <span cardRowSubtitle>sofia.herrera&#64;example.com</span>
-          <span cardRowMeta>Last active 2h ago</span>
-          <app-permission-badge cardRowBadges name="Upload File" />
-          <button cardRowActions class="btn btn-outline-secondary btn-sm" type="button">
-            Edit
-          </button>
-          <button cardRowActions class="btn btn-outline-secondary btn-sm" type="button">
-            Deactivate
-          </button>
-        </app-card-row>
-      </section>
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Mobile card row</h3>
+          <app-card-row>
+            <span cardRowTitle>Sofía Herrera</span>
+            <span cardRowSubtitle>sofia.herrera&#64;example.com</span>
+            <span cardRowMeta>Last active 2h ago</span>
+            <app-permission-badge cardRowBadges name="Upload File" />
+            <button cardRowActions class="btn btn-outline-secondary btn-sm flex-fill" type="button">
+              Edit
+            </button>
+            <button cardRowActions class="btn btn-outline-secondary btn-sm flex-fill" type="button">
+              Deactivate
+            </button>
+          </app-card-row>
+        </section>
 
-      <section class="kit-group">
-        <h3>State panels</h3>
-        <app-empty-state
-          heading='No conversations match "quarterly"'
-          message="Filters cover conversation names only."
-        >
-          <button emptyStateAction class="btn btn-outline-secondary btn-sm" type="button">
-            Clear search
-          </button>
-        </app-empty-state>
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">State panels</h3>
+          <div class="vstack gap-3">
+            <app-empty-state
+              heading='No conversations match "quarterly"'
+              message="Filters cover conversation names only."
+            >
+              <button emptyStateAction class="btn btn-outline-secondary btn-sm" type="button">
+                Clear search
+              </button>
+            </app-empty-state>
 
-        <app-error-panel [error]="demoError" heading="Documents couldn't load" />
+            <app-error-panel [error]="demoError" heading="Documents couldn't load" />
 
-        <app-unavailable-panel
-          heading="Your documents aren't available yet"
-          message="The documents API isn't enabled for this deployment. Files you upload into a conversation still work."
-        />
+            <app-unavailable-panel
+              heading="Your documents aren't available yet"
+              message="The documents API isn't enabled for this deployment. Files you upload into a conversation still work."
+            />
+          </div>
+        </section>
 
-        <app-skeleton [lines]="3" height="16px" />
-      </section>
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Menus</h3>
+          <div class="d-flex flex-wrap align-items-center gap-3">
+            <app-menu label="Conversation actions" align="start">
+              <p class="dropdown-header eyebrow">Conversation</p>
+              <button appMenuItem type="button">
+                <app-icon name="bi-pencil" />
+                Rename
+              </button>
+              <button appMenuItem type="button">
+                <app-icon name="bi-folder-symlink" />
+                Move to project
+              </button>
+              <button appMenuItem type="button" aria-disabled="true">
+                <app-icon name="bi-download" />
+                Export (available when the response finishes)
+              </button>
+              <hr appMenuSeparator />
+              <button appMenuItem class="text-danger-emphasis" type="button">
+                <app-icon name="bi-trash3" />
+                Delete
+              </button>
+              <p class="dropdown-item-text small text-body-secondary mb-0">
+                A deleted conversation can’t be restored.
+              </p>
+            </app-menu>
 
-      <section class="kit-group">
-        <h3>Overlays</h3>
-        <div class="kit-row">
-          <button class="btn btn-primary btn-sm" type="button" (click)="modalOpen.set(true)">
-            Open modal
-          </button>
-          <button
-            class="btn btn-outline-secondary btn-sm"
-            type="button"
-            (click)="offcanvasOpen.set(true)"
+            <app-menu [label]="'Model: ' + model()" align="start">
+              <span
+                appMenuTriggerContent
+                class="btn btn-sm rounded-pill bg-body-tertiary d-inline-flex align-items-center gap-1"
+              >
+                {{ model() }}
+                <app-icon name="bi-chevron-down" />
+              </span>
+              <p class="dropdown-header eyebrow">Model</p>
+              @for (option of models; track option) {
+                <button
+                  appMenuItem
+                  role="menuitemradio"
+                  type="button"
+                  [attr.aria-checked]="option === model()"
+                  (click)="model.set(option)"
+                >
+                  <app-icon [class.invisible]="option !== model()" name="bi-check-lg" />
+                  {{ option }}
+                </button>
+              }
+            </app-menu>
+          </div>
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Tooltips</h3>
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <button class="btn btn-ghost btn-icon" type="button" appTooltip="Rename">
+              <app-icon name="bi-pencil" />
+            </button>
+            <button
+              class="btn btn-ghost btn-icon"
+              type="button"
+              appTooltip="Copy"
+              appTooltipPlacement="top"
+            >
+              <app-icon name="bi-copy" />
+            </button>
+            <button
+              class="btn btn-ghost btn-icon"
+              type="button"
+              appTooltip="Download"
+              appTooltipPlacement="bottom"
+            >
+              <app-icon name="bi-download" />
+            </button>
+            <button
+              class="btn btn-outline-secondary btn-sm"
+              type="button"
+              appTooltip="Collapsed-strip label"
+            >
+              Hover or focus me
+            </button>
+          </div>
+          <p class="small text-body-secondary mt-2 mb-0">Right, top and bottom placements.</p>
+        </section>
+
+        <section class="border-top py-3">
+          <h3 class="eyebrow mb-2">Modal and offcanvas</h3>
+          <p class="small text-body-secondary mb-2">
+            Rendered inside this pane, so each opens in its theme. Both offcanvas sides check the
+            native <code>&lt;dialog&gt;</code> bridge.
+          </p>
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <button
+              class="btn btn-primary btn-sm"
+              type="button"
+              (click)="overlays[theme].modalSm.set(true)"
+            >
+              Small modal
+            </button>
+            <button
+              class="btn btn-outline-secondary btn-sm"
+              type="button"
+              (click)="overlays[theme].modalMd.set(true)"
+            >
+              Medium modal
+            </button>
+            <button
+              class="btn btn-outline-secondary btn-sm"
+              type="button"
+              (click)="overlays[theme].offcanvasStart.set(true)"
+            >
+              Offcanvas start
+            </button>
+            <button
+              class="btn btn-outline-secondary btn-sm"
+              type="button"
+              (click)="overlays[theme].offcanvasEnd.set(true)"
+            >
+              Offcanvas end
+            </button>
+          </div>
+
+          <app-modal [(open)]="overlays[theme].modalSm" heading="Rename conversation" size="sm">
+            <label class="form-label" for="kit-rename-{{ theme }}">Name</label>
+            <input
+              id="kit-rename-{{ theme }}"
+              class="form-control"
+              data-modal-autofocus
+              value="Helios release status"
+            />
+            <button
+              modalFooter
+              class="btn btn-outline-secondary"
+              type="button"
+              (click)="overlays[theme].modalSm.set(false)"
+            >
+              Cancel
+            </button>
+            <button
+              modalFooter
+              class="btn btn-primary"
+              type="button"
+              (click)="overlays[theme].modalSm.set(false)"
+            >
+              Rename
+            </button>
+          </app-modal>
+
+          <app-modal [(open)]="overlays[theme].modalMd" heading="Delete “Q3 revenue model”?">
+            <p class="mb-0">
+              The conversation and its generated files are removed for everyone it was shared with.
+              This can’t be undone.
+            </p>
+            <button
+              modalFooter
+              class="btn btn-outline-secondary"
+              type="button"
+              (click)="overlays[theme].modalMd.set(false)"
+            >
+              Cancel
+            </button>
+            <button
+              modalFooter
+              class="btn btn-danger"
+              type="button"
+              (click)="overlays[theme].modalMd.set(false)"
+            >
+              Delete
+            </button>
+          </app-modal>
+
+          <app-offcanvas
+            [(open)]="overlays[theme].offcanvasStart"
+            side="start"
+            width="320px"
+            heading="Navigation"
           >
-            Open offcanvas
-          </button>
-          <button
-            class="btn btn-outline-secondary btn-sm"
-            type="button"
-            appTooltip="Collapsed-strip label"
-          >
-            Hover or focus me
-          </button>
-        </div>
-      </section>
+            <p>Slides in from the start edge, as the mobile sidebar does.</p>
+            <button
+              offcanvasFooter
+              class="btn btn-primary"
+              type="button"
+              (click)="overlays[theme].offcanvasStart.set(false)"
+            >
+              Done
+            </button>
+          </app-offcanvas>
 
-      <section class="kit-group">
-        <h3>Toasts</h3>
-        <div class="kit-row">
-          <button
-            class="btn btn-outline-secondary btn-sm"
-            type="button"
-            (click)="toasts.success('Conversation deleted')"
-          >
-            Success (auto-dismisses)
-          </button>
-          <button
-            class="btn btn-outline-secondary btn-sm"
-            type="button"
-            (click)="toasts.warning('Sorting is unavailable past the 500-project ceiling')"
-          >
-            Warning (persists)
-          </button>
-          <button
-            class="btn btn-outline-secondary btn-sm"
-            type="button"
-            (click)="toasts.fromError(demoError, demoRetry)"
-          >
-            Error (persists)
-          </button>
-        </div>
+          <app-offcanvas [(open)]="overlays[theme].offcanvasEnd" heading="User details">
+            <p>Focus moves in here on open, and back to the invoking button on close.</p>
+            <button
+              offcanvasFooter
+              class="btn btn-primary"
+              type="button"
+              (click)="overlays[theme].offcanvasEnd.set(false)"
+            >
+              Done
+            </button>
+          </app-offcanvas>
+        </section>
+
+        <section class="border-top pt-3">
+          <h3 class="eyebrow mb-2">Toasts</h3>
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <button
+              class="btn btn-outline-secondary btn-sm"
+              type="button"
+              (click)="toasts.success('Conversation deleted')"
+            >
+              Success (auto-dismisses)
+            </button>
+            <button
+              class="btn btn-outline-secondary btn-sm"
+              type="button"
+              (click)="toasts.info('Sharing links now expire after 30 days')"
+            >
+              Info (auto-dismisses)
+            </button>
+            <button
+              class="btn btn-outline-secondary btn-sm"
+              type="button"
+              (click)="toasts.warning('Sorting is unavailable past the 500-project ceiling')"
+            >
+              Warning (persists)
+            </button>
+            <button
+              class="btn btn-outline-secondary btn-sm"
+              type="button"
+              (click)="toasts.fromError(demoError, demoRetry)"
+            >
+              Error (persists)
+            </button>
+          </div>
+          <p class="small text-body-secondary mt-2 mb-0">
+            Toasts render in the app's region, in the page theme.
+          </p>
+        </section>
       </section>
-    </section>
+    </div>
   }
 </div>
 
@@ -294,28 +909,3 @@
 >
   <button class="btn btn-danger btn-sm" type="button">Delete</button>
 </app-bulk-action-bar>
-
-<app-modal [(open)]="modalOpen" heading="Rename conversation" size="sm">
-  <label class="form-label" for="kit-rename">Name</label>
-  <input id="kit-rename" class="form-control" data-modal-autofocus value="Helios release status" />
-  <!-- modalFooter on each button, never a wrapper: the footer is the flex row, and a wrapper
-       collapses its gap once template whitespace is stripped. -->
-  <button
-    modalFooter
-    class="btn btn-outline-secondary"
-    type="button"
-    (click)="modalOpen.set(false)"
-  >
-    Cancel
-  </button>
-  <button modalFooter class="btn btn-primary" type="button" (click)="modalOpen.set(false)">
-    Rename
-  </button>
-</app-modal>
-
-<app-offcanvas [(open)]="offcanvasOpen" heading="User details">
-  <p>Focus moves in here on open, and back to the invoking button on close.</p>
-  <div offcanvasFooter>
-    <button class="btn btn-primary" type="button" (click)="offcanvasOpen.set(false)">Done</button>
-  </div>
-</app-offcanvas>

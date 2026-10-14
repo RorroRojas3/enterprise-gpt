@@ -6,8 +6,8 @@
   (closed)="actions.cancelForm()"
 >
   <!-- novalidate: schema rules own validation; the browser's bubble would fight the inline one. -->
-  <form id="project-form" class="project-form" novalidate (submit)="submit($event)">
-    <div class="project-form__field">
+  <form id="project-form" novalidate (submit)="submit($event)">
+    <div class="mb-3">
       <label class="form-label" for="project-form-name">Name</label>
       <!-- No literal maxlength (NG8022): [formField] derives it from the schema's rule. -->
       <input
@@ -22,28 +22,36 @@
         "
       />
 
-      <div class="project-form__meta">
+      <!-- One row, so the counter survives the invalid state beside the errors. -->
+      <div class="d-flex justify-content-between gap-3 mt-1">
         @if (showNameRegion()) {
           <!-- role="alert", since focus does not move on submit. track $index: two rules can
                emit identical text. -->
-          <div class="project-form__errors" id="project-form-name-errors" role="alert">
+          <div
+            class="invalid-feedback d-block min-w-0 mt-0"
+            id="project-form-name-errors"
+            role="alert"
+          >
             @if (showNameErrors()) {
               @for (message of nameErrors(); track $index) {
-                <p class="project-form__error">{{ message }}</p>
+                <p class="mb-0">{{ message }}</p>
               }
             }
             @for (message of unmatched(); track $index) {
-              <p class="project-form__error">{{ message }}</p>
+              <p class="mb-0">{{ message }}</p>
             }
           </div>
         }
-        <p class="project-form__counter font-mono" id="project-form-name-counter">
+        <p
+          class="font-monospace small text-body-secondary flex-shrink-0 ms-auto mb-0"
+          id="project-form-name-counter"
+        >
           {{ nameCount() }} / {{ lengths.name }}
         </p>
       </div>
     </div>
 
-    <div class="project-form__field">
+    <div class="mb-3">
       <label class="form-label" for="project-form-description">Description</label>
       <input
         id="project-form-description"
@@ -55,17 +63,17 @@
         [attr.aria-describedby]="showDescriptionErrors() ? 'project-form-description-errors' : null"
       />
       @if (showDescriptionErrors()) {
-        <div class="project-form__errors" id="project-form-description-errors" role="alert">
+        <div class="invalid-feedback d-block" id="project-form-description-errors" role="alert">
           @for (message of descriptionErrors(); track $index) {
-            <p class="project-form__error">{{ message }}</p>
+            <p class="mb-0">{{ message }}</p>
           }
         </div>
       }
     </div>
 
-    <div class="project-form__field">
+    <div>
       <label class="form-label" for="project-form-instructions">
-        Instructions <span class="project-form__optional">(optional)</span>
+        Instructions <span class="text-body-secondary fw-normal">(optional)</span>
       </label>
       <textarea
         id="project-form-instructions"
@@ -79,9 +87,9 @@
         "
       ></textarea>
       @if (showInstructionsErrors()) {
-        <div class="project-form__errors" id="project-form-instructions-errors" role="alert">
+        <div class="invalid-feedback d-block" id="project-form-instructions-errors" role="alert">
           @for (message of instructionsErrors(); track $index) {
-            <p class="project-form__error">{{ message }}</p>
+            <p class="mb-0">{{ message }}</p>
           }
         </div>
       }
@@ -107,7 +115,7 @@
     [disabled]="!canSubmit()"
   >
     @if (actions.formBusy()) {
-      <span class="kit-spinner" aria-hidden="true"></span>
+      <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
     }
     {{ submitLabel() }}
   </button>

@@ -1,25 +1,40 @@
-<!-- The click handler catches ::backdrop presses, which target the <dialog> itself. Escape is
-     the keyboard equivalent, through the native `cancel` event. -->
+<!-- The click handler catches presses beside the content: `.modal-dialog` is pointer-events:none,
+     so they target the <dialog> itself. Escape is the keyboard equivalent, through `cancel`. -->
 <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
 <dialog
   #dialog
-  class="modal-panel"
-  [class]="'modal-panel--' + size()"
+  class="modal"
   [attr.aria-labelledby]="headingId"
   [attr.aria-busy]="busy() ? 'true' : null"
   (cancel)="onCancel($event)"
   (close)="onClose()"
   (click)="onBackdropClick($event)"
 >
-  <div class="modal-panel__inner">
-    <h2 class="modal-panel__heading" [id]="headingId" tabindex="-1">{{ heading() }}</h2>
+  <div
+    class="modal-dialog modal-dialog-centered modal-dialog-scrollable"
+    [class.modal-sm]="size() === 'sm'"
+    [class.modal-lg]="size() === 'lg'"
+  >
+    <div class="modal-content shadow-lg">
+      <div class="modal-header">
+        <h2 class="modal-title fs-5" [id]="headingId" tabindex="-1">{{ heading() }}</h2>
+        @if (dismissible()) {
+          <button
+            type="button"
+            class="btn-close"
+            aria-label="Close"
+            data-modal-dismiss
+            [disabled]="busy()"
+            (click)="open.set(false)"
+          ></button>
+        }
+      </div>
 
-    <div class="modal-panel__body">
-      <ng-content />
-    </div>
+      <div class="modal-body">
+        <ng-content />
+      </div>
 
-    <div class="modal-panel__footer">
-      <ng-content select="[modalFooter]" />
+      <div class="modal-footer d-empty-none"><ng-content select="[modalFooter]" /></div>
     </div>
   </div>
 </dialog>

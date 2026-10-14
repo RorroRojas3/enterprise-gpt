@@ -30,7 +30,6 @@ import { Modal } from '@shared/components/modal/modal';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormField, Modal],
   templateUrl: './model-form-dialog.html',
-  styleUrl: './model-form-dialog.scss',
 })
 export class ModelFormDialog {
   protected readonly actions = inject(ModelActionsStore);

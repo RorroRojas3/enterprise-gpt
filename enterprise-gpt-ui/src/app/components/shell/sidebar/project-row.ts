@@ -34,7 +34,7 @@ import { SidebarProjectConversations } from './project-conversations';
     SidebarProjectConversations,
   ],
   templateUrl: './project-row.html',
-  styleUrl: './project-row.scss',
+  host: { class: 'd-block' },
 })
 export class SidebarProjectRow {
   protected readonly actions = inject(ProjectActionsStore);

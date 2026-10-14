@@ -5,6 +5,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { getAllByRole, getAllByText, getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ModelDto } from '@shared/models/api/chat-model.model';
 import { PROVIDER_ID } from '@shared/models/api/provider.model';
@@ -13,6 +14,7 @@ import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
+import { menuItems, openMenu } from '@testing/overlays';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { AdminModels } from './admin-models';
 
@@ -72,10 +74,18 @@ describe('AdminModels', () => {
     return element().querySelector('app-data-table')?.textContent?.replace(/\s+/g, ' ') ?? '';
   }
 
+  /** The labels of the row menu named `name`, opened. */
+  async function menuLabels(name: string): Promise<(string | undefined)[]> {
+    const menu = await openMenu(harness.fixture, name, element());
+    return menuItems(menu).map((node) => node.textContent?.trim());
+  }
+
   async function type(term: string): Promise<void> {
-    const field = element().querySelector<HTMLInputElement>('.search__field');
-    field!.value = term;
-    field!.dispatchEvent(new Event('input'));
+    const field = getByRole<HTMLInputElement>(element(), 'searchbox', {
+      name: 'Search models by provider or name',
+    });
+    field.value = term;
+    field.dispatchEvent(new Event('input'));
     await harness.fixture.whenStable();
     await new Promise((resolve) => setTimeout(resolve, DEBOUNCE_MS));
     await harness.fixture.whenStable();
@@ -93,9 +103,7 @@ describe('AdminModels', () => {
       }),
     ]);
 
-    const headers = [...element().querySelectorAll('.data-table__head *, th')].map((node) =>
-      node.textContent?.trim(),
-    );
+    const headers = getAllByRole(element(), 'columnheader').map((node) => node.textContent?.trim());
     expect(rowText()).toContain('GPT-5 Enterprise');
     expect(rowText()).toContain('Azure OpenAI');
     expect(rowText()).toContain('gpt-5-ent-eastus2');
@@ -110,9 +118,9 @@ describe('AdminModels', () => {
       modelFixture({ name: 'Claude', isDefault: false }),
     ]);
 
-    const pills = [...element().querySelectorAll('.admin-models__default')];
+    const pills = getAllByText(element(), 'Default');
     expect(pills).toHaveLength(1);
-    expect(pills[0]?.closest('.admin-models__identity')?.textContent).toContain('GPT-5');
+    expect(pills[0]?.closest('[role="cell"]')?.textContent).toContain('GPT-5');
   });
 
   it('says whether tools are enabled in text, not only in colour', async () => {
@@ -132,7 +140,8 @@ describe('AdminModels', () => {
     ]);
 
     expect(rowText()).toContain('Retired');
-    expect(element().querySelectorAll('.admin-models__identity--retired')).toHaveLength(1);
+    // Dimmed: the second channel besides the Status column.
+    expect(element().querySelectorAll('[role="cell"] .opacity-75')).toHaveLength(1);
     // One live row, one menu: there is no reactivate route to offer a retired one.
     expect(element().querySelectorAll('app-menu')).toHaveLength(1);
   });
@@ -140,38 +149,20 @@ describe('AdminModels', () => {
   it('offers Edit, Set as default and Delete on a live row', async () => {
     await open([modelFixture({ name: 'GPT-5', isDefault: false })]);
 
-    element().querySelector<HTMLButtonElement>('app-menu button')?.click();
-    await harness.fixture.whenStable();
-
-    const items = [...element().querySelectorAll('[appMenuItem]')].map((node) =>
-      node.textContent?.trim(),
-    );
-    expect(items).toEqual(['Edit', 'Set as default', 'Delete']);
+    expect(await menuLabels('Actions for GPT-5')).toEqual(['Edit', 'Set as default', 'Delete']);
   });
 
   it('hides Set as default on the row that already is', async () => {
     await open([modelFixture({ name: 'GPT-5', isDefault: true })]);
 
-    element().querySelector<HTMLButtonElement>('app-menu button')?.click();
-    await harness.fixture.whenStable();
-
-    const items = [...element().querySelectorAll('[appMenuItem]')].map((node) =>
-      node.textContent?.trim(),
-    );
-    expect(items).toEqual(['Edit', 'Delete']);
+    expect(await menuLabels('Actions for GPT-5')).toEqual(['Edit', 'Delete']);
   });
 
   /** A hidden default would leave every composer with no model to start a turn on. */
   it('hides Set as default on a row that is hidden from the picker', async () => {
     await open([modelFixture({ name: 'GPT-5', isDefault: false, isUserSelectable: false })]);
 
-    element().querySelector<HTMLButtonElement>('app-menu button')?.click();
-    await harness.fixture.whenStable();
-
-    const items = [...element().querySelectorAll('[appMenuItem]')].map((node) =>
-      node.textContent?.trim(),
-    );
-    expect(items).toEqual(['Edit', 'Delete']);
+    expect(await menuLabels('Actions for GPT-5')).toEqual(['Edit', 'Delete']);
   });
 
   it('names an active row that is hidden from the picker as its own state', async () => {
@@ -204,7 +195,7 @@ describe('AdminModels', () => {
 
     expect(rowText()).toContain('No models match “llama”');
 
-    element().querySelector<HTMLButtonElement>('[emptyStateAction]')?.click();
+    getByRole(element(), 'button', { name: 'Clear search' }).click();
     await harness.fixture.whenStable();
 
     expect(rowText()).toContain('GPT-5 Enterprise');
@@ -286,8 +277,8 @@ describe('AdminModels', () => {
 
     // A lone kebab in the action foot is stretched the width of the card, which reads as a
     // broken button rather than a menu.
-    expect(element().querySelector('.card-row__trailing app-menu')).not.toBeNull();
-    expect(element().querySelector('.card-row__actions app-menu')).toBeNull();
+    expect(element().querySelector('[data-card-slot="trailing"] app-menu')).not.toBeNull();
+    expect(element().querySelector('[data-card-slot="actions"] app-menu')).toBeNull();
   });
 
   it('labels every card meta value with its column header', async () => {
@@ -297,9 +288,7 @@ describe('AdminModels', () => {
     await harness.fixture.whenStable();
     resetMediaQueries();
 
-    const labels = [...element().querySelectorAll('.card-meta__label')].map(
-      (node) => node.textContent,
-    );
+    const labels = [...element().querySelectorAll('dt')].map((node) => node.textContent);
     expect(labels).toEqual(['Deployment', 'Context', 'Max output']);
   });
 });

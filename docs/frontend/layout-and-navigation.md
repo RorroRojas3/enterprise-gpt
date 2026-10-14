@@ -5,17 +5,20 @@ The shell, the sidebar, and how the application restructures below a desktop wid
 ## One breakpoint record, two copies, two gates
 
 The application restructures at two widths and only two: **768px**, where tables become cards and
-the sidebar leaves the flow, and **1024px**, where the sidebar stops being persistent.
+the sidebar leaves the flow, and **992px**, where the sidebar becomes persistent. 992px is Bootstrap's `lg`, so `*-lg-*` utilities
+switch exactly where the app changes mode.
 
 The two edges are stated once per language, because Sass cannot read a TypeScript constant and
-`matchMedia` cannot read a Sass variable.
+`matchMedia` cannot read a Sass variable. In Sass the record also builds Bootstrap's `$grid-breakpoints`
+(`md` from `$bp-tablet-min`, `lg` from `$bp-desktop-min`, the rest Bootstrap's defaults), which
+`_bootstrap-config.scss` hands to Bootstrap, so the grid, `d-md-*` and `col-lg-*` follow the record.
 
 | Mode | SCSS | TypeScript |
 | --- | --- | --- |
 | Mobile | `bp.mobile` | `MOBILE_VIEWPORT` — `(max-width: 767.98px)` |
-| Tablet | `bp.tablet` | `TABLET_VIEWPORT` — `(min-width: 768px) and (max-width: 1023.98px)` |
+| Tablet | `bp.tablet` | `TABLET_VIEWPORT` — `(min-width: 768px) and (max-width: 991.98px)` |
 | Desktop | `bp.desktop` | both queries false |
-| Under 1024 | `bp.below-desktop` | — |
+| Under 992 | `bp.below-desktop` | — |
 | 768 and up | `bp.tablet-up` | — |
 | As numbers | `$bp-tablet-min`, `$bp-desktop-min` | `TABLET_MIN_WIDTH`, `DESKTOP_MIN_WIDTH` |
 
@@ -45,16 +48,24 @@ the bug by quoting the wrong queries and scanning the prose would fail the gate 
 explanation.
 
 `check:forbidden` refuses a hardcoded application breakpoint — any `(max-width:` or `(min-width:`
-naming 767, 767.98, 768, 1023.98 or 1024 — exempting only the two record files. The failure message
+naming 767, 767.98, 768, 991.98 or 992 — exempting only the two record files. The failure message
 names the mixins and constants, so the fix is in the failure.
 
 ## The three modes
 
 | Mode | Width | Sidebar | Chrome above the screen |
 | --- | --- | --- | --- |
-| `desktop` | 1024px and up | In the flow, 260px or a 60px strip — **persisted** | none |
-| `tablet` | 768–1023px | 60px strip by default; expands as a floating 260px panel over a backdrop — **not persisted** | none |
+| `desktop` | 992px and up | In the flow, 260px or a 60px strip — **persisted** | none |
+| `tablet` | 768–991px | 60px strip by default; expands as a floating 260px panel over a backdrop — **not persisted** | none |
 | `mobile` | under 768px | Not in the flow at all; lives in a modal drawer | a 54px navbar |
+
+### Narrow desktops and the admin tables
+
+From 992px the persistent sidebar and the admin rail sit beside the table, which leaves less room
+than at 991px, where the sidebar was still a strip. `DataTable` drops its `hideOnTablet` columns
+only in the tablet band, so the admin MCP and model tables take their columns from
+`injectAdminColumns` (`pages/admin/admin-columns.ts`). It drops them up to Bootstrap's `xxl` edge
+(1400px) and keeps every column below 768px, where the table becomes cards.
 
 Only the desktop width is persisted, in `UiStore`, which deliberately does not reset on sign-out —
 it is a device-local preference, not the signed-in user's data.
@@ -84,6 +95,12 @@ The primitives are `anchored-panel` (positioning, `shared/utils/overlay/`), and 
 focus), `modal` (native `<dialog>` with `showModal()`) and `offcanvas` in `shared/components/`, plus
 the `tooltip` directive in `shared/directives/`.
 
+The primitives keep their Angular logic and take their look from Bootstrap's CSS: `modal` is a
+`<dialog class="modal">` and `offcanvas` a `<dialog class="offcanvas offcanvas-start|end">`, joined to
+Bootstrap's rules by `_overlays.scss`; `menu` panels are `.dropdown-menu`; the tooltip is
+`.tooltip`. There is no Bootstrap JavaScript. The element-by-element mapping is in
+[design-system.md](design-system.md#overlay-primitives).
+
 Using the native dialog is what gives real inertness from the top layer rather than a hand-rolled
 focus trap. Focus restoration runs on close **and** on destroy — see
 [design-system.md](design-system.md).
@@ -101,7 +118,9 @@ would navigate the browser to that file, discarding an in-flight turn.
 | Path | Role |
 | --- | --- |
 | `enterprise-gpt-ui/src/app/shared/utils/layout/breakpoints.ts` | The TypeScript half of the record |
-| `enterprise-gpt-ui/src/styles/_breakpoints.scss` | The Sass half and its mixins |
+| `enterprise-gpt-ui/src/styles/_breakpoints.scss` | The Sass half, its mixins and Bootstrap's `$grid-breakpoints` |
+| `enterprise-gpt-ui/src/app/pages/admin/admin-columns.ts` | Admin table columns up to the `xxl` edge |
+| `enterprise-gpt-ui/src/styles/_overlays.scss` | The native `<dialog>` bridge for modal and offcanvas |
 | `enterprise-gpt-ui/src/app/pages/shell/shell.ts` | Mode derivation and composition |
 | `enterprise-gpt-ui/src/app/components/shell/sidebar/sidebar.ts` | The two width branches |
 | `enterprise-gpt-ui/src/app/state/ui-store.ts` | Device-local layout preferences |

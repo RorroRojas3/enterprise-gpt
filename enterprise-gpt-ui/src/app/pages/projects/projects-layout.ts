@@ -9,6 +9,9 @@ import { RouterOutlet } from '@angular/router';
   selector: 'app-projects-layout',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterOutlet],
+  // Passes the shell's `<main>` height down: the routed screen scrolls itself, which it can only do
+  // inside a flex parent that may shrink below its content.
+  host: { class: 'd-flex flex-column flex-fill overflow-hidden' },
   template: `<router-outlet />`,
 })
 export class ProjectsLayout {}

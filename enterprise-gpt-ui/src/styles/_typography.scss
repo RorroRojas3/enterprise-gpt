@@ -64,16 +64,8 @@ $unicode-latin-ext:
 }
 
 // A component cannot `@use` this file without re-emitting every @font-face, so the display face
-// gets a property, as Bootstrap's `root` emits one for sans and mono.
+// gets a property, as Bootstrap's `root` emits one for sans and mono. `.font-display` is a
+// utility (see `_bootstrap-config.scss`).
 :root {
   --font-display: #{$font-display};
-}
-
-// Utility classes, because these two faces apply to individual runs of text on every screen.
-.font-display {
-  font-family: $font-display;
-}
-
-.font-mono {
-  font-family: $font-mono;
 }

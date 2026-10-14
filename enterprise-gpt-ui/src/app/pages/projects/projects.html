@@ -1,10 +1,10 @@
-<h1 class="projects__title font-display">Projects</h1>
+<h1 class="fs-5 fw-bold mb-0 font-display">Projects</h1>
 
-<div class="projects__toolbar">
+<div class="d-flex flex-wrap align-items-center gap-3">
   <!-- `[busy]` is the list loading, so a sort re-query marks this field busy too: accepted,
        since telling them apart would need the triggering input held in store state. -->
   <app-search-input
-    class="projects__search"
+    class="flex-grow-1 mw-sm min-w-0"
     label="Search projects by name"
     placeholder="Search projects"
     [value]="name()"
@@ -17,19 +17,18 @@
     Selection binds on the options, not `[value]` on the select, which runs before `@for`
     inserts them: a deep link to `?sort=name` would otherwise display "Last updated".
   -->
-  <label class="projects__sort">
-    <span class="visually-hidden">Sort projects</span>
-    <select class="form-select" (change)="onSorted($event)">
-      @for (option of sortOptions; track option.value) {
-        <option [value]="option.value" [selected]="option.value === sort().value">
-          {{ option.label }}
-        </option>
-      }
-    </select>
-  </label>
+  <label class="visually-hidden" for="projects-sort">Sort projects</label>
+  <select id="projects-sort" class="form-select w-auto" (change)="onSorted($event)">
+    @for (option of sortOptions; track option.value) {
+      <option [value]="option.value" [selected]="option.value === sort().value">
+        {{ option.label }}
+      </option>
+    }
+  </select>
 
+  <!-- `ms-auto` keeps the button at the row's end, wrapped or not. -->
   <button
-    class="btn btn-primary btn-sm projects__new"
+    class="btn btn-primary d-inline-flex align-items-center gap-2 text-nowrap ms-auto"
     type="button"
     (click)="actions.beginCreate()"
   >
@@ -48,12 +47,17 @@
     (retried)="projects.retry()"
   />
 } @else if (projects.isFirstLoad()) {
-  <div class="projects__grid" aria-busy="true">
+  <!-- Card-sized: a shorter skeleton would make the grid jump when the first page lands. -->
+  <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3" aria-busy="true">
     @for (card of skeletonCards; track $index) {
-      <div class="projects__skeleton">
-        <app-skeleton width="60%" />
-        <app-skeleton [lines]="2" />
-        <app-skeleton width="35%" />
+      <div class="col">
+        <div class="card h-100">
+          <div class="card-body d-flex flex-column gap-2">
+            <app-skeleton width="60%" />
+            <app-skeleton [lines]="2" />
+            <app-skeleton width="35%" />
+          </div>
+        </div>
       </div>
     }
   </div>
@@ -81,7 +85,7 @@
     <button
       emptyStateAction
       type="button"
-      class="btn btn-primary btn-sm"
+      class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2"
       (click)="actions.beginCreate()"
     >
       <app-icon name="bi-plus-lg" />
@@ -89,62 +93,64 @@
     </button>
   </app-empty-state>
 } @else {
-  <div class="projects__grid">
+  <ul class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3 list-unstyled mb-0">
     @for (project of projects.entities(); track trackId(project)) {
       <!--
           The star is confirm-then-render: `ProjectActionsStore` has no channel into this
           route-scoped store to roll a guess back. The link is absolute because this
           component's route is a path-less child.
         -->
-      <app-project-card
-        [name]="project.name"
-        [description]="project.description ?? ''"
-        [updatedLabel]="updatedLabel(project)"
-        [link]="linkFor(project)"
-        [favorite]="project.isFavorite"
-        [pending]="actions.isRowPending(project.id)"
-        (favoriteToggled)="actions.toggleFavorite(project)"
-      >
-        <!-- `aria-disabled`: `disabled` blurs the pressed item to `<body>` for the round
+      <li class="col">
+        <app-project-card
+          [name]="project.name"
+          [description]="project.description ?? ''"
+          [updatedLabel]="updatedLabel(project)"
+          [link]="linkFor(project)"
+          [favorite]="project.isFavorite"
+          [pending]="actions.isRowPending(project.id)"
+          (favoriteToggled)="actions.toggleFavorite(project)"
+        >
+          <!-- `aria-disabled`: `disabled` blurs the pressed item to `<body>` for the round
                trip. Both handlers refuse the pending id, so the guard is real. -->
-        <app-menu cardMenu [label]="'Actions for ' + project.name">
-          <button
-            appMenuItem
-            type="button"
-            [attr.aria-disabled]="actions.isRowPending(project.id) ? 'true' : null"
-            (click)="beginEdit(project)"
-          >
-            <app-icon name="bi-pencil" />
-            Rename
-          </button>
-          <hr appMenuSeparator />
-          <button
-            appMenuItem
-            type="button"
-            class="menu__item--danger"
-            [attr.aria-disabled]="actions.isRowPending(project.id) ? 'true' : null"
-            (click)="beginDelete(project)"
-          >
-            <app-icon name="bi-trash3" />
-            Delete
-          </button>
-        </app-menu>
-      </app-project-card>
+          <app-menu cardMenu [label]="'Actions for ' + project.name">
+            <button
+              appMenuItem
+              type="button"
+              [attr.aria-disabled]="actions.isRowPending(project.id) ? 'true' : null"
+              (click)="beginEdit(project)"
+            >
+              <app-icon name="bi-pencil" />
+              Rename
+            </button>
+            <hr appMenuSeparator />
+            <button
+              appMenuItem
+              type="button"
+              class="text-danger-emphasis"
+              [attr.aria-disabled]="actions.isRowPending(project.id) ? 'true' : null"
+              (click)="beginDelete(project)"
+            >
+              <app-icon name="bi-trash3" />
+              Delete
+            </button>
+          </app-menu>
+        </app-project-card>
+      </li>
     }
-  </div>
+  </ul>
 
   <!-- Gone rather than disabled once all is loaded: disabled reads as "more, but not for you". -->
-  <div class="projects__more">
+  <div class="d-flex justify-content-center d-empty-none">
     @if (projects.hasMore()) {
       <!-- Mirrors `loadMore()`'s guard, so it never looks operable while a press would no-op. -->
       <button
-        class="btn btn-outline-secondary btn-sm"
+        class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2"
         type="button"
         [attr.aria-disabled]="projects.loadingMore() || projects.isPending() ? 'true' : null"
         (click)="onLoadMore()"
       >
         @if (projects.loadingMore()) {
-          <span class="kit-spinner" aria-hidden="true"></span>
+          <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
           <span>Loading…</span>
         } @else {
           <span>Load more</span>

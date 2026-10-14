@@ -1,6 +1,6 @@
 <app-auth-page>
   @if (error(); as sessionError) {
-    <app-brand-logo class="session-error__mark" variant="mark" />
+    <app-brand-logo variant="mark" style="width: 58px" />
 
     <app-error-panel
       [error]="sessionError"

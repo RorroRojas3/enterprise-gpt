@@ -1,13 +1,9 @@
 @use 'breakpoints' as bp;
 
 // 100dvh keeps the composer clear of the mobile browser's collapsing toolbar. Flex rather than
-// grid, so the sidebar width animates as a plain length. Relative for the tablet backdrop and
-// floating panel.
+// grid, so the sidebar width animates as a plain length.
 :host {
-  display: flex;
-  position: relative;
   height: 100dvh;
-  overflow: hidden;
 }
 
 .shell__sidebar {
@@ -27,24 +23,9 @@
     width var(--t-slow) ease;
 }
 
-// min-width: 0, or the screen's content sets this item's minimum and squeezes the sidebar.
-.shell__main {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-  overflow: hidden;
-
-  // The skip link's target: the ring confirms the link worked.
-  &:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: -2px;
-  }
-}
-
-// ── Tablet: 768–1023px ───────────────────────────────────────────────────────
+// ── Tablet: 768–991.98px ─────────────────────────────────────────────────────
 // The expanded panel floats over the content and `.shell__rail` holds the 60px track it
-// vacated, so `.shell__main` never reflows.
+// vacated, so `<main>` never reflows.
 @include bp.tablet {
   .shell__rail {
     flex: 0 0 60px;
@@ -68,12 +49,8 @@
 }
 
 // ── Mobile: below 768px ──────────────────────────────────────────────────────
-// The navbar stacks above the screen; the sidebar exists only inside the drawer.
+// The sidebar exists only inside the drawer.
 @include bp.mobile {
-  :host {
-    flex-direction: column;
-  }
-
   // Full-bleed in the drawer, undoing the 260px track. The safe-area insets are the drawer's:
   // with `viewport-fit=cover` this surface reaches under the notch in landscape.
   .shell__sidebar {
@@ -86,21 +63,10 @@
   }
 }
 
-// Absolute against `.offcanvas-panel__body`, which `bare` makes a containing block for this;
-// the safe-area insets keep it out from under the notch in landscape.
+// Against the bare `.offcanvas-body`, which is the containing block; the safe-area insets keep it
+// out from under the notch in landscape.
 .shell__drawer-close {
-  display: flex;
-  position: absolute;
   z-index: 20;
   top: calc(12px + var(--safe-top));
   right: calc(12px + var(--safe-right));
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border: 0;
-  border-radius: 10px;
-  background: var(--surface-2);
-  color: var(--muted);
-  font-size: 18px;
 }

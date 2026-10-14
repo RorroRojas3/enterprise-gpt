@@ -26,7 +26,7 @@ import { MenuSeparator } from '@shared/directives/menu-separator';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, Menu, MenuItem, MenuSeparator, ProjectPicker, RouterLink, RouterLinkActive],
   templateUrl: './conversation-row.html',
-  styleUrl: './conversation-row.scss',
+  host: { class: 'd-block' },
 })
 export class ConversationRow {
   protected readonly actions = inject(ConversationActionsStore);

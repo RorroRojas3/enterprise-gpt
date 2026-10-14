@@ -11,7 +11,6 @@ import { Modal } from '@shared/components/modal/modal';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal],
   templateUrl: './deactivate-mcp-server-dialog.html',
-  styleUrl: './deactivate-mcp-server-dialog.scss',
 })
 export class DeactivateMcpServerDialog {
   protected readonly actions = inject(McpServerActionsStore);

@@ -47,6 +47,7 @@ import { ToolsMenu } from './tools-menu';
   providers: [DictationStore],
   templateUrl: './composer.html',
   styleUrl: './composer.scss',
+  host: { class: 'd-block' },
 })
 export class Composer {
   protected readonly settings = inject(TurnSettingsStore);
@@ -125,6 +126,13 @@ export class Composer {
    * control would otherwise sit disabled with nothing to press.
    */
   protected readonly inFlight = computed(() => this.turn.inFlight() || this.uploads.blocksSend());
+
+  /** The microphone square, or the recording pill it morphs into; only the square dims mid-turn. */
+  protected readonly micClass = computed(() =>
+    this.dictation.recording()
+      ? 'btn btn-sm rounded-pill d-inline-flex align-items-center gap-2 bg-info-subtle text-info-emphasis composer__mic-pill'
+      : 'btn btn-ghost btn-icon composer__aux',
+  );
 
   /** Named for what it actually stops, which is not always the answer. */
   protected readonly actionLabel = computed(() => {

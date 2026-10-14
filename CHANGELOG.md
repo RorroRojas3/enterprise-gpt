@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The Angular client is restyled on full Bootstrap 5.3, with Bootstrap's default type, spacing and
+  radius scales, so text and spacing are visibly larger than before. The desktop layout with the
+  persistent sidebar now starts at 992px instead of 1024px, and the palette lives under Bootstrap's
+  variable names (the old `--muted`, `--brand`, `--ok`, `--warn`, `--fail` and related tokens are
+  gone, and lint rejects them). Modals and side panels are re-skinned and gain a Close button.
+  Accessibility fixes: dark-theme danger buttons and checked checkboxes, radios and switches now meet
+  contrast, the admin MCP and model tables drop columns at narrow desktop widths instead of
+  crowding, and the project pages scroll again. Component stylesheets shrank from about 7,100 lines
+  to about 900, and the production size budgets rose to fit.
 - The Angular client in `enterprise-gpt-ui/` now follows the Andes `angular-ui-architecture` kind-first
   layout; behaviour is unchanged. `src/app/` is grouped by kind, then by feature: `pages/<feature>`,
   `components/<feature>`, `state/` (root stores flat, page- and route-provided stores in
@@ -128,6 +137,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   elsewhere. Icon-button tooltips (the sidebar chevron, and menu triggers that carry a hint) now
   appear on hover and on keyboard focus, rather than on any focus — so a click that moves focus
   programmatically no longer leaves a flyout behind for the pointer to clear.
+
+### Security
+
+- NuGet restore no longer fails on vulnerable transitive packages (NU1902/NU1903 are errors in this
+  build): `System.Security.Cryptography.Pkcs` and `System.Security.Cryptography.Xml` are now pinned to
+  10.0.13 in `Directory.Packages.props`, replacing the 9.0.13 and 10.0.11 versions pulled in through
+  `Microsoft.Data.SqlClient`, `Microsoft.AspNetCore.DataProtection` and `Microsoft.Identity.Web`. This
+  clears the .NET denial-of-service advisories GHSA-2fmv-rv2c-59x7 (CVE-2026-70162),
+  GHSA-846f-f764-76mx (CVE-2026-84008), GHSA-7hqp-7c5m-4vq6 (CVE-2026-96960), GHSA-c399-9853-6jmj
+  (CVE-2026-96959) and GHSA-r955-8q5j-3h83 (CVE-2026-96958).
 
 ## [1.0.0] - 2026-08-30
 

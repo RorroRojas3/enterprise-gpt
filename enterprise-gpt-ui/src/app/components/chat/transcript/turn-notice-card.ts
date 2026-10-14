@@ -36,7 +36,7 @@ interface NoticeView {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
   templateUrl: './turn-notice-card.html',
-  styleUrl: './turn-notice-card.scss',
+  host: { class: 'd-block' },
 })
 export class TurnNoticeCard {
   readonly notice = input.required<TurnNotice>();
@@ -49,6 +49,37 @@ export class TurnNoticeCard {
   focusRetry(): void {
     this.retryButton()?.nativeElement.focus();
   }
+
+  /** The one-line form: the message takes the free space and Retry sits at the far right. */
+  protected readonly isRow = computed(() => this.view().layout === 'row');
+
+  protected readonly frameClass = computed(() => {
+    const frame =
+      this.view().tone === 'warn'
+        ? 'alert alert-warning rounded-4 mb-0'
+        : 'card card-body rounded-4';
+
+    return this.isRow() ? `${frame} d-flex flex-row align-items-center gap-2` : frame;
+  });
+
+  protected readonly iconClass = computed(() =>
+    this.view().titleTone === 'fail' ? 'text-danger' : 'text-warning',
+  );
+
+  /** A one-line notice is a sentence, not a heading, so it keeps body weight. */
+  protected readonly titleClass = computed(() => {
+    const view = this.view();
+    const tone = TITLE_TONES[view.titleTone];
+
+    return view.layout === 'row' ? tone : `${tone} fw-semibold`;
+  });
+
+  /** The alert's own colour dims the body; on the plain card it moves to the muted tone. */
+  protected readonly mutedClass = computed(() =>
+    this.view().tone === 'warn' ? '' : 'text-body-secondary',
+  );
+
+  protected readonly actionsClass = computed(() => (this.isRow() ? 'flex-shrink-0' : 'ms-4 mt-2'));
 
   protected readonly view = computed<NoticeView>(() => {
     const notice = this.notice();
@@ -104,3 +135,9 @@ export class TurnNoticeCard {
     };
   });
 }
+
+const TITLE_TONES: Record<NoticeView['titleTone'], string> = {
+  warn: 'text-warning-emphasis',
+  fail: 'text-danger-emphasis',
+  body: 'text-body',
+};

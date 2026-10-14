@@ -15,6 +15,11 @@ import { ADMIN_PILLS, ADMIN_TABS } from './admin-tabs';
   selector: 'app-admin-layout',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, PillSubnav, RouterLink, RouterLinkActive, RouterOutlet],
+  // The shell's `<main>` clips its overflow, so the area scrolls itself; `flex-fill` keeps the
+  // rail spanning the pane when the tab is short.
+  host: {
+    class: 'd-flex flex-column flex-md-row gap-3 gap-md-4 p-3 p-md-4 flex-fill overflow-y-auto',
+  },
   templateUrl: './admin-layout.html',
   styleUrl: './admin-layout.scss',
 })

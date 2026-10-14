@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { getByRole, getByText, queryByRole, within } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ModelDto } from '@shared/models/api/chat-model.model';
 import { McpDto } from '@shared/models/api/mcp.model';
@@ -10,6 +11,7 @@ import { McpCredentialStore } from '@state/mcp-credential-store';
 import { TurnSettingsStore } from '@state/turn-settings-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpFixture, modelFixture } from '@testing/catalog';
+import { iconOf, menuItems } from '@testing/overlays';
 import { ToolsMenu } from './tools-menu';
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
@@ -35,25 +37,36 @@ describe('ToolsMenu', () => {
     document.body.append(fixture.nativeElement as HTMLElement);
     await fixture.whenStable();
     const host = fixture.nativeElement as HTMLElement;
+    const trigger = () => getByRole<HTMLButtonElement>(host, 'button', { name: /^Tool servers:/ });
+    const panel = () => queryByRole(host, 'menu');
+    /**
+     * One per server: not the status line, which is disabled, nor a stored key's own control,
+     * which carries its own name.
+     */
+    const rows = () =>
+      panel() === null
+        ? []
+        : menuItems(panel()!).filter(
+            (item) =>
+              item.getAttribute('aria-disabled') !== 'true' && !item.hasAttribute('aria-label'),
+          );
     return {
       fixture,
       host,
-      trigger: () => host.querySelector('.menu__trigger') as HTMLButtonElement,
-      pillText: () => host.querySelector('.tools-menu__pill')?.textContent?.trim() ?? '',
-      panel: () => host.querySelector('[role="menu"]'),
-      rows: () => [...host.querySelectorAll<HTMLButtonElement>('.tools-menu__option')],
-      switches: () => [...host.querySelectorAll<HTMLElement>('.tools-menu__option app-switch')],
-      brandHrefs: () =>
-        [...host.querySelectorAll('.tools-menu__option app-brand-icon use')].map((node) =>
-          node.getAttribute('href'),
-        ),
-      genericIcons: () => [...host.querySelectorAll('.tools-menu__brand--generic')],
+      trigger,
+      /** The visible face: the trigger's own name is `label`, not its text. */
+      pillText: () => trigger().textContent?.trim() ?? '',
+      /** The count, which below md is the only label left, and only once something is armed. */
+      pillLabel: () => getByText(trigger(), /Tools?$/),
+      panel,
+      rows,
+      switches: () => rows().flatMap((row) => [...row.querySelectorAll('app-switch')]),
       async open() {
-        (host.querySelector('.menu__trigger') as HTMLButtonElement).click();
+        trigger().click();
         await fixture.whenStable();
       },
       async toggle(index: number) {
-        const row = [...host.querySelectorAll<HTMLButtonElement>('.tools-menu__option')][index];
+        const row = rows()[index];
         row?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
         row?.click();
         await fixture.whenStable();
@@ -82,8 +95,9 @@ describe('ToolsMenu', () => {
     ]);
     await menu.open();
 
-    expect(menu.host.querySelector('.tools-menu__heading')?.textContent?.trim()).toBe(
-      'Tool servers',
+    // Visual only: the panel's own name already says it.
+    expect(within(menu.panel()!).getByText('Tool servers').getAttribute('aria-hidden')).toBe(
+      'true',
     );
 
     const rows = menu.rows();
@@ -94,17 +108,19 @@ describe('ToolsMenu', () => {
     ]);
     expect(rows[0]?.textContent?.trim()).toBe('Jira Cloud');
     // No key column exists to render: McpDto carries no key (deliberate deviation).
-    expect(menu.host.querySelector('.font-mono')).toBeNull();
+    expect(menu.host.querySelector('.font-monospace')).toBeNull();
 
     // The switch is decoration; the row keeps the semantics, because a native
     // `<input role="switch">` is not a valid child of `role="menu"`.
     expect(menu.switches()).toHaveLength(2);
     expect(menu.host.querySelector('[role="switch"]')).toBeNull();
-    expect(menu.host.querySelector('.tools-menu__option input')).toBeNull();
+    expect(menu.host.querySelector('[role="menu"] input')).toBeNull();
 
-    expect(menu.host.querySelector('.tools-menu__footnote')?.textContent?.trim()).toBe(
-      'Stays open while you toggle — applies to the next turn.',
-    );
+    expect(
+      within(menu.panel()!)
+        .getByText('Stays open while you toggle — applies to the next turn.')
+        .getAttribute('aria-hidden'),
+    ).toBe('true');
   });
 
   it('toggles independently while the panel stays open, and counts the label up and down', async () => {
@@ -113,11 +129,8 @@ describe('ToolsMenu', () => {
     await loadServers([mcpFixture({ name: 'Jira Cloud' }), mcpFixture({ name: 'Weather' })]);
 
     expect(menu.pillText()).toBe('Tools');
-    // jsdom loads no stylesheet, so this pins the hook the mobile compaction hides.
-    expect(menu.host.querySelector('.tools-menu__pill-label')?.textContent?.trim()).toBe('Tools');
-    expect(
-      menu.host.querySelector('.tools-menu__pill')?.classList.contains('tools-menu__pill--armed'),
-    ).toBe(false);
+    // Nothing to report below md, so the label gives way there.
+    expect(menu.pillLabel().classList).toContain('d-none');
     await menu.open();
 
     await menu.toggle(0);
@@ -131,11 +144,8 @@ describe('ToolsMenu', () => {
     await menu.toggle(1);
     expect(menu.panel()).not.toBeNull();
     expect(menu.pillText()).toBe('2 Tools');
-    // Below 768px the stylesheet keeps the label only with this class; jsdom can pin only the
-    // binding.
-    expect(
-      menu.host.querySelector('.tools-menu__pill')?.classList.contains('tools-menu__pill--armed'),
-    ).toBe(true);
+    // A count is the only visible sign that servers are armed, so it stays at every width.
+    expect(menu.pillLabel().classList).not.toContain('d-none');
 
     await menu.toggle(0);
     expect(menu.rows()[0]?.getAttribute('aria-checked')).toBe('false');
@@ -165,11 +175,6 @@ describe('ToolsMenu', () => {
     expect(menu.pillText()).toBe('Tools');
     expect(menu.trigger().getAttribute('aria-disabled')).toBe('true');
     expect(menu.trigger().hasAttribute('disabled')).toBe(false);
-    expect(
-      menu.host
-        .querySelector('.tools-menu__pill')
-        ?.classList.contains('tools-menu__pill--disabled'),
-    ).toBe(true);
 
     menu.trigger().click();
     await menu.fixture.whenStable();
@@ -191,8 +196,12 @@ describe('ToolsMenu', () => {
     ]);
     await menu.open();
 
-    expect(menu.brandHrefs()).toEqual(['#brand-microsoft', '#brand-context7']);
-    expect(menu.genericIcons()).toHaveLength(2);
+    expect(menu.rows().map((row) => iconOf(row))).toEqual([
+      'brand-microsoft',
+      'brand-context7',
+      'bi-plug',
+      'bi-plug',
+    ]);
   });
 
   it('explains an empty tool-server list rather than rendering a bare panel', async () => {
@@ -201,10 +210,10 @@ describe('ToolsMenu', () => {
     await loadServers([]);
     await menu.open();
 
-    expect(menu.host.querySelector('.tools-menu__status')?.textContent).toContain(
-      'No tool servers are available to you.',
-    );
-    expect(menu.rows()).toHaveLength(0);
+    const [status, ...rest] = menuItems(menu.panel()!);
+    expect(status?.getAttribute('aria-disabled')).toBe('true');
+    expect(status?.textContent).toContain('No tool servers are available to you.');
+    expect(rest).toHaveLength(0);
   });
 
   it('renders a server awaiting the user’s key as a menuitem, not a checkbox', async () => {
@@ -253,7 +262,9 @@ describe('ToolsMenu', () => {
     await menu.toggle(0);
     expect(TestBed.inject(TurnSettingsStore).effectiveMcpServerIds()).toEqual([server.id]);
 
-    const manage = menu.host.querySelector('.tools-menu__manage') as HTMLButtonElement;
+    const manage = getByRole(menu.panel()!, 'menuitem', {
+      name: /^Change your API key for GitHub/,
+    });
     expect(manage.textContent?.trim()).toBe('••••wxyz');
     // Its own menu item, so the arrow keys reach it — a plain nested button would be
     // invalid HTML and invisible to the menu's roving focus.

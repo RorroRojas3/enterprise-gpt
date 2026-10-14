@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { tooltipOf } from '@testing/overlays';
 import { Tooltip } from './tooltip';
 
 @Component({
@@ -86,11 +87,11 @@ describe('Tooltip', () => {
 
     nameless.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
     await fixture.whenStable();
-    expect(nameless.querySelector('.app-tooltip')?.textContent).toBe('Conversations');
+    expect(tooltipOf(nameless)?.textContent).toBe('Conversations');
 
     nameless.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
     await fixture.whenStable();
-    expect(nameless.querySelector('.app-tooltip')).toBeNull();
+    expect(tooltipOf(nameless)).toBeNull();
   });
 
   it('ignores focus the browser does not mark visible', async () => {
@@ -100,7 +101,7 @@ describe('Tooltip', () => {
     nameless.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
     await fixture.whenStable();
 
-    expect(nameless.querySelector('.app-tooltip')).toBeNull();
+    expect(tooltipOf(nameless)).toBeNull();
   });
 
   it('renders the flyout as decoration, since the host already carries the text', async () => {
@@ -109,7 +110,7 @@ describe('Tooltip', () => {
     nameless.dispatchEvent(new MouseEvent('mouseenter'));
     await fixture.whenStable();
 
-    expect(nameless.querySelector('.app-tooltip')?.getAttribute('aria-hidden')).toBe('true');
+    expect(tooltipOf(nameless)?.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('resolves the default placement, which the sidebar strip relies on', async () => {
@@ -118,7 +119,7 @@ describe('Tooltip', () => {
     nameless.dispatchEvent(new MouseEvent('mouseenter'));
     await fixture.whenStable();
 
-    expect(nameless.querySelector('.app-tooltip')?.getAttribute('data-placement')).toBe('right');
+    expect(tooltipOf(nameless)?.getAttribute('data-placement')).toBe('right');
   });
 
   it('carries the requested placement onto the flyout', async () => {
@@ -127,7 +128,7 @@ describe('Tooltip', () => {
     below.dispatchEvent(new MouseEvent('mouseenter'));
     await fixture.whenStable();
 
-    expect(below.querySelector('.app-tooltip')?.getAttribute('data-placement')).toBe('bottom');
+    expect(tooltipOf(below)?.getAttribute('data-placement')).toBe('bottom');
   });
 
   /**
@@ -140,7 +141,7 @@ describe('Tooltip', () => {
 
     below.dispatchEvent(new MouseEvent('mouseenter'));
     await fixture.whenStable();
-    const flyout = below.querySelector('.app-tooltip') as HTMLElement;
+    const flyout = tooltipOf(below) as HTMLElement;
     expect(flyout.style.top).toBe('336px');
 
     fixture.componentInstance.placement.set('top');
@@ -160,6 +161,6 @@ describe('Tooltip', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await fixture.whenStable();
 
-    expect(nameless.querySelector('.app-tooltip')).toBeNull();
+    expect(tooltipOf(nameless)).toBeNull();
   });
 });

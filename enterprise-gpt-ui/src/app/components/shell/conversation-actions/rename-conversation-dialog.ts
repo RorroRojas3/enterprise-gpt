@@ -25,7 +25,6 @@ const NAME_MAX_LENGTH = 256;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormField, Modal],
   templateUrl: './rename-conversation-dialog.html',
-  styleUrl: './rename-conversation-dialog.scss',
 })
 export class RenameConversationDialog {
   protected readonly actions = inject(ConversationActionsStore);

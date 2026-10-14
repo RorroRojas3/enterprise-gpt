@@ -1,26 +1,29 @@
-<h1 class="admin-mcps__title font-display">MCP servers</h1>
+<h1 class="fs-5 fw-semibold mb-3 font-display">MCP servers</h1>
 
-<div class="admin-mcps__toolbar">
-  <app-search-input
-    class="admin-mcps__search"
-    label="Search servers by name, description, or URL"
-    placeholder="Search servers"
-    [value]="servers.query()"
-    [busy]="servers.isPending()"
-    (searched)="onSearched($event)"
-  />
+<div class="row g-2 align-items-center mb-3">
+  <div class="col-12 col-md-4">
+    <app-search-input
+      label="Search servers by name, description, or URL"
+      placeholder="Search servers"
+      [value]="servers.query()"
+      [busy]="servers.isPending()"
+      (searched)="onSearched($event)"
+    />
+  </div>
 
   <!-- `aria-disabled` keeps the button focusable while the store refuses to open the dialog. -->
-  <button
-    class="btn btn-primary btn-sm admin-mcps__add"
-    type="button"
-    aria-haspopup="dialog"
-    [attr.aria-disabled]="actions.formBusy() ? 'true' : null"
-    (click)="actions.beginCreate()"
-  >
-    <app-icon name="bi-plus-lg" />
-    Add server
-  </button>
+  <div class="col-12 col-md-auto ms-md-auto">
+    <button
+      class="btn btn-primary w-100 touch-target d-inline-flex align-items-center justify-content-center gap-2 fw-semibold"
+      type="button"
+      aria-haspopup="dialog"
+      [attr.aria-disabled]="actions.formBusy() ? 'true' : null"
+      (click)="actions.beginCreate()"
+    >
+      <app-icon name="bi-plus-lg" />
+      Add server
+    </button>
+  </div>
 </div>
 
 @if (servers.error(); as error) {
@@ -35,7 +38,7 @@
   <app-data-table
     label="MCP servers"
     [rows]="servers.results()"
-    [columns]="columns"
+    [columns]="columns()"
     [trackKey]="trackKey"
     [rowLabel]="rowLabel"
     [loading]="servers.isFirstLoad()"
@@ -43,36 +46,49 @@
     [pendingIds]="actions.pendingIds()"
   >
     <ng-template appTableCell="server" [appTableCellFor]="servers.results()" let-row>
-      <span class="admin-mcps__server" [class.admin-mcps__server--retired]="isRetired(row)">
+      <!-- Dimmed as a second channel besides the Status column; the muted text still clears 4.5:1. -->
+      <span class="d-flex align-items-center gap-2 min-w-0" [class.opacity-75]="isRetired(row)">
         <!-- Decorative: the name beside it carries everything the mark does. -->
         @if (brandIcon(row); as mark) {
-          <app-brand-icon class="admin-mcps__brand" [name]="mark" />
+          <app-brand-icon class="flex-shrink-0 fs-6" [name]="mark" />
         }
-        <span class="admin-mcps__name">{{ row.name }}</span>
+        <span class="admin-mcps__name text-truncate fw-semibold small">{{ row.name }}</span>
       </span>
     </ng-template>
 
     <ng-template appTableCell="description" [appTableCellFor]="servers.results()" let-row>
-      <span class="admin-mcps__muted">{{ row.description }}</span>
+      <span class="admin-mcps__detail d-block text-truncate small text-body-secondary">{{
+        row.description
+      }}</span>
     </ng-template>
 
     <ng-template appTableCell="url" [appTableCellFor]="servers.results()" let-row>
       <!-- Mono and titled: a wrong URL is read character by character, and the cell
            ellipsises exactly the long ones. -->
-      <span class="admin-mcps__muted font-mono" [title]="row.url">{{ row.url }}</span>
+      <span
+        class="admin-mcps__detail d-block text-truncate small font-monospace text-body-secondary"
+        [title]="row.url"
+        >{{ row.url }}</span
+      >
     </ng-template>
 
     <ng-template appTableCell="auth" [appTableCellFor]="servers.results()" let-row>
       <!-- An unknown auth type shows its raw value rather than a blank cell. -->
-      <span class="admin-mcps__muted">{{ authTypeLabel(row.authType) }}</span>
+      <span class="admin-mcps__detail d-block text-truncate small text-body-secondary">{{
+        authTypeLabel(row.authType)
+      }}</span>
     </ng-template>
 
     <ng-template appTableCell="scope" [appTableCellFor]="servers.results()" let-row>
       @if (row.scope) {
-        <span class="admin-mcps__muted font-mono" [title]="row.scope">{{ row.scope }}</span>
+        <span
+          class="admin-mcps__detail d-block text-truncate small font-monospace text-body-secondary"
+          [title]="row.scope"
+          >{{ row.scope }}</span
+        >
       } @else {
         <!-- An em dash, since a blank cell would read as a rendering fault. -->
-        <span class="admin-mcps__muted" aria-hidden="true">—</span>
+        <span class="d-block small text-body-secondary" aria-hidden="true">—</span>
         <span class="visually-hidden">No scope</span>
       }
     </ng-template>
@@ -84,16 +100,16 @@
         <span class="visually-hidden">Linked permission:</span>
         <app-permission-badge [name]="row.name" />
       } @else {
-        <span class="admin-mcps__muted" aria-hidden="true">—</span>
+        <span class="d-block small text-body-secondary" aria-hidden="true">—</span>
         <span class="visually-hidden">No linked permission</span>
       }
     </ng-template>
 
     <ng-template appTableCell="status" [appTableCellFor]="servers.results()" let-row>
       @if (isRetired(row)) {
-        <app-status-dot tone="muted" label="Inactive" />
+        <app-status-dot tone="secondary" label="Inactive" />
       } @else {
-        <app-status-dot tone="ok" label="Active" />
+        <app-status-dot tone="success" label="Active" />
       }
     </ng-template>
 
@@ -110,7 +126,7 @@
           <button
             appMenuItem
             type="button"
-            class="menu__item--danger"
+            class="text-danger-emphasis"
             (click)="actions.beginDeactivate(row)"
           >
             Deactivate

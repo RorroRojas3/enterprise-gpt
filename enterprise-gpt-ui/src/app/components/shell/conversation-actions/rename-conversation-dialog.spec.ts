@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConversationDto } from '@shared/models/api/conversation.model';
 import { ConversationActionsStore } from '@state/conversation-actions-store';
@@ -51,13 +52,11 @@ describe('RenameConversationDialog', () => {
   }
 
   function renameButton(): HTMLButtonElement {
-    return fixture.nativeElement.querySelector(
-      'button[form="rename-conversation-form"]',
-    ) as HTMLButtonElement;
+    return getByRole(dialog(), 'button', { name: 'Rename' });
   }
 
   function cancelButton(): HTMLButtonElement {
-    return fixture.nativeElement.querySelector('.btn-outline-secondary') as HTMLButtonElement;
+    return getByRole(dialog(), 'button', { name: 'Cancel' });
   }
 
   async function open(target: ConversationDto): Promise<void> {
@@ -81,8 +80,10 @@ describe('RenameConversationDialog', () => {
 
     expect(dialog().open).toBe(true);
     // Direct projection into the footer: a wrapper div would collapse the row's gap.
-    expect(renameButton().parentElement?.classList.contains('modal-panel__footer')).toBe(true);
-    expect(cancelButton().parentElement?.classList.contains('modal-panel__footer')).toBe(true);
+    expect(renameButton().parentElement?.classList.contains('modal-footer')).toBe(true);
+    expect(cancelButton().parentElement?.classList.contains('modal-footer')).toBe(true);
+    // Projected outside the form, so only the `form` attribute lets Enter submit it.
+    expect(renameButton().getAttribute('form')).toBe('rename-conversation-form');
     expect(input().value).toBe('Helios 2.4 release status');
     expect(input().getAttribute('maxlength')).toBe('256');
     expect(input().hasAttribute('data-modal-autofocus')).toBe(true);
@@ -92,7 +93,7 @@ describe('RenameConversationDialog', () => {
   it('counts characters live in the mono counter', async () => {
     await open(conversationFixture({ name: 'Helios 2.4 release status' }));
     expect(counter()?.textContent?.replace(/\s+/g, ' ').trim()).toBe('25 / 256');
-    expect(counter()?.classList.contains('font-mono')).toBe(true);
+    expect(counter()?.classList.contains('font-monospace')).toBe(true);
 
     await type('New');
     expect(counter()?.textContent?.replace(/\s+/g, ' ').trim()).toBe('3 / 256');

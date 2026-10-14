@@ -19,7 +19,7 @@ import { Icon } from '@shared/components/icon/icon';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
   templateUrl: './stopped-card.html',
-  styleUrl: './stopped-card.scss',
+  host: { class: 'd-block' },
 })
 export class StoppedCard {
   readonly text = input.required<string>();

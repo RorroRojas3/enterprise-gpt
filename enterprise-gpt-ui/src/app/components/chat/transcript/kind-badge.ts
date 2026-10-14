@@ -7,12 +7,18 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 @Component({
   selector: 'app-kind-badge',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: '<span class="kind-badge">{{ label() }}</span>',
-  styleUrl: './kind-badge.scss',
+  template: `<span class="badge border fw-semibold text-body-secondary" [class]="fill()">{{
+    label()
+  }}</span>`,
 })
 export class KindBadge {
   /** A `ToolKind` value from the stream contract, or any other short category. */
   readonly kind = input.required<string>();
+
+  /** On a card already filled with `--bs-tertiary-bg`, the badge takes the raised surface. */
+  readonly raised = input(false);
+
+  protected readonly fill = computed(() => (this.raised() ? 'bg-surface' : 'bg-body-tertiary'));
 
   protected readonly label = computed(() => {
     const kind = this.kind();

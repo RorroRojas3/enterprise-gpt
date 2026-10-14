@@ -24,7 +24,6 @@ import { apiKeyError } from './mcp-credential-form';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormField, Modal],
   templateUrl: './mcp-credential-dialog.html',
-  styleUrl: './mcp-credential-dialog.scss',
 })
 export class McpCredentialDialog {
   protected readonly credentials = inject(McpCredentialStore);

@@ -1,18 +1,28 @@
-<div class="chat-empty">
-  <app-brand-logo class="chat-empty__logo" alt="Andes Software Solutions" />
+<div
+  class="d-flex flex-column flex-grow-1 align-items-center justify-content-center gap-3 p-4 text-center"
+>
+  <app-brand-logo class="mw-100" style="width: 250px" alt="Andes Software Solutions" />
 
   @if (asPageHeading()) {
-    <h1 class="chat-empty__prompt font-display">How can I help you today?</h1>
+    <h1 class="font-display fs-4 fw-semibold mb-0">How can I help you today?</h1>
 
-    <div class="chat-empty__chips">
+    <div
+      class="d-flex flex-wrap justify-content-center gap-2 mw-prose"
+      role="group"
+      aria-label="Suggested prompts"
+    >
       @for (chip of chips; track chip.label) {
-        <button type="button" class="chat-empty__chip" (click)="suggested.emit(chip.label)">
-          <app-icon [name]="chip.icon" />
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-secondary rounded-pill d-flex align-items-center gap-2 px-3 py-2 fw-medium"
+          (click)="suggested.emit(chip.label)"
+        >
+          <app-icon class="text-primary" [name]="chip.icon" />
           {{ chip.label }}
         </button>
       }
     </div>
   } @else {
-    <p class="chat-empty__prompt font-display">How can I help you today?</p>
+    <p class="font-display fs-4 fw-semibold mb-0">How can I help you today?</p>
   }
 </div>

@@ -24,8 +24,8 @@ import { ConfirmsDiscard } from './unsaved-instructions.guard';
   selector: 'app-instructions-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ErrorPanel, Modal, Skeleton],
+  host: { class: 'd-block' },
   templateUrl: './instructions-panel.html',
-  styleUrl: './instructions-panel.scss',
 })
 export class InstructionsPanel implements ConfirmsDiscard {
   protected readonly project = inject(ProjectStore);

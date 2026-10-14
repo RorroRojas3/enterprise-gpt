@@ -10,7 +10,13 @@ import { Icon } from '@shared/components/icon/icon';
   selector: 'app-drop-overlay',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon],
-  host: { 'aria-hidden': 'true' },
+  // `pe-none`: the pointer is mid-drag over the zone beneath, and an overlay that took
+  // hit-testing would fire its own dragenter and desync the depth counter.
+  host: {
+    'aria-hidden': 'true',
+    class:
+      'position-absolute d-flex align-items-center justify-content-center gap-2 rounded-3 text-primary fs-6 fw-semibold pe-none',
+  },
   templateUrl: './drop-overlay.html',
   styleUrl: './drop-overlay.scss',
 })

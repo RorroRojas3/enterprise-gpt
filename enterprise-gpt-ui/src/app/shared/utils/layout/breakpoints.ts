@@ -9,7 +9,7 @@
 export const MOBILE_VIEWPORT = '(max-width: 767.98px)';
 
 /** The band where the sidebar is a strip that expands as an overlay. */
-export const TABLET_VIEWPORT = '(min-width: 768px) and (max-width: 1023.98px)';
+export const TABLET_VIEWPORT = '(min-width: 768px) and (max-width: 991.98px)';
 
 /**
  * For code comparing a measured width, such as {@link anchoredPosition}.
@@ -18,4 +18,4 @@ export const TABLET_VIEWPORT = '(min-width: 768px) and (max-width: 1023.98px)';
 export const TABLET_MIN_WIDTH = 768;
 
 /** @see TABLET_MIN_WIDTH */
-export const DESKTOP_MIN_WIDTH = 1024;
+export const DESKTOP_MIN_WIDTH = 992;

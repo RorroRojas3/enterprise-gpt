@@ -5,6 +5,7 @@ import {
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { getAllByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { UserActionsStore } from '@state/user-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
@@ -54,7 +55,7 @@ describe('UserFormDialog', () => {
   }
 
   function errors(): string[] {
-    return [...host().querySelectorAll('.user-form__error')].map(
+    return [...host().querySelectorAll('.invalid-feedback p')].map(
       (node) => node.textContent?.trim() ?? '',
     );
   }
@@ -101,7 +102,7 @@ describe('UserFormDialog', () => {
   it('marks an MCP-derived permission without disabling it', async () => {
     await open();
 
-    const boxes = host().querySelectorAll<HTMLInputElement>('.checklist .form-check-input');
+    const boxes = getAllByRole<HTMLInputElement>(host(), 'checkbox');
     expect(boxes).toHaveLength(2);
     // Disabling would leave no way to grant MCP tool access; the lock marks the definition.
     expect([...boxes].some((box) => box.disabled)).toBe(false);
@@ -127,7 +128,7 @@ describe('UserFormDialog', () => {
   it('sends the trimmed address with the checked permissions', async () => {
     await open();
     await type('  grace@example.com  ');
-    host().querySelector<HTMLInputElement>('.checklist .form-check-input')!.click();
+    getAllByRole(host(), 'checkbox')[0]!.click();
     await fixture.whenStable();
 
     submitButton().click();

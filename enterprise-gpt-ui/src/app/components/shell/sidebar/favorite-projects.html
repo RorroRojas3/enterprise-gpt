@@ -1,27 +1,34 @@
 <!-- Absent when nothing is starred: a heading over nothing reads as broken. -->
 @if (projects.hasFavorites()) {
-  <section class="favorites" aria-labelledby="sidebar-favorites-heading">
-    <h2 class="favorites__heading">
+  <section
+    class="favorites d-flex flex-column px-3 pt-2 pb-1 border-top"
+    aria-labelledby="sidebar-favorites-heading"
+  >
+    <h2 class="mb-0">
       <!-- A real button owning real state, so `aria-expanded` is honest here. -->
       <button
         #favoritesToggle
-        class="favorites__toggle"
+        class="btn btn-ghost eyebrow d-flex align-items-center gap-2 w-100 p-2 text-start"
         type="button"
         id="sidebar-favorites-heading"
         [attr.aria-expanded]="open()"
         aria-controls="sidebar-favorites-list"
         (click)="open.set(!open())"
       >
-        <app-icon
-          class="favorites__chevron"
-          [name]="open() ? 'bi-chevron-down' : 'bi-chevron-right'"
-        />
+        <app-icon class="small" [name]="open() ? 'bi-chevron-down' : 'bi-chevron-right'" />
         <span>Favorite projects</span>
       </button>
     </h2>
 
-    <!-- Kept in the DOM while shut, so `aria-controls` above keeps naming something real. -->
-    <ul class="favorites__list" id="sidebar-favorites-list" [hidden]="!open()">
+    <!--
+      Kept in the DOM while shut, so `aria-controls` above keeps naming something real. `vstack`,
+      not `d-flex`: the utility's `!important` would beat reboot's `[hidden]`.
+    -->
+    <ul
+      class="list-unstyled vstack gap-1 mb-0 overflow-y-auto overscroll-contain"
+      id="sidebar-favorites-list"
+      [hidden]="!open()"
+    >
       @for (project of projects.favorites(); track project.id) {
         <li>
           <app-sidebar-project-row

@@ -1,13 +1,15 @@
-<h1 class="admin-reports__title font-display">Reports</h1>
+<h1 class="fs-5 fw-semibold mb-0 font-display">Reports</h1>
 
-<div class="admin-reports__toolbar">
+<div class="d-flex flex-wrap align-items-center gap-3">
   <!-- Never disabled in flight: going inert blurs the control and drops keyboard focus to the
        top of the document. `switchMap` already discards the superseded request. -->
   <app-range-segmented [value]="range()" (selected)="onRangeSelected($event)" />
 
   <!-- A read-out, not a picker: the window the response was taken from, not the one asked for. -->
-  <span class="admin-reports__chip">
-    <app-icon name="bi-calendar3" class="admin-reports__chip-icon" />
+  <span
+    class="badge d-inline-flex align-items-center gap-2 border rounded-3 fw-normal text-body-secondary"
+  >
+    <app-icon name="bi-calendar3" />
     {{ dateRange() }}
   </span>
 
@@ -16,7 +18,7 @@
        inserts the options, and the browser then resets to the first one. -->
   <select
     id="usage-group-by"
-    class="form-select admin-reports__group"
+    class="form-select form-select-sm w-auto ms-md-auto"
     (change)="onGroupingChanged($event)"
   >
     @for (grouping of groupings; track grouping) {
@@ -38,16 +40,16 @@
     (retried)="reports.retry()"
   />
 } @else if (reports.isFirstLoad()) {
-  <div class="admin-reports__skeleton" aria-hidden="true">
-    <div class="admin-reports__kpis">
+  <div class="vstack gap-3" aria-hidden="true">
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-3">
       @for (tile of skeletonTiles; track tile) {
-        <app-skeleton variant="block" height="76px" />
+        <div class="col"><app-skeleton variant="block" height="76px" /></div>
       }
     </div>
     <app-skeleton variant="block" height="220px" />
-    <div class="admin-reports__split">
-      <app-skeleton variant="block" height="240px" />
-      <app-skeleton variant="block" height="240px" />
+    <div class="row g-3">
+      <div class="col-12 col-lg-6 col-xxl-7"><app-skeleton variant="block" height="240px" /></div>
+      <div class="col-12 col-lg-6 col-xxl-5"><app-skeleton variant="block" height="240px" /></div>
     </div>
   </div>
 } @else if (reports.isEmpty()) {
@@ -61,64 +63,73 @@
   <!-- `aria-busy` and a dimmed panel while the next report loads: the controls stay operable, so
        nothing else signals that anything was asked for. -->
   <div
-    class="admin-reports__dashboard"
-    [class.admin-reports__dashboard--busy]="reports.isPending()"
+    class="admin-reports__dashboard d-flex flex-column flex-fill gap-3"
+    [class.opacity-50]="reports.isPending()"
     [attr.aria-busy]="reports.isPending() ? 'true' : null"
   >
-    <div class="admin-reports__kpis">
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-3">
       @for (kpi of kpis(); track kpi.label) {
-        <app-kpi-tile
-          [label]="kpi.label"
-          [value]="kpi.value"
-          [delta]="kpi.delta"
-          [comparison]="priorCaption()"
-        />
+        <div class="col">
+          <app-kpi-tile
+            [label]="kpi.label"
+            [value]="kpi.value"
+            [delta]="kpi.delta"
+            [comparison]="priorCaption()"
+          />
+        </div>
       }
     </div>
 
-    <section class="admin-reports__card">
-      <h2 class="admin-reports__card-title">
-        Usage over time
-        <span class="admin-reports__card-note">tokens per day</span>
-      </h2>
-      <app-usage-area-chart [points]="report.series" />
+    <section class="card">
+      <div class="card-body">
+        <h2 class="card-title fs-6 fw-semibold">
+          Usage over time
+          <span class="ms-2 small fw-normal text-body-secondary">tokens per day</span>
+        </h2>
+        <app-usage-area-chart [points]="report.series" />
+      </div>
     </section>
 
-    <div class="admin-reports__split">
-      <section class="admin-reports__card">
-        <h2 class="admin-reports__card-title admin-reports__card-title--row">
-          <span>
-            Tokens by model
-            <span class="admin-reports__card-note">top 10</span>
-          </span>
-          @if (canViewAllModels()) {
-            <button
-              type="button"
-              class="btn btn-link admin-reports__view-all"
-              (click)="viewAllModels()"
+    <div class="row g-3">
+      <div class="col-12 col-lg-6 col-xxl-7">
+        <section class="card h-100">
+          <div class="card-body">
+            <h2
+              class="card-title fs-6 fw-semibold d-flex align-items-baseline justify-content-between gap-3"
             >
-              View all
-            </button>
-          }
-        </h2>
-        <app-usage-bar-list [rows]="report.topModels" />
-      </section>
+              <span>
+                Tokens by model
+                <span class="ms-2 small fw-normal text-body-secondary">top 10</span>
+              </span>
+              @if (canViewAllModels()) {
+                <button type="button" class="btn btn-link btn-sm" (click)="viewAllModels()">
+                  View all
+                </button>
+              }
+            </h2>
+            <app-usage-bar-list [rows]="report.topModels" />
+          </div>
+        </section>
+      </div>
 
-      <section class="admin-reports__card admin-reports__card--donut">
-        <h2 class="admin-reports__card-title">Turn outcomes</h2>
-        <p class="admin-reports__card-subtitle">Tokens billed for answers nobody read</p>
-        <app-outcome-donut [outcomes]="report.outcomes" />
-      </section>
+      <div class="col-12 col-lg-6 col-xxl-5">
+        <section class="card h-100">
+          <div class="card-body d-flex flex-column">
+            <h2 class="card-title fs-6 fw-semibold mb-1">Turn outcomes</h2>
+            <p class="small text-body-secondary mb-0">Tokens billed for answers nobody read</p>
+            <app-outcome-donut [outcomes]="report.outcomes" />
+          </div>
+        </section>
+      </div>
     </div>
 
     <!-- Above the table, not in `[tableNotice]`: that slot collapses only when `:empty`, and the
        stable wrapper an `@if` needs there would leave 10px of dead space with no notice. -->
     @if (reports.truncationNotice(); as notice) {
-      <p class="admin-reports__truncation">{{ notice }}</p>
+      <p class="small text-body-secondary mb-0">{{ notice }}</p>
     }
 
     <app-data-table
-      class="admin-reports__table"
       [label]="tableLabel()"
       [rows]="reports.pagedGroups()"
       [columns]="columns()"
@@ -127,46 +138,44 @@
       [summary]="reports.countSummary()"
     >
       <ng-template appTableCell="group" [appTableCellFor]="reports.pagedGroups()" let-row>
-        <span class="admin-reports__group-name" [title]="row.label">{{ row.label }}</span>
+        <span class="d-block fw-medium text-break" [title]="row.label">{{ row.label }}</span>
         @if (row.sublabel) {
           <!-- Only when grouping by user, where two people can share a display name and a spend
              figure attributed to the wrong one is worse than a second line. -->
-          <span class="admin-reports__group-sublabel">{{ row.sublabel }}</span>
+          <span class="d-block small text-body-secondary text-break">{{ row.sublabel }}</span>
         }
       </ng-template>
 
       <ng-template appTableCell="turns" [appTableCellFor]="reports.pagedGroups()" let-row>
-        <span class="admin-reports__number font-mono">{{ count(row.turns) }}</span>
+        <span class="small font-monospace">{{ count(row.turns) }}</span>
       </ng-template>
 
       <ng-template appTableCell="completed" [appTableCellFor]="reports.pagedGroups()" let-row>
-        <span class="admin-reports__number font-mono">{{ count(row.completedTurns) }}</span>
+        <span class="small font-monospace">{{ count(row.completedTurns) }}</span>
       </ng-template>
 
       <ng-template appTableCell="cancelled" [appTableCellFor]="reports.pagedGroups()" let-row>
-        <span class="admin-reports__number font-mono">{{ count(row.cancelledTurns) }}</span>
+        <span class="small font-monospace">{{ count(row.cancelledTurns) }}</span>
       </ng-template>
 
       <ng-template appTableCell="failed" [appTableCellFor]="reports.pagedGroups()" let-row>
         <!-- Toned only when there were failures, and never the only channel: the number is the
            message. -->
-        <span
-          class="admin-reports__number font-mono"
-          [class.admin-reports__number--warn]="row.failedTurns > 0"
-          >{{ count(row.failedTurns) }}</span
-        >
+        <span class="small font-monospace" [class.text-warning-emphasis]="row.failedTurns > 0">{{
+          count(row.failedTurns)
+        }}</span>
       </ng-template>
 
       <ng-template appTableCell="tokens" [appTableCellFor]="reports.pagedGroups()" let-row>
-        <span class="admin-reports__number font-mono">{{ tokens(row.totalTokens) }}</span>
+        <span class="small font-monospace">{{ tokens(row.totalTokens) }}</span>
       </ng-template>
 
       <ng-template appTableCell="cost" [appTableCellFor]="reports.pagedGroups()" let-row>
         <!-- An em dash where the row could not be priced, with the reason in the title: a `$0`
            here would say the calls were free, which is the one thing it does not mean. -->
         <span
-          class="admin-reports__number font-mono"
-          [class.admin-reports__number--muted]="row.estimatedCost === null"
+          class="small font-monospace"
+          [class.text-body-secondary]="row.estimatedCost === null"
           [attr.title]="row.estimatedCost === null ? 'No price recorded for this model' : null"
           >{{ cost(row.estimatedCost) }}</span
         >

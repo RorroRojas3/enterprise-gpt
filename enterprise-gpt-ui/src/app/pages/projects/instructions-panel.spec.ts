@@ -5,11 +5,13 @@ import {
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ProjectActionsStore } from '@state/project-actions-store';
 import { ProjectStore } from '@state/projects/project-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
+import { dialogNamed } from '@testing/overlays';
 import { projectDetailFixture } from '@testing/projects';
 import { InstructionsPanel } from './instructions-panel';
 
@@ -61,7 +63,11 @@ describe('InstructionsPanel', () => {
   }
 
   function field(): HTMLTextAreaElement {
-    return host().querySelector('#project-instructions') as HTMLTextAreaElement;
+    return getByRole<HTMLTextAreaElement>(host(), 'textbox', { name: 'Standing instructions' });
+  }
+
+  function confirmation(): HTMLDialogElement {
+    return dialogNamed('Discard unsaved instructions?') as HTMLDialogElement;
   }
 
   async function edit(text: string): Promise<void> {
@@ -83,7 +89,7 @@ describe('InstructionsPanel', () => {
   it('settles only once the server confirms, never optimistically', async () => {
     await edit('New rules.');
 
-    host().querySelector<HTMLButtonElement>('.btn-primary')?.click();
+    getByRole(host(), 'button', { name: 'Save' }).click();
     await fixture.whenStable();
 
     const request = expectSave();
@@ -112,9 +118,9 @@ describe('InstructionsPanel', () => {
     const decision = panel.confirmDiscard();
     await fixture.whenStable();
 
-    expect(host().querySelector('dialog')?.open).toBe(true);
+    expect(confirmation().open).toBe(true);
 
-    host().querySelector<HTMLButtonElement>('.btn-danger')?.click();
+    getByRole(confirmation(), 'button', { name: 'Discard' }).click();
     await fixture.whenStable();
 
     await expect(decision).resolves.toBe(true);
@@ -128,9 +134,7 @@ describe('InstructionsPanel', () => {
     const decision = panel.confirmDiscard();
     await fixture.whenStable();
 
-    // Scoped to the dialog: the panel's own Cancel carries the same class and would
-    // revert the edit instead of answering the guard.
-    host().querySelector<HTMLButtonElement>('dialog .btn-outline-secondary')?.click();
+    getByRole(confirmation(), 'button', { name: 'Keep editing' }).click();
     await fixture.whenStable();
 
     await expect(decision).resolves.toBe(false);
@@ -143,7 +147,7 @@ describe('InstructionsPanel', () => {
     const decision = panel.confirmDiscard();
     await fixture.whenStable();
 
-    host().querySelector('dialog')?.dispatchEvent(new Event('close'));
+    confirmation().dispatchEvent(new Event('close'));
     await fixture.whenStable();
 
     await expect(decision).resolves.toBe(false);
@@ -153,9 +157,7 @@ describe('InstructionsPanel', () => {
   it('reverts without leaving the panel when Cancel is pressed', async () => {
     await edit('Half-typed');
 
-    host()
-      .querySelector<HTMLButtonElement>('.instructions__actions .btn-outline-secondary')
-      ?.click();
+    getByRole(host(), 'button', { name: 'Cancel' }).click();
     await fixture.whenStable();
 
     expect(field().value).toBe('Cite Jira keys.');

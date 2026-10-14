@@ -48,7 +48,7 @@ describe('UsageBarList', () => {
     ]);
     const ranks = [...host.querySelectorAll('.bars__rank')].map((rank) => rank.textContent?.trim());
 
-    // `--brand` and `--accent` match in the dark theme, so the leader tint says nothing there.
+    // `--bs-primary` and `--bs-info` match in the dark theme, so the leader tint says nothing there.
     expect(ranks).toEqual(['1', '2']);
     expect(host.querySelectorAll('.bars__fill--leader')).toHaveLength(1);
   });

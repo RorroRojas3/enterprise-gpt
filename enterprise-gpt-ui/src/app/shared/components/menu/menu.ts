@@ -25,8 +25,8 @@ import { Tooltip } from '@shared/directives/tooltip';
 let nextId = 0;
 
 /**
- * Hand-rolled rather than Bootstrap's dropdown, which bundles Popper (35.7 kB) to flip menus at
- * the viewport edge; these anchor to their row. A `position: fixed` panel also escapes the
+ * Bootstrap's dropdown CSS with this logic rather than its JS, which bundles Popper to flip menus
+ * at the viewport edge; these anchor to their row. A `position: fixed` panel also escapes the
  * sidebar's `overflow-y: auto`.
  */
 @Component({
@@ -34,7 +34,7 @@ let nextId = 0;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, Tooltip],
   templateUrl: './menu.html',
-  styleUrl: './menu.scss',
+  host: { class: 'd-inline-flex' },
 })
 export class Menu {
   private readonly destroyRef = inject(DestroyRef);
@@ -63,12 +63,18 @@ export class Menu {
    * axe's `aria-prohibited-attr`. It stays visual, so put the reason in `label` too.
    */
   readonly hint = input<string | null>(null);
-  readonly panelWidth = input<number>(204);
+  readonly panelWidth = input<number>(240);
   /** `up` opens above the trigger, for the composer; static, never flipped at the viewport edge. */
   readonly direction = input<'down' | 'up'>('down');
 
   private readonly triggerContent = contentChild(MenuTriggerContent);
   protected readonly hasTriggerContent = computed(() => this.triggerContent() !== undefined);
+  /** A projected face brings its own box, so the icon button's square and fill drop away. */
+  protected readonly triggerClass = computed(() =>
+    this.hasTriggerContent()
+      ? 'd-inline-flex align-items-center min-w-0 mw-100 p-0 border-0 bg-transparent text-reset'
+      : 'btn btn-ghost btn-icon btn-icon-sm touch-target',
+  );
 
   /**
    * The hint sits on the side the panel opens to: a `top` flyout on a trigger with no

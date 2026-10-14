@@ -24,6 +24,7 @@ interface DownloadOption {
   readonly format: ExportFormat;
   readonly label: string;
   readonly icon: IconName;
+  readonly tone: string;
 }
 
 /**
@@ -36,7 +37,8 @@ interface DownloadOption {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, Menu, MenuItem],
   templateUrl: './conversation-download-menu.html',
-  styleUrl: './conversation-download-menu.scss',
+  // Not inline, which would drop the trigger by the strut's descender beside the header star.
+  host: { class: 'd-inline-flex' },
 })
 export class ConversationDownloadMenu {
   private readonly exports = inject(ConversationExportStore);
@@ -57,6 +59,7 @@ export class ConversationDownloadMenu {
     format,
     label: EXPORT_FORMAT_LABELS[format] ?? format,
     icon: ICONS[format],
+    tone: TONES[format],
   }));
 
   /** The format being prepared, but only for *this* conversation. */
@@ -115,4 +118,12 @@ const ICONS: Readonly<Record<ExportFormat, IconName>> = {
   docx: 'bi-file-earmark-word',
   pdf: 'bi-file-earmark-pdf',
   html: 'bi-filetype-html',
+};
+
+/** Emphasis for info and success: their base colours fall under 3:1 on a light surface. */
+const TONES: Readonly<Record<ExportFormat, string>> = {
+  md: 'text-body-secondary',
+  docx: 'text-info-emphasis',
+  pdf: 'text-danger',
+  html: 'text-success-emphasis',
 };

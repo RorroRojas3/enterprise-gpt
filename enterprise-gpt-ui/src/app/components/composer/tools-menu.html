@@ -6,79 +6,70 @@
   [stayOpen]="true"
   [disabled]="settings.toolsDisabled()"
 >
+  <!-- Dimmed but still focusable; the composer's warning line gives the reason. -->
   <span
     appMenuTriggerContent
-    class="tools-menu__pill"
-    [class.tools-menu__pill--disabled]="settings.toolsDisabled()"
-    [class.tools-menu__pill--armed]="settings.effectiveMcpServerIds().length > 0"
+    class="d-inline-flex align-items-center gap-2 rounded-pill bg-body-tertiary px-2 px-md-3 py-1 small fw-semibold text-nowrap"
+    [class.opacity-50]="settings.toolsDisabled()"
   >
-    <app-icon class="tools-menu__icon" name="bi-tools" />
-    <span class="tools-menu__pill-label">{{ settings.toolsLabel() }}</span>
-    <app-icon class="tools-menu__chevron" name="bi-chevron-down" />
+    <app-icon class="text-body-secondary" name="bi-tools" />
+    <span [class]="labelClass()">{{ settings.toolsLabel() }}</span>
+    <app-icon class="small text-body-secondary" name="bi-chevron-down" />
   </span>
 
-  <p class="tools-menu__heading" aria-hidden="true">Tool servers</p>
+  <!-- Visual header only: the panel's aria-label already names it, and a second
+       accessible "Tool servers" would be announced twice. -->
+  <p class="dropdown-header eyebrow" aria-hidden="true">Tool servers</p>
 
   <!--
     A disabled menu item, not <p>: role="menu" allows only menuitem children, and an empty menu
     fails axe and strands the roving focus.
   -->
   @if (mcps.servers().length === 0) {
-    <button appMenuItem type="button" aria-disabled="true" class="tools-menu__status">
+    <button appMenuItem type="button" aria-disabled="true" class="small">
       {{ mcps.isFulfilled() ? 'No tool servers are available to you.' : 'Loading tool servers…' }}
     </button>
   } @else {
     @for (server of mcps.servers(); track server.id) {
       @if (needsKey(server)) {
         <!-- A menuitem, not a menuitemcheckbox: it opens the key dialog and toggles nothing. -->
-        <button
-          appMenuItem
-          type="button"
-          class="tools-menu__option"
-          aria-haspopup="dialog"
-          (click)="openKeyDialog(server)"
-        >
+        <button appMenuItem type="button" aria-haspopup="dialog" (click)="openKeyDialog(server)">
           @if (brandIcon(server); as brand) {
-            <app-brand-icon class="tools-menu__brand" [name]="brand" />
+            <app-brand-icon class="flex-shrink-0 fs-6" [name]="brand" />
           } @else {
-            <app-icon class="tools-menu__brand tools-menu__brand--generic" [name]="fallbackIcon" />
+            <app-icon class="flex-shrink-0 text-body-secondary" [name]="fallbackIcon" />
           }
-          <span class="tools-menu__name">{{ server.name }}</span>
-          <app-status-dot class="tools-menu__state" tone="warn" label="Key required" />
+          <span class="flex-fill min-w-0 text-truncate small fw-medium">{{ server.name }}</span>
+          <app-status-dot class="flex-shrink-0" tone="warning" label="Key required" />
         </button>
       } @else {
         <!--
           Two sibling menu items, not a nested button, which is invalid HTML and unreachable by the
           roving focus. role="none" leaves both as direct menu children for assistive technology.
+          The toggle takes the width; the key control is its own item and roves separately.
         -->
-        <div class="tools-menu__row" role="none">
+        <div class="d-flex align-items-center" role="none">
           <button
             appMenuItem
             type="button"
             role="menuitemcheckbox"
-            class="tools-menu__option"
+            class="flex-fill min-w-0"
             [attr.aria-checked]="settings.selectedIdSet().has(server.id)"
             (click)="settings.toggleMcpServer(server.id)"
           >
             @if (brandIcon(server); as brand) {
-              <app-brand-icon class="tools-menu__brand" [name]="brand" />
+              <app-brand-icon class="flex-shrink-0 fs-6" [name]="brand" />
             } @else {
-              <app-icon
-                class="tools-menu__brand tools-menu__brand--generic"
-                [name]="fallbackIcon"
-              />
+              <app-icon class="flex-shrink-0 text-body-secondary" [name]="fallbackIcon" />
             }
-            <span class="tools-menu__name">{{ server.name }}</span>
-            <app-switch
-              class="tools-menu__switch"
-              [checked]="settings.selectedIdSet().has(server.id)"
-            />
+            <span class="flex-fill min-w-0 text-truncate small fw-medium">{{ server.name }}</span>
+            <app-switch class="flex-shrink-0" [checked]="settings.selectedIdSet().has(server.id)" />
           </button>
           @if (server.requiresUserApiKey) {
             <button
               appMenuItem
               type="button"
-              class="tools-menu__manage"
+              class="w-auto flex-shrink-0 me-2 px-2 py-1 border small font-monospace text-body-secondary"
               aria-haspopup="dialog"
               [attr.aria-label]="
                 'Change your API key for ' + server.name + ', ending ' + server.apiKeyHint
@@ -93,7 +84,7 @@
     }
     <hr appMenuSeparator />
     <!-- Redundant with the menu's own stay-open behavior, so hidden from AT. -->
-    <p class="tools-menu__footnote" aria-hidden="true">
+    <p class="dropdown-item-text small text-body-secondary mb-0" aria-hidden="true">
       Stays open while you toggle — applies to the next turn.
     </p>
   }
