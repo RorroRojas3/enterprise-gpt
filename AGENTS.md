@@ -1,4 +1,4 @@
-<!-- andes:begin v1.12.1 -->
+<!-- andes:begin v1.16.0 -->
 # Andes engineering standards
 
 Shared by Claude Code and GitHub Copilot. The `andes-init` skill manages this block and replaces it on refresh — put project-specific instructions after the `andes:end` marker (`andes-init` scaffolds those sections on first install).

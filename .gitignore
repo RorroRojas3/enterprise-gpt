@@ -22,6 +22,9 @@
 .claude/settings.local.json
 .claude/*.local.json
 
+# Planner working files; AGENTS.md says never commit them.
+docs/plans/
+
 # --- Editors -----------------------------------------------------------------
 
 # Mirrors the allow-list in the UI project's file: the three committed workspace
