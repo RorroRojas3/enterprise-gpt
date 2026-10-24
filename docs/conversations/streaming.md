@@ -170,6 +170,15 @@ Three layers, all inside `features/chat/`:
 | Transport | The request, auth, error typing, abort, batching | `features/chat/conversation-stream-client.ts` |
 | Turn state | Folding events into a rendered turn | `features/chat/turn-store.ts` |
 
+**The stream's lifetime is the session's, not the screen's.** Each conversation's `TurnStore` owns
+its request, and the store lives in a chat session that outlives navigation (see
+[turn-lifecycle.md](turn-lifecycle.md#one-session-per-conversation)). Leaving a conversation or
+`/chat` therefore leaves the fetch running, and several conversations can stream at once, each
+holding a connection of its own. The fetch is aborted only by Stop, by sign-out, or by destroying the
+session — which happens when a conversation is deleted or a reload ends the page. A reload ends every
+running turn, since the stream is not resumable; the client asks the browser to confirm first (see
+[../frontend/layout-and-navigation.md](../frontend/layout-and-navigation.md#leaving-the-page-mid-turn)).
+
 `StreamCodec` is `decode(chunk: Uint8Array): AssistantUiEvent[]` plus `flush()` — synchronous and
 push-based, with **one instance per request**, because both implementations carry cross-read state
 (a partial frame, or an incomplete multi-byte character).

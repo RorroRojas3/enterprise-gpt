@@ -116,7 +116,10 @@ Two structural rules:
   chunk off the wire, which is why `/admin` uses it.
 
 `chatMatcher` matches both `/chat` and `/chat/{id}` in one route config, so the component is reused
-rather than remounted when a conversation is created around the first prompt.
+rather than remounted when the user opens another conversation or a conversation is created around
+the first prompt. `ChatSessions` swaps the session beneath it, and a conversation left behind keeps
+streaming; see
+[../conversations/turn-lifecycle.md](../conversations/turn-lifecycle.md#one-session-per-conversation).
 
 The shell and every route under it are lazy, which is what keeps the signed-in chrome off the four
 unguarded auth routes.

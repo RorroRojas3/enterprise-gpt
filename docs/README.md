@@ -20,7 +20,7 @@ for whichever side you are working on, then the subsystem you are touching.
 
 | Doc | Covers |
 | --- | --- |
-| [turn-lifecycle.md](conversations/turn-lifecycle.md) | Send to settled transcript entry, Stop, reopening |
+| [turn-lifecycle.md](conversations/turn-lifecycle.md) | Chat sessions, send to settled transcript entry, Stop, reopening, the concurrent-turn cap |
 | [streaming.md](conversations/streaming.md) | The SSE wire contract and the client that reads it |
 | [transcripts.md](conversations/transcripts.md) | Cosmos storage, token estimation, the context budget |
 | [usage-and-reporting.md](conversations/usage-and-reporting.md) | The append-only audit trail, favourites, the usage report |
@@ -54,11 +54,11 @@ for whichever side you are working on, then the subsystem you are touching.
 
 | Doc | Covers |
 | --- | --- |
-| [state.md](frontend/state.md) | Signal-store conventions, the five composable features, cross-store events |
+| [state.md](frontend/state.md) | Signal-store conventions, the five composable features, cross-store events, conversation activity |
 | [errors.md](frontend/errors.md) | `AppError` normalization, retry policy, the refresh decision |
 | [design-system.md](frontend/design-system.md) | Tokens, theming, typography, icons, accessibility contracts |
 | [answer-rendering.md](frontend/answer-rendering.md) | The markdown pipeline, streaming split, diagrams and math |
-| [layout-and-navigation.md](frontend/layout-and-navigation.md) | Breakpoints, the three modes, the shell, overlays |
+| [layout-and-navigation.md](frontend/layout-and-navigation.md) | Breakpoints, the three modes, the shell, activity indicators, the leave guard, overlays |
 
 ## Administration
 

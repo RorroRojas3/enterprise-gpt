@@ -274,6 +274,25 @@ behaves. `ui-kit` is a feature, and features never import each other, so the thr
 shows that other features own (`badges/permission-badge`, `badges/kind-badge`, `cards/project-card`)
 live in `shared/`.
 
+### Activity indicator
+
+`ActivityIndicator` (`shared/badges/`) is the one mark for what a conversation is doing that its
+reader has not seen. It is presentational and never interactive, which is what lets it sit inside a
+row's link and extend that link's accessible name.
+
+| `activity` | Draws | Meaning |
+| --- | --- | --- |
+| `running` | Bootstrap's `spinner-border spinner-border-sm text-primary` | A turn is generating |
+| `answer` | A primary `StatusDot` | An answer finished while the reader was elsewhere |
+| `interrupted` | `bi-exclamation-triangle-fill` in `text-warning-emphasis` | The response was cut off or failed |
+
+Colour is never the only channel: the shapes differ, and each carries a visually hidden label
+("Generating answer", "New answer", "Response interrupted") unless `labelled` is false. Turn it off
+where the host control's own `aria-label` already says the same thing, as on the corner marks of the
+strip's Chat link and the mobile hamburger; otherwise the label is read twice. Where each mark appears is in
+[layout-and-navigation.md](layout-and-navigation.md#activity-indicators); the `/ui-kit` gallery shows
+all three under Badges.
+
 ### Overlay primitives
 
 The Angular logic is the app's own; the skin is Bootstrap's CSS. There is no Bootstrap JavaScript,
@@ -295,8 +314,9 @@ Popper or ng-bootstrap, and `check:forbidden` fails an import of any of them.
   The panel is `.dropdown-menu.dropdown-menu-fixed.show`; `MenuItem` hosts as `.dropdown-item` and
   `MenuSeparator` as `.dropdown-divider`. Danger items use `text-danger-emphasis`.
 - **Tooltip.** Renders `.tooltip.show.position-fixed` > `.tooltip-inner`, without an arrow.
-- **Toasts.** `.toast-container` > `.toast.show` > `.toast-body` with a `.btn-close`. The tone edge and
-  the drain bar are bespoke.
+- **Toasts.** `.toast-container` > `.toast.show` > `.toast-body` with a `.btn-close`, and one optional
+  `.btn-link` action button (Retry, Open). The tone edge and the drain bar are bespoke. A toast with
+  `dismissAfterMs: 0` stays until dismissed or acted on.
 - **Project picker.** A `.dropdown-menu` of `.dropdown-item` rows marked `data-picker-row`.
 
 Specs find elements by role and accessible name through `@testing-library/dom`, and
@@ -317,6 +337,7 @@ Specs find elements by role and accessible name through `@testing-library/dom`, 
 | `enterprise-gpt-ui/src/styles/_kit.scss` | Classes Bootstrap lacks |
 | `enterprise-gpt-ui/src/styles/_motion.scss` | The three app keyframes and the reduced-motion block |
 | `enterprise-gpt-ui/src/app/shared/icons/icon-names.ts` | The sprite manifest |
+| `enterprise-gpt-ui/src/app/shared/badges/activity-indicator.ts` | The running, new-answer and interrupted marks |
 | `enterprise-gpt-ui/src/testing/overlays.ts` | Spec helpers for menus, tooltips, dialogs and icons |
 | `enterprise-gpt-ui/scripts/check-tokens.mjs` | Shell parity, contrast, breakpoint parity |
 | `enterprise-gpt-ui/src/styles/motion.spec.ts` | No animation names a keyframe that does not exist |

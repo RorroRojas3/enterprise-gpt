@@ -53,7 +53,7 @@ inside the store that made them.
 | `sessionEvents` | `signedOut` |
 | `conversationEvents` | `updated`, `deleted` |
 | `projectEvents` | `favorited` |
-| `turnEvents` | Turn-scoped facts the shell needs |
+| `turnEvents` | `completed` (only on a folded `Finished`, with `wasFirstTurn`) and `interrupted` (a cut-off, or a failure while the turn is live; never Stop or an abort). Published by a chat session's `TurnStore`, which root stores cannot reach |
 | `mcpEvents` | Credential state changes |
 | `adminEvents` | Three user events carrying a DTO, plus `modelCatalogChanged` and `mcpCatalogChanged` as `type<void>()` |
 
@@ -61,6 +61,13 @@ The two catalog events are `void` on purpose, because the thing that changed is 
 the response: a save that sets `isDefault` demotes a row no response mentions, and a 204 from a
 delete carries no `dateDeactivated`. Each has two observers — one route-scoped, one root — and both
 refetch.
+
+Two root stores observe `turnEvents`. `ConversationListStore` handles the first-turn name: on
+`completed` with `wasFirstTurn` it fetches the conversation detail, calls `refreshRow`, and emits
+`conversationEvents.updated` carrying the list fields. A conversation that finished in the
+background is therefore named in the sidebar, and the open screen's `ConversationStore` hears the
+same event. `ConversationActivityStore` marks endings that happen out of sight. `ChatSessions`
+listens to `conversationEvents.deleted` to destroy a deleted conversation's session.
 
 The one bounded exception to "server-confirmed facts only" is the favourite endpoint, whose 204
 carries no body; the event carries the fact rather than a DTO.
@@ -74,15 +81,22 @@ feature injects, or that a guard, interceptor or core service injects, sits in t
 serves, because `core` may not import a feature: `SessionStore`, `ModelCatalogStore`,
 `McpCatalogStore`, `ConversationListStore`, `ProjectLookupStore` and `ToastStore`, plus the
 conversation, project and document action stores and the composer's turn-settings and pending-handoff
-stores.
+stores. `ConversationActivityStore` is one of them: the shell's sidebar and navbar read it, so it
+cannot live in `features/chat/`.
 
 **Root-scoped** — session, UI preferences, toasts, the model and MCP catalogs and their action
-stores, conversation list/actions/export, project lookup and actions, document download, supported
-extensions, user actions, pending prompt and pending attachments, turn settings.
+stores, conversation list/actions/export, conversation activity, project lookup and actions,
+document download, supported extensions, user actions, pending prompt and pending attachments, turn
+settings, and `ChatSessions` (`features/chat/chat-sessions.ts`), the registry of chat sessions.
 
-**Component- or route-scoped** — the conversation and turn stores on `/chat`, the four library list
-stores, the project detail trio provided on the route, the four admin screen stores, the composer's
-dictation store and three separate `UploadStore` instances.
+**Chat-session-scoped** — one `TurnStore` and one `UploadStore` per conversation, owned by an
+environment injector that `ChatSessions` builds and destroys. They outlive the `/chat` screen, so a
+turn keeps streaming while the user reads another conversation; see
+[../conversations/turn-lifecycle.md](../conversations/turn-lifecycle.md#one-session-per-conversation).
+
+**Component- or route-scoped** — the conversation store on `/chat`, the four library list stores,
+the project detail trio provided on the route, the four admin screen stores, the composer's
+dictation store, and the project screen's two `UploadStore` instances.
 
 Two scoping choices worth knowing:
 
@@ -90,9 +104,10 @@ Two scoping choices worth knowing:
   device-local preferences, not the signed-in user's data.
 - `AdminReportsStore` is provided on the *screen*, not the admin layout, so back-navigation gets a
   fresh empty instance rather than a stale report.
-- `UploadStore` is provided three times, never shared by accident. `Chat` provides one instance and
-  points the composer's `COMPOSER_UPLOADS` token at that same instance (`useExisting`), so the chips
-  the composer draws are the very ones `TurnStore` gates a send on. `ProjectDetail` provides two:
+- `UploadStore` is never shared by accident. Each chat session owns one instance, and
+  `ChatSessionView` points the composer's `COMPOSER_UPLOADS` token at it (`useExisting`), so the
+  chips the composer draws are the very ones that session's `TurnStore` gates a send on, and another
+  conversation's uploads can never release that gate. `ProjectDetail` provides two:
   one project-bound, backing the Files tab, and a second, separate instance behind `COMPOSER_UPLOADS`
   (`useClass`) for its composer — deliberately unbound, so a file attached there becomes a
   conversation document once the prompt creates one, not a document of the project the screen is
@@ -108,6 +123,36 @@ Two scoping choices worth knowing:
   project-created conversation's composer already held, from the screen that creates the
   conversation to the one that uploads into it.
 
+## Conversation activity
+
+`ConversationActivityStore` (`core/conversations/`, root) answers "what is each conversation doing,
+and what did I miss?" for the sidebar, the library, the navbar and the composer. It does not own the
+turns. `core/` may not import `features/chat/`, so `ChatSessions` hands it a port through
+`connect()` — the running ids, the running count, the conversation on screen, and a `stop(id)` —
+and the store reads those signals.
+
+- **State is the `unseen` map**, conversation id to `answer` or `interrupted`. A turn that ends
+  while its conversation is on screen adds nothing; one that ends elsewhere marks it, and
+  `markSeen(id)` clears the mark when the conversation is opened or deleted.
+- **Reads are derived.** `activityOf()` returns a lookup, so each row reads one id without a store
+  per row; `running` outranks `answer`, which outranks `interrupted`. `summary` and `summaryLabel`
+  reduce the whole set to the one mark and the one phrase a collapsed control shows, for example
+  "2 generating, 1 new answer".
+- **An answer that finishes out of sight raises a sticky info toast**, "Answer ready" with the
+  conversation's name and an Open action. There is one per conversation, a later answer replaces
+  it, and seeing the conversation clears it. The name comes from the sidebar's copy; when the sidebar
+  does not hold the conversation, or the turn was the first and the row still carries the
+  placeholder, the store reads it from the API first. An interrupted ending raises no toast, only the
+  mark: a warning never dismisses itself, and the row's icon already says it.
+- **`atCapacity`** is `runningCount >= maxConcurrentTurns`; see
+  [../conversations/turn-lifecycle.md](../conversations/turn-lifecycle.md#concurrency).
+
+`ToastStore` takes an optional `action: { label, run }` on `ToastInput` and renders at most one
+button for it; `onRetry` stays as shorthand for an action labelled Retry, and `action` wins if both
+are given. The stored `Toast` carries `actionLabel`, the toast region and each item emit `actioned`,
+and `runAction(id)` dismisses the toast before it calls the handler, so a toast the handler raises
+does not stack under the one just used.
+
 ## Key files
 
 | Path | Role |
@@ -116,9 +161,13 @@ Two scoping choices worth knowing:
 | `enterprise-gpt-ui/src/app/core/session/with-reset-on-sign-out.ts` | The fifth, which resets a store on sign-out |
 | `enterprise-gpt-ui/src/app/core/conversations/conversation-list-store.ts` | The reference list store |
 | `enterprise-gpt-ui/src/app/core/events/` | The six event groups |
+| `enterprise-gpt-ui/src/app/core/conversations/conversation-activity-store.ts` | Running and unseen endings, the cap, the "Answer ready" toast |
+| `enterprise-gpt-ui/src/app/features/chat/chat-sessions.ts` | The registry that owns each conversation's turn and upload stores |
 | `enterprise-gpt-ui/src/app/core/session/session-store.ts` | Identity and permissions |
 | `enterprise-gpt-ui/src/app/features/` | Each feature's own stores, beside the screens that provide them |
 | `enterprise-gpt-ui/src/app/core/session/with-reset-on-sign-out.spec.ts` | The composition-order guard |
+| `enterprise-gpt-ui/src/app/core/conversations/conversation-activity-store.spec.ts` | Unseen marks, the toast, summaries and the cap |
+| `enterprise-gpt-ui/src/app/features/chat/chat-sessions.spec.ts` | Session lookup, retention and disposal |
 
 ## Related
 

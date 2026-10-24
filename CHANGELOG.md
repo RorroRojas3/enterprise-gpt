@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Several conversations can now stream at once. Switching conversations, or leaving the chat screen,
+  no longer cancels the answer that is generating (before, the abort cancelled the turn on the server,
+  so it was billed but never saved): each conversation keeps its own turn, unsent text and attachment
+  chips, and a first prompt keeps creating its conversation even if you navigate away. Sidebar rows,
+  project conversation lists and the Conversations library show a spinner while an answer generates,
+  a dot when a new one finished out of sight and a warning when one was cut off. The collapsed
+  sidebar's Chat link and the mobile menu button carry a summary mark and spoken summary, a running
+  row's menu has "Stop response", and an answer that finishes out of sight raises an "Answer ready"
+  toast with an Open button. A conversation finished in the background is named in the sidebar
+  without being opened. Up to four answers run at once; set `chat.maxConcurrentTurns` (1 to 6) in
+  `config.json` to change that, and serve the API over HTTP/2 in production (App Service
+  `http20Enabled`) so streams do not compete for the browser's six HTTP/1.1 connections. At the cap
+  Send is disabled and Retry is refused with a warning. The browser now asks you to confirm before a
+  reload or tab close while an answer is generating, since that still ends every running turn.
 - Conversation documents can now be deleted individually
   (`DELETE api/documents/conversations/{conversationId}/{documentId}`), matching the delete that
   already existed for project documents. Only an uploaded file can be removed this way; a file the
@@ -19,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Client API changes behind concurrent conversations, for anyone extending the UI. Toasts can carry
+  any action button: `ToastInput` gains `action: { label, run }` (`onRetry` still works as shorthand),
+  `Toast.retryLabel` is now `actionLabel`, `ToastStore.retry(id)` is `runAction(id)`, and the toast
+  item and region output `retried` is now `actioned`. `TurnStore` is created per chat session rather
+  than provided by `Chat`, and `bindRoute` is replaced by a one-shot `init(id)`. The `ComposerHost`
+  contract gains `draft` and `setDraft`. `turnEvents` gains `interrupted` beside `completed`, and the
+  first-turn name refresh moved from the chat screen to `ConversationListStore`.
 - The Angular client is restyled on full Bootstrap 5.3, with Bootstrap's default type, spacing and
   radius scales, so text and spacing are visibly larger than before. The desktop layout with the
   persistent sidebar now starts at 992px instead of 1024px, and the palette lives under Bootstrap's

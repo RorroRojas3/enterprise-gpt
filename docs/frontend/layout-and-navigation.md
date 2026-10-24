@@ -89,6 +89,41 @@ shows for a focus the browser marks `:focus-visible`, so that restored focus can
 the new chevron for a keyboard user without leaving it stuck open for a pointer user who never
 hovered the control focus landed on.
 
+## Activity indicators
+
+Because a turn keeps streaming after the user leaves its conversation, the shell has to show which
+conversations are generating and which finished while nobody was looking. `ConversationActivityStore`
+holds that (see [state.md](state.md#conversation-activity)); `ActivityIndicator` draws it (see
+[design-system.md](design-system.md#activity-indicator)).
+
+| Where | What it shows |
+| --- | --- |
+| Sidebar conversation row | The indicator sits **inside the row's link**, so its hidden label extends the link's accessible name. While the turn is running, the row's kebab also offers "Stop response", which stops it without opening the conversation |
+| Sidebar project conversations | The same indicator at the end of each row's link |
+| Conversations library | The indicator leads the name cell, so truncation never cuts it |
+| Strip (collapsed sidebar) | A corner mark on the Chat link, since the strip lists no conversations. The mark is the one `summary` and the link's `aria-label` carries `summaryLabel`, for example "Chat — 2 generating, 1 new answer" |
+| Mobile navbar | The same corner mark on the hamburger, which stands for the conversations in the drawer; its `aria-label` reads "Open navigation — 2 generating, 1 new answer" |
+
+On the two corner marks the indicator is unlabelled (`labelled=false`) because the control's own
+`aria-label` already says it, and repeating it would be read twice. A running turn outranks an unseen
+answer, which outranks an interrupted one, so a corner mark shows the most urgent of them.
+
+## Leaving the page mid-turn
+
+A reload or a closed tab ends every running turn, and the stream cannot be resumed. While any turn is
+in flight, `UnloadPrompt` (`core/navigation/unload-prompt.ts`) asks the browser to confirm. Routing
+inside the app never prompts, because the sessions survive it.
+
+- **The `beforeunload` listener is attached only while a turn is running.** Any such listener keeps
+  a page out of the back/forward cache, so an idle page must not carry one. `ChatSessions` registers
+  its running count with `register(busy)`; the guard is the union of every registered source.
+- **App-initiated leaves never prompt.** MSAL's redirects go through `leaving(fn)`, and
+  `HardNavigation` calls `suspend()`. The prompt is the wrong thing to show mid-redirect, and
+  cancelling it would leave MSAL's `interaction_in_progress` lock stranded. `Auth.signIn`,
+  `Auth.signOut` and `AccessTokenClient` all wrap their redirects in `leaving()`. If the redirect
+  rejects, the page stayed and the guard is re-armed; `AccessTokenClient` then suspends again for the
+  one rejection that means a redirect is already committed.
+
 ## Overlays
 
 The primitives are `anchored-panel` (positioning), `menu` (roving
@@ -124,8 +159,11 @@ would navigate the browser to that file, discarding an in-flight turn.
 | `enterprise-gpt-ui/src/app/features/shell/shell.ts` | Mode derivation and composition |
 | `enterprise-gpt-ui/src/app/features/shell/sidebar/sidebar.ts` | The two width branches |
 | `enterprise-gpt-ui/src/app/features/shell/ui-store.ts` | Device-local layout preferences |
+| `enterprise-gpt-ui/src/app/shared/badges/activity-indicator.ts` | The spinner, dot or warning shown on rows and corner marks |
+| `enterprise-gpt-ui/src/app/core/navigation/unload-prompt.ts` | The `beforeunload` guard while a turn is in flight |
 | `enterprise-gpt-ui/src/app/shared/{menu,dialog,overlay}/` | Menu, modal, offcanvas, the tooltip directive and `anchored-panel` |
 | `enterprise-gpt-ui/src/app/shared/dialog/modal.spec.ts` | Focus restore on close and destroy |
+| `enterprise-gpt-ui/src/app/core/navigation/unload-prompt.spec.ts` | When the listener is attached, suspended and re-armed |
 
 ## Related
 

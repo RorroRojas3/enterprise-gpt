@@ -26,10 +26,14 @@ A surface that is not chat provides the same factory on its own route component,
 
 ```ts
 @Component({
-  providers: [ConversationStore, TurnStore, provideChatMarkdown()],
+  providers: [ConversationStore, provideChatMarkdown()],
 })
 export class Chat {}
 ```
+
+`TurnStore` is not in that list: each chat session owns its own, and `Chat` renders the transcript
+through the session's environment injector. The markdown providers still resolve from `Chat`'s
+element chain, because the session view is created inside it.
 
 ## Five rules the build enforces
 

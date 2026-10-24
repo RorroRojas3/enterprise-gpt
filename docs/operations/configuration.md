@@ -62,6 +62,19 @@ The client has no build-time environments and no `fileReplacements`. `main.ts` f
 file renders the fatal shell and does not bootstrap. The committed copy is the development one and
 is replaced per environment.
 
+| Key | Default | Holds |
+| --- | --- | --- |
+| `chat.maxConcurrentTurns` | `4` | How many answers one browser tab may stream at once. Optional; a whole number from 1 to 6, and anything else makes the config invalid, so the client does not bootstrap |
+
+**Why a cap.** Every running turn holds an open connection to the API. Over HTTP/1.1 a browser
+allows six connections per host, shared with every other API call, so a cap at six would leave the
+list, uploads and history reads queued behind the streams. The default of 4 leaves headroom on
+HTTP/1.1. **Serve the API over HTTP/2 in production** (on App Service, enable `http20Enabled`): it
+multiplexes the streams over one connection, which removes the limit and makes a higher cap safe.
+The cap is a client-side courtesy; the server enforces only one turn per conversation. What the user
+sees at the cap is in
+[../conversations/turn-lifecycle.md](../conversations/turn-lifecycle.md#concurrency).
+
 ## Key Vault
 
 ```json
