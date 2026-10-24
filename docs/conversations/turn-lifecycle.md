@@ -185,8 +185,8 @@ bus (see [../frontend/state.md](../frontend/state.md#cross-store-events)):
   (including one before the stream opens). **Never** for Stop or an abort.
 
 Both feed `ConversationActivityStore`, which marks the conversation when the ending happened out of
-sight. After a first turn completes, `ConversationListStore` re-reads the conversation to pick up
-the server-generated name, so a conversation that finished in the background is named in the sidebar
+sight. After a first turn completes, it also re-reads the conversation to pick up the
+server-generated name, so a conversation that finished in the background is named in the sidebar
 without being opened.
 
 ## Stop

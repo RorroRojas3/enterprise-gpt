@@ -315,8 +315,8 @@ Popper or ng-bootstrap, and `check:forbidden` fails an import of any of them.
   `MenuSeparator` as `.dropdown-divider`. Danger items use `text-danger-emphasis`.
 - **Tooltip.** Renders `.tooltip.show.position-fixed` > `.tooltip-inner`, without an arrow.
 - **Toasts.** `.toast-container` > `.toast.show` > `.toast-body` with a `.btn-close`, and one optional
-  `.btn-link` action button (Retry, Open). The tone edge and the drain bar are bespoke. A toast with
-  `dismissAfterMs: 0` stays until dismissed or acted on.
+  `.btn-link` action button (Retry, Open). The tone edge and the drain bar are bespoke. Every toast
+  dismisses itself after three seconds (`AUTO_DISMISS_MS`), whatever its tone.
 - **Project picker.** A `.dropdown-menu` of `.dropdown-item` rows marked `data-picker-row`.
 
 Specs find elements by role and accessible name through `@testing-library/dom`, and

@@ -35,11 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Client API changes behind concurrent conversations, for anyone extending the UI. Toasts can carry
   any action button: `ToastInput` gains `action: { label, run }` (`onRetry` still works as shorthand),
-  `Toast.retryLabel` is now `actionLabel`, `ToastStore.retry(id)` is `runAction(id)`, and the toast
-  item and region output `retried` is now `actioned`. `TurnStore` is created per chat session rather
+  `Toast.retryLabel` is now `actionLabel`, `ToastStore.retry(id)` is `runAction(id)`, the toast
+  item output `retried` is now `actioned` (the region runs the action itself), and `ToastInput`
+  gains a `key` that replaces a live toast with the same key. `TurnStore` is created per chat session rather
   than provided by `Chat`, and `bindRoute` is replaced by a one-shot `init(id)`. The `ComposerHost`
   contract gains `draft` and `setDraft`. `turnEvents` gains `interrupted` beside `completed`, and the
-  first-turn name refresh moved from the chat screen to `ConversationListStore`.
+  first-turn name refresh moved from the chat screen to `ConversationActivityStore`.
+- Every toast now dismisses itself after three seconds, whatever its tone. Error and warning toasts
+  used to stay until dismissed, and success and info toasts lasted five seconds.
 - The Angular client is restyled on full Bootstrap 5.3, with Bootstrap's default type, spacing and
   radius scales, so text and spacing are visibly larger than before. The desktop layout with the
   persistent sidebar now starts at 992px instead of 1024px, and the palette lives under Bootstrap's

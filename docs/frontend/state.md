@@ -62,12 +62,12 @@ the response: a save that sets `isDefault` demotes a row no response mentions, a
 delete carries no `dateDeactivated`. Each has two observers — one route-scoped, one root — and both
 refetch.
 
-Two root stores observe `turnEvents`. `ConversationListStore` handles the first-turn name: on
-`completed` with `wasFirstTurn` it fetches the conversation detail, calls `refreshRow`, and emits
-`conversationEvents.updated` carrying the list fields. A conversation that finished in the
-background is therefore named in the sidebar, and the open screen's `ConversationStore` hears the
-same event. `ConversationActivityStore` marks endings that happen out of sight. `ChatSessions`
-listens to `conversationEvents.deleted` to destroy a deleted conversation's session.
+`ConversationActivityStore` observes `turnEvents`. It marks endings that happen out of sight, and
+handles the first-turn name: on `completed` with `wasFirstTurn` it fetches the conversation detail,
+calls `ConversationListStore.refreshRow`, and emits `conversationEvents.updated` carrying the list
+fields. A conversation that finished in the background is therefore named in the sidebar, and the
+open screen's `ConversationStore` hears the same event. `ChatSessions` listens to
+`conversationEvents.deleted` to destroy a deleted conversation's session.
 
 The one bounded exception to "server-confirmed facts only" is the favourite endpoint, whose 204
 carries no body; the event carries the fact rather than a DTO.
@@ -134,24 +134,26 @@ and the store reads those signals.
 - **State is the `unseen` map**, conversation id to `answer` or `interrupted`. A turn that ends
   while its conversation is on screen adds nothing; one that ends elsewhere marks it, and
   `markSeen(id)` clears the mark when the conversation is opened or deleted.
-- **Reads are derived.** `activityOf()` returns a lookup, so each row reads one id without a store
-  per row; `running` outranks `answer`, which outranks `interrupted`. `summary` and `summaryLabel`
-  reduce the whole set to the one mark and the one phrase a collapsed control shows, for example
-  "2 generating, 1 new answer".
-- **An answer that finishes out of sight raises a sticky info toast**, "Answer ready" with the
-  conversation's name and an Open action. There is one per conversation, a later answer replaces
+- **Reads are derived.** `activityOf(id)` reads one conversation; `running` outranks `answer`, which
+  outranks `interrupted`. `summary` reduces the whole set to the one mark a collapsed control shows,
+  and `summarySuffix` to the phrase appended to its name, for example " — 2 generating, 1 new
+  answer".
+- **An answer that finishes out of sight raises an info toast**, "Answer ready" with the
+  conversation's name and an Open action. It is keyed per conversation, so a later answer replaces
   it, and seeing the conversation clears it. The name comes from the sidebar's copy; when the sidebar
   does not hold the conversation, or the turn was the first and the row still carries the
   placeholder, the store reads it from the API first. An interrupted ending raises no toast, only the
-  mark: a warning never dismisses itself, and the row's icon already says it.
+  row's mark.
 - **`atCapacity`** is `runningCount >= maxConcurrentTurns`; see
   [../conversations/turn-lifecycle.md](../conversations/turn-lifecycle.md#concurrency).
 
 `ToastStore` takes an optional `action: { label, run }` on `ToastInput` and renders at most one
 button for it; `onRetry` stays as shorthand for an action labelled Retry, and `action` wins if both
-are given. The stored `Toast` carries `actionLabel`, the toast region and each item emit `actioned`,
-and `runAction(id)` dismisses the toast before it calls the handler, so a toast the handler raises
-does not stack under the one just used.
+are given. The stored `Toast` carries `actionLabel`; each item emits `actioned`, which the region
+passes to `runAction(id)`, and that dismisses the toast before it calls the handler, so a toast the
+handler raises does not stack under the one just used. A `key` replaces a live toast with the same
+key, and `dismissKey(key)` clears it. Every toast dismisses itself after `AUTO_DISMISS_MS` (three
+seconds), whatever its tone.
 
 ## Key files
 

@@ -101,7 +101,7 @@ holds that (see [state.md](state.md#conversation-activity)); `ActivityIndicator`
 | Sidebar conversation row | The indicator sits **inside the row's link**, so its hidden label extends the link's accessible name. While the turn is running, the row's kebab also offers "Stop response", which stops it without opening the conversation |
 | Sidebar project conversations | The same indicator at the end of each row's link |
 | Conversations library | The indicator leads the name cell, so truncation never cuts it |
-| Strip (collapsed sidebar) | A corner mark on the Chat link, since the strip lists no conversations. The mark is the one `summary` and the link's `aria-label` carries `summaryLabel`, for example "Chat — 2 generating, 1 new answer" |
+| Strip (collapsed sidebar) | A corner mark on the Chat link, since the strip lists no conversations. The mark is the one `summary`, and the link's `aria-label` appends `summarySuffix`, for example "Chat — 2 generating, 1 new answer" |
 | Mobile navbar | The same corner mark on the hamburger, which stands for the conversations in the drawer; its `aria-label` reads "Open navigation — 2 generating, 1 new answer" |
 
 On the two corner marks the indicator is unlabelled (`labelled=false`) because the control's own
