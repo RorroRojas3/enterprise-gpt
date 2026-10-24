@@ -9,15 +9,7 @@ import { fileURLToPath } from 'node:url';
 const UI_ROOT = resolve(fileURLToPath(import.meta.url), '../..');
 const REPO_ROOT = resolve(UI_ROOT, '..');
 const API_ROOT = join(REPO_ROOT, 'enterprise-gpt-api');
-const VENDORED = join(
-  UI_ROOT,
-  'src',
-  'app',
-  'shared',
-  'models',
-  'andes',
-  'assistant-ui.contract.ts',
-);
+const VENDORED = join(UI_ROOT, 'src', 'app', 'core', 'api', 'assistant-ui-contract.ts');
 const SENTINEL = '// --- END VENDOR HEADER';
 
 /** The four symbols that may exist in exactly one place: the vendored file. */

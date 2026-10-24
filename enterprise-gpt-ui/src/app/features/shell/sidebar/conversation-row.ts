@@ -8,14 +8,14 @@ import {
   viewChild,
 } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import { ConversationDto } from '@shared/models/api/conversation.model';
+import { ConversationDto } from '@core/api/conversation.model';
+import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
-import { ConversationActionsStore } from '@state/conversation-actions-store';
-import { Icon } from '@shared/components/icon/icon';
-import { Menu } from '@shared/components/menu/menu';
-import { ProjectPicker } from '@shared/components/project-picker/project-picker';
-import { MenuItem } from '@shared/directives/menu-item';
-import { MenuSeparator } from '@shared/directives/menu-separator';
+import { ProjectPicker } from '@core/projects/project-picker';
+import { Icon } from '@shared/icons/icon';
+import { Menu } from '@shared/menu/menu';
+import { MenuItem } from '@shared/menu/menu-item';
+import { MenuSeparator } from '@shared/menu/menu-separator';
 
 /**
  * Selection comes from the router, not an input. The kebab's dialogs are mounted once in the

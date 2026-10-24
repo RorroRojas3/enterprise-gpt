@@ -13,14 +13,14 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { ConversationDto } from '@shared/models/api/conversation.model';
-import { onDismiss } from '@shared/utils/a11y/dismiss';
-import { AnchoredPosition, anchoredPosition } from '@shared/utils/overlay/anchored-panel';
-import { matchesProjectTerm } from '@shared/utils/projects/project-load';
-import { ProjectLookupStore } from '@core/projects/project-lookup-store';
-import { ConversationActionsStore } from '@state/conversation-actions-store';
-import { ProjectActionsStore } from '@state/project-actions-store';
-import { Icon } from '@shared/components/icon/icon';
+import { ConversationDto } from '@core/api/conversation.model';
+import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
+import { Icon } from '@shared/icons/icon';
+import { AnchoredPosition, anchoredPosition } from '@shared/overlay/anchored-panel';
+import { onDismiss } from '@shared/overlay/dismiss';
+import { ProjectActionsStore } from './project-actions-store';
+import { matchesProjectTerm } from './project-load';
+import { ProjectLookupStore } from './project-lookup-store';
 
 let nextId = 0;
 

@@ -4,7 +4,7 @@ import {
   McpServerDto,
   McpServerHeaders,
   McpServerWriteBody,
-} from '@shared/models/api/mcp.model';
+} from '@core/api/mcp.model';
 
 /** Mirrors `CreateMcpServerActionDtoValidator`, so a rejection is the exception. */
 export const MCP_SERVER_FIELD_LENGTHS = {

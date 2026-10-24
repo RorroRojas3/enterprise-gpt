@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { COPY_CONFIRMATION_MS } from '@shared/utils/clipboard/copy-text';
+import { COPY_CONFIRMATION_MS } from './copy-text';
 import { MessageCopy } from './message-copy';
 
 /** Enough fake time for the zoneless scheduler's own notification to land. */

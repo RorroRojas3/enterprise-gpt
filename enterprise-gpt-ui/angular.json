@@ -12,15 +12,6 @@
         "@schematics/angular:component": {
           "changeDetection": "OnPush",
           "style": "scss"
-        },
-        "@schematics/angular:guard": {
-          "typeSeparator": "."
-        },
-        "@schematics/angular:interceptor": {
-          "typeSeparator": "."
-        },
-        "@schematics/angular:resolver": {
-          "typeSeparator": "."
         }
       },
       "root": "",

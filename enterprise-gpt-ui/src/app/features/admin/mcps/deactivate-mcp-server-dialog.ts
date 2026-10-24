@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { McpServerActionsStore } from '@state/mcp-server-actions-store';
-import { Modal } from '@shared/components/modal/modal';
+import { Modal } from '@shared/dialog/modal';
+import { McpServerActionsStore } from './mcp-server-actions-store';
 
 /**
  * Confirms on the store rather than emitting: the delete is soft and the row stays, so there is

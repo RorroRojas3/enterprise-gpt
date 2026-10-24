@@ -11,9 +11,9 @@ import {
   viewChild,
 } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import { IconName } from '@shared/utils/icons/icon-names';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { canRetry } from '@core/errors/error-message';
+import { ErrorPanel } from '@core/errors/error-panel';
 import {
   ADMIN_ROUTE,
   CHAT_ROUTE,
@@ -23,16 +23,16 @@ import {
 } from '@core/navigation/route-paths';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { SessionStore } from '@core/session/session-store';
-import { BrandLogo } from '@shared/components/brand-logo/brand-logo';
-import { EmptyState } from '@shared/components/empty-state/empty-state';
-import { ErrorPanel } from '@shared/components/error-panel/error-panel';
-import { Icon } from '@shared/components/icon/icon';
-import { Ridgeline } from '@shared/components/ridgeline/ridgeline';
-import { SearchInput } from '@shared/components/search-input/search-input';
-import { Skeleton } from '@shared/components/skeleton/skeleton';
-import { Tooltip } from '@shared/directives/tooltip';
+import { BrandLogo } from '@shared/brand/brand-logo';
+import { Ridgeline } from '@shared/brand/ridgeline';
+import { EmptyState } from '@shared/empty-state/empty-state';
+import { Icon } from '@shared/icons/icon';
+import { IconName } from '@shared/icons/icon-names';
+import { Skeleton } from '@shared/loading/skeleton';
+import { Tooltip } from '@shared/overlay/tooltip';
+import { SearchInput } from '@shared/search/search-input';
 import { ConversationRow } from './conversation-row';
-import { SidebarFavorites } from './favorite-projects';
+import { SidebarFavorites } from './sidebar-favorites';
 import { UserFooter } from './user-footer';
 
 /**

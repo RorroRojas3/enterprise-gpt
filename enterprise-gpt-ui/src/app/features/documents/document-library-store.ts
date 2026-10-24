@@ -21,26 +21,26 @@ import {
 import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { Observable, Subject, exhaustMap, merge, pipe, switchMap, takeUntil, tap } from 'rxjs';
-import { GENERATED_DOCUMENT_TYPE, UserDocumentDto } from '@shared/models/api/document.model';
-import { PaginatedResponseDto } from '@shared/models/api/paginated-response.model';
-import { toAppError } from '@core/errors/to-app-error';
-import { conversationEvents } from '@core/events/conversation-events';
-import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
-import { ToastStore } from '@core/notifications/toast-store';
+import { ApiUrl } from '@core/api/api-url';
+import { GENERATED_DOCUMENT_TYPE, UserDocumentDto } from '@core/api/document.model';
+import { PaginatedResponseDto } from '@core/api/paginated-response.model';
 import {
   OffsetPaginationState,
   setFirstPage,
   setPage,
   withOffsetPagination,
-} from '@core/state/with-offset-pagination';
+} from '@core/api/with-offset-pagination';
 import {
   setError,
   setFulfilled,
   setPending,
   withRequestStatus,
-} from '@core/state/with-request-status';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+} from '@core/api/with-request-status';
+import { toAppError } from '@core/errors/to-app-error';
+import { conversationEvents } from '@core/events/conversation-events';
+import { injectSignedOut } from '@core/events/session-events';
+import { ToastStore } from '@core/notifications/toast-store';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
 
 /** Matches the conversations library's page size, so paging feels the same on both screens. */
 export const DOCUMENT_PAGE_SIZE = 25;

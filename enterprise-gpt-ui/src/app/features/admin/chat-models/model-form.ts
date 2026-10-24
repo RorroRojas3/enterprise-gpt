@@ -1,6 +1,6 @@
-import { ModelDto, ModelWriteBody } from '@shared/models/api/chat-model.model';
-import { PROVIDER_ID } from '@shared/models/api/provider.model';
-import { providerMeta } from './provider-meta';
+import { ModelDto, ModelWriteBody } from '@core/api/chat-model.model';
+import { PROVIDER_ID } from '@core/api/provider.model';
+import { providerMeta } from '@core/catalog/provider-meta';
 
 /** Mirrors `CreateModelActionDtoValidator`, so a rejection is the exception. */
 export const MODEL_FIELD_LENGTHS = {

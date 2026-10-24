@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { provideTestAppConfig } from '@testing/app-config';
-import { DIAGRAM_MODULE, LazyRendererLoader, MATH_MODULE } from './lazy-renderer-loader-service';
+import { DIAGRAM_MODULE, LazyRendererLoader, MATH_MODULE } from './lazy-renderer-loader';
 
 /** Mermaid cannot lay out under jsdom (no `getBBox` or `document.fonts`), so its thunk is faked. */
 describe('LazyRendererLoader', () => {

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { UsageOutcomeDto } from '@shared/models/api/usage-report.model';
-import { formatCount, formatPercent, formatTokens } from '@shared/utils/format/usage-format';
-import { StatusDot, StatusTone } from '@shared/components/status-dot/status-dot';
+import { UsageOutcomeDto } from '@core/api/usage-report.model';
+import { StatusDot, StatusTone } from '@shared/badges/status-dot';
+import { formatCount, formatPercent, formatTokens } from './usage-format';
 
 /** A radius-56 ring at stroke width 17 in a 150px box, as the template draws it. */
 const RADIUS = 56;

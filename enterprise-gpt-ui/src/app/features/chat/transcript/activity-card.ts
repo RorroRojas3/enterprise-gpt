@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
-import { AssistantActivity } from '@shared/models/andes/assistant-ui.contract';
-import { activityLabel } from '@shared/utils/stream/activity-label';
-import { Icon } from '@shared/components/icon/icon';
-import { KindBadge } from './kind-badge';
+import { AssistantActivity } from '@core/api/assistant-ui-contract';
+import { KindBadge } from '@shared/badges/kind-badge';
+import { Icon } from '@shared/icons/icon';
+import { activityLabel } from '@features/chat/stream/activity-label';
 import { formatActivityUsage, formatDurationSeconds } from './turn-usage';
 
 /** Three levels are styled; anything deeper reuses the third's styling. */

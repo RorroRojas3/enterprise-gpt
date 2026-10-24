@@ -1,6 +1,6 @@
 // The app's two layout breakpoints, and the Bootstrap grid built on them. NOTHING HERE MAY EMIT
 // CSS: that is what makes it safe to `@use` from component stylesheets, unlike `_theme.scss`.
-// Mixins so no call site writes `- 1px`; values match `shared/utils/layout/breakpoints.ts`.
+// Mixins so no call site writes `- 1px`; values match `shared/layout/breakpoints.ts`.
 
 $bp-tablet-min: 768px; // at or above this, the sidebar is in the flow
 $bp-desktop-min: 992px; // at or above this, the sidebar is persistent

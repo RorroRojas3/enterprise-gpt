@@ -1,4 +1,4 @@
-import { TABLET_MIN_WIDTH } from '@shared/utils/layout/breakpoints';
+import { TABLET_MIN_WIDTH } from '@shared/layout/breakpoints';
 
 /** Where a fixed-position overlay panel sits, in viewport coordinates. */
 export interface AnchoredPosition {

@@ -8,8 +8,7 @@ import { TestBed } from '@angular/core/testing';
 import { Dispatcher, Events } from '@ngrx/signals/events';
 import { Subscription } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ConversationDto } from '@shared/models/api/conversation.model';
-import { ConversationListStore } from '@core/conversations/conversation-list-store';
+import { ConversationDto } from '@core/api/conversation.model';
 import { conversationEvents } from '@core/events/conversation-events';
 import { sessionEvents } from '@core/events/session-events';
 import { ToastStore } from '@core/notifications/toast-store';
@@ -17,6 +16,7 @@ import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { ConversationActionsStore } from './conversation-actions-store';
+import { ConversationListStore } from './conversation-list-store';
 
 const PUT_URL = `${TEST_API_BASE_URL}/api/conversations`;
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;

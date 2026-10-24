@@ -11,17 +11,17 @@ import {
   withState,
 } from '@ngrx/signals';
 import { firstValueFrom, takeUntil } from 'rxjs';
-import { toAppError } from '@core/errors/to-app-error';
-import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
+import { ApiUrl } from '@core/api/api-url';
 import {
   setError,
   setFulfilled,
   setIdle,
   setPending,
   withRequestStatus,
-} from '@core/state/with-request-status';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+} from '@core/api/with-request-status';
+import { toAppError } from '@core/errors/to-app-error';
+import { injectSignedOut } from '@core/events/session-events';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
 
 interface SupportedExtensionsState {
   /** Lower-case, leading dot — `['.doc', '.docx', '.md', '.pdf', '.pptx', '.txt']`. */

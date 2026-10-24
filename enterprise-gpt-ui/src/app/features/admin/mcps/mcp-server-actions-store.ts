@@ -5,21 +5,17 @@ import { patchState, signalStore, withMethods, withProps, withState } from '@ngr
 import { Dispatcher } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { exhaustMap, mergeMap, takeUntil } from 'rxjs';
-import { McpServerDto, McpServerWriteBody } from '@shared/models/api/mcp.model';
-import {
-  McpServerFormValue,
-  describeRejectedFields,
-  toMcpServerBody,
-} from '@shared/utils/catalog/mcp-server-form';
+import { ApiUrl } from '@core/api/api-url';
+import { McpServerDto, McpServerWriteBody } from '@core/api/mcp.model';
+import { addPendingId, removePendingId, withPendingIds } from '@core/api/with-pending-ids';
 import { AppError, ValidationAppError } from '@core/errors/app-error';
 import { traceLine, userMessage } from '@core/errors/error-message';
 import { toAppError } from '@core/errors/to-app-error';
 import { adminEvents } from '@core/events/admin-events';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
 import { ToastStore } from '@core/notifications/toast-store';
-import { addPendingId, removePendingId, withPendingIds } from '@core/state/with-pending-ids';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
+import { McpServerFormValue, describeRejectedFields, toMcpServerBody } from './mcp-server-form';
 
 export type McpServerFormMode = 'create' | 'edit';
 
@@ -73,8 +69,8 @@ const initialState: McpServerActionsState = {
 };
 
 /**
- * Root-scoped so a request outlives the screen that started it; import it only from the admin
- * screens, since `check-initial-chunk.mjs` guards `{pages,components,state}/admin/`, not `state/`.
+ * Root-scoped so a request outlives the screen that started it. It still lives in `features/admin/`,
+ * so lint keeps other features out and `check-initial-chunk.mjs` keeps it off the initial graph.
  * No failure closes the dialog: `retryInterceptor` retries neither POST nor PUT.
  */
 export const McpServerActionsStore = signalStore(

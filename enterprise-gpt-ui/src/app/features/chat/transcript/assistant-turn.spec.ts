@@ -9,14 +9,14 @@ import {
   AssistantStatusSnapshot,
   createInitialSnapshot,
   foldAssistantEvents,
-} from '@shared/models/andes/assistant-ui.contract';
-import { MESSAGE_FEEDBACK_RATING } from '@shared/models/api/conversation.model';
+} from '@core/api/assistant-ui-contract';
+import { MESSAGE_FEEDBACK_RATING } from '@core/api/conversation.model';
+import { provideChatMarkdown } from '@features/chat/markdown/markdown-providers';
 import {
   TurnTimeline,
   createInitialTimeline,
   foldTimeline,
-} from '@shared/utils/stream/turn-timeline';
-import { provideChatMarkdown } from '@components/chat/markdown/markdown-providers';
+} from '@features/chat/stream/turn-timeline';
 import { provideTestAppConfig } from '@testing/app-config';
 import { iconOf } from '@testing/overlays';
 import { assistantEvent } from '@testing/stream-frames';

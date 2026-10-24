@@ -1,4 +1,4 @@
-import { PROVIDER_ID, ProviderMeta } from '@shared/models/api/provider.model';
+import { PROVIDER_ID, ProviderMeta } from '@core/api/provider.model';
 
 const PROVIDERS: Readonly<Record<string, ProviderMeta>> = {
   [PROVIDER_ID.azureOpenAi]: { name: 'Azure OpenAI', tone: 'provider-azure-openai' },

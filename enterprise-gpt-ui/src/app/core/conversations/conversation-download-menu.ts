@@ -11,12 +11,12 @@ import {
   EXPORT_FORMATS,
   EXPORT_FORMAT_LABELS,
   ExportFormat,
-} from '@shared/models/api/conversation-export.model';
-import { IconName } from '@shared/utils/icons/icon-names';
-import { ConversationExportStore } from '@state/conversation-export-store';
-import { Icon } from '@shared/components/icon/icon';
-import { Menu } from '@shared/components/menu/menu';
-import { MenuItem } from '@shared/directives/menu-item';
+} from '@core/api/conversation-export.model';
+import { Icon } from '@shared/icons/icon';
+import { IconName } from '@shared/icons/icon-names';
+import { Menu } from '@shared/menu/menu';
+import { MenuItem } from '@shared/menu/menu-item';
+import { ConversationExportStore } from './conversation-export-store';
 
 let nextId = 0;
 

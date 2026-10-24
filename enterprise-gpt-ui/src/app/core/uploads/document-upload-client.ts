@@ -1,15 +1,15 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, Subscriber } from 'rxjs';
-import { JobDto, UploadTarget } from '@shared/models/api/document.model';
-import { documentTargetPath } from '@shared/utils/documents/document-target-path';
-import { TokenService } from '@core/auth/token-service';
+import { ApiUrl } from '@core/api/api-url';
+import { JobDto, UploadTarget } from '@core/api/document.model';
+import { AccessTokenClient } from '@core/auth/access-token-client';
+import { documentTargetPath } from '@core/documents/document-target-path';
 import { AppError } from '@core/errors/app-error';
 import { buildAppError, clientAppError } from '@core/errors/build-app-error';
 import { parseProblemDetails } from '@core/errors/problem-details';
 import { authErrorDecision } from '@core/errors/retry-policy';
 import { toAppError } from '@core/errors/to-app-error';
-import { ApiUrl } from '@core/http/api-url-service';
-import { UPLOAD_XHR } from './upload-xhr.token';
+import { UPLOAD_XHR } from './upload-xhr-token';
 
 /** What the transport reports while one file is on its way to the server. */
 export type UploadEvent =
@@ -29,7 +29,7 @@ const FILE_FIELD = 'file';
 @Injectable({ providedIn: 'root' })
 export class DocumentUploadClient {
   private readonly _apiUrl = inject(ApiUrl);
-  private readonly _tokens = inject(TokenService);
+  private readonly _tokens = inject(AccessTokenClient);
   private readonly _newXhr = inject(UPLOAD_XHR);
 
   /** Completes once the server has queued the job. */

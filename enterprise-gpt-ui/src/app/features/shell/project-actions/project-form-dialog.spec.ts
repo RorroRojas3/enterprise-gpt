@@ -3,9 +3,9 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PROJECT_FIELD_LENGTHS } from '@shared/models/api/project.model';
+import { PROJECT_FIELD_LENGTHS } from '@core/api/project.model';
 import { DUPLICATE_NAME_MESSAGE } from '@core/projects/duplicate-name';
-import { ProjectActionsStore } from '@state/project-actions-store';
+import { ProjectActionsStore } from '@core/projects/project-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';

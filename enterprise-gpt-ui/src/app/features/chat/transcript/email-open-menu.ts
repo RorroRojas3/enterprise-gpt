@@ -1,17 +1,17 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { copyText } from '@shared/utils/clipboard/copy-text';
+import { ToastStore } from '@core/notifications/toast-store';
+import { BrandIcon } from '@shared/icons/brand-icon';
+import { Icon } from '@shared/icons/icon';
+import { Menu } from '@shared/menu/menu';
+import { MenuItem } from '@shared/menu/menu-item';
 import {
   buildMailtoUrl,
   buildOutlookWebComposeUrl,
   exceedsMailtoLimit,
   formatEmailForClipboard,
-} from '@shared/utils/email/compose-url';
-import { EmailDraft } from '@shared/utils/email/email-draft';
-import { ToastStore } from '@core/notifications/toast-store';
-import { BrandIcon } from '@shared/components/brand-icon/brand-icon';
-import { Icon } from '@shared/components/icon/icon';
-import { Menu } from '@shared/components/menu/menu';
-import { MenuItem } from '@shared/directives/menu-item';
+} from '@features/chat/email/compose-url';
+import { EmailDraft } from '@features/chat/email/email-draft';
+import { copyText } from './copy-text';
 
 /**
  * The primary control is an anchor, not a button: `mailto:` is a real navigation, so

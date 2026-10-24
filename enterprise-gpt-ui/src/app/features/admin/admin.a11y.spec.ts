@@ -7,8 +7,6 @@ import { Router, provideRouter, withComponentInputBinding } from '@angular/route
 import { RouterTestingHarness } from '@angular/router/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SessionStore } from '@core/session/session-store';
-import { McpServerActionsStore } from '@state/mcp-server-actions-store';
-import { ModelActionsStore } from '@state/model-actions-store';
 import {
   THEMES,
   VIEWPORTS,
@@ -27,6 +25,8 @@ import { emptyUsageReportFixture, usageReportFixture } from '@testing/reports';
 import { UPLOAD_FILE_GRANT } from '@testing/session';
 import { directoryUserFixture, flushPermissions, userPage } from '@testing/users';
 import { adminRoutes } from './admin.routes';
+import { ModelActionsStore } from './chat-models/model-actions-store';
+import { McpServerActionsStore } from './mcps/mcp-server-actions-store';
 
 /**
  * Audits the assembled admin routes, with real stores and data, in Chromium via `test-a11y`

@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import { initialsOf } from '@shared/utils/text/initials';
-import { AuthService } from '@core/auth/auth-service';
+import { Auth } from '@core/auth/auth';
 import { SessionStore } from '@core/session/session-store';
-import { Icon } from '@shared/components/icon/icon';
-import { ThemeToggle } from '@shared/components/theme-toggle/theme-toggle';
+import { ThemeToggle } from '@core/theme/theme-toggle';
+import { initialsOf } from '@shared/avatar/initials';
+import { Icon } from '@shared/icons/icon';
 
 /**
  * Injects its stores rather than taking inputs: it is a singleton, so every host would only
@@ -23,7 +23,7 @@ import { ThemeToggle } from '@shared/components/theme-toggle/theme-toggle';
   },
 })
 export class UserFooter {
-  private readonly _auth = inject(AuthService);
+  private readonly _auth = inject(Auth);
   protected readonly session = inject(SessionStore);
 
   /**

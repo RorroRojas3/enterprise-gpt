@@ -2,12 +2,12 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { McpDto } from '@shared/models/api/mcp.model';
-import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
+import { McpDto } from '@core/api/mcp.model';
 import { ToastStore } from '@core/notifications/toast-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpFixture } from '@testing/catalog';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
+import { McpCatalogStore } from './mcp-catalog-store';
 import { McpCredentialStore } from './mcp-credential-store';
 
 const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps`;

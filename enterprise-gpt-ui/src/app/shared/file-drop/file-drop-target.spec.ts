@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DropOverlay } from '@shared/components/drop-overlay/drop-overlay';
 import { dispatchDrag, fileDrag, textDrag, textFile } from '@testing/drag';
+import { DropOverlay } from './drop-overlay';
 import { FileDropTarget } from './file-drop-target';
 
 /** Stands in for the composer: an `@if`-gated attach control and a drop zone on one permission. */

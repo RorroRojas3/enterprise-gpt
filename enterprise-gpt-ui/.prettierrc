@@ -5,13 +5,9 @@
   "importOrder": [
     "^@angular/",
     "<THIRD_PARTY_MODULES>",
-    "^@shared/(models|utils)/",
     "^@core/",
-    "^@services/",
-    "^@state/",
     "^@shared/",
-    "^@components/",
-    "^@pages/",
+    "^@features/",
     "^@testing/",
     "^[.]"
   ],

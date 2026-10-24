@@ -3,14 +3,14 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { getAllByRole, getByRole, queryByRole, within } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ModelDto } from '@shared/models/api/chat-model.model';
-import { PROVIDER_ID } from '@shared/models/api/provider.model';
+import { ModelDto } from '@core/api/chat-model.model';
+import { PROVIDER_ID } from '@core/api/provider.model';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
-import { TurnSettingsStore } from '@state/turn-settings-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
 import { iconOf, menuItems } from '@testing/overlays';
 import { ModelMenu, formatTokenCount } from './model-menu';
+import { TurnSettingsStore } from './turn-settings-store';
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
 

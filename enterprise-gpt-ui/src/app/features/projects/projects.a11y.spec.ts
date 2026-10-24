@@ -6,8 +6,7 @@ import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PROJECT_LIST_PAGE_SIZE } from '@state/projects/project-list-store';
-import { Conversations } from '@pages/conversations/conversations';
+import { Conversations } from '@features/conversations/conversations';
 import {
   THEMES,
   VIEWPORTS,
@@ -21,6 +20,7 @@ import {
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { projectFixture, projectPage } from '@testing/projects';
+import { PROJECT_LIST_PAGE_SIZE } from './project-list-store';
 import { Projects } from './projects';
 import { ProjectsLayout } from './projects-layout';
 

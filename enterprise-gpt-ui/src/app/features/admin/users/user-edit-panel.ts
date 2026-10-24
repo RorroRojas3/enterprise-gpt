@@ -1,13 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, inject, linkedSignal } from '@angular/core';
-import { PERMISSION_ID } from '@shared/models/api/permission-ids.model';
-import { UserDto } from '@shared/models/api/user.model';
+import { PERMISSION_ID } from '@core/api/permission-ids.model';
+import { UserDto } from '@core/api/user.model';
 import { unmatchedServerMessages } from '@core/errors/server-messages';
 import { SELF_REVOKE_ADMIN_MESSAGE } from '@core/users/self-action-messages';
-import { UserActionsStore } from '@state/user-actions-store';
-import { AvatarInitials } from '@shared/components/avatar-initials/avatar-initials';
-import { Icon } from '@shared/components/icon/icon';
-import { Offcanvas } from '@shared/components/offcanvas/offcanvas';
+import { AvatarInitials } from '@shared/avatar/avatar-initials';
+import { Offcanvas } from '@shared/dialog/offcanvas';
+import { Icon } from '@shared/icons/icon';
 import { PermissionChecklist } from './permission-checklist';
+import { UserActionsStore } from './user-actions-store';
 
 /**
  * Not a Signal Form: it edits one set, which as fields would be one per server GUID, rebuilt on

@@ -11,11 +11,11 @@ import { Router, provideRouter, withComponentInputBinding } from '@angular/route
 import { RouterTestingHarness } from '@angular/router/testing';
 import { getAllByRole, getByRole, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ProjectActionsStore } from '@state/project-actions-store';
-import { PROJECT_LIST_PAGE_SIZE } from '@state/projects/project-list-store';
+import { ProjectActionsStore } from '@core/projects/project-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { projectFixture, projectPage } from '@testing/projects';
+import { PROJECT_LIST_PAGE_SIZE } from './project-list-store';
 import { Projects } from './projects';
 
 const PROJECTS_URL = `${TEST_API_BASE_URL}/api/projects`;

@@ -1,24 +1,25 @@
 import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { canRetry } from '@core/errors/error-message';
+import { ErrorPanel } from '@core/errors/error-panel';
 import { CHAT_ROUTE } from '@core/navigation/route-paths';
-import { ProjectConversationsStore } from '@state/projects/project-conversations-store';
-import { ErrorPanel } from '@shared/components/error-panel/error-panel';
-import { Icon } from '@shared/components/icon/icon';
-import { Skeleton } from '@shared/components/skeleton/skeleton';
+import { ProjectConversationsStore } from '@core/projects/project-conversations-store';
+import { Icon } from '@shared/icons/icon';
+import { Skeleton } from '@shared/loading/skeleton';
 
 const SKELETON_ROWS = 2;
 
 /**
  * Provides its own store, created on expand and destroyed on collapse, so each open node has
- * its own query and re-opening re-reads. The store is in `state/projects/` as the project screen shares it.
+ * its own query and re-opening re-reads. The store is in `core/projects/` because the project
+ * screen provides it too.
  */
 @Component({
   selector: 'app-sidebar-project-conversations',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ErrorPanel, Icon, RouterLink, RouterLinkActive, Skeleton],
   providers: [ProjectConversationsStore],
-  templateUrl: './project-conversations.html',
+  templateUrl: './sidebar-project-conversations.html',
   host: { class: 'd-block' },
 })
 export class SidebarProjectConversations {

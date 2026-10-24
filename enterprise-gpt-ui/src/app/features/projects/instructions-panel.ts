@@ -6,14 +6,14 @@ import {
   linkedSignal,
   signal,
 } from '@angular/core';
-import { PROJECT_FIELD_LENGTHS } from '@shared/models/api/project.model';
+import { PROJECT_FIELD_LENGTHS } from '@core/api/project.model';
 import { canRetry } from '@core/errors/error-message';
-import { ProjectActionsStore } from '@state/project-actions-store';
-import { ProjectStore } from '@state/projects/project-store';
-import { ErrorPanel } from '@shared/components/error-panel/error-panel';
-import { Modal } from '@shared/components/modal/modal';
-import { Skeleton } from '@shared/components/skeleton/skeleton';
-import { ConfirmsDiscard } from './unsaved-instructions.guard';
+import { ErrorPanel } from '@core/errors/error-panel';
+import { ProjectActionsStore } from '@core/projects/project-actions-store';
+import { Modal } from '@shared/dialog/modal';
+import { Skeleton } from '@shared/loading/skeleton';
+import { ProjectStore } from './project-store';
+import { ConfirmsDiscard } from './unsaved-instructions-guard';
 
 /**
  * Not optimistic: instructions reach the model on every turn, so a value the server rejected would

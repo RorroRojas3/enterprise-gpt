@@ -8,7 +8,7 @@ import {
 import { Dispatcher, Events } from '@ngrx/signals/events';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { sessionEvents } from '@core/events/session-events';
-import { HardNavigation } from '@core/navigation/hard-navigation-service';
+import { HardNavigation } from '@core/navigation/hard-navigation';
 import { SIGNED_OUT_ROUTE } from '@core/navigation/route-paths';
 import { provideTestAppConfig, testAppConfig } from '@testing/app-config';
 import {
@@ -19,15 +19,15 @@ import {
   signedOutMsal,
 } from '@testing/msal';
 import { FakeNavigation, provideFakeNavigation } from '@testing/navigation';
-import { AuthService } from './auth-service';
+import { Auth } from './auth';
 
-describe('AuthService', () => {
-  function service(instance: IPublicClientApplication): AuthService {
+describe('Auth', () => {
+  function service(instance: IPublicClientApplication): Auth {
     TestBed.configureTestingModule({
       providers: [provideTestAppConfig(), provideFakeMsal(instance), provideFakeNavigation()],
     });
 
-    return TestBed.inject(AuthService);
+    return TestBed.inject(Auth);
   }
 
   function navigation(): FakeNavigation {

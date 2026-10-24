@@ -8,13 +8,13 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { Dispatcher } from '@ngrx/signals/events';
 import { getAllByRole, getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConversationDto } from '@shared/models/api/conversation.model';
-import { TokenService } from '@core/auth/token-service';
+import { ConversationDto } from '@core/api/conversation.model';
+import { AccessTokenClient } from '@core/auth/access-token-client';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { projectEvents } from '@core/events/project-events';
 import { SessionStore } from '@core/session/session-store';
-import { COMPOSER_UPLOADS, ComposerUploads } from '@state/documents/composer-uploads.token';
-import { UploadStore } from '@state/documents/upload-store';
+import { COMPOSER_UPLOADS, ComposerUploads } from '@core/uploads/composer-uploads-token';
+import { UploadStore } from '@core/uploads/upload-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
@@ -44,7 +44,10 @@ describe('ProjectDetail', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         provideFakeUploadXhr(uploadXhr),
-        { provide: TokenService, useValue: { getToken: vi.fn().mockResolvedValue('token-1') } },
+        {
+          provide: AccessTokenClient,
+          useValue: { getToken: vi.fn().mockResolvedValue('token-1') },
+        },
         { provide: SessionStore, useValue: { canUploadFiles: signal(true) } },
         // `SessionBootstrap` fills the catalogue in the app; loading it here would put a second
         // request in front of every assertion.

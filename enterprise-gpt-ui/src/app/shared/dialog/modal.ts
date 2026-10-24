@@ -11,8 +11,8 @@ import {
   output,
   viewChild,
 } from '@angular/core';
-import { captureFocusOrigin } from '@shared/utils/a11y/focus-return';
-import { focusInitialTarget } from '@shared/utils/a11y/tabbable';
+import { captureFocusOrigin } from './focus-return';
+import { focusInitialTarget } from './tabbable';
 
 let nextId = 0;
 

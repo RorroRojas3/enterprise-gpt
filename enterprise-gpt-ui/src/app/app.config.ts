@@ -11,13 +11,13 @@ import {
   withComponentInputBinding,
   withEnabledBlockingInitialNavigation,
 } from '@angular/router';
-import { AuthService } from '@core/auth/auth-service';
-import { authInterceptor } from '@core/auth/interceptors/auth.interceptor';
+import { retryInterceptor } from '@core/api/retry-interceptor';
+import { Auth } from '@core/auth/auth';
+import { authInterceptor } from '@core/auth/auth-interceptor';
 import { provideStartupShellHandoff } from '@core/config/startup-shell-handoff';
 import { providePreventDropNavigation } from '@core/dnd/prevent-drop-navigation';
-import { retryInterceptor } from '@core/http/interceptors/retry.interceptor';
 import { provideBrowserTelemetry } from '@core/telemetry/browser-telemetry';
-import { ThemeService } from '@core/theme/theme-service';
+import { Theme } from '@core/theme/theme';
 import { routes } from './app.routes';
 
 export const appConfig: ApplicationConfig = {
@@ -37,11 +37,11 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(withFetch(), withInterceptors([retryInterceptor, authInterceptor])),
     // Eager: a route with no theme control must still follow the OS under `system`.
     provideAppInitializer(() => {
-      inject(ThemeService);
+      inject(Theme);
     }),
     // Eager: its constructor subscribes this tab to sign-outs in other tabs.
     provideAppInitializer(() => {
-      inject(AuthService);
+      inject(Auth);
     }),
     // Order is arbitrary: the account is read per telemetry item, not captured here.
     provideBrowserTelemetry(),

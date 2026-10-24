@@ -12,15 +12,15 @@ import {
   within,
 } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CHAT_ROLE } from '@shared/models/api/conversation.model';
-import { TokenService } from '@core/auth/token-service';
-import { STREAM_BATCH_WINDOW_MS } from '@services/conversations/conversation-stream-client';
-import { STREAM_FETCH } from '@services/conversations/stream-fetch.token';
-import { ConversationStore } from '@state/chat/conversation-store';
-import { TurnStore } from '@state/chat/turn-store';
-import { UploadStore } from '@state/documents/upload-store';
-import { TurnSelection, TurnSettingsStore } from '@state/turn-settings-store';
-import { provideChatMarkdown } from '@components/chat/markdown/markdown-providers';
+import { CHAT_ROLE } from '@core/api/conversation.model';
+import { AccessTokenClient } from '@core/auth/access-token-client';
+import { TurnSelection, TurnSettingsStore } from '@core/composer/turn-settings-store';
+import { UploadStore } from '@core/uploads/upload-store';
+import { ConversationStore } from '@features/chat/conversation-store';
+import { STREAM_BATCH_WINDOW_MS } from '@features/chat/conversation-stream-client';
+import { provideChatMarkdown } from '@features/chat/markdown/markdown-providers';
+import { STREAM_FETCH } from '@features/chat/stream-fetch-token';
+import { TurnStore } from '@features/chat/turn-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { messageFixture } from '@testing/conversations';
 import { iconOf } from '@testing/overlays';
@@ -68,7 +68,10 @@ describe('Transcript', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: STREAM_FETCH, useValue: fetchMock },
-        { provide: TokenService, useValue: { getToken: vi.fn().mockResolvedValue('token-1') } },
+        {
+          provide: AccessTokenClient,
+          useValue: { getToken: vi.fn().mockResolvedValue('token-1') },
+        },
         { provide: Router, useValue: { navigateByUrl: vi.fn().mockResolvedValue(true) } },
         {
           provide: TurnSettingsStore,

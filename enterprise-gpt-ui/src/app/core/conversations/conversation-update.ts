@@ -1,4 +1,4 @@
-import { ConversationDto } from '@shared/models/api/conversation.model';
+import { ConversationDto } from '@core/api/conversation.model';
 
 /** The body `PUT api/conversations` expects. The id travels in the body, not the route. */
 export interface ConversationUpdateBody {

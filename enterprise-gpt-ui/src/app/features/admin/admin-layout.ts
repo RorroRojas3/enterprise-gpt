@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { MOBILE_VIEWPORT } from '@shared/utils/layout/breakpoints';
-import { injectMediaQuery } from '@core/ui/media-query';
-import { ShellChrome } from '@core/ui/shell-chrome-service';
-import { Icon } from '@shared/components/icon/icon';
-import { PillSubnav } from '@shared/components/pill-subnav/pill-subnav';
+import { ShellChrome } from '@core/layout/shell-chrome';
+import { Icon } from '@shared/icons/icon';
+import { MOBILE_VIEWPORT } from '@shared/layout/breakpoints';
+import { injectMediaQuery } from '@shared/layout/media-query';
+import { PillSubnav } from '@shared/navigation/pill-subnav';
 import { ADMIN_PILLS, ADMIN_TABS } from './admin-tabs';
 
 /**

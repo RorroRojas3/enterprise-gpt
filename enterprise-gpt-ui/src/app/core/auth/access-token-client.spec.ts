@@ -9,17 +9,17 @@ import {
   signedInMsal,
   signedOutMsal,
 } from '@testing/msal';
-import { InteractiveSignInRequiredError, TokenService } from './token-service';
+import { AccessTokenClient, InteractiveSignInRequiredError } from './access-token-client';
 
 const CORRELATION_ID = '00000000-0000-0000-0000-000000000000';
 
-describe('TokenService', () => {
-  function service(instance: ReturnType<typeof signedInMsal>): TokenService {
+describe('AccessTokenClient', () => {
+  function service(instance: ReturnType<typeof signedInMsal>): AccessTokenClient {
     TestBed.configureTestingModule({
       providers: [provideTestAppConfig(), provideFakeMsal(instance)],
     });
 
-    return TestBed.inject(TokenService);
+    return TestBed.inject(AccessTokenClient);
   }
 
   beforeEach(() => {

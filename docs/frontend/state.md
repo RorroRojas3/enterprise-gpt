@@ -17,7 +17,9 @@ store. Copy its shape rather than re-deriving one.
 
 ## The composable features
 
-Five `signalStoreFeature`s in `core/state/`, each with a co-located spec.
+Five `signalStoreFeature`s, each with a co-located spec: four in `core/api/` (`withRequestStatus`,
+`withOffsetPagination`, `withPendingIds`, `withClientQuery`) and `withResetOnSignOut` in
+`core/session/`.
 
 | Feature | Adds |
 | --- | --- |
@@ -65,10 +67,14 @@ carries no body; the event carries the fact rather than a DTO.
 
 ## The stores
 
-Root stores sit flat in `state/`, and stores provided on a page or route sit in `state/<feature>/`.
-A root store that a guard, interceptor or core service injects stays in `core/`, because `core` may
-not import `state`: `SessionStore`, `ModelCatalogStore`, `McpCatalogStore`, `ConversationListStore`,
-`ProjectLookupStore` and `ToastStore`.
+A store lives where it is used. One that only a single feature injects, root-scoped or provided on a
+page or route, sits in that feature's folder (`features/shell/ui-store.ts`,
+`features/chat/turn-store.ts`, `features/admin/users/user-actions-store.ts`). One that more than one
+feature injects, or that a guard, interceptor or core service injects, sits in the `core/` topic it
+serves, because `core` may not import a feature: `SessionStore`, `ModelCatalogStore`,
+`McpCatalogStore`, `ConversationListStore`, `ProjectLookupStore` and `ToastStore`, plus the
+conversation, project and document action stores and the composer's turn-settings and pending-handoff
+stores.
 
 **Root-scoped** — session, UI preferences, toasts, the model and MCP catalogs and their action
 stores, conversation list/actions/export, project lookup and actions, document download, supported
@@ -94,10 +100,10 @@ Two scoping choices worth knowing:
   calls `deferUploadsUntilSend()`, so attaching only states an intention and `TurnStore` posts the
   files at the head of its send pipeline; the Files-panel instance keeps the opposite default,
   where dropping a file is itself the instruction. Cancelling a busy chip calls `UploadCancelClient`
-  (`services/documents/`) — a plain root-scoped `@Injectable`, not a store, since a fire-and-forget
+  (`core/uploads/`) — a plain root-scoped `@Injectable`, not a store, since a fire-and-forget
   `DELETE` renders nothing — so the request outlives a screen a cancel very often navigates away
   from.
-- `PendingAttachmentsStore` (`state/`) mirrors `PendingPromptStore`: root-scoped, single-shot,
+- `PendingAttachmentsStore` (`core/composer/`) mirrors `PendingPromptStore`: root-scoped, single-shot,
   id-matched — the same shape, for the same reason, one field wider. It carries the `File` handles a
   project-created conversation's composer already held, from the screen that creates the
   conversation to the one that uploads into it.
@@ -106,12 +112,13 @@ Two scoping choices worth knowing:
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-ui/src/app/core/state/` | The five features and their specs |
+| `enterprise-gpt-ui/src/app/core/api/with-*.ts` | Four of the five features and their specs |
+| `enterprise-gpt-ui/src/app/core/session/with-reset-on-sign-out.ts` | The fifth, which resets a store on sign-out |
 | `enterprise-gpt-ui/src/app/core/conversations/conversation-list-store.ts` | The reference list store |
 | `enterprise-gpt-ui/src/app/core/events/` | The six event groups |
 | `enterprise-gpt-ui/src/app/core/session/session-store.ts` | Identity and permissions |
-| `enterprise-gpt-ui/src/app/state/` | Root stores, and page- and route-provided stores by feature |
-| `enterprise-gpt-ui/src/app/core/state/with-reset-on-sign-out.spec.ts` | The composition-order guard |
+| `enterprise-gpt-ui/src/app/features/` | Each feature's own stores, beside the screens that provide them |
+| `enterprise-gpt-ui/src/app/core/session/with-reset-on-sign-out.spec.ts` | The composition-order guard |
 
 ## Related
 

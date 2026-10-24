@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { UsageOutcomeDto } from '@shared/models/api/usage-report.model';
+import { UsageOutcomeDto } from '@core/api/usage-report.model';
 import { OutcomeDonut } from './outcome-donut';
 
 const BOARD_OUTCOMES: UsageOutcomeDto[] = [

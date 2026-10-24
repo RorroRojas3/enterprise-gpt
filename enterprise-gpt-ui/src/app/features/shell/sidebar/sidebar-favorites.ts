@@ -11,11 +11,11 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { ProjectSummaryDto } from '@shared/models/api/project.model';
+import { ProjectSummaryDto } from '@core/api/project.model';
+import { ProjectActionsStore } from '@core/projects/project-actions-store';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
-import { ProjectActionsStore } from '@state/project-actions-store';
-import { Icon } from '@shared/components/icon/icon';
-import { SidebarProjectRow } from './project-row';
+import { Icon } from '@shared/icons/icon';
+import { SidebarProjectRow } from './sidebar-project-row';
 
 /**
  * Server favourites, not device pins, read from the bootstrap-loaded {@link ProjectLookupStore}.
@@ -25,8 +25,8 @@ import { SidebarProjectRow } from './project-row';
   selector: 'app-sidebar-favorites',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, SidebarProjectRow],
-  templateUrl: './favorite-projects.html',
-  styleUrl: './favorite-projects.scss',
+  templateUrl: './sidebar-favorites.html',
+  styleUrl: './sidebar-favorites.scss',
   host: { class: 'd-block' },
 })
 export class SidebarFavorites {

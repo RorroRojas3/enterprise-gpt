@@ -15,21 +15,21 @@ import {
 } from '@angular/core';
 import { ActivatedRoute, Params, Router, RouterLink } from '@angular/router';
 import { canRetry } from '@core/errors/error-message';
+import { ErrorPanel } from '@core/errors/error-panel';
 import { CHAT_ROUTE } from '@core/navigation/route-paths';
-import { DocumentGroup, DocumentLibraryStore } from '@state/documents/document-library-store';
-import { EmptyState } from '@shared/components/empty-state/empty-state';
-import { ErrorPanel } from '@shared/components/error-panel/error-panel';
-import { Icon } from '@shared/components/icon/icon';
-import { SearchInput } from '@shared/components/search-input/search-input';
-import { Skeleton } from '@shared/components/skeleton/skeleton';
-import { DocumentRow } from '@components/documents/document-row';
+import { EmptyState } from '@shared/empty-state/empty-state';
+import { Icon } from '@shared/icons/icon';
+import { Skeleton } from '@shared/loading/skeleton';
+import { shouldReplaceHistory } from '@shared/navigation/search-history';
+import { SearchInput } from '@shared/search/search-input';
+import { DocumentGroup, DocumentLibraryStore } from './document-library-store';
+import { DocumentRow } from './document-row';
 import {
   NAME_PARAM,
   SOURCE_GENERATED,
   SOURCE_PARAM,
   VIEW_FLAT,
   VIEW_PARAM,
-  shouldReplaceHistory,
 } from './documents-route';
 
 /** How many skeleton rows stand in for the list while the first page loads. */

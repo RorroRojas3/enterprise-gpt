@@ -24,32 +24,29 @@ import {
 import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { Subject, exhaustMap, merge, pipe, switchMap, takeUntil, tap } from 'rxjs';
-import { ConversationDto } from '@shared/models/api/conversation.model';
-import { PaginatedResponseDto } from '@shared/models/api/paginated-response.model';
-import {
-  ConversationSortOption,
-  DEFAULT_CONVERSATION_SORT,
-} from '@shared/utils/navigation/conversations-route';
-import { selectRows } from '@shared/utils/selection/row-selection';
-import { toAppError } from '@core/errors/to-app-error';
-import { conversationEvents } from '@core/events/conversation-events';
-import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
-import { ToastStore } from '@core/notifications/toast-store';
+import { ApiUrl } from '@core/api/api-url';
+import { ConversationDto } from '@core/api/conversation.model';
+import { PaginatedResponseDto } from '@core/api/paginated-response.model';
 import {
   OffsetPaginationState,
   setFirstPage,
   setPage,
   withOffsetPagination,
-} from '@core/state/with-offset-pagination';
+} from '@core/api/with-offset-pagination';
 import {
   setError,
   setFulfilled,
   setPending,
   withRequestStatus,
-} from '@core/state/with-request-status';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
-import { ConversationActionsStore } from '@state/conversation-actions-store';
+} from '@core/api/with-request-status';
+import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
+import { toAppError } from '@core/errors/to-app-error';
+import { conversationEvents } from '@core/events/conversation-events';
+import { injectSignedOut } from '@core/events/session-events';
+import { ToastStore } from '@core/notifications/toast-store';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
+import { selectRows } from '@shared/data-table/row-selection';
+import { ConversationSortOption, DEFAULT_CONVERSATION_SORT } from './conversations-route';
 
 /** Sized for a table with Load more; `SIDEBAR_PAGE_SIZE` is sized so a sidebar rarely pages. */
 export const LIBRARY_PAGE_SIZE = 25;

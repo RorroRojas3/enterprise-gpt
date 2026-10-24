@@ -1,14 +1,14 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PREFERENCE_KEYS, writePreference } from '@shared/utils/storage/local-preferences';
+import { PREFERENCE_KEYS, writePreference } from '@core/preferences/local-preferences';
 import { PREFERS_DARK, resetMediaQueries, setMediaQuery } from '@testing/media-query';
-import { ThemeService } from './theme-service';
+import { Theme } from './theme';
 
 function root(): HTMLElement {
   return document.documentElement;
 }
 
-describe('ThemeService', () => {
+describe('Theme', () => {
   beforeEach(() => {
     localStorage.clear();
     resetMediaQueries();
@@ -26,7 +26,7 @@ describe('ThemeService', () => {
   it('follows prefers-color-scheme when nothing is stored', () => {
     setMediaQuery(PREFERS_DARK, true);
 
-    const service = TestBed.inject(ThemeService);
+    const service = TestBed.inject(Theme);
 
     expect(service.preference()).toBe('system');
     expect(service.theme()).toBe('dark');
@@ -38,12 +38,12 @@ describe('ThemeService', () => {
     writePreference(PREFERENCE_KEYS.theme, 'light');
     setMediaQuery(PREFERS_DARK, true);
 
-    expect(TestBed.inject(ThemeService).theme()).toBe('light');
+    expect(TestBed.inject(Theme).theme()).toBe('light');
     expect(root().getAttribute('data-bs-theme')).toBe('light');
   });
 
   it('persists a choice and applies it in the same call', () => {
-    const service = TestBed.inject(ThemeService);
+    const service = TestBed.inject(Theme);
 
     service.set('dark');
 
@@ -53,7 +53,7 @@ describe('ThemeService', () => {
 
   it('toggles to the opposite of what is on screen', () => {
     setMediaQuery(PREFERS_DARK, false);
-    const service = TestBed.inject(ThemeService);
+    const service = TestBed.inject(Theme);
 
     service.toggle();
 
@@ -63,7 +63,7 @@ describe('ThemeService', () => {
 
   it('follows a system change only while the preference is `system`', () => {
     setMediaQuery(PREFERS_DARK, false);
-    const service = TestBed.inject(ThemeService);
+    const service = TestBed.inject(Theme);
 
     setMediaQuery(PREFERS_DARK, true);
     expect(service.theme()).toBe('dark');
@@ -75,7 +75,7 @@ describe('ThemeService', () => {
   });
 
   it('resumes following the OS when the preference returns to `system`', () => {
-    const service = TestBed.inject(ThemeService);
+    const service = TestBed.inject(Theme);
     service.set('light');
 
     setMediaQuery(PREFERS_DARK, true);
@@ -88,7 +88,7 @@ describe('ThemeService', () => {
     writePreference(PREFERENCE_KEYS.theme, 'chartreuse');
     setMediaQuery(PREFERS_DARK, true);
 
-    const service = TestBed.inject(ThemeService);
+    const service = TestBed.inject(Theme);
 
     expect(service.preference()).toBe('system');
     expect(root().getAttribute('data-bs-theme')).toBe('dark');
@@ -100,12 +100,12 @@ describe('ThemeService', () => {
     });
     setMediaQuery(PREFERS_DARK, true);
 
-    expect(() => TestBed.inject(ThemeService)).not.toThrow();
+    expect(() => TestBed.inject(Theme)).not.toThrow();
     expect(root().getAttribute('data-bs-theme')).toBe('dark');
   });
 
   it('still applies the theme when storage throws on write', () => {
-    const service = TestBed.inject(ThemeService);
+    const service = TestBed.inject(Theme);
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new DOMException('quota');
     });

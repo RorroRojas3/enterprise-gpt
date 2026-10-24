@@ -11,25 +11,25 @@ import {
   viewChild,
 } from '@angular/core';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
-import { COMPOSER_HOST } from '@core/chat/composer-host.token';
+import { ConversationDownloadMenu } from '@core/conversations/conversation-download-menu';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
+import { ProjectPicker } from '@core/projects/project-picker';
 import { SessionStore } from '@core/session/session-store';
-import { DictationStore } from '@state/composer/dictation-store';
-import { COMPOSER_UPLOADS } from '@state/documents/composer-uploads.token';
-import { SupportedExtensionsStore } from '@state/supported-extensions-store';
-import { TurnSettingsStore } from '@state/turn-settings-store';
-import { AttachmentChip } from '@shared/components/attachment-chip/attachment-chip';
-import { ConversationDownloadMenu } from '@shared/components/conversation-download-menu/conversation-download-menu';
-import { DropOverlay } from '@shared/components/drop-overlay/drop-overlay';
-import { Icon } from '@shared/components/icon/icon';
-import { ProjectPicker } from '@shared/components/project-picker/project-picker';
-import { FileDropTarget } from '@shared/directives/file-drop-target';
+import { COMPOSER_UPLOADS } from '@core/uploads/composer-uploads-token';
+import { SupportedExtensionsStore } from '@core/uploads/supported-extensions-store';
+import { DropOverlay } from '@shared/file-drop/drop-overlay';
+import { FileDropTarget } from '@shared/file-drop/file-drop-target';
+import { AttachmentChip } from '@shared/files/attachment-chip';
+import { Icon } from '@shared/icons/icon';
+import { COMPOSER_HOST } from './composer-host-token';
+import { DictationStore } from './dictation-store';
 import { ModelMenu } from './model-menu';
 import { ToolsMenu } from './tools-menu';
+import { TurnSettingsStore } from './turn-settings-store';
 
 /**
- * A host provides `COMPOSER_HOST`, which executes the prompt, and `COMPOSER_UPLOADS`. A pageless
- * feature because chat and the project screen both render it.
+ * A host provides `COMPOSER_HOST`, which executes the prompt, and `COMPOSER_UPLOADS`. In `core/`
+ * because chat and the project screen both render it, each with its own host.
  */
 @Component({
   selector: 'app-composer',

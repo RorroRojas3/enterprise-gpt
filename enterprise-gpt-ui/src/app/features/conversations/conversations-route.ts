@@ -56,6 +56,3 @@ export function toConversationSort(value: string | undefined): ConversationSortO
 export function sortKey(option: ConversationSortOption): string {
   return option.value === DEFAULT_CONVERSATION_SORT.value ? '' : option.value;
 }
-
-/** Re-exported so this screen's route contract reads from one file. */
-export { shouldReplaceHistory } from './search-history';

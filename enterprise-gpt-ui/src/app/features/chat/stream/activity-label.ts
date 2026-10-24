@@ -1,4 +1,4 @@
-import { AssistantActivity } from '@shared/models/andes/assistant-ui.contract';
+import { AssistantActivity } from '@core/api/assistant-ui-contract';
 
 /**
  * Shared by the activity card and the live region so they agree. Only `McpTool` names change:

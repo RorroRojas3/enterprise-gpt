@@ -17,9 +17,9 @@ import {
   validate,
 } from '@angular/forms/signals';
 import { serverMessagesFor, unmatchedServerMessages } from '@core/errors/server-messages';
-import { UserActionsStore } from '@state/user-actions-store';
-import { Modal } from '@shared/components/modal/modal';
+import { Modal } from '@shared/dialog/modal';
 import { PermissionChecklist } from './permission-checklist';
+import { UserActionsStore } from './user-actions-store';
 
 /** Mirrors `CreateUserActionDtoValidator`, so a rejection is the exception. */
 const EMAIL_MAX_LENGTH = 512;

@@ -1,18 +1,18 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, Subscriber, bufferTime, filter } from 'rxjs';
-import { AssistantUiEvent } from '@shared/models/andes/assistant-ui.contract';
-import { createRawTextCodec } from '@shared/utils/stream/raw-text-codec';
-import { createSseFrameCodec } from '@shared/utils/stream/sse-frame-codec';
-import { StreamCodec } from '@shared/utils/stream/stream-codec';
-import { TokenService } from '@core/auth/token-service';
-import { APP_CONFIG } from '@core/config/app-config.token';
+import { ApiUrl } from '@core/api/api-url';
+import { AssistantUiEvent } from '@core/api/assistant-ui-contract';
+import { AccessTokenClient } from '@core/auth/access-token-client';
+import { APP_CONFIG } from '@core/config/app-config-token';
 import { AppError } from '@core/errors/app-error';
 import { authErrorDecision } from '@core/errors/retry-policy';
 import { toAppError } from '@core/errors/to-app-error';
 import { toAppErrorFromResponse } from '@core/errors/to-app-error-from-response';
 import { injectSignedOutAbort } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
-import { STREAM_FETCH } from './stream-fetch.token';
+import { STREAM_FETCH } from './stream-fetch-token';
+import { createRawTextCodec } from './stream/raw-text-codec';
+import { createSseFrameCodec } from './stream/sse-frame-codec';
+import { StreamCodec } from './stream/stream-codec';
 
 /** One streamed turn against `POST api/conversations/{id}/stream`. */
 export interface StreamTurnRequest {
@@ -40,7 +40,7 @@ export const STREAM_BATCH_WINDOW_MS = 16;
 @Injectable({ providedIn: 'root' })
 export class ConversationStreamClient {
   private readonly _apiUrl = inject(ApiUrl);
-  private readonly _tokens = inject(TokenService);
+  private readonly _tokens = inject(AccessTokenClient);
   private readonly _config = inject(APP_CONFIG);
   private readonly _fetch = inject(STREAM_FETCH);
   private readonly _signedOut = injectSignedOutAbort();

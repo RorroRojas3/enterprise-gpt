@@ -3,8 +3,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { getAllByRole, getByRole, getByText, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MessageAttachmentDto } from '@shared/models/api/conversation.model';
-import { DocumentDownloadDto } from '@shared/models/api/document.model';
+import { MessageAttachmentDto } from '@core/api/conversation.model';
+import { DocumentDownloadDto } from '@core/api/document.model';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { iconOf } from '@testing/overlays';
 import { GeneratedFiles } from './generated-files';

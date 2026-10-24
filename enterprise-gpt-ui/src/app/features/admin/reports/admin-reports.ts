@@ -1,18 +1,17 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { ActivatedRoute, Params, Router } from '@angular/router';
-import { UsageGroupDto } from '@shared/models/api/usage-report.model';
-import { TableColumn } from '@shared/models/table-column.model';
-import {
-  MS_PER_DAY,
-  NO_VALUE,
-  deltaPercent,
-  formatCost,
-  formatCount,
-  formatDateRange,
-  formatTokens,
-  groupingNoun,
-} from '@shared/utils/format/usage-format';
-import { MOBILE_VIEWPORT, TABLET_VIEWPORT } from '@shared/utils/layout/breakpoints';
+import { UsageGroupDto } from '@core/api/usage-report.model';
+import { canRetry } from '@core/errors/error-message';
+import { ErrorPanel } from '@core/errors/error-panel';
+import { DataTable } from '@shared/data-table/data-table';
+import { TableCell } from '@shared/data-table/table-cell';
+import { TableColumn } from '@shared/data-table/table-column.model';
+import { EmptyState } from '@shared/empty-state/empty-state';
+import { Icon } from '@shared/icons/icon';
+import { MOBILE_VIEWPORT, TABLET_VIEWPORT } from '@shared/layout/breakpoints';
+import { injectMediaQuery } from '@shared/layout/media-query';
+import { Skeleton } from '@shared/loading/skeleton';
+import { Paginator } from '@shared/pagination/paginator';
 import {
   DEFAULT_USAGE_GROUPING,
   DEFAULT_USAGE_RANGE,
@@ -24,27 +23,28 @@ import {
   UsageRange,
   toUsageGrouping,
   toUsageRange,
-} from '@shared/utils/navigation/admin-reports-route';
-import { canRetry } from '@core/errors/error-message';
-import { injectMediaQuery } from '@core/ui/media-query';
-import { ReportsStore } from '@state/admin/admin-reports-store';
-import { DataTable } from '@shared/components/data-table/data-table';
-import { EmptyState } from '@shared/components/empty-state/empty-state';
-import { ErrorPanel } from '@shared/components/error-panel/error-panel';
-import { Icon } from '@shared/components/icon/icon';
-import { Paginator } from '@shared/components/paginator/paginator';
-import { Skeleton } from '@shared/components/skeleton/skeleton';
-import { TableCell } from '@shared/directives/table-cell';
-import { KpiTile } from '@components/admin/reports/kpi-tile';
-import { OutcomeDonut } from '@components/admin/reports/outcome-donut';
-import { RangeSegmented } from '@components/admin/reports/range-segmented';
-import { UsageAreaChart } from '@components/admin/reports/usage-area-chart';
-import { UsageBarList } from '@components/admin/reports/usage-bar-list';
+} from './admin-reports-route';
+import { AdminReportsStore } from './admin-reports-store';
+import { KpiTile } from './kpi-tile';
+import { OutcomeDonut } from './outcome-donut';
+import { RangeSegmented } from './range-segmented';
+import { UsageAreaChart } from './usage-area-chart';
+import { UsageBarList } from './usage-bar-list';
+import {
+  MS_PER_DAY,
+  NO_VALUE,
+  deltaPercent,
+  formatCost,
+  formatCount,
+  formatDateRange,
+  formatTokens,
+  groupingNoun,
+} from './usage-format';
 
 /**
  * `?range=` and `?group=` are the source of truth: bound inputs drive the store and
  * {@link _applyQuery} is the only writer, so Back restores a selection with no code here.
- * `ReportsStore` is provided on this component so every visit refetches.
+ * `AdminReportsStore` is provided on this component so every visit refetches.
  */
 @Component({
   selector: 'app-admin-reports',
@@ -63,7 +63,7 @@ import { UsageBarList } from '@components/admin/reports/usage-bar-list';
     UsageAreaChart,
     UsageBarList,
   ],
-  providers: [ReportsStore],
+  providers: [AdminReportsStore],
   host: { class: 'd-flex flex-column flex-fill gap-3' },
   templateUrl: './admin-reports.html',
   styleUrl: './admin-reports.scss',
@@ -75,7 +75,7 @@ export class AdminReports {
   /** Bound from `?group=`, on the same terms. */
   readonly group = input(DEFAULT_USAGE_GROUPING, { transform: toUsageGrouping });
 
-  protected readonly reports = inject(ReportsStore);
+  protected readonly reports = inject(AdminReportsStore);
   protected readonly canRetry = canRetry;
   protected readonly groupings = USAGE_GROUPINGS;
 

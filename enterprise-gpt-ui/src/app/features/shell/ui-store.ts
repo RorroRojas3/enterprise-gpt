@@ -3,7 +3,7 @@ import {
   PREFERENCE_KEYS,
   readPreference,
   writePreference,
-} from '@shared/utils/storage/local-preferences';
+} from '@core/preferences/local-preferences';
 
 const COLLAPSED = 'collapsed';
 const EXPANDED = 'expanded';

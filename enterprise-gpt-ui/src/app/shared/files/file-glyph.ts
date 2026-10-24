@@ -1,4 +1,4 @@
-import { IconName } from '@shared/utils/icons/icon-names';
+import { IconName } from '@shared/icons/icon-names';
 
 /** Bootstrap theme-colour names. */
 export type FileGlyphTone = 'danger' | 'success' | 'info' | 'secondary' | 'warning';
@@ -12,7 +12,7 @@ export const FILE_GLYPH_TEXT: Readonly<Record<FileGlyphTone, string>> = {
   secondary: 'text-body-secondary',
 };
 
-/** Not in `attachment.model.ts`: it maps onto `IconName`, which `shared/models` may not import. */
+/** Not in `attachment.model.ts`: it maps onto `IconName`, which a `*.model.ts` may not import. */
 interface FileGlyph {
   readonly icon: IconName;
   readonly tone: FileGlyphTone;

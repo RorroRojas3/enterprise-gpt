@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import { USAGE_RANGES, UsageRange } from '@shared/utils/navigation/admin-reports-route';
+import { USAGE_RANGES, UsageRange } from './admin-reports-route';
 
 /**
  * `aria-pressed` buttons in a `role="group"`, not a radio group, which would put three visible

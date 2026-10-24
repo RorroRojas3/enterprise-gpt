@@ -7,9 +7,9 @@ import {
   output,
   viewChild,
 } from '@angular/core';
-import { AppError } from '@core/errors/app-error';
-import { traceLine, userMessage } from '@core/errors/error-message';
-import { Icon } from '@shared/components/icon/icon';
+import { Icon } from '@shared/icons/icon';
+import { AppError } from './app-error';
+import { traceLine, userMessage } from './error-message';
 
 /**
  * A failure that might not recur, so unlike {@link UnavailablePanel} it names the `traceId` and

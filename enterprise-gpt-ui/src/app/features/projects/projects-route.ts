@@ -73,6 +73,3 @@ export function toProjectSort(value: string | undefined): ProjectSortOption {
 export function sortKey(option: ProjectSortOption): string {
   return option.value === DEFAULT_PROJECT_SORT.value ? '' : option.value;
 }
-
-/** Re-exported so this screen's route contract reads from one file. */
-export { shouldReplaceHistory } from './search-history';

@@ -1,6 +1,6 @@
-import { ModelDto } from '../app/shared/models/api/chat-model.model';
-import { MCP_AUTH_TYPE, McpDto, McpServerDto } from '../app/shared/models/api/mcp.model';
-import { PROVIDER_ID } from '../app/shared/models/api/provider.model';
+import { ModelDto } from '../app/core/api/chat-model.model';
+import { MCP_AUTH_TYPE, McpDto, McpServerDto } from '../app/core/api/mcp.model';
+import { PROVIDER_ID } from '../app/core/api/provider.model';
 
 let modelSequence = 0;
 

@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { UsageRange } from '@shared/utils/navigation/admin-reports-route';
+import { UsageRange } from './admin-reports-route';
 import { RangeSegmented } from './range-segmented';
 
 describe('RangeSegmented', () => {

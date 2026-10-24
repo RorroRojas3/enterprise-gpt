@@ -1,10 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { getByRole, getByText, queryByRole } from '@testing-library/dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Attachment, AttachmentState } from '@shared/models/attachment.model';
-import { fileGlyph } from '@shared/utils/documents/file-glyph';
 import { iconOf } from '@testing/overlays';
 import { AttachmentChip } from './attachment-chip';
+import { Attachment, AttachmentState } from './attachment.model';
+import { fileGlyph } from './file-glyph';
 
 function attachment(state: AttachmentState): Attachment {
   return { id: 'a1', fileName: 'q3-report.pdf', sizeLabel: '2.4 MB', state };

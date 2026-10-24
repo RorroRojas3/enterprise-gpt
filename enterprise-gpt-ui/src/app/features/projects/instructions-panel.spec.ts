@@ -7,13 +7,13 @@ import {
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ProjectActionsStore } from '@state/project-actions-store';
-import { ProjectStore } from '@state/projects/project-store';
+import { ProjectActionsStore } from '@core/projects/project-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { dialogNamed } from '@testing/overlays';
 import { projectDetailFixture } from '@testing/projects';
 import { InstructionsPanel } from './instructions-panel';
+import { ProjectStore } from './project-store';
 
 const PROJECT = projectDetailFixture({
   name: 'Helios',

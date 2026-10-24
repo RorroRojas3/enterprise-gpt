@@ -8,11 +8,11 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { focusOnRender } from '@core/a11y/focus-on-render';
-import { AuthService } from '@core/auth/auth-service';
+import { Auth } from '@core/auth/auth';
 import { LOGIN_FAILED_ROUTE } from '@core/navigation/route-paths';
-import { BrandLogo } from '@shared/components/brand-logo/brand-logo';
-import { Ridgeline } from '@shared/components/ridgeline/ridgeline';
-import { AuthPage } from '@components/auth/auth-page';
+import { BrandLogo } from '@shared/brand/brand-logo';
+import { Ridgeline } from '@shared/brand/ridgeline';
+import { AuthPage } from './auth-page';
 
 /**
  * Unguarded: as the redirect URI, a guard here would recurse or block the handshake it awaits, and
@@ -26,7 +26,7 @@ import { AuthPage } from '@components/auth/auth-page';
   templateUrl: './auth-callback.html',
 })
 export class AuthCallback implements OnInit {
-  private readonly _auth = inject(AuthService);
+  private readonly _auth = inject(Auth);
   private readonly _router = inject(Router);
   private readonly _heading = viewChild.required<ElementRef<HTMLElement>>('heading');
 

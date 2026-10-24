@@ -4,8 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { Dispatcher, Events } from '@ngrx/signals/events';
 import { Subscription } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PROVIDER_ID } from '@shared/models/api/provider.model';
-import { ModelFormValue } from '@shared/utils/catalog/model-form';
+import { PROVIDER_ID } from '@core/api/provider.model';
 import { adminEvents } from '@core/events/admin-events';
 import { sessionEvents } from '@core/events/session-events';
 import { ToastStore } from '@core/notifications/toast-store';
@@ -13,6 +12,7 @@ import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { ModelActionsStore } from './model-actions-store';
+import { ModelFormValue } from './model-form';
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
 

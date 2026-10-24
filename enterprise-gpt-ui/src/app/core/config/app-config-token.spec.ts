@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 import devConfig from '../../../../public/config.json';
 import { AppConfig, assertAppConfig, normalizeAppConfig } from './app-config';
-import { APP_CONFIG, provideAppConfig } from './app-config.token';
+import { APP_CONFIG, provideAppConfig } from './app-config-token';
 
 function config(): AppConfig {
   const raw = structuredClone(devConfig) as unknown;

@@ -1,5 +1,5 @@
 import { Directive, TemplateRef, inject, input } from '@angular/core';
-import { TableCellContext } from '@shared/models/table-column.model';
+import { TableCellContext } from './table-column.model';
 
 /**
  * One column's cell template. `appTableCellFor` exists only to give `T` an inference site, so

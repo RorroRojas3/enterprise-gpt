@@ -1,6 +1,6 @@
 /**
  * Lives in `core/` because MSAL's guard configuration, the guards and `main.ts` reference these,
- * and `core/` may not import from `pages/`.
+ * and `core/` may not import from `features/`.
  */
 
 /** Where a user lands after signing in, and the fallback for every ambiguous case. */

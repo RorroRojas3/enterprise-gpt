@@ -1,7 +1,7 @@
 import { DOCUMENT, Injectable, InjectionToken, inject } from '@angular/core';
 import type { KatexOptions } from 'katex';
 import type { MermaidConfig } from 'mermaid';
-import { APP_CONFIG } from '@core/config/app-config.token';
+import { APP_CONFIG } from '@core/config/app-config-token';
 
 /** Turns one diagram source into an SVG document. */
 export interface DiagramRenderer {

@@ -1,4 +1,4 @@
-import { AssistantUiEvent } from '@shared/models/andes/assistant-ui.contract';
+import { AssistantUiEvent } from '@core/api/assistant-ui-contract';
 
 /**
  * A `text` node is a `[start, end)` slice of the snapshot's `text`, never a copy, so a delta costs

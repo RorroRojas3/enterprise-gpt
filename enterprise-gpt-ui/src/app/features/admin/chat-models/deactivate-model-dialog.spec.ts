@@ -3,11 +3,11 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastStore } from '@core/notifications/toast-store';
-import { ModelActionsStore } from '@state/model-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { DeactivateModelDialog } from './deactivate-model-dialog';
+import { ModelActionsStore } from './model-actions-store';
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
 

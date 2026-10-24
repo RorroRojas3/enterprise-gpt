@@ -2,7 +2,7 @@ import {
   AssistantStatusSnapshot,
   createInitialSnapshot,
   foldAssistantEvents,
-} from '@shared/models/andes/assistant-ui.contract';
+} from '@core/api/assistant-ui-contract';
 import { textDeltaEvent } from './stream-codec';
 import { TurnTimeline, createInitialTimeline, foldTimeline } from './turn-timeline';
 

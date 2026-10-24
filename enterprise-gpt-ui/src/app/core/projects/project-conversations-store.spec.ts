@@ -8,7 +8,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ConversationDto } from '@shared/models/api/conversation.model';
+import { ConversationDto } from '@core/api/conversation.model';
 import { conversationEvents } from '@core/events/conversation-events';
 import { sessionEvents } from '@core/events/session-events';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';

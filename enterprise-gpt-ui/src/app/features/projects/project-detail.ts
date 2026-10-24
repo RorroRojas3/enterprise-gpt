@@ -8,25 +8,25 @@ import {
   untracked,
 } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { ProjectDto } from '@shared/models/api/project.model';
-import { MOBILE_VIEWPORT } from '@shared/utils/layout/breakpoints';
-import { provideComposerHost } from '@core/chat/composer-host.token';
+import { ProjectDto } from '@core/api/project.model';
+import { Composer } from '@core/composer/composer';
+import { provideComposerHost } from '@core/composer/composer-host-token';
 import { PROJECTS_ROUTE } from '@core/navigation/route-paths';
-import { injectMediaQuery } from '@core/ui/media-query';
-import { provideComposerUploads } from '@state/documents/composer-uploads.token';
-import { UploadStore } from '@state/documents/upload-store';
-import { ProjectActionsStore } from '@state/project-actions-store';
-import { ProjectComposerHost } from '@state/projects/project-composer-host-store';
-import { ProjectConversationsStore } from '@state/projects/project-conversations-store';
-import { ProjectDocumentsStore } from '@state/projects/project-documents-store';
-import { ProjectStore } from '@state/projects/project-store';
-import { Icon } from '@shared/components/icon/icon';
-import { Menu } from '@shared/components/menu/menu';
-import { PillItem, PillSubnav } from '@shared/components/pill-subnav/pill-subnav';
-import { Skeleton } from '@shared/components/skeleton/skeleton';
-import { MenuItem } from '@shared/directives/menu-item';
-import { MenuSeparator } from '@shared/directives/menu-separator';
-import { Composer } from '@components/composer/composer';
+import { ProjectActionsStore } from '@core/projects/project-actions-store';
+import { ProjectConversationsStore } from '@core/projects/project-conversations-store';
+import { provideComposerUploads } from '@core/uploads/composer-uploads-token';
+import { UploadStore } from '@core/uploads/upload-store';
+import { Icon } from '@shared/icons/icon';
+import { MOBILE_VIEWPORT } from '@shared/layout/breakpoints';
+import { injectMediaQuery } from '@shared/layout/media-query';
+import { Skeleton } from '@shared/loading/skeleton';
+import { Menu } from '@shared/menu/menu';
+import { MenuItem } from '@shared/menu/menu-item';
+import { MenuSeparator } from '@shared/menu/menu-separator';
+import { PillItem, PillSubnav } from '@shared/navigation/pill-subnav';
+import { ProjectComposerHostStore } from './project-composer-host-store';
+import { ProjectDocumentsStore } from './project-documents-store';
+import { ProjectStore } from './project-store';
 
 /**
  * The composer sits above the tabs, not inside one: a prompt sent here creates a conversation in
@@ -52,8 +52,8 @@ import { Composer } from '@components/composer/composer';
   providers: [
     UploadStore,
     provideComposerUploads(),
-    ProjectComposerHost,
-    provideComposerHost(ProjectComposerHost),
+    ProjectComposerHostStore,
+    provideComposerHost(ProjectComposerHostStore),
   ],
   // The shell's `<main>` clips its overflow, so a routed screen scrolls itself.
   host: { class: 'd-flex flex-column gap-3 p-3 p-md-4 overflow-y-auto' },

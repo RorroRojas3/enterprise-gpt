@@ -7,12 +7,12 @@ import {
   withProps,
   withState,
 } from '@ngrx/signals';
-import { ModelDto } from '@shared/models/api/chat-model.model';
-import { McpDto } from '@shared/models/api/mcp.model';
-import { needsUserApiKey } from '@shared/utils/catalog/mcp-server';
+import { ModelDto } from '@core/api/chat-model.model';
+import { McpDto } from '@core/api/mcp.model';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
+import { needsUserApiKey } from '@core/catalog/mcp-server';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
 
 /** The settings half of a turn request; `mcpServerIds` is `[]`, never absent, when none apply. */
 export interface TurnSelection {

@@ -18,6 +18,3 @@ export const SOURCE_PARAM = 'source';
 
 /** The only value {@link SOURCE_PARAM} is ever written with. */
 export const SOURCE_GENERATED = 'generated';
-
-/** Re-exported so this screen's route contract reads from one file. */
-export { shouldReplaceHistory } from '@shared/utils/navigation/search-history';

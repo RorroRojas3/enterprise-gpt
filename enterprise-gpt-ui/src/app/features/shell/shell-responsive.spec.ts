@@ -6,10 +6,9 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { getByRole, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PREFERENCE_KEYS, writePreference } from '@shared/utils/storage/local-preferences';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
+import { PREFERENCE_KEYS, writePreference } from '@core/preferences/local-preferences';
 import { SessionStore } from '@core/session/session-store';
-import { UiStore } from '@state/ui-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
 import { conversationFixture, conversationPage } from '@testing/conversations';
@@ -25,6 +24,7 @@ import { provideFakeMsal, signedInMsal } from '@testing/msal';
 import { provideFakeNavigation } from '@testing/navigation';
 import { userFixture } from '@testing/session';
 import { Shell } from './shell';
+import { UiStore } from './ui-store';
 
 /**
  * Separate from `shell.spec.ts`, whose tests run with no media query set to prove that resolves

@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { Attachment, AttachmentRemoveAction } from '@shared/models/attachment.model';
-import { FILE_GLYPH_TEXT, fileGlyph } from '@shared/utils/documents/file-glyph';
-import { IconName } from '@shared/utils/icons/icon-names';
-import { Icon } from '@shared/components/icon/icon';
-import { SourceBadge } from '@shared/components/source-badge/source-badge';
+import { SourceBadge } from '@shared/badges/source-badge';
+import { Icon } from '@shared/icons/icon';
+import { IconName } from '@shared/icons/icon-names';
+import { Attachment, AttachmentRemoveAction } from './attachment.model';
+import { FILE_GLYPH_TEXT, fileGlyph } from './file-glyph';
 
 /**
  * Every state renders distinctly: an expired status (a 404 after the retention window) must not

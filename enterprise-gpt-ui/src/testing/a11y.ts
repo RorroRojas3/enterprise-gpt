@@ -21,10 +21,10 @@ const ENFORCED: readonly ImpactValue[] = ['serious', 'critical'];
 /** The two themes every screen is checked in. */
 export const THEMES = ['light', 'dark'] as const;
 
-export type Theme = (typeof THEMES)[number];
+export type ThemeName = (typeof THEMES)[number];
 
-/** Sets the attribute directly: a spec driving `ThemeService` would pass if it stopped writing. */
-export function applyTheme(theme: Theme): void {
+/** Sets the attribute directly: a spec driving `Theme` would pass if it stopped writing. */
+export function applyTheme(theme: ThemeName): void {
   document.documentElement.setAttribute('data-bs-theme', theme);
 }
 

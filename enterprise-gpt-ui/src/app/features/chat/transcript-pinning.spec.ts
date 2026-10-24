@@ -6,13 +6,9 @@ import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TokenService } from '@core/auth/token-service';
+import { AccessTokenClient } from '@core/auth/access-token-client';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { chatMatcher } from '@core/navigation/chat-matcher';
-import { STREAM_BATCH_WINDOW_MS } from '@services/conversations/conversation-stream-client';
-import { STREAM_FETCH } from '@services/conversations/stream-fetch.token';
-import { TurnStore } from '@state/chat/turn-store';
-import { Chat } from '@pages/chat/chat';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
 import { conversationDetailFixture, conversationFixture } from '@testing/conversations';
@@ -29,6 +25,10 @@ import {
   fullTurnEvents,
   streamingResponse,
 } from '@testing/stream-frames';
+import { Chat } from './chat';
+import { STREAM_BATCH_WINDOW_MS } from './conversation-stream-client';
+import { STREAM_FETCH } from './stream-fetch-token';
+import { TurnStore } from './turn-store';
 
 /** jsdom has no layout, so these assert the scroll writes the directive makes, not positions. */
 describe('transcript pinning', () => {
@@ -57,7 +57,10 @@ describe('transcript pinning', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: STREAM_FETCH, useValue: streamFetch },
-        { provide: TokenService, useValue: { getToken: vi.fn().mockResolvedValue('token-1') } },
+        {
+          provide: AccessTokenClient,
+          useValue: { getToken: vi.fn().mockResolvedValue('token-1') },
+        },
         provideRouter([{ matcher: chatMatcher, component: Chat }], withComponentInputBinding()),
         provideLocationMocks(),
       ],

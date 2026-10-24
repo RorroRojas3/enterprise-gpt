@@ -9,7 +9,7 @@ import {
   output,
   viewChild,
 } from '@angular/core';
-import { Icon } from '@shared/components/icon/icon';
+import { Icon } from '@shared/icons/icon';
 
 let nextId = 0;
 

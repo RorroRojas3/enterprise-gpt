@@ -144,7 +144,7 @@ describe('application frame accessibility', () => {
 
     document.body.append(element);
     attached = element;
-    // Last: the footer's theme toggle constructs `ThemeService`, which writes the stored or
+    // Last: the footer's theme toggle constructs `Theme`, which writes the stored or
     // system theme over anything set before it renders.
     applyTheme(theme);
     return element;

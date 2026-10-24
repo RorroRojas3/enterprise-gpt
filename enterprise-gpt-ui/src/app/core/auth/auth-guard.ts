@@ -1,7 +1,7 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
-import { AuthService } from '@core/auth/auth-service';
 import { LOGIN_FAILED_ROUTE } from '@core/navigation/route-paths';
+import { Auth } from './auth';
 
 /**
  * Alone on its route level: one `canActivate` array runs concurrently, and `sessionGuard` needs a
@@ -10,7 +10,7 @@ import { LOGIN_FAILED_ROUTE } from '@core/navigation/route-paths';
  * `false`, or a navigation during teardown would start a fresh sign-in.
  */
 export const authGuard: CanActivateFn = async (_route, state) => {
-  const auth = inject(AuthService);
+  const auth = inject(Auth);
   const router = inject(Router);
 
   if (auth.isSigningOut()) {

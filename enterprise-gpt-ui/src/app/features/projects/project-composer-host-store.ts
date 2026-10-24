@@ -13,22 +13,22 @@ import {
 } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { Subject, exhaustMap, merge, takeUntil } from 'rxjs';
-import { ConversationDto } from '@shared/models/api/conversation.model';
+import { ApiUrl } from '@core/api/api-url';
+import { ConversationDto } from '@core/api/conversation.model';
 import {
   ComposerExportTarget,
   ComposerHost,
   ComposerProjectTarget,
-} from '@core/chat/composer-host.token';
+} from '@core/composer/composer-host-token';
+import { PendingAttachmentsStore } from '@core/composer/pending-attachments-store';
+import { PendingPromptStore } from '@core/composer/pending-prompt-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { toAppError } from '@core/errors/to-app-error';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
 import { CHAT_ROUTE, PROJECTS_ROUTE } from '@core/navigation/route-paths';
 import { ToastStore } from '@core/notifications/toast-store';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
-import { COMPOSER_UPLOADS } from '@state/documents/composer-uploads.token';
-import { PendingAttachmentsStore } from '@state/pending-attachments-store';
-import { PendingPromptStore } from '@state/pending-prompt-store';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
+import { COMPOSER_UPLOADS } from '@core/uploads/composer-uploads-token';
 import { ProjectStore } from './project-store';
 
 interface ProjectComposerState {
@@ -43,7 +43,7 @@ interface ProjectComposerState {
  * navigates, so `TurnStore` runs the turn on `/chat`. `inFlight` is the create, `stop()` cancels
  * that POST, and failures are toasts because there is no transcript here.
  */
-export const ProjectComposerHost = signalStore(
+export const ProjectComposerHostStore = signalStore(
   withState<ProjectComposerState>({ creating: false, composerSeed: null }),
   withProps(() => ({
     _http: inject(HttpClient),
@@ -167,4 +167,4 @@ export const ProjectComposerHost = signalStore(
 // Compile-time proof that this store satisfies the token's contract, which
 // `useExisting` alone would not check.
 export type ProjectComposerHostSatisfiesContract =
-  InstanceType<typeof ProjectComposerHost> extends ComposerHost ? true : never;
+  InstanceType<typeof ProjectComposerHostStore> extends ComposerHost ? true : never;

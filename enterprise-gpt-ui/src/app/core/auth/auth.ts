@@ -2,15 +2,15 @@ import { Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AccountInfo } from '@azure/msal-browser';
 import { Dispatcher } from '@ngrx/signals/events';
-import { APP_CONFIG } from '@core/config/app-config.token';
+import { APP_CONFIG } from '@core/config/app-config-token';
 import { hideStartupShell } from '@core/config/fatal-shell';
 import { AppError } from '@core/errors/app-error';
 import { toAppError } from '@core/errors/to-app-error';
 import { injectSignedOut, sessionEvents } from '@core/events/session-events';
-import { HardNavigation } from '@core/navigation/hard-navigation-service';
+import { HardNavigation } from '@core/navigation/hard-navigation';
 import { CHAT_ROUTE, SIGNED_OUT_ROUTE } from '@core/navigation/route-paths';
-import { SessionChannel } from '@core/session/session-channel-service';
-import { MSAL_INSTANCE } from './msal-instance.token';
+import { SessionChannel } from '@core/session/session-channel';
+import { MSAL_INSTANCE } from './msal-instance-token';
 
 /** Where the sign-in redirect should return the user, across the trip to Entra. */
 const RETURN_URL_KEY = 'egpt.returnUrl';
@@ -33,7 +33,7 @@ export interface AuthHandshake {
  * `interaction_in_progress` lock left by a reload mid-redirect.
  */
 @Injectable({ providedIn: 'root' })
-export class AuthService {
+export class Auth {
   private readonly _instance = inject(MSAL_INSTANCE);
   private readonly _scopes = [...inject(APP_CONFIG).auth.apiScopes];
   private readonly _dispatcher = inject(Dispatcher);

@@ -1,15 +1,15 @@
 import { TestBed } from '@angular/core/testing';
 import { Events } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthService } from '@core/auth/auth-service';
+import { Auth } from '@core/auth/auth';
 import { sessionEvents } from '@core/events/session-events';
-import { HardNavigation } from '@core/navigation/hard-navigation-service';
+import { HardNavigation } from '@core/navigation/hard-navigation';
 import { SIGNED_OUT_ROUTE } from '@core/navigation/route-paths';
 import { provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
 import { provideFakeMsal, signedInMsal } from '@testing/msal';
 import { FakeNavigation, provideFakeNavigation } from '@testing/navigation';
-import { SessionChannel } from './session-channel-service';
+import { SessionChannel } from './session-channel';
 
 const CHANNEL_NAME = 'egpt.session';
 
@@ -62,7 +62,7 @@ describe('SessionChannel', () => {
     });
 
     it('tears its own session down and leaves', async () => {
-      const auth = TestBed.inject(AuthService);
+      const auth = TestBed.inject(Auth);
       const seen = vi.fn();
       TestBed.inject(Events).on(sessionEvents.signedOut).subscribe(seen);
 
@@ -76,7 +76,7 @@ describe('SessionChannel', () => {
 
     it('does not echo, so two tabs cannot bounce a sign-out between them', async () => {
       const echoes = vi.fn();
-      TestBed.inject(AuthService);
+      TestBed.inject(Auth);
       otherTab.addEventListener('message', (event: MessageEvent<unknown>) => echoes(event.data));
 
       otherTab.postMessage('signed-out');

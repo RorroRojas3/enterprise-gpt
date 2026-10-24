@@ -8,16 +8,16 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { getAllByRole, getByText } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserDto } from '@shared/models/api/user.model';
+import { UserDto } from '@core/api/user.model';
 import { ToastStore } from '@core/notifications/toast-store';
 import { SessionStore } from '@core/session/session-store';
 import { SELF_REVOKE_ADMIN_MESSAGE } from '@core/users/self-action-messages';
-import { UserActionsStore } from '@state/user-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { ADMINISTRATOR_GRANT, MCP_GRANT, UPLOAD_FILE_GRANT } from '@testing/session';
 import { directoryUserFixture } from '@testing/users';
+import { UserActionsStore } from './user-actions-store';
 import { UserEditPanel } from './user-edit-panel';
 
 const PERMISSIONS_URL = `${TEST_API_BASE_URL}/api/permissions`;

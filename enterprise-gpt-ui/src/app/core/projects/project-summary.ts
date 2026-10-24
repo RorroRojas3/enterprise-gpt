@@ -1,4 +1,4 @@
-import { ProjectDto, ProjectSummaryDto } from '@shared/models/api/project.model';
+import { ProjectDto, ProjectSummaryDto } from '@core/api/project.model';
 
 /**
  * Keeps `instructions` out of list-store rows, where nothing could tell it from a stale

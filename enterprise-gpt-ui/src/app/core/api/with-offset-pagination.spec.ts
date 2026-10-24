@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { patchState, signalStore } from '@ngrx/signals';
 import { unprotected } from '@ngrx/signals/testing';
 import { describe, expect, it } from 'vitest';
-import { PaginatedResponseDto } from '@shared/models/api/paginated-response.model';
+import { PaginatedResponseDto } from './paginated-response.model';
 import {
   MAX_PAGE_SIZE,
   setFirstPage,

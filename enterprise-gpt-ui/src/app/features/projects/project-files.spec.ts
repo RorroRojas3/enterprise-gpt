@@ -4,17 +4,17 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { getByRole, getByText, queryByRole, queryByText } from '@testing-library/dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { TokenService } from '@core/auth/token-service';
+import { AccessTokenClient } from '@core/auth/access-token-client';
 import { SessionStore } from '@core/session/session-store';
-import { UploadStore } from '@state/documents/upload-store';
-import { ProjectDocumentsStore } from '@state/projects/project-documents-store';
-import { ProjectStore } from '@state/projects/project-store';
+import { UploadStore } from '@core/uploads/upload-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { dialogNamed } from '@testing/overlays';
 import { projectDetailFixture, projectDocumentFixture } from '@testing/projects';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
+import { ProjectDocumentsStore } from './project-documents-store';
 import { ProjectFiles } from './project-files';
+import { ProjectStore } from './project-store';
 
 const PROJECT = projectDetailFixture();
 const PROJECT_URL = `${TEST_API_BASE_URL}/api/projects/${PROJECT.id}`;
@@ -41,7 +41,10 @@ describe('ProjectFiles', () => {
         provideFakeUploadXhr(uploadXhr),
         // The raw-XHR upload path reads the bearer itself; the real service would drag
         // MSAL into a spec about a file list.
-        { provide: TokenService, useValue: { getToken: vi.fn().mockResolvedValue('token-1') } },
+        {
+          provide: AccessTokenClient,
+          useValue: { getToken: vi.fn().mockResolvedValue('token-1') },
+        },
         { provide: SessionStore, useValue: { canUploadFiles } },
         ProjectStore,
         ProjectDocumentsStore,

@@ -1,18 +1,18 @@
 import { ChangeDetectionStrategy, Component, computed, inject, viewChild } from '@angular/core';
-import { McpDto } from '@shared/models/api/mcp.model';
-import { needsUserApiKey } from '@shared/utils/catalog/mcp-server';
-import { MCP_FALLBACK_ICON, mcpBrandIcon } from '@shared/utils/icons/mcp-icon';
+import { McpDto } from '@core/api/mcp.model';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
-import { McpCredentialStore } from '@state/mcp-credential-store';
-import { TurnSettingsStore } from '@state/turn-settings-store';
-import { BrandIcon } from '@shared/components/brand-icon/brand-icon';
-import { Icon } from '@shared/components/icon/icon';
-import { Menu } from '@shared/components/menu/menu';
-import { StatusDot } from '@shared/components/status-dot/status-dot';
-import { Switch } from '@shared/components/switch/switch';
-import { MenuItem } from '@shared/directives/menu-item';
-import { MenuSeparator } from '@shared/directives/menu-separator';
-import { MenuTriggerContent } from '@shared/directives/menu-trigger-content';
+import { McpCredentialStore } from '@core/catalog/mcp-credential-store';
+import { needsUserApiKey } from '@core/catalog/mcp-server';
+import { StatusDot } from '@shared/badges/status-dot';
+import { Switch } from '@shared/forms/switch';
+import { BrandIcon } from '@shared/icons/brand-icon';
+import { Icon } from '@shared/icons/icon';
+import { MCP_FALLBACK_ICON, mcpBrandIcon } from '@shared/icons/mcp-icon';
+import { Menu } from '@shared/menu/menu';
+import { MenuItem } from '@shared/menu/menu-item';
+import { MenuSeparator } from '@shared/menu/menu-separator';
+import { MenuTriggerContent } from '@shared/menu/menu-trigger-content';
+import { TurnSettingsStore } from './turn-settings-store';
 
 /**
  * `<app-switch>` only draws each row's `aria-checked`: a native switch is not a valid `role="menu"`

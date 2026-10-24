@@ -29,7 +29,7 @@ export default defineConfig([
     // The host document, not an Angular template.
     'src/index.html',
     // Vendored byte-for-byte from a NuGet package; lint fixes would be drift.
-    'src/app/shared/models/andes/assistant-ui.contract.ts',
+    'src/app/core/api/assistant-ui-contract.ts',
   ]),
 
   {
@@ -97,7 +97,7 @@ export default defineConfig([
 
   {
     // `no-restricted-imports` matches the specifier text of static imports only, so a `../` import
-    // or a dynamic `import('@pages/…')` slips past the layer bans; this block closes both gaps.
+    // or a dynamic `import('@features/…')` slips past the layer bans; this block closes both gaps.
     files: ['src/app/**/*.ts'],
     ignores: ['**/*.spec.ts'],
     plugins: { 'import-x': importX },
@@ -114,11 +114,22 @@ export default defineConfig([
       // The `ignore` keeps aliases legal; they resolve inside the repo, so count as parents.
       'import-x/no-relative-parent-imports': [
         'error',
-        { ignore: ['^@(pages|components|state|services|core|shared|testing)/'] },
+        { ignore: ['^@(core|features|shared|testing)/'] },
       ],
       'import-x/no-restricted-paths': [
         'error',
-        { basePath: import.meta.dirname, zones: layerZones(import.meta.dirname) },
+        {
+          basePath: import.meta.dirname,
+          zones: [
+            ...layerZones(import.meta.dirname),
+            // The SSE codec and turn reducers test in Node with no TestBed; no folder rule marks them.
+            {
+              target: './src/app/features/chat/stream',
+              from: ['./node_modules/@angular', './node_modules/@ngrx'],
+              message: 'The stream codec stays framework-free so it tests in Node.',
+            },
+          ],
+        },
       ],
     },
   },

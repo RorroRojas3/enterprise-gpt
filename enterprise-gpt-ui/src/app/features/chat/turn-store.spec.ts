@@ -9,17 +9,15 @@ import {
   ConversationMessageDto,
   MESSAGE_FEEDBACK_RATING,
   MessageFeedbackRating,
-} from '@shared/models/api/conversation.model';
-import { TokenService } from '@core/auth/token-service';
+} from '@core/api/conversation.model';
+import { AccessTokenClient } from '@core/auth/access-token-client';
+import { PendingAttachmentsStore } from '@core/composer/pending-attachments-store';
+import { TurnSelection, TurnSettingsStore } from '@core/composer/turn-settings-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { sessionEvents } from '@core/events/session-events';
 import { TurnCompleted, turnEvents } from '@core/events/turn-events';
 import { ToastStore } from '@core/notifications/toast-store';
-import { STREAM_BATCH_WINDOW_MS } from '@services/conversations/conversation-stream-client';
-import { STREAM_FETCH } from '@services/conversations/stream-fetch.token';
-import { UploadStore } from '@state/documents/upload-store';
-import { PendingAttachmentsStore } from '@state/pending-attachments-store';
-import { TurnSelection, TurnSettingsStore } from '@state/turn-settings-store';
+import { UploadStore } from '@core/uploads/upload-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture, messageFixture } from '@testing/conversations';
 import { FRAMEWORK_PROBLEM_FIXTURES, PROBLEM_FIXTURES } from '@testing/problem-fixtures';
@@ -33,6 +31,8 @@ import {
 } from '@testing/stream-frames';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
 import { ConversationStore } from './conversation-store';
+import { STREAM_BATCH_WINDOW_MS } from './conversation-stream-client';
+import { STREAM_FETCH } from './stream-fetch-token';
 import { TranscriptEntry, TurnStore } from './turn-store';
 
 const CONVERSATION_ID = '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b';
@@ -73,7 +73,7 @@ describe('TurnStore', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: STREAM_FETCH, useValue: fetchMock },
-        { provide: TokenService, useValue: { getToken } },
+        { provide: AccessTokenClient, useValue: { getToken } },
         { provide: Router, useValue: { navigateByUrl } },
         {
           provide: TurnSettingsStore,

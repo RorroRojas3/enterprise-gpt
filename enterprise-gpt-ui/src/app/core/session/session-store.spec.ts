@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PERMISSION_ID } from '@shared/models/api/permission-ids.model';
+import { PERMISSION_ID } from '@core/api/permission-ids.model';
 import { sessionEvents } from '@core/events/session-events';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';

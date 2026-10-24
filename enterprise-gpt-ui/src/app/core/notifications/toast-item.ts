@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { IconName } from '@shared/utils/icons/icon-names';
-import { TOAST_ICONS, Toast, ToastTone } from '@core/notifications/toast.model';
-import { Icon } from '@shared/components/icon/icon';
+import { Icon } from '@shared/icons/icon';
+import { IconName } from '@shared/icons/icon-names';
+import { TOAST_ICONS, Toast, ToastTone } from './toast.model';
 
 const THEME_COLORS = {
   success: 'success',

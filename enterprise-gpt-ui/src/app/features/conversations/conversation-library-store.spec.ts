@@ -8,12 +8,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Dispatcher, Events } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ConversationDto } from '@shared/models/api/conversation.model';
-import {
-  CONVERSATION_SORTS,
-  ConversationSortOption,
-  DEFAULT_CONVERSATION_SORT,
-} from '@shared/utils/navigation/conversations-route';
+import { ConversationDto } from '@core/api/conversation.model';
 import { conversationEvents } from '@core/events/conversation-events';
 import { sessionEvents } from '@core/events/session-events';
 import { ToastStore } from '@core/notifications/toast-store';
@@ -21,6 +16,11 @@ import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { ConversationLibraryStore, LIBRARY_PAGE_SIZE } from './conversation-library-store';
+import {
+  CONVERSATION_SORTS,
+  ConversationSortOption,
+  DEFAULT_CONVERSATION_SORT,
+} from './conversations-route';
 
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
 const BULK_URL = `${TEST_API_BASE_URL}/api/conversations/bulk`;

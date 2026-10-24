@@ -10,7 +10,7 @@ import { Observable, defer, firstValueFrom, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_RETRY_POLICY, RETRY_POLICY } from '@core/errors/retry-policy';
 import { FRAMEWORK_PROBLEM_FIXTURES, PROBLEM_FIXTURES } from '@testing/problem-fixtures';
-import { retryInterceptor, skipRetry } from './retry.interceptor';
+import { retryInterceptor, skipRetry } from './retry-interceptor';
 
 const URL = 'https://localhost:7045/api/conversations';
 

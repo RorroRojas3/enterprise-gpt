@@ -9,14 +9,14 @@ import {
   provideRouter,
 } from '@angular/router';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { AuthService } from '@core/auth/auth-service';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
 import { provideFakeMsal, signedInMsal } from '@testing/msal';
 import { provideFakeNavigation } from '@testing/navigation';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { userFixture } from '@testing/session';
-import { sessionGuard } from './session.guard';
+import { Auth } from './auth';
+import { sessionGuard } from './session-guard';
 
 const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
@@ -54,8 +54,8 @@ describe('sessionGuard', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         provideRouter([]),
-        // The guard consults AuthService.isSigningOut before it does anything else,
-        // and AuthService reaches MSAL on construction.
+        // The guard consults Auth.isSigningOut before it does anything else,
+        // and Auth reaches MSAL on construction.
         provideFakeMsal(signedInMsal({ logoutRedirect: () => new Promise<void>(() => undefined) })),
         provideFakeNavigation(),
       ],
@@ -134,7 +134,7 @@ describe('sessionGuard', () => {
     flushPostBootstrapLoads();
     await first;
 
-    void TestBed.inject(AuthService).signOut();
+    void TestBed.inject(Auth).signOut();
 
     await expect(run()).resolves.toBe(false);
     await settle();

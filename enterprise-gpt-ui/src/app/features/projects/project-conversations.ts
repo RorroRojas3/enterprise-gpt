@@ -12,22 +12,22 @@ import {
   untracked,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { ConversationDto } from '@shared/models/api/conversation.model';
-import { TableColumn } from '@shared/models/table-column.model';
-import { formatRelativeTime } from '@shared/utils/format/relative-time';
+import { ConversationDto } from '@core/api/conversation.model';
+import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
 import { canRetry } from '@core/errors/error-message';
+import { ErrorPanel } from '@core/errors/error-panel';
 import { CHAT_ROUTE } from '@core/navigation/route-paths';
-import { ConversationActionsStore } from '@state/conversation-actions-store';
-import { ProjectConversationsStore } from '@state/projects/project-conversations-store';
-import { DataTable } from '@shared/components/data-table/data-table';
-import { EmptyState } from '@shared/components/empty-state/empty-state';
-import { ErrorPanel } from '@shared/components/error-panel/error-panel';
-import { Icon } from '@shared/components/icon/icon';
-import { Menu } from '@shared/components/menu/menu';
-import { ProjectPicker } from '@shared/components/project-picker/project-picker';
-import { MenuItem } from '@shared/directives/menu-item';
-import { MenuSeparator } from '@shared/directives/menu-separator';
-import { TableCell } from '@shared/directives/table-cell';
+import { ProjectConversationsStore } from '@core/projects/project-conversations-store';
+import { ProjectPicker } from '@core/projects/project-picker';
+import { DataTable } from '@shared/data-table/data-table';
+import { TableCell } from '@shared/data-table/table-cell';
+import { TableColumn } from '@shared/data-table/table-column.model';
+import { EmptyState } from '@shared/empty-state/empty-state';
+import { formatRelativeTime } from '@shared/formatting/relative-time';
+import { Icon } from '@shared/icons/icon';
+import { Menu } from '@shared/menu/menu';
+import { MenuItem } from '@shared/menu/menu-item';
+import { MenuSeparator } from '@shared/menu/menu-separator';
 
 /**
  * The store is provided on the detail route, not here, so the tab strip's count survives a switch

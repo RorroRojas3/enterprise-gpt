@@ -4,12 +4,12 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { getAllByRole, getByRole, queryByRole } from '@testing-library/dom';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ConversationDto } from '@shared/models/api/conversation.model';
-import { ConversationActionsStore } from '@state/conversation-actions-store';
+import { ConversationDto } from '@core/api/conversation.model';
+import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
 import {
   PROJECT_CONVERSATIONS_PAGE_SIZE,
   ProjectConversationsStore,
-} from '@state/projects/project-conversations-store';
+} from '@core/projects/project-conversations-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { menuItems } from '@testing/overlays';

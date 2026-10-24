@@ -3,16 +3,16 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { getByRole, getByText, queryByRole, within } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ModelDto } from '@shared/models/api/chat-model.model';
-import { McpDto } from '@shared/models/api/mcp.model';
+import { ModelDto } from '@core/api/chat-model.model';
+import { McpDto } from '@core/api/mcp.model';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
+import { McpCredentialStore } from '@core/catalog/mcp-credential-store';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
-import { McpCredentialStore } from '@state/mcp-credential-store';
-import { TurnSettingsStore } from '@state/turn-settings-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpFixture, modelFixture } from '@testing/catalog';
 import { iconOf, menuItems } from '@testing/overlays';
 import { ToolsMenu } from './tools-menu';
+import { TurnSettingsStore } from './turn-settings-store';
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
 const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps`;

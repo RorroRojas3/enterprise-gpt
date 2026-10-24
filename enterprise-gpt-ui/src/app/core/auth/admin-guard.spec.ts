@@ -6,14 +6,14 @@ import { Router, Routes, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { IPublicClientApplication } from '@azure/msal-browser';
 import { Mock, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserDto } from '@shared/models/api/user.model';
-import { AuthService } from '@core/auth/auth-service';
+import { UserDto } from '@core/api/user.model';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
 import { provideFakeMsal, signedInMsal, signedOutMsal } from '@testing/msal';
 import { provideFakeNavigation } from '@testing/navigation';
 import { administratorFixture, userFixture } from '@testing/session';
-import { adminCanMatch } from './admin.guard';
+import { adminCanMatch } from './admin-guard';
+import { Auth } from './auth';
 
 const ME_URL = `${TEST_API_BASE_URL}/api/users/me`;
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
@@ -134,7 +134,7 @@ describe('adminCanMatch', () => {
     );
     const harness = await RouterTestingHarness.create();
 
-    void TestBed.inject(AuthService).signOut();
+    void TestBed.inject(Auth).signOut();
     await harness.navigateByUrl('/admin');
 
     // Only the chunk is asserted: the production outcome, a navigation cancelled by the latched

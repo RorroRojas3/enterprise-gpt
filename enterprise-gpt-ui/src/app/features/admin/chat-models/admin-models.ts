@@ -1,24 +1,24 @@
 import { ChangeDetectionStrategy, Component, computed, inject, viewChild } from '@angular/core';
-import { ModelDto } from '@shared/models/api/chat-model.model';
-import { ProviderMeta } from '@shared/models/api/provider.model';
-import { isRetired } from '@shared/utils/catalog/model-status';
-import { providerMeta } from '@shared/utils/catalog/provider-meta';
+import { ModelDto } from '@core/api/chat-model.model';
+import { ProviderMeta } from '@core/api/provider.model';
+import { providerMeta } from '@core/catalog/provider-meta';
 import { canRetry } from '@core/errors/error-message';
-import { AdminModelsStore } from '@state/admin/admin-models-store';
-import { ModelActionsStore } from '@state/model-actions-store';
-import { DataTable } from '@shared/components/data-table/data-table';
-import { EmptyState } from '@shared/components/empty-state/empty-state';
-import { ErrorPanel } from '@shared/components/error-panel/error-panel';
-import { Icon } from '@shared/components/icon/icon';
-import { Menu } from '@shared/components/menu/menu';
-import { SearchInput } from '@shared/components/search-input/search-input';
-import { StatusDot } from '@shared/components/status-dot/status-dot';
-import { MenuItem } from '@shared/directives/menu-item';
-import { TableCell } from '@shared/directives/table-cell';
-import { DeactivateModelDialog } from '@components/admin/models/deactivate-model-dialog';
-import { ModelFormDialog } from '@components/admin/models/model-form-dialog';
-import { injectAdminColumns } from './admin-columns';
+import { ErrorPanel } from '@core/errors/error-panel';
+import { StatusDot } from '@shared/badges/status-dot';
+import { DataTable } from '@shared/data-table/data-table';
+import { TableCell } from '@shared/data-table/table-cell';
+import { EmptyState } from '@shared/empty-state/empty-state';
+import { Icon } from '@shared/icons/icon';
+import { Menu } from '@shared/menu/menu';
+import { MenuItem } from '@shared/menu/menu-item';
+import { SearchInput } from '@shared/search/search-input';
+import { injectAdminColumns } from '@features/admin/admin-columns';
+import { AdminModelsStore } from './admin-models-store';
+import { DeactivateModelDialog } from './deactivate-model-dialog';
+import { ModelActionsStore } from './model-actions-store';
+import { ModelFormDialog } from './model-form-dialog';
 import { formatContext, formatTokens } from './model-format';
+import { isRetired } from './model-status';
 
 /**
  * Retired models render muted, not hidden: Delete is a soft delete and this is the only route

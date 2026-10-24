@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { AppError } from '@core/errors/app-error';
 import { traceLine, userMessage } from '@core/errors/error-message';
-import { Icon } from '@shared/components/icon/icon';
+import { Icon } from '@shared/icons/icon';
 
 /** What the card explains: a turn that ended early, or one that never started. */
 export type TurnNotice =

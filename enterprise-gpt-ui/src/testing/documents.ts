@@ -1,5 +1,5 @@
-import { UserDocumentDto } from '../app/shared/models/api/document.model';
-import { PaginatedResponseDto } from '../app/shared/models/api/paginated-response.model';
+import { UserDocumentDto } from '../app/core/api/document.model';
+import { PaginatedResponseDto } from '../app/core/api/paginated-response.model';
 
 let sequence = 0;
 

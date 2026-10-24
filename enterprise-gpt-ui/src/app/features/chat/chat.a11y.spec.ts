@@ -7,12 +7,11 @@ import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { getAllByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CHAT_ROLE, MESSAGE_FEEDBACK_RATING } from '@shared/models/api/conversation.model';
-import { TokenService } from '@core/auth/token-service';
+import { CHAT_ROLE, MESSAGE_FEEDBACK_RATING } from '@core/api/conversation.model';
+import { AccessTokenClient } from '@core/auth/access-token-client';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { chatMatcher } from '@core/navigation/chat-matcher';
-import { STREAM_FETCH } from '@services/conversations/stream-fetch.token';
 import { THEMES, applyTheme, clearTheme, expectNoSeriousViolations } from '@testing/a11y';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpFixture, modelFixture } from '@testing/catalog';
@@ -23,6 +22,7 @@ import {
 } from '@testing/conversations';
 import { openMenu } from '@testing/overlays';
 import { Chat } from './chat';
+import { STREAM_FETCH } from './stream-fetch-token';
 
 /** ISO 8601 with offset, as the transcript response carries it. */
 const RATED_AT = '2026-08-21T09:30:00+00:00';
@@ -52,7 +52,10 @@ describe('chat accessibility', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: STREAM_FETCH, useValue: vi.fn(() => new Promise<Response>(() => {})) },
-        { provide: TokenService, useValue: { getToken: vi.fn().mockResolvedValue('token-1') } },
+        {
+          provide: AccessTokenClient,
+          useValue: { getToken: vi.fn().mockResolvedValue('token-1') },
+        },
         provideRouter(
           [
             { matcher: chatMatcher, component: Chat },

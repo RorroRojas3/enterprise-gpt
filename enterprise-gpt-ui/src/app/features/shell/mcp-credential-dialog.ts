@@ -8,11 +8,11 @@ import {
   untracked,
 } from '@angular/core';
 import { FormField, disabled, form, required, validate } from '@angular/forms/signals';
-import { McpDto } from '@shared/models/api/mcp.model';
+import { McpDto } from '@core/api/mcp.model';
+import { McpCredentialStore } from '@core/catalog/mcp-credential-store';
 import { traceLine, userMessage } from '@core/errors/error-message';
 import { serverMessagesFor } from '@core/errors/server-messages';
-import { McpCredentialStore } from '@state/mcp-credential-store';
-import { Modal } from '@shared/components/modal/modal';
+import { Modal } from '@shared/dialog/modal';
 import { apiKeyError } from './mcp-credential-form';
 
 /**

@@ -12,19 +12,19 @@ import {
   viewChild,
 } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { MOBILE_VIEWPORT, TABLET_VIEWPORT } from '@shared/utils/layout/breakpoints';
-import { injectMediaQuery } from '@core/ui/media-query';
-import { ShellChrome } from '@core/ui/shell-chrome-service';
-import { UiStore } from '@state/ui-store';
-import { Icon } from '@shared/components/icon/icon';
-import { Offcanvas } from '@shared/components/offcanvas/offcanvas';
-import { DeleteConversationDialog } from '@components/shell/conversation-actions/delete-conversation-dialog';
-import { RenameConversationDialog } from '@components/shell/conversation-actions/rename-conversation-dialog';
-import { McpCredentialDialog } from '@components/shell/mcp-credential-dialog';
-import { MobileNavbar } from '@components/shell/mobile-navbar';
-import { DeleteProjectDialog } from '@components/shell/project-actions/delete-project-dialog';
-import { ProjectFormDialog } from '@components/shell/project-actions/project-form-dialog';
-import { Sidebar, SidebarMode } from '@components/shell/sidebar/sidebar';
+import { ShellChrome } from '@core/layout/shell-chrome';
+import { Offcanvas } from '@shared/dialog/offcanvas';
+import { Icon } from '@shared/icons/icon';
+import { MOBILE_VIEWPORT, TABLET_VIEWPORT } from '@shared/layout/breakpoints';
+import { injectMediaQuery } from '@shared/layout/media-query';
+import { DeleteConversationDialog } from './conversation-actions/delete-conversation-dialog';
+import { RenameConversationDialog } from './conversation-actions/rename-conversation-dialog';
+import { McpCredentialDialog } from './mcp-credential-dialog';
+import { MobileNavbar } from './mobile-navbar';
+import { DeleteProjectDialog } from './project-actions/delete-project-dialog';
+import { ProjectFormDialog } from './project-actions/project-form-dialog';
+import { Sidebar, SidebarMode } from './sidebar/sidebar';
+import { UiStore } from './ui-store';
 
 type ShellMode = 'desktop' | 'tablet' | 'mobile';
 
@@ -49,7 +49,7 @@ type ShellMode = 'desktop' | 'tablet' | 'mobile';
     Sidebar,
   ],
   // Provided here rather than at the root: nothing eagerly reachable imports
-  // `shell-chrome-service.ts`, so it rides this lazy chunk. See the note in that file.
+  // `shell-chrome.ts`, so it rides this lazy chunk. See the note in that file.
   providers: [ShellChrome],
   templateUrl: './shell.html',
   styleUrl: './shell.scss',

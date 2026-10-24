@@ -3,8 +3,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ModelDto } from '@shared/models/api/chat-model.model';
-import { McpDto } from '@shared/models/api/mcp.model';
+import { ModelDto } from '@core/api/chat-model.model';
+import { McpDto } from '@core/api/mcp.model';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { sessionEvents } from '@core/events/session-events';

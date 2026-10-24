@@ -3,8 +3,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { getByRole, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { McpDto } from '@shared/models/api/mcp.model';
-import { McpCredentialStore } from '@state/mcp-credential-store';
+import { McpDto } from '@core/api/mcp.model';
+import { McpCredentialStore } from '@core/catalog/mcp-credential-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpFixture } from '@testing/catalog';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';

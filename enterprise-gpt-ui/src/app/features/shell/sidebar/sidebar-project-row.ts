@@ -8,14 +8,14 @@ import {
   output,
 } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import { ProjectSummaryDto } from '@shared/models/api/project.model';
+import { ProjectSummaryDto } from '@core/api/project.model';
 import { PROJECTS_ROUTE } from '@core/navigation/route-paths';
-import { ProjectActionsStore } from '@state/project-actions-store';
-import { Icon } from '@shared/components/icon/icon';
-import { Menu } from '@shared/components/menu/menu';
-import { MenuItem } from '@shared/directives/menu-item';
-import { MenuSeparator } from '@shared/directives/menu-separator';
-import { SidebarProjectConversations } from './project-conversations';
+import { ProjectActionsStore } from '@core/projects/project-actions-store';
+import { Icon } from '@shared/icons/icon';
+import { Menu } from '@shared/menu/menu';
+import { MenuItem } from '@shared/menu/menu-item';
+import { MenuSeparator } from '@shared/menu/menu-separator';
+import { SidebarProjectConversations } from './sidebar-project-conversations';
 
 /**
  * Link, disclosure and kebab sit side by side, as interactive content inside an `<a>` is invalid.
@@ -33,7 +33,7 @@ import { SidebarProjectConversations } from './project-conversations';
     RouterLinkActive,
     SidebarProjectConversations,
   ],
-  templateUrl: './project-row.html',
+  templateUrl: './sidebar-project-row.html',
   host: { class: 'd-block' },
 })
 export class SidebarProjectRow {

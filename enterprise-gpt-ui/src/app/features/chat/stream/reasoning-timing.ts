@@ -1,4 +1,4 @@
-import { AssistantUiEvent } from '@shared/models/andes/assistant-ui.contract';
+import { AssistantUiEvent } from '@core/api/assistant-ui-contract';
 
 /**
  * The first `ReasoningDelta` is server-seeded and skipped by position, not text. The wire carries

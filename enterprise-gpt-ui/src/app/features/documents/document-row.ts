@@ -1,13 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { DocumentType, UserDocumentDto } from '@shared/models/api/document.model';
-import { FILE_GLYPH_TEXT, fileGlyph } from '@shared/utils/documents/file-glyph';
-import { formatBytes } from '@shared/utils/format/bytes';
-import { formatShortDate } from '@shared/utils/format/relative-time';
+import { DocumentType, UserDocumentDto } from '@core/api/document.model';
+import { DocumentDownloadStore } from '@core/documents/document-download-store';
 import { CHAT_ROUTE } from '@core/navigation/route-paths';
-import { DocumentDownloadStore } from '@state/document-download-store';
-import { Icon } from '@shared/components/icon/icon';
-import { DocumentSource, SourceBadge } from '@shared/components/source-badge/source-badge';
+import { DocumentSource, SourceBadge } from '@shared/badges/source-badge';
+import { FILE_GLYPH_TEXT, fileGlyph } from '@shared/files/file-glyph';
+import { formatBytes } from '@shared/formatting/bytes';
+import { formatShortDate } from '@shared/formatting/relative-time';
+import { Icon } from '@shared/icons/icon';
 
 const BADGE_SOURCES = {
   Uploaded: 'uploaded',
@@ -43,7 +43,7 @@ export class DocumentRow {
   protected readonly glyph = computed(() => fileGlyph(this.document().name));
   protected readonly glyphTone = computed(() => FILE_GLYPH_TEXT[this.glyph().tone]);
 
-  /** The badge's own vocabulary, which `shared/models` cannot name without importing a component. */
+  /** The badge's own vocabulary, which a `*.model.ts` cannot name without importing a component. */
   // Defaulted: the wire could add a type before the union does.
   protected readonly source = computed<DocumentSource>(
     () => BADGE_SOURCES[this.document().type] ?? 'uploaded',

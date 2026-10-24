@@ -11,20 +11,15 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { MessageFeedbackRating } from '@shared/models/api/conversation.model';
-import {
-  COPIED_LABEL,
-  COPY_CONFIRMATION_MS,
-  COPY_LABEL,
-  copyText,
-} from '@shared/utils/clipboard/copy-text';
+import { MessageFeedbackRating } from '@core/api/conversation.model';
 import { canRetry, userMessage } from '@core/errors/error-message';
-import { TurnErrorNotice, TurnStore } from '@state/chat/turn-store';
-import { BrandLogo } from '@shared/components/brand-logo/brand-logo';
-import { ErrorPanel } from '@shared/components/error-panel/error-panel';
-import { Ridgeline } from '@shared/components/ridgeline/ridgeline';
-import { Skeleton } from '@shared/components/skeleton/skeleton';
+import { ErrorPanel } from '@core/errors/error-panel';
+import { BrandLogo } from '@shared/brand/brand-logo';
+import { Ridgeline } from '@shared/brand/ridgeline';
+import { Skeleton } from '@shared/loading/skeleton';
+import { TurnErrorNotice, TurnStore } from '@features/chat/turn-store';
 import { AssistantTurn } from './assistant-turn';
+import { COPIED_LABEL, COPY_CONFIRMATION_MS, COPY_LABEL, copyText } from './copy-text';
 import { MessageCopy } from './message-copy';
 import { StoppedCard } from './stopped-card';
 import { TurnNotice, TurnNoticeCard } from './turn-notice-card';

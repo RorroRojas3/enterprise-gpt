@@ -1,9 +1,9 @@
 import { DestroyRef, Directive, ElementRef, afterRenderEffect, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MarkdownComponent } from 'ngx-markdown';
-import { ThemeService } from '@core/theme/theme-service';
+import { Theme } from '@core/theme/theme';
 import { sanitizeDiagramSvg } from './diagram-svg';
-import { LazyRendererLoader } from './lazy-renderer-loader-service';
+import { LazyRendererLoader } from './lazy-renderer-loader';
 import { MATH_CLASS, MATH_DISPLAY_CLASS } from './math-extension';
 
 /** Marks a wrapper whose diagram has been drawn, so a re-render never redraws it. */
@@ -23,7 +23,7 @@ const TYPESET = 'md-math--rendered';
 export class MarkdownExtras {
   private readonly _element = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
   private readonly _loader = inject(LazyRendererLoader);
-  private readonly _theme = inject(ThemeService);
+  private readonly _theme = inject(Theme);
 
   private _destroyed = false;
   /** Bumped by anything that invalidates work in flight, so a stale pass bails. */

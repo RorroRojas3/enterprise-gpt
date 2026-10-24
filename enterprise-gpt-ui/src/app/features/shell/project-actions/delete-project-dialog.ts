@@ -6,8 +6,8 @@ import {
   computed,
   inject,
 } from '@angular/core';
-import { ProjectActionsStore } from '@state/project-actions-store';
-import { Modal } from '@shared/components/modal/modal';
+import { ProjectActionsStore } from '@core/projects/project-actions-store';
+import { Modal } from '@shared/dialog/modal';
 
 /**
  * Mounted once in `Shell`, shared by every project invoker. The copy keeps conversations because

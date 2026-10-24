@@ -5,7 +5,7 @@ import {
   AssistantActivity,
   createInitialSnapshot,
   foldAssistantEvents,
-} from '@shared/models/andes/assistant-ui.contract';
+} from '@core/api/assistant-ui-contract';
 import { iconOf } from '@testing/overlays';
 import { assistantEvent } from '@testing/stream-frames';
 import { ActivityCard } from './activity-card';

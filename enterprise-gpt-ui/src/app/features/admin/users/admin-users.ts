@@ -10,8 +10,22 @@ import {
   viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Params, Router } from '@angular/router';
-import { PermissionDto, UserDto } from '@shared/models/api/user.model';
-import { TableColumn } from '@shared/models/table-column.model';
+import { PermissionDto, UserDto } from '@core/api/user.model';
+import { canRetry } from '@core/errors/error-message';
+import { ErrorPanel } from '@core/errors/error-panel';
+import { SessionStore } from '@core/session/session-store';
+import { SELF_DEACTIVATE_MESSAGE } from '@core/users/self-action-messages';
+import { AvatarInitials } from '@shared/avatar/avatar-initials';
+import { PermissionBadge } from '@shared/badges/permission-badge';
+import { DataTable } from '@shared/data-table/data-table';
+import { TableCell } from '@shared/data-table/table-cell';
+import { TableColumn } from '@shared/data-table/table-column.model';
+import { EmptyState } from '@shared/empty-state/empty-state';
+import { Icon } from '@shared/icons/icon';
+import { shouldReplaceHistory } from '@shared/navigation/search-history';
+import { Tooltip } from '@shared/overlay/tooltip';
+import { Paginator } from '@shared/pagination/paginator';
+import { SearchInput } from '@shared/search/search-input';
 import {
   ANY_PERMISSION_LABEL,
   NAME_PARAM,
@@ -20,29 +34,15 @@ import {
   PERMISSION_PARAM,
   SIZE_PARAM,
   USER_PAGE_SIZES,
-  shouldReplaceHistory,
   toPage,
   toPageSize,
   toPermissionFilter,
-} from '@shared/utils/navigation/admin-users-route';
-import { canRetry } from '@core/errors/error-message';
-import { SessionStore } from '@core/session/session-store';
-import { SELF_DEACTIVATE_MESSAGE } from '@core/users/self-action-messages';
-import { AdminUsersStore } from '@state/admin/admin-users-store';
-import { UserActionsStore } from '@state/user-actions-store';
-import { AvatarInitials } from '@shared/components/avatar-initials/avatar-initials';
-import { DataTable } from '@shared/components/data-table/data-table';
-import { EmptyState } from '@shared/components/empty-state/empty-state';
-import { ErrorPanel } from '@shared/components/error-panel/error-panel';
-import { Icon } from '@shared/components/icon/icon';
-import { Paginator } from '@shared/components/paginator/paginator';
-import { SearchInput } from '@shared/components/search-input/search-input';
-import { TableCell } from '@shared/directives/table-cell';
-import { Tooltip } from '@shared/directives/tooltip';
-import { PermissionBadge } from '@components/admin/permission-badge';
-import { DeactivateUserDialog } from '@components/admin/users/deactivate-user-dialog';
-import { UserEditPanel } from '@components/admin/users/user-edit-panel';
-import { UserFormDialog } from '@components/admin/users/user-form-dialog';
+} from './admin-users-route';
+import { AdminUsersStore } from './admin-users-store';
+import { DeactivateUserDialog } from './deactivate-user-dialog';
+import { UserActionsStore } from './user-actions-store';
+import { UserEditPanel } from './user-edit-panel';
+import { UserFormDialog } from './user-form-dialog';
 
 /**
  * The URL is the query's source of truth and {@link _applyQuery} its only writer. Bind `[value]`

@@ -3,8 +3,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { getByRole, getByText } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ALLOWED_PREFERENCE_KEYS, PREFERENCE_KEYS } from '@shared/utils/storage/local-preferences';
-import { AuthService } from '@core/auth/auth-service';
+import { Auth } from '@core/auth/auth';
+import { ALLOWED_PREFERENCE_KEYS, PREFERENCE_KEYS } from '@core/preferences/local-preferences';
 import { SessionStore } from '@core/session/session-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
@@ -89,7 +89,7 @@ describe('UserFooter', () => {
 
   it('signs out on one press, and refuses a second', async () => {
     const fixture = await render();
-    const auth = TestBed.inject(AuthService);
+    const auth = TestBed.inject(Auth);
     const signOut = vi.spyOn(auth, 'signOut');
     const button = signOutButton(fixture);
 
@@ -122,7 +122,7 @@ describe('UserFooter', () => {
 
   it('does not sweep localStorage — the build gate is what keeps user data out of it', async () => {
     // Sign-out clears nothing here: user data stays out because `check-forbidden-apis.mjs`
-    // lets only shared/utils/storage/local-preferences.ts write, so a stray key survives.
+    // lets only core/preferences/local-preferences.ts write, so a stray key survives.
     const fixture = await render();
     localStorage.setItem('egpt.leftover', 'what a regression looks like');
 

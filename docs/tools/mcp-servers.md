@@ -130,7 +130,7 @@ Per-server URL, auth type and headers are catalog data, not configuration.
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Caching/McpClientCache.cs` | Live connections, single-flight |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/McpServers/UserMcpCredentialService.cs` | Per-user key storage |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Security/UserSecretProtector.cs` | Data Protection wrapper |
-| `enterprise-gpt-ui/src/app/state/mcp-credential-store.ts` | The key dialog's state |
+| `enterprise-gpt-ui/src/app/core/catalog/mcp-credential-store.ts` | The key dialog's state |
 | `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Service/McpServers/` | Discard rules and failure classification |
 
 ## Related

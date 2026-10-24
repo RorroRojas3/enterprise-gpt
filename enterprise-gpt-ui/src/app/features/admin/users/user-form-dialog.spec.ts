@@ -7,12 +7,12 @@ import {
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { getAllByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { UserActionsStore } from '@state/user-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { ADMINISTRATOR_GRANT, MCP_GRANT } from '@testing/session';
 import { directoryUserFixture } from '@testing/users';
+import { UserActionsStore } from './user-actions-store';
 import { UserFormDialog } from './user-form-dialog';
 
 const USERS_URL = `${TEST_API_BASE_URL}/api/users`;

@@ -11,19 +11,19 @@ import {
 } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { filter, mergeMap, pipe, switchMap, takeUntil, tap } from 'rxjs';
-import { ProjectDocumentDto } from '@shared/models/api/project.model';
-import { toAppError } from '@core/errors/to-app-error';
-import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
-import { ToastStore } from '@core/notifications/toast-store';
-import { addPendingId, removePendingId, withPendingIds } from '@core/state/with-pending-ids';
+import { ApiUrl } from '@core/api/api-url';
+import { ProjectDocumentDto } from '@core/api/project.model';
+import { addPendingId, removePendingId, withPendingIds } from '@core/api/with-pending-ids';
 import {
   setError,
   setFulfilled,
   setPending,
   withRequestStatus,
-} from '@core/state/with-request-status';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+} from '@core/api/with-request-status';
+import { toAppError } from '@core/errors/to-app-error';
+import { injectSignedOut } from '@core/events/session-events';
+import { ToastStore } from '@core/notifications/toast-store';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
 
 /** What the store keeps so an optimistic removal can be put back where it was. */
 interface RemovedDocument {

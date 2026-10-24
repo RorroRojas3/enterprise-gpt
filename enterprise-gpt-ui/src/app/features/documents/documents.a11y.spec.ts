@@ -6,7 +6,6 @@ import { Router, provideRouter, withComponentInputBinding } from '@angular/route
 import { RouterTestingHarness } from '@angular/router/testing';
 import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DOCUMENT_PAGE_SIZE } from '@state/documents/document-library-store';
 import {
   THEMES,
   VIEWPORTS,
@@ -19,6 +18,7 @@ import {
 } from '@testing/a11y';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { documentPage, userDocumentFixture } from '@testing/documents';
+import { DOCUMENT_PAGE_SIZE } from './document-library-store';
 import { Documents } from './documents';
 
 /**

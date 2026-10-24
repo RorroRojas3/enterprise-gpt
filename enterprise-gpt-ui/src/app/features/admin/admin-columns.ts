@@ -1,7 +1,7 @@
 import { Signal, computed } from '@angular/core';
-import { TableColumn } from '@shared/models/table-column.model';
-import { MOBILE_VIEWPORT } from '@shared/utils/layout/breakpoints';
-import { injectMediaQuery } from '@core/ui/media-query';
+import { TableColumn } from '@shared/data-table/table-column.model';
+import { MOBILE_VIEWPORT } from '@shared/layout/breakpoints';
+import { injectMediaQuery } from '@shared/layout/media-query';
 
 /** Bootstrap's `xxl` edge, local to the admin tables. */
 export const BELOW_XXL = '(max-width: 1399.98px)';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AssistantActivity } from '@shared/models/andes/assistant-ui.contract';
+import { AssistantActivity } from '@core/api/assistant-ui-contract';
 import { activityLabel } from './activity-label';
 
 function activity(

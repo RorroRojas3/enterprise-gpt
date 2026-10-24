@@ -3,7 +3,7 @@ import {
   AssistantUiEvent,
   createInitialSnapshot,
   foldAssistantEvents,
-} from '@shared/models/andes/assistant-ui.contract';
+} from '@core/api/assistant-ui-contract';
 import { assistantEvent, fullTurnEvents } from '@testing/stream-frames';
 import { turnAnnouncement } from './turn-announcement';
 

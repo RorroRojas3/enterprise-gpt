@@ -6,7 +6,7 @@ import {
   ActivityState,
   AssistantActivity,
   AssistantStatusSnapshot,
-} from '@shared/models/andes/assistant-ui.contract';
+} from '@core/api/assistant-ui-contract';
 import { activityLabel } from './activity-label';
 
 export interface TurnAnnouncementContext {

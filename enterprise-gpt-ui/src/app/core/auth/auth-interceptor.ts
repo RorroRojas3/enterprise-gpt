@@ -7,10 +7,10 @@ import {
 } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Observable, catchError, defer, from, switchMap, throwError } from 'rxjs';
-import { TokenService } from '@core/auth/token-service';
+import { ApiUrl } from '@core/api/api-url';
 import { authErrorDecision } from '@core/errors/retry-policy';
 import { toAppError } from '@core/errors/to-app-error';
-import { ApiUrl } from '@core/http/api-url-service';
+import { AccessTokenClient } from './access-token-client';
 
 /**
  * Goes after `retryInterceptor`, so a replay acquires a fresh token. A 401 retries once with a
@@ -18,7 +18,7 @@ import { ApiUrl } from '@core/http/api-url-service';
  */
 export const authInterceptor: HttpInterceptorFn = (request, next) => {
   const apiUrl = inject(ApiUrl);
-  const tokens = inject(TokenService);
+  const tokens = inject(AccessTokenClient);
 
   // Only our API gets the bearer token, never config.json, the sprite or a third-party host.
   if (!apiUrl.owns(request.url)) {
@@ -43,7 +43,7 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
 function authorize(
   request: HttpRequest<unknown>,
   next: HttpHandlerFn,
-  tokens: TokenService,
+  tokens: AccessTokenClient,
   forceRefresh: boolean,
 ): Observable<HttpEvent<unknown>> {
   return defer(() => from(tokens.getToken({ forceRefresh }))).pipe(

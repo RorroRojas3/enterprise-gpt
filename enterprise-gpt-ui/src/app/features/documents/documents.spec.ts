@@ -17,13 +17,13 @@ import {
   queryByRole,
 } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserDocumentDto } from '@shared/models/api/document.model';
-import { formatShortDate } from '@shared/utils/format/relative-time';
-import { DOCUMENT_PAGE_SIZE } from '@state/documents/document-library-store';
+import { UserDocumentDto } from '@core/api/document.model';
+import { formatShortDate } from '@shared/formatting/relative-time';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { documentPage, userDocumentFixture } from '@testing/documents';
 import { iconOf } from '@testing/overlays';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
+import { DOCUMENT_PAGE_SIZE } from './document-library-store';
 import { Documents } from './documents';
 
 const DOCUMENTS_URL = `${TEST_API_BASE_URL}/api/documents`;

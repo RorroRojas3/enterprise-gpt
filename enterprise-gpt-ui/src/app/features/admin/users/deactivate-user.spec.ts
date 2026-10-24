@@ -11,18 +11,18 @@ import { Router, provideRouter, withComponentInputBinding } from '@angular/route
 import { RouterTestingHarness } from '@angular/router/testing';
 import { getByRole, queryByText } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserDto } from '@shared/models/api/user.model';
-import { DEFAULT_USER_PAGE_SIZE } from '@shared/utils/navigation/admin-users-route';
+import { UserDto } from '@core/api/user.model';
 import { ToastStore } from '@core/notifications/toast-store';
 import { SessionStore } from '@core/session/session-store';
 import { SELF_DEACTIVATE_MESSAGE } from '@core/users/self-action-messages';
-import { UserActionsStore } from '@state/user-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { dialogNamed } from '@testing/overlays';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { directoryUserFixture, flushPermissions, userPage } from '@testing/users';
 import { AdminUsers } from './admin-users';
+import { DEFAULT_USER_PAGE_SIZE } from './admin-users-route';
+import { UserActionsStore } from './user-actions-store';
 
 const USERS_URL = `${TEST_API_BASE_URL}/api/users`;
 

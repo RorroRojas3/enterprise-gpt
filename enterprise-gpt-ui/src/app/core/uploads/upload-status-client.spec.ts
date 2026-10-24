@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { Subscription } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { JobStatusDto } from '@shared/models/api/document.model';
+import { JobStatusDto } from '@core/api/document.model';
 import { AppError } from '@core/errors/app-error';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';

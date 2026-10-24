@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { EmailDraft } from '@shared/utils/email/email-draft';
-import { Icon } from '@shared/components/icon/icon';
+import { Icon } from '@shared/icons/icon';
+import { EmailDraft } from '@features/chat/email/email-draft';
 import { EmailOpenMenu } from './email-open-menu';
 
 /**

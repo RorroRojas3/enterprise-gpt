@@ -6,12 +6,12 @@ import {
 } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PROVIDER_ID } from '@shared/models/api/provider.model';
-import { ModelActionsStore } from '@state/model-actions-store';
+import { PROVIDER_ID } from '@core/api/provider.model';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
+import { ModelActionsStore } from './model-actions-store';
 import { ModelFormDialog } from './model-form-dialog';
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;

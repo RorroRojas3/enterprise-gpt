@@ -1,16 +1,16 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createInitialSnapshot, foldAssistantEvents } from './assistant-ui.contract';
+import { createInitialSnapshot, foldAssistantEvents } from './assistant-ui-contract';
 
 /**
  * Guards the vendoring, not the fold semantics. The byte-for-byte check against the NuGet copy is
  * `scripts/check-andes-contract.mjs`, since it needs a restored .NET package.
  */
 
-const SRC_ROOT = resolve(import.meta.dirname, '../../../..');
-const VENDORED = join(SRC_ROOT, 'app/shared/models/andes/assistant-ui.contract.ts');
-const SPEC = join(SRC_ROOT, 'app/shared/models/andes/assistant-ui.contract.spec.ts');
+const SRC_ROOT = resolve(import.meta.dirname, '../../..');
+const VENDORED = join(SRC_ROOT, 'app/core/api/assistant-ui-contract.ts');
+const SPEC = join(SRC_ROOT, 'app/core/api/assistant-ui-contract.spec.ts');
 
 const VENDORED_SYMBOLS = [
   'AssistantUiEvent',

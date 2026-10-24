@@ -7,8 +7,7 @@ import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { getAllByRole, getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { MCP_AUTH_TYPE, McpServerDto } from '@shared/models/api/mcp.model';
-import { McpServerActionsStore } from '@state/mcp-server-actions-store';
+import { MCP_AUTH_TYPE, McpServerDto } from '@core/api/mcp.model';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpServerFixture } from '@testing/catalog';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
@@ -16,6 +15,7 @@ import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/medi
 import { menuItems, openMenu } from '@testing/overlays';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { AdminMcps } from './admin-mcps';
+import { McpServerActionsStore } from './mcp-server-actions-store';
 
 const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps/all`;
 

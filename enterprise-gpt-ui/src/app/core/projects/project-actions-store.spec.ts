@@ -7,13 +7,13 @@ import {
 import { TestBed } from '@angular/core/testing';
 import { Events } from '@ngrx/signals/events';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { ProjectDto } from '@shared/models/api/project.model';
+import { ProjectDto } from '@core/api/project.model';
 import { ProjectFavoriteChange, projectEvents } from '@core/events/project-events';
 import { ToastStore } from '@core/notifications/toast-store';
-import { DUPLICATE_NAME_MESSAGE, projectNameMessages } from '@core/projects/duplicate-name';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { projectDetailFixture, projectFixture } from '@testing/projects';
+import { DUPLICATE_NAME_MESSAGE, projectNameMessages } from './duplicate-name';
 import { ProjectActionsStore } from './project-actions-store';
 
 const PROJECTS_URL = `${TEST_API_BASE_URL}/api/projects`;

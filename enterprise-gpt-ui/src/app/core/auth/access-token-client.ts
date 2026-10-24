@@ -5,8 +5,8 @@ import {
   BrowserAuthErrorCodes,
   InteractionRequiredAuthError,
 } from '@azure/msal-browser';
-import { APP_CONFIG } from '@core/config/app-config.token';
-import { MSAL_INSTANCE } from './msal-instance.token';
+import { APP_CONFIG } from '@core/config/app-config-token';
+import { MSAL_INSTANCE } from './msal-instance-token';
 
 /** Raised when a token cannot be produced without leaving the page. */
 export class InteractiveSignInRequiredError extends Error {
@@ -21,7 +21,7 @@ export class InteractiveSignInRequiredError extends Error {
  * cache and refresh schedule. Promise-shaped because the stream path is.
  */
 @Injectable({ providedIn: 'root' })
-export class TokenService {
+export class AccessTokenClient {
   private readonly _instance = inject(MSAL_INSTANCE);
   private readonly _scopes = [...inject(APP_CONFIG).auth.apiScopes];
 

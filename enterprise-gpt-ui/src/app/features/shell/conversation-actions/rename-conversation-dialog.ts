@@ -8,9 +8,9 @@ import {
   untracked,
 } from '@angular/core';
 import { FormField, form, maxLength, required, validate } from '@angular/forms/signals';
+import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
 import { serverMessagesFor, unmatchedServerMessages } from '@core/errors/server-messages';
-import { ConversationActionsStore } from '@state/conversation-actions-store';
-import { Modal } from '@shared/components/modal/modal';
+import { Modal } from '@shared/dialog/modal';
 
 /** The server's `MaximumLength` on a conversation name; the counter and cap read it. */
 const NAME_MAX_LENGTH = 256;

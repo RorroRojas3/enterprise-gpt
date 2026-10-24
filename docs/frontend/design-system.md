@@ -75,7 +75,7 @@ index.html <head>
                     sets <html data-bs-theme> and <html>.style.colorScheme
                             -> first paint happens here, already correct
 styles.scss         tokens resolve against an attribute that is already set
-provideAppInitializer(() => inject(ThemeService))
+provideAppInitializer(() => inject(Theme))
                     reads the same key, applies the same values, takes over
 ```
 
@@ -118,7 +118,7 @@ The icon font is **not** shipped: its stylesheet alone is roughly 72 kB and woul
 to render the ~75 in use.
 
 ```text
-shared/utils/icons/icon-names.ts   sorted names + the IconName union     (checked in)
+shared/icons/icon-names.ts         sorted names + the IconName union     (checked in)
    |  npm run assets:icons
 public/icons/sprite.svg      one <symbol> per glyph, fill=currentColor   (gitignored)
    |  loadIconSprite(), in parallel with the config fetch in main.ts
@@ -262,13 +262,17 @@ Utilities are extended through the Bootstrap API rather than new rules: `.font-d
 text is Bootstrap's `.font-monospace`. `_kit.scss` also defines the `--safe-*` inset tokens and the
 toast region's `--toast-top` / `--toast-right`.
 
-`shared/components/` and `shared/directives/` hold the presentational, feature-agnostic building
-blocks: avatars, badges, chips, the data table and paginator, empty and error states, the icon
-component, overlay primitives (menu, modal, offcanvas, tooltip), the search input, the ridgeline,
-the theme toggle and the upload drop target. Anything one feature owns lives with that feature
-instead: the composer in `components/composer/`, the project card in `components/projects/`. A
-dev-only `/ui-kit` route (`pages/ui-kit/`) renders the gallery, including every kit class and
-every overlay, and is the manual check that the top layer behaves.
+`shared/<theme>/` holds the presentational, feature-agnostic building blocks, grouped by purpose:
+`avatar/`, `badges/`, `brand/` (logo and ridgeline), `data-table/`, `pagination/`, `empty-state/`,
+`icons/`, `dialog/` (modal, offcanvas), `menu/`, `overlay/` (tooltip, anchored panel), `search/`,
+`file-drop/` and so on. Kit primitives stay there even when only one feature renders them. A
+component that injects a store lives in the `core/` topic it serves instead: the theme toggle in
+`core/theme/`, the error panel in `core/errors/`, the composer in `core/composer/`. Anything one
+feature owns lives in that feature's folder. A dev-only `/ui-kit` route (`features/ui-kit/`) renders
+the gallery, including every kit class and every overlay, and is the manual check that the top layer
+behaves. `ui-kit` is a feature, and features never import each other, so the three components it
+shows that other features own (`badges/permission-badge`, `badges/kind-badge`, `cards/project-card`)
+live in `shared/`.
 
 ### Overlay primitives
 
@@ -285,7 +289,7 @@ Popper or ng-bootstrap, and `check:forbidden` fails an import of any of them.
   modal, and for the offcanvas hidden when closed, visible and pinned to its side when open. A
   closed offcanvas that is still `display: flex`, or an end offcanvas pinned left, leaks silently,
   so specs exercise both sides.
-- **Initial focus.** `focusInitialTarget()` in `shared/utils/a11y/tabbable.ts` picks the autofocus
+- **Initial focus.** `focusInitialTarget()` in `shared/dialog/tabbable.ts` picks the autofocus
   target, else the first tabbable that is not the close button, else the heading.
 - **Menu.** The trigger is `btn-ghost btn-icon-sm`, or a bare reset when it wraps projected content.
   The panel is `.dropdown-menu.dropdown-menu-fixed.show`; `MenuItem` hosts as `.dropdown-item` and
@@ -312,7 +316,7 @@ Specs find elements by role and accessible name through `@testing-library/dom`, 
 | `enterprise-gpt-ui/src/styles/_bootstrap-overrides.scss` | The colour flip loop, dark glyphs and the named focus rules |
 | `enterprise-gpt-ui/src/styles/_kit.scss` | Classes Bootstrap lacks |
 | `enterprise-gpt-ui/src/styles/_motion.scss` | The three app keyframes and the reduced-motion block |
-| `enterprise-gpt-ui/src/app/shared/utils/icons/icon-names.ts` | The sprite manifest |
+| `enterprise-gpt-ui/src/app/shared/icons/icon-names.ts` | The sprite manifest |
 | `enterprise-gpt-ui/src/testing/overlays.ts` | Spec helpers for menus, tooltips, dialogs and icons |
 | `enterprise-gpt-ui/scripts/check-tokens.mjs` | Shell parity, contrast, breakpoint parity |
 | `enterprise-gpt-ui/src/styles/motion.spec.ts` | No animation names a keyframe that does not exist |

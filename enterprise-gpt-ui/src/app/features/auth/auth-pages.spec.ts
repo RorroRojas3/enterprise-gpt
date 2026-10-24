@@ -11,7 +11,7 @@ import {
   queryByRole,
 } from '@testing-library/dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { HardNavigation } from '@core/navigation/hard-navigation-service';
+import { HardNavigation } from '@core/navigation/hard-navigation';
 import { SessionStore } from '@core/session/session-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';

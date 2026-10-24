@@ -15,12 +15,12 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { onDismiss } from '@shared/utils/a11y/dismiss';
-import { IconName } from '@shared/utils/icons/icon-names';
-import { AnchoredPosition, anchoredPosition } from '@shared/utils/overlay/anchored-panel';
-import { Icon } from '@shared/components/icon/icon';
-import { MenuTriggerContent } from '@shared/directives/menu-trigger-content';
-import { Tooltip } from '@shared/directives/tooltip';
+import { Icon } from '@shared/icons/icon';
+import { IconName } from '@shared/icons/icon-names';
+import { AnchoredPosition, anchoredPosition } from '@shared/overlay/anchored-panel';
+import { onDismiss } from '@shared/overlay/dismiss';
+import { Tooltip } from '@shared/overlay/tooltip';
+import { MenuTriggerContent } from './menu-trigger-content';
 
 let nextId = 0;
 

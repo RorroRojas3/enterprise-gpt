@@ -7,9 +7,8 @@ import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { getAllByRole, getAllByText, getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ModelDto } from '@shared/models/api/chat-model.model';
-import { PROVIDER_ID } from '@shared/models/api/provider.model';
-import { ModelActionsStore } from '@state/model-actions-store';
+import { ModelDto } from '@core/api/chat-model.model';
+import { PROVIDER_ID } from '@core/api/provider.model';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
@@ -17,6 +16,7 @@ import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/medi
 import { menuItems, openMenu } from '@testing/overlays';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { AdminModels } from './admin-models';
+import { ModelActionsStore } from './model-actions-store';
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models/all`;
 

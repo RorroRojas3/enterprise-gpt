@@ -12,16 +12,16 @@ import {
 import { Dispatcher } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { exhaustMap, mergeMap, switchMap, takeUntil } from 'rxjs';
-import { PermissionDto, UserDto } from '@shared/models/api/user.model';
+import { ApiUrl } from '@core/api/api-url';
+import { PermissionDto, UserDto } from '@core/api/user.model';
 import { AppError, ValidationAppError } from '@core/errors/app-error';
 import { traceLine } from '@core/errors/error-message';
 import { toAppError } from '@core/errors/to-app-error';
 import { adminEvents } from '@core/events/admin-events';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
 import { ToastStore } from '@core/notifications/toast-store';
 import { SessionStore } from '@core/session/session-store';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
 import { isSelfActionRefusal } from '@core/users/self-action-messages';
 
 export type UserFormMode = 'create' | 'edit';

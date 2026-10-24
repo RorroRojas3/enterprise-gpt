@@ -1,5 +1,5 @@
 import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
 
 interface PendingAttachmentsState {
   /** The conversation the files are for, or null when nothing is waiting. */

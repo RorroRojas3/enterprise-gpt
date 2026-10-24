@@ -64,7 +64,7 @@ names the mixins and constants, so the fix is in the failure.
 From 992px the persistent sidebar and the admin rail sit beside the table, which leaves less room
 than at 991px, where the sidebar was still a strip. `DataTable` drops its `hideOnTablet` columns
 only in the tablet band, so the admin MCP and model tables take their columns from
-`injectAdminColumns` (`pages/admin/admin-columns.ts`). It drops them up to Bootstrap's `xxl` edge
+`injectAdminColumns` (`features/admin/admin-columns.ts`). It drops them up to Bootstrap's `xxl` edge
 (1400px) and keeps every column below 768px, where the table becomes cards.
 
 Only the desktop width is persisted, in `UiStore`, which deliberately does not reset on sign-out —
@@ -72,7 +72,7 @@ it is a device-local preference, not the signed-in user's data.
 
 ## The shell
 
-`pages/shell/` is lazy, and so is everything it renders from `components/shell/`. That is what keeps
+`features/shell/` is lazy, and so is everything it renders. That is what keeps
 the signed-in chrome off the four unguarded auth routes, and it is why `/forbidden` is a *sibling* of the shell
 rather than a child: it must render without chrome.
 
@@ -91,9 +91,9 @@ hovered the control focus landed on.
 
 ## Overlays
 
-The primitives are `anchored-panel` (positioning, `shared/utils/overlay/`), and `menu` (roving
-focus), `modal` (native `<dialog>` with `showModal()`) and `offcanvas` in `shared/components/`, plus
-the `tooltip` directive in `shared/directives/`.
+The primitives are `anchored-panel` (positioning), `menu` (roving
+focus), `modal` (native `<dialog>` with `showModal()`) and `offcanvas`, plus the `tooltip`
+directive, in `shared/overlay/`, `shared/menu/` and `shared/dialog/`.
 
 The primitives keep their Angular logic and take their look from Bootstrap's CSS: `modal` is a
 `<dialog class="modal">` and `offcanvas` a `<dialog class="offcanvas offcanvas-start|end">`, joined to
@@ -117,15 +117,15 @@ would navigate the browser to that file, discarding an in-flight turn.
 
 | Path | Role |
 | --- | --- |
-| `enterprise-gpt-ui/src/app/shared/utils/layout/breakpoints.ts` | The TypeScript half of the record |
+| `enterprise-gpt-ui/src/app/shared/layout/breakpoints.ts` | The TypeScript half of the record |
 | `enterprise-gpt-ui/src/styles/_breakpoints.scss` | The Sass half, its mixins and Bootstrap's `$grid-breakpoints` |
-| `enterprise-gpt-ui/src/app/pages/admin/admin-columns.ts` | Admin table columns up to the `xxl` edge |
+| `enterprise-gpt-ui/src/app/features/admin/admin-columns.ts` | Admin table columns up to the `xxl` edge |
 | `enterprise-gpt-ui/src/styles/_overlays.scss` | The native `<dialog>` bridge for modal and offcanvas |
-| `enterprise-gpt-ui/src/app/pages/shell/shell.ts` | Mode derivation and composition |
-| `enterprise-gpt-ui/src/app/components/shell/sidebar/sidebar.ts` | The two width branches |
-| `enterprise-gpt-ui/src/app/state/ui-store.ts` | Device-local layout preferences |
-| `enterprise-gpt-ui/src/app/shared/components/` | Menu, modal and offcanvas, beside `shared/directives/tooltip.ts` and `shared/utils/overlay/anchored-panel.ts` |
-| `enterprise-gpt-ui/src/app/shared/components/modal/modal.spec.ts` | Focus restore on close and destroy |
+| `enterprise-gpt-ui/src/app/features/shell/shell.ts` | Mode derivation and composition |
+| `enterprise-gpt-ui/src/app/features/shell/sidebar/sidebar.ts` | The two width branches |
+| `enterprise-gpt-ui/src/app/features/shell/ui-store.ts` | Device-local layout preferences |
+| `enterprise-gpt-ui/src/app/shared/{menu,dialog,overlay}/` | Menu, modal, offcanvas, the tooltip directive and `anchored-panel` |
+| `enterprise-gpt-ui/src/app/shared/dialog/modal.spec.ts` | Focus restore on close and destroy |
 
 ## Related
 

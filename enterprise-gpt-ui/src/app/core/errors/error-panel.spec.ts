@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { getByRole } from '@testing-library/dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AppError } from '@core/errors/app-error';
+import { AppError } from './app-error';
 import { ErrorPanel } from './error-panel';
 
 const NOT_FOUND = {

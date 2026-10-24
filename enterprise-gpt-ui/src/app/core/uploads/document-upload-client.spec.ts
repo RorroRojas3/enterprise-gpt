@@ -1,8 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { Subscription } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { UploadTarget } from '@shared/models/api/document.model';
-import { TokenService } from '@core/auth/token-service';
+import { UploadTarget } from '@core/api/document.model';
+import { AccessTokenClient } from '@core/auth/access-token-client';
 import { AppError } from '@core/errors/app-error';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { textFile } from '@testing/drag';
@@ -29,7 +29,7 @@ describe('DocumentUploadClient', () => {
     TestBed.configureTestingModule({
       providers: [
         provideTestAppConfig(),
-        { provide: TokenService, useValue: { getToken } },
+        { provide: AccessTokenClient, useValue: { getToken } },
         provideFakeUploadXhr(xhr),
       ],
     });

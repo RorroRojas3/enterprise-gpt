@@ -1,5 +1,5 @@
 import { InjectionToken, Provider, Signal, Type } from '@angular/core';
-import { ConversationDto } from '@shared/models/api/conversation.model';
+import { ConversationDto } from '@core/api/conversation.model';
 
 /** What the composer's download control acts on. */
 export interface ComposerExportTarget {
@@ -17,7 +17,7 @@ export type ComposerProjectTarget =
 
 /**
  * What the composer needs from whatever executes its prompt. A token because two pages supply
- * different hosts: chat's `TurnStore` and the project screen's `ProjectComposerHost`.
+ * different hosts: chat's `TurnStore` and the project screen's `ProjectComposerHostStore`.
  */
 export interface ComposerHost {
   /** A fresh object per seed, so seeding the same text twice still propagates. */

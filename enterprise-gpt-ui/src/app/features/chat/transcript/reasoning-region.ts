@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
-import { Icon } from '@shared/components/icon/icon';
+import { Icon } from '@shared/icons/icon';
 import { formatDurationSeconds } from './turn-usage';
 
 let nextId = 0;

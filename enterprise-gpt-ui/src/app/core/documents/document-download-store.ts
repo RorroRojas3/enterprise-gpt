@@ -4,16 +4,16 @@ import { tapResponse } from '@ngrx/operators';
 import { patchState, signalStore, withMethods, withProps } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { mergeMap, takeUntil } from 'rxjs';
-import { DocumentDownloadDto, UploadTarget } from '@shared/models/api/document.model';
-import { documentTargetPath } from '@shared/utils/documents/document-target-path';
-import { saveWithAnchor } from '@shared/utils/downloads/anchor-download';
+import { ApiUrl } from '@core/api/api-url';
+import { DocumentDownloadDto, UploadTarget } from '@core/api/document.model';
+import { addPendingId, removePendingId, withPendingIds } from '@core/api/with-pending-ids';
 import { AppError } from '@core/errors/app-error';
 import { toAppError } from '@core/errors/to-app-error';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
 import { ToastStore } from '@core/notifications/toast-store';
-import { addPendingId, removePendingId, withPendingIds } from '@core/state/with-pending-ids';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
+import { saveWithAnchor } from '@shared/downloads/anchor-download';
+import { documentTargetPath } from './document-target-path';
 
 /**
  * Fetches a document's signed link on click, never before: it is a bearer credential for about

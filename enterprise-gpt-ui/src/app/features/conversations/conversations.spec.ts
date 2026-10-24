@@ -18,13 +18,11 @@ import {
   queryByRole,
 } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ModelDto } from '@shared/models/api/chat-model.model';
-import { shouldReplaceHistory } from '@shared/utils/navigation/conversations-route';
+import { ModelDto } from '@core/api/chat-model.model';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { ToastStore } from '@core/notifications/toast-store';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
-import { LIBRARY_PAGE_SIZE } from '@state/conversations/conversation-library-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
 import { conversationFixture, conversationPage } from '@testing/conversations';
@@ -33,6 +31,7 @@ import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/medi
 import { dialogNamed, iconOf, menuItems, openMenu } from '@testing/overlays';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { projectFixture, projectPage } from '@testing/projects';
+import { LIBRARY_PAGE_SIZE } from './conversation-library-store';
 import { Conversations } from './conversations';
 
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
@@ -42,20 +41,6 @@ const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
  * also stalls the scheduler `whenStable()` awaits.
  */
 const DEBOUNCE_MS = 450;
-
-describe('shouldReplaceHistory', () => {
-  it('pushes when a filter goes on, so back returns to the unfiltered list', () => {
-    expect(shouldReplaceHistory('', 'quarterly')).toBe(false);
-  });
-
-  it('pushes when a filter comes off, so clearing is undoable too', () => {
-    expect(shouldReplaceHistory('quarterly', '')).toBe(false);
-  });
-
-  it('replaces while a term is being refined', () => {
-    expect(shouldReplaceHistory('quar', 'quarterly')).toBe(true);
-  });
-});
 
 describe('Conversations', () => {
   let backend: HttpTestingController;

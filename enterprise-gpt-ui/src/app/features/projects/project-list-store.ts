@@ -21,29 +21,29 @@ import {
 import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { Observable, Subject, exhaustMap, merge, pipe, switchMap, takeUntil, tap } from 'rxjs';
-import { PaginatedResponseDto } from '@shared/models/api/paginated-response.model';
-import { ProjectSummaryDto } from '@shared/models/api/project.model';
-import { DEFAULT_PROJECT_SORT, ProjectSortOption } from '@shared/utils/navigation/projects-route';
-import { matchesProjectTerm } from '@shared/utils/projects/project-load';
-import { toProjectSummary } from '@shared/utils/projects/project-summary';
-import { toAppError } from '@core/errors/to-app-error';
-import { projectEvents } from '@core/events/project-events';
-import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
-import { ToastStore } from '@core/notifications/toast-store';
+import { ApiUrl } from '@core/api/api-url';
+import { PaginatedResponseDto } from '@core/api/paginated-response.model';
+import { ProjectSummaryDto } from '@core/api/project.model';
 import {
   OffsetPaginationState,
   setFirstPage,
   setPage,
   withOffsetPagination,
-} from '@core/state/with-offset-pagination';
+} from '@core/api/with-offset-pagination';
 import {
   setError,
   setFulfilled,
   setPending,
   withRequestStatus,
-} from '@core/state/with-request-status';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+} from '@core/api/with-request-status';
+import { toAppError } from '@core/errors/to-app-error';
+import { projectEvents } from '@core/events/project-events';
+import { injectSignedOut } from '@core/events/session-events';
+import { ToastStore } from '@core/notifications/toast-store';
+import { matchesProjectTerm } from '@core/projects/project-load';
+import { toProjectSummary } from '@core/projects/project-summary';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
+import { DEFAULT_PROJECT_SORT, ProjectSortOption } from './projects-route';
 
 /**
  * Matches the conversations library's page size. Not `PROJECT_PAGE_SIZE`, which is tuned for

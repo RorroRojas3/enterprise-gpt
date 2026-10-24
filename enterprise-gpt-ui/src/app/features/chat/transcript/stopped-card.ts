@@ -7,8 +7,8 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { COPY_CONFIRMATION_MS, copyText } from '@shared/utils/clipboard/copy-text';
-import { Icon } from '@shared/components/icon/icon';
+import { Icon } from '@shared/icons/icon';
+import { COPY_CONFIRMATION_MS, copyText } from './copy-text';
 
 /**
  * Detached from the transcript because the server saved neither prompt nor answer. Retry

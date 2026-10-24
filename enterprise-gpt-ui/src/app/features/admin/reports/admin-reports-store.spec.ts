@@ -8,17 +8,17 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { UsageGrouping, UsageRange } from '@shared/utils/navigation/admin-reports-route';
 import { sessionEvents } from '@core/events/session-events';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { emptyUsageReportFixture, usageGroupFixture, usageReportFixture } from '@testing/reports';
-import { ReportsStore } from './admin-reports-store';
+import { UsageGrouping, UsageRange } from './admin-reports-route';
+import { AdminReportsStore } from './admin-reports-store';
 
 const REPORTS_URL = `${TEST_API_BASE_URL}/api/reports/usage`;
 
-describe('ReportsStore', () => {
+describe('AdminReportsStore', () => {
   let backend: HttpTestingController;
-  let store: InstanceType<typeof ReportsStore>;
+  let store: InstanceType<typeof AdminReportsStore>;
   let range: ReturnType<typeof signal<UsageRange>>;
   let grouping: ReturnType<typeof signal<UsageGrouping>>;
 
@@ -29,12 +29,12 @@ describe('ReportsStore', () => {
         provideTestAppConfig(),
         provideHttpClient(),
         provideHttpClientTesting(),
-        ReportsStore,
+        AdminReportsStore,
       ],
     });
 
     backend = TestBed.inject(HttpTestingController);
-    store = TestBed.inject(ReportsStore);
+    store = TestBed.inject(AdminReportsStore);
     range = signal<UsageRange>(30);
     grouping = signal<UsageGrouping>('model');
   });

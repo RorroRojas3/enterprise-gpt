@@ -1,8 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AssistantUiEvent } from '@shared/models/andes/assistant-ui.contract';
-import { TokenService } from '@core/auth/token-service';
+import { AssistantUiEvent } from '@core/api/assistant-ui-contract';
+import { AccessTokenClient } from '@core/auth/access-token-client';
 import { AppConfig } from '@core/config/app-config';
 import { AppError } from '@core/errors/app-error';
 import { sessionEvents } from '@core/events/session-events';
@@ -21,7 +21,7 @@ import {
   STREAM_BATCH_WINDOW_MS,
   StreamTurnRequest,
 } from './conversation-stream-client';
-import { STREAM_FETCH } from './stream-fetch.token';
+import { STREAM_FETCH } from './stream-fetch-token';
 
 const CONVERSATION_ID = '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b';
 const STREAM_URL = `${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/stream`;
@@ -62,7 +62,7 @@ describe('ConversationStreamClient', () => {
       providers: [
         provideTestAppConfig(config),
         { provide: STREAM_FETCH, useValue: fetchMock },
-        { provide: TokenService, useValue: { getToken } },
+        { provide: AccessTokenClient, useValue: { getToken } },
       ],
     });
 

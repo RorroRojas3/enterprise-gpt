@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { ThemeService } from '@core/theme/theme-service';
-import { Icon } from '@shared/components/icon/icon';
+import { Icon } from '@shared/icons/icon';
+import { Theme } from './theme';
 
 /**
  * CSS tokens swap the icons, but the label reads the resolved theme: a screen reader cannot see a
@@ -13,7 +13,7 @@ import { Icon } from '@shared/components/icon/icon';
   templateUrl: './theme-toggle.html',
 })
 export class ThemeToggle {
-  private readonly themeService = inject(ThemeService);
+  private readonly themeService = inject(Theme);
 
   protected readonly label = computed(() =>
     this.themeService.theme() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme',

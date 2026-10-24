@@ -12,17 +12,17 @@ import {
 import { Dispatcher } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { exhaustMap, mergeMap, takeUntil } from 'rxjs';
-import { ConversationDto } from '@shared/models/api/conversation.model';
-import { toUpdateBody } from '@shared/utils/conversations/conversation-update';
-import { ConversationListStore } from '@core/conversations/conversation-list-store';
+import { ApiUrl } from '@core/api/api-url';
+import { ConversationDto } from '@core/api/conversation.model';
 import { ValidationAppError } from '@core/errors/app-error';
 import { traceLine } from '@core/errors/error-message';
 import { toAppError } from '@core/errors/to-app-error';
 import { conversationEvents } from '@core/events/conversation-events';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
 import { ToastStore } from '@core/notifications/toast-store';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
+import { ConversationListStore } from './conversation-list-store';
+import { toUpdateBody } from './conversation-update';
 
 interface ConversationActionsState {
   /** The conversation the rename dialog is editing. Null keeps the dialog closed. */

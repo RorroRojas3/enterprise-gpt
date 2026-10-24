@@ -249,7 +249,7 @@ another replica, which is worse than the honest 404 today's process-local pair g
 | `enterprise-gpt-api/Enterprise.Gpt.Service/BackgroundJobs/JobCancellationRegistry.cs` | Per-job `CancellationTokenSource`s, registered at enqueue |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/BackgroundJobs/Exceptions/JobCancelledException.cs` | Signals a job that lost the terminal-slot race |
 | `enterprise-gpt-api/Enterprise.Gpt.Service/Documents/FileDtoValidator.cs` | Extension and size validation |
-| `enterprise-gpt-ui/src/app/services/documents/upload-cancel-client.ts` | Fire-and-forget `DELETE` for the composer's Stop control |
+| `enterprise-gpt-ui/src/app/core/uploads/upload-cancel-client.ts` | Fire-and-forget `DELETE` for the composer's Stop control |
 | `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Service/Documents/Extraction/` | Extractor and ceiling tests |
 | `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Service/BackgroundJobs/BackgroundJobProcessorTests.cs` | The cancel-vs-shutdown and terminal-slot-race tests |
 

@@ -7,13 +7,13 @@ import {
   input,
   model,
 } from '@angular/core';
-import { MobileSlot, TableCellContext, TableColumn } from '@shared/models/table-column.model';
-import { MOBILE_VIEWPORT, TABLET_VIEWPORT } from '@shared/utils/layout/breakpoints';
-import { toggleRow } from '@shared/utils/selection/row-selection';
-import { injectMediaQuery } from '@core/ui/media-query';
-import { CardRow } from '@shared/components/card-row/card-row';
-import { Skeleton } from '@shared/components/skeleton/skeleton';
-import { TableCell } from '@shared/directives/table-cell';
+import { MOBILE_VIEWPORT, TABLET_VIEWPORT } from '@shared/layout/breakpoints';
+import { injectMediaQuery } from '@shared/layout/media-query';
+import { Skeleton } from '@shared/loading/skeleton';
+import { CardRow } from './card-row';
+import { toggleRow } from './row-selection';
+import { TableCell } from './table-cell';
+import { MobileSlot, TableCellContext, TableColumn } from './table-column.model';
 
 let nextId = 0;
 

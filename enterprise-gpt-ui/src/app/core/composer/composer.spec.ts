@@ -4,27 +4,21 @@ import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { getByRole, getByText, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ModelDto } from '@shared/models/api/chat-model.model';
-import { PermissionDto } from '@shared/models/api/user.model';
-import { tabbableWithin } from '@shared/utils/a11y/tabbable';
-import { TokenService } from '@core/auth/token-service';
+import { ModelDto } from '@core/api/chat-model.model';
+import { PermissionDto } from '@core/api/user.model';
+import { AccessTokenClient } from '@core/auth/access-token-client';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
-import { provideComposerHost } from '@core/chat/composer-host.token';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { SessionStore } from '@core/session/session-store';
-import { STREAM_FETCH } from '@services/conversations/stream-fetch.token';
-import { ConversationStore } from '@state/chat/conversation-store';
-import { TurnStore } from '@state/chat/turn-store';
-import {
-  SPEECH_RECOGNITION,
-  SpeechRecognitionLike,
-} from '@state/composer/speech-recognition.token';
-import { provideSharedComposerUploads } from '@state/documents/composer-uploads.token';
-import { UploadStore } from '@state/documents/upload-store';
-import { SupportedExtensionsStore } from '@state/supported-extensions-store';
-import { TurnSettingsStore } from '@state/turn-settings-store';
+import { provideSharedComposerUploads } from '@core/uploads/composer-uploads-token';
+import { SupportedExtensionsStore } from '@core/uploads/supported-extensions-store';
+import { UploadStore } from '@core/uploads/upload-store';
+import { tabbableWithin } from '@shared/dialog/tabbable';
+import { ConversationStore } from '@features/chat/conversation-store';
+import { STREAM_FETCH } from '@features/chat/stream-fetch-token';
+import { TurnStore } from '@features/chat/turn-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpFixture, modelFixture } from '@testing/catalog';
 import { conversationFixture } from '@testing/conversations';
@@ -36,6 +30,9 @@ import { FakeRecognition } from '@testing/speech';
 import { assistantEvent, frame, streamingResponse } from '@testing/stream-frames';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
 import { Composer } from './composer';
+import { provideComposerHost } from './composer-host-token';
+import { SPEECH_RECOGNITION, SpeechRecognitionLike } from './speech-recognition-token';
+import { TurnSettingsStore } from './turn-settings-store';
 
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
 const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps`;
@@ -70,7 +67,10 @@ describe('Composer', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: STREAM_FETCH, useValue: streamFetch },
-        { provide: TokenService, useValue: { getToken: vi.fn().mockResolvedValue('token-1') } },
+        {
+          provide: AccessTokenClient,
+          useValue: { getToken: vi.fn().mockResolvedValue('token-1') },
+        },
         { provide: Router, useValue: { navigateByUrl: vi.fn().mockResolvedValue(true) } },
         { provide: SPEECH_RECOGNITION, useFactory: () => speech },
         provideFakeUploadXhr(uploadXhr),

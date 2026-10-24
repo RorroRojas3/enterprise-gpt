@@ -2,8 +2,8 @@ import { ChangeDetectionStrategy, Component, ElementRef, viewChild } from '@angu
 import { RouterLink } from '@angular/router';
 import { focusOnRender } from '@core/a11y/focus-on-render';
 import { CHAT_ROUTE } from '@core/navigation/route-paths';
-import { Icon } from '@shared/components/icon/icon';
-import { AuthPage } from '@components/auth/auth-page';
+import { Icon } from '@shared/icons/icon';
+import { AuthPage } from './auth-page';
 
 /**
  * Not `UnavailablePanel`: that has no action slot by design, so nothing it shows looks retryable,

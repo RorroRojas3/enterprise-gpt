@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { formatDelta } from '@shared/utils/format/usage-format';
-import { IconName } from '@shared/utils/icons/icon-names';
-import { Icon } from '@shared/components/icon/icon';
+import { Icon } from '@shared/icons/icon';
+import { IconName } from '@shared/icons/icon-names';
+import { formatDelta } from './usage-format';
 
 /**
  * The delta arrives precomputed, since what counts as "up" differs per tile. Direction is never

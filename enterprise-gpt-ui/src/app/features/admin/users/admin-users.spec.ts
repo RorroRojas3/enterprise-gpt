@@ -12,15 +12,8 @@ import { Router, provideRouter, withComponentInputBinding } from '@angular/route
 import { RouterTestingHarness } from '@angular/router/testing';
 import { getAllByText, getByRole, getByText } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { UserDto } from '@shared/models/api/user.model';
-import {
-  DEFAULT_USER_PAGE_SIZE,
-  toPage,
-  toPageSize,
-  toPermissionFilter,
-} from '@shared/utils/navigation/admin-users-route';
+import { UserDto } from '@core/api/user.model';
 import { SessionStore } from '@core/session/session-store';
-import { UserActionsStore } from '@state/user-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { ADMINISTRATOR_GRANT, MCP_GRANT, administratorFixture } from '@testing/session';
@@ -31,6 +24,13 @@ import {
   userPage,
 } from '@testing/users';
 import { AdminUsers } from './admin-users';
+import {
+  DEFAULT_USER_PAGE_SIZE,
+  toPage,
+  toPageSize,
+  toPermissionFilter,
+} from './admin-users-route';
+import { UserActionsStore } from './user-actions-store';
 
 const USERS_URL = `${TEST_API_BASE_URL}/api/users`;
 

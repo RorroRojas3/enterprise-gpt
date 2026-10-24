@@ -1,9 +1,9 @@
 import { Routes } from '@angular/router';
 import { AdminLayout } from './admin-layout';
-import { AdminMcps } from './admin-mcps';
-import { AdminModels } from './admin-models';
-import { AdminReports } from './admin-reports';
-import { AdminUsers } from './admin-users';
+import { AdminModels } from './chat-models/admin-models';
+import { AdminMcps } from './mcps/admin-mcps';
+import { AdminReports } from './reports/admin-reports';
+import { AdminUsers } from './users/admin-users';
 
 /**
  * Reached only through `adminCanMatch`, so non-administrators never fetch it. Tabs are children

@@ -13,20 +13,20 @@ import { removeEntity, setAllEntities, updateEntity, withEntities } from '@ngrx/
 import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { filter, pipe, switchMap, takeUntil, tap } from 'rxjs';
-import { PaginatedResponseDto } from '@shared/models/api/paginated-response.model';
-import { UserDto } from '@shared/models/api/user.model';
-import { DEFAULT_USER_PAGE_SIZE } from '@shared/utils/navigation/admin-users-route';
-import { toAppError } from '@core/errors/to-app-error';
-import { adminEvents } from '@core/events/admin-events';
-import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
+import { ApiUrl } from '@core/api/api-url';
+import { PaginatedResponseDto } from '@core/api/paginated-response.model';
+import { UserDto } from '@core/api/user.model';
 import {
   setError,
   setFulfilled,
   setPending,
   withRequestStatus,
-} from '@core/state/with-request-status';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+} from '@core/api/with-request-status';
+import { toAppError } from '@core/errors/to-app-error';
+import { adminEvents } from '@core/events/admin-events';
+import { injectSignedOut } from '@core/events/session-events';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
+import { DEFAULT_USER_PAGE_SIZE } from './admin-users-route';
 
 /** Everything the URL says about which page of the directory to fetch. */
 export interface AdminUsersQuery {

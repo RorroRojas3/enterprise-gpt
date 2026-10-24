@@ -1,9 +1,9 @@
 import { inject } from '@angular/core';
 import { CanMatchFn, Router } from '@angular/router';
-import { AuthService } from '@core/auth/auth-service';
 import { CHAT_ROUTE, FORBIDDEN_ROUTE, SESSION_ERROR_ROUTE } from '@core/navigation/route-paths';
-import { SessionBootstrap } from '@core/session/session-bootstrap-service';
+import { SessionBootstrap } from '@core/session/session-bootstrap';
 import { SessionStore } from '@core/session/session-store';
+import { Auth } from './auth';
 
 /**
  * `canMatch`, on the route carrying `loadChildren`: only it runs before the chunk is fetched. Every
@@ -11,7 +11,7 @@ import { SessionStore } from '@core/session/session-store';
  * a `UrlTree` because `false` falls through to the wildcard, except during sign-out.
  */
 export const adminCanMatch: CanMatchFn = async () => {
-  const auth = inject(AuthService);
+  const auth = inject(Auth);
   const bootstrap = inject(SessionBootstrap);
   const session = inject(SessionStore);
   const router = inject(Router);

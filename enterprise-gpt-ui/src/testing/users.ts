@@ -1,6 +1,6 @@
 import { HttpTestingController } from '@angular/common/http/testing';
-import { PaginatedResponseDto } from '../app/shared/models/api/paginated-response.model';
-import { PermissionDto, UserDto } from '../app/shared/models/api/user.model';
+import { PaginatedResponseDto } from '../app/core/api/paginated-response.model';
+import { PermissionDto, UserDto } from '../app/core/api/user.model';
 import { ADMINISTRATOR_GRANT, UPLOAD_FILE_GRANT } from './session';
 
 let sequence = 0;

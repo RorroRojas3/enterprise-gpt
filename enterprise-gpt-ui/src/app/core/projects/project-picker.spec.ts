@@ -4,15 +4,15 @@ import { ChangeDetectionStrategy, Component, ElementRef, signal, viewChild } fro
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { getByRole, getByText, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ConversationDto } from '@shared/models/api/conversation.model';
-import { ProjectSummaryDto } from '@shared/models/api/project.model';
+import { ConversationDto } from '@core/api/conversation.model';
+import { ProjectSummaryDto } from '@core/api/project.model';
+import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
-import { ProjectLookupStore } from '@core/projects/project-lookup-store';
-import { ConversationActionsStore } from '@state/conversation-actions-store';
-import { ProjectActionsStore } from '@state/project-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture } from '@testing/conversations';
 import { projectFixture, projectPage } from '@testing/projects';
+import { ProjectActionsStore } from './project-actions-store';
+import { ProjectLookupStore } from './project-lookup-store';
 import { ProjectPicker } from './project-picker';
 
 const PROJECTS_URL = `${TEST_API_BASE_URL}/api/projects`;

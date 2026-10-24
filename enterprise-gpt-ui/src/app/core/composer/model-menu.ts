@@ -1,13 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { ModelDto } from '@shared/models/api/chat-model.model';
-import { providerMeta } from '@shared/utils/catalog/provider-meta';
+import { ModelDto } from '@core/api/chat-model.model';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
-import { TurnSettingsStore } from '@state/turn-settings-store';
-import { Icon } from '@shared/components/icon/icon';
-import { Menu } from '@shared/components/menu/menu';
-import { StatusDot, StatusTone } from '@shared/components/status-dot/status-dot';
-import { MenuItem } from '@shared/directives/menu-item';
-import { MenuTriggerContent } from '@shared/directives/menu-trigger-content';
+import { providerMeta } from '@core/catalog/provider-meta';
+import { StatusDot, StatusTone } from '@shared/badges/status-dot';
+import { Icon } from '@shared/icons/icon';
+import { Menu } from '@shared/menu/menu';
+import { MenuItem } from '@shared/menu/menu-item';
+import { MenuTriggerContent } from '@shared/menu/menu-trigger-content';
+import { TurnSettingsStore } from './turn-settings-store';
 
 /** `400000 → '400k'`, `1500000 → '1.5M'`; sub-thousand sizes render verbatim. */
 export function formatTokenCount(size: number): string {

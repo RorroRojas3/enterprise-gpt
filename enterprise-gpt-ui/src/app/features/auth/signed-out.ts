@@ -7,12 +7,12 @@ import {
   viewChild,
 } from '@angular/core';
 import { focusOnRender } from '@core/a11y/focus-on-render';
-import { AuthService } from '@core/auth/auth-service';
-import { HardNavigation } from '@core/navigation/hard-navigation-service';
+import { Auth } from '@core/auth/auth';
+import { HardNavigation } from '@core/navigation/hard-navigation';
 import { CHAT_ROUTE } from '@core/navigation/route-paths';
-import { BrandLogo } from '@shared/components/brand-logo/brand-logo';
-import { Ridgeline } from '@shared/components/ridgeline/ridgeline';
-import { AuthPage } from '@components/auth/auth-page';
+import { BrandLogo } from '@shared/brand/brand-logo';
+import { Ridgeline } from '@shared/brand/ridgeline';
+import { AuthPage } from './auth-page';
 
 /**
  * Unguarded: after a failed sign-out the Entra cookie is still live, so `authGuard` would silently
@@ -26,7 +26,7 @@ import { AuthPage } from '@components/auth/auth-page';
   templateUrl: './signed-out.html',
 })
 export class SignedOut {
-  private readonly _auth = inject(AuthService);
+  private readonly _auth = inject(Auth);
   private readonly _navigation = inject(HardNavigation);
   private readonly _heading = viewChild.required<ElementRef<HTMLElement>>('heading');
 

@@ -1,6 +1,6 @@
-import { formatBytes } from '@shared/utils/format/bytes';
 import { AppError, AppErrorKind } from '@core/errors/app-error';
 import { traceLine, userMessage } from '@core/errors/error-message';
+import { formatBytes } from '@shared/formatting/bytes';
 
 /** A refused upload, ready to be shown as a toast. */
 export interface UploadRejection {

@@ -7,12 +7,12 @@ import { Dispatcher, event } from '@ngrx/signals/events';
 import { unprotected } from '@ngrx/signals/testing';
 import { delay, of, takeUntil } from 'rxjs';
 import { describe, expect, it } from 'vitest';
+import { setFirstPage, setPage, withOffsetPagination } from '@core/api/with-offset-pagination';
+import { addPendingId, withPendingIds } from '@core/api/with-pending-ids';
+import { setError, setPending, withRequestStatus } from '@core/api/with-request-status';
 import { toAppError } from '@core/errors/to-app-error';
 import { injectSignedOut, sessionEvents } from '@core/events/session-events';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
-import { setFirstPage, setPage, withOffsetPagination } from './with-offset-pagination';
-import { addPendingId, withPendingIds } from './with-pending-ids';
-import { setError, setPending, withRequestStatus } from './with-request-status';
 import { withResetOnSignOut } from './with-reset-on-sign-out';
 
 interface Conversation {

@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { TableColumn } from '@shared/models/table-column.model';
+import { TableColumn } from '@shared/data-table/table-column.model';
 import { NARROW_VIEWPORT, setMediaQuery } from '@testing/media-query';
 import { BELOW_XXL, injectAdminColumns } from './admin-columns';
 

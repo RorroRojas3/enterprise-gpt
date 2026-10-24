@@ -5,15 +5,15 @@ import { patchState, signalStore, withMethods, withProps, withState } from '@ngr
 import { Dispatcher } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { exhaustMap, takeUntil } from 'rxjs';
-import { McpCredentialStatusDto, McpDto } from '@shared/models/api/mcp.model';
+import { ApiUrl } from '@core/api/api-url';
+import { McpCredentialStatusDto, McpDto } from '@core/api/mcp.model';
 import { AppError } from '@core/errors/app-error';
 import { traceLine, userMessage } from '@core/errors/error-message';
 import { toAppError } from '@core/errors/to-app-error';
 import { mcpEvents } from '@core/events/mcp-events';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
 import { ToastStore } from '@core/notifications/toast-store';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
 
 interface McpCredentialState {
   /** The dialog is open on this server; null keeps it closed. */

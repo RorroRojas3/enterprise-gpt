@@ -8,7 +8,7 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { TurnStore } from '@state/chat/turn-store';
+import { TurnStore } from './turn-store';
 
 /**
  * Follows new content while the reader is within 80px of the bottom. A `ResizeObserver` on the

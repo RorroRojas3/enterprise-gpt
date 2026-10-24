@@ -4,11 +4,11 @@ import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { getByText } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConversationExportStore } from '@state/conversation-export-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { iconOf } from '@testing/overlays';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { ConversationDownloadMenu } from './conversation-download-menu';
+import { ConversationExportStore } from './conversation-export-store';
 
 const CONVERSATION_ID = '6f9d1c1e-0b2a-4e3f-9a1b-2c3d4e5f6a7b';
 const EXPORT_URL = `${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/export`;

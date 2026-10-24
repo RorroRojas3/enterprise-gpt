@@ -1,4 +1,4 @@
-import { McpDto, McpServerDto } from '@shared/models/api/mcp.model';
+import { McpDto, McpServerDto } from '@core/api/mcp.model';
 
 /** A rejected key already reads as absent server-side, so this covers a refused key too. */
 export function needsUserApiKey(server: McpDto): boolean {

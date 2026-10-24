@@ -11,24 +11,24 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { ProjectDocumentDto } from '@shared/models/api/project.model';
-import { FILE_GLYPH_TEXT, fileGlyph } from '@shared/utils/documents/file-glyph';
-import { formatBytes } from '@shared/utils/format/bytes';
-import { formatShortDate } from '@shared/utils/format/relative-time';
+import { ProjectDocumentDto } from '@core/api/project.model';
+import { DocumentDownloadStore } from '@core/documents/document-download-store';
 import { canRetry } from '@core/errors/error-message';
+import { ErrorPanel } from '@core/errors/error-panel';
 import { SessionStore } from '@core/session/session-store';
-import { DocumentDownloadStore } from '@state/document-download-store';
-import { UploadStore } from '@state/documents/upload-store';
-import { ProjectDocumentsStore } from '@state/projects/project-documents-store';
-import { ProjectStore } from '@state/projects/project-store';
-import { SupportedExtensionsStore } from '@state/supported-extensions-store';
-import { AttachmentChip } from '@shared/components/attachment-chip/attachment-chip';
-import { DropOverlay } from '@shared/components/drop-overlay/drop-overlay';
-import { ErrorPanel } from '@shared/components/error-panel/error-panel';
-import { Icon } from '@shared/components/icon/icon';
-import { Modal } from '@shared/components/modal/modal';
-import { Skeleton } from '@shared/components/skeleton/skeleton';
-import { FileDropTarget } from '@shared/directives/file-drop-target';
+import { SupportedExtensionsStore } from '@core/uploads/supported-extensions-store';
+import { UploadStore } from '@core/uploads/upload-store';
+import { Modal } from '@shared/dialog/modal';
+import { DropOverlay } from '@shared/file-drop/drop-overlay';
+import { FileDropTarget } from '@shared/file-drop/file-drop-target';
+import { AttachmentChip } from '@shared/files/attachment-chip';
+import { FILE_GLYPH_TEXT, fileGlyph } from '@shared/files/file-glyph';
+import { formatBytes } from '@shared/formatting/bytes';
+import { formatShortDate } from '@shared/formatting/relative-time';
+import { Icon } from '@shared/icons/icon';
+import { Skeleton } from '@shared/loading/skeleton';
+import { ProjectDocumentsStore } from './project-documents-store';
+import { ProjectStore } from './project-store';
 
 /**
  * In-flight files are `UploadStore` chips, landed ones `ProjectDocumentsStore` rows. The bridge

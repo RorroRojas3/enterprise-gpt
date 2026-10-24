@@ -5,7 +5,7 @@ import {
   AssistantUiEvent,
   createInitialSnapshot,
   foldAssistantEvents,
-} from './assistant-ui.contract';
+} from './assistant-ui-contract';
 
 /** Runs the vendored `foldAssistantEvents` itself, never a reimplementation, on fixtures. */
 describe('foldAssistantEvents', () => {

@@ -7,13 +7,8 @@ import {
   input,
   signal,
 } from '@angular/core';
-import {
-  COPIED_LABEL,
-  COPY_CONFIRMATION_MS,
-  COPY_LABEL,
-  copyText,
-} from '@shared/utils/clipboard/copy-text';
-import { Icon } from '@shared/components/icon/icon';
+import { Icon } from '@shared/icons/icon';
+import { COPIED_LABEL, COPY_CONFIRMATION_MS, COPY_LABEL, copyText } from './copy-text';
 
 /** What the control copies, for the part of its accessible name that tells it apart. */
 export type CopySubject = 'prompt' | 'response';

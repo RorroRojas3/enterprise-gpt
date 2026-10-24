@@ -11,8 +11,17 @@ import {
 } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { pipe, switchMap, takeUntil, tap } from 'rxjs';
-import { UsageReportDto } from '@shared/models/api/usage-report.model';
-import { MS_PER_DAY, groupingNoun } from '@shared/utils/format/usage-format';
+import { ApiUrl } from '@core/api/api-url';
+import { UsageReportDto } from '@core/api/usage-report.model';
+import {
+  setError,
+  setFulfilled,
+  setPending,
+  withRequestStatus,
+} from '@core/api/with-request-status';
+import { toAppError } from '@core/errors/to-app-error';
+import { injectSignedOut } from '@core/events/session-events';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
 import {
   DEFAULT_USAGE_GROUPING,
   DEFAULT_USAGE_RANGE,
@@ -20,17 +29,8 @@ import {
   UsageGrouping,
   UsageRange,
   toUsageGrouping,
-} from '@shared/utils/navigation/admin-reports-route';
-import { toAppError } from '@core/errors/to-app-error';
-import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
-import {
-  setError,
-  setFulfilled,
-  setPending,
-  withRequestStatus,
-} from '@core/state/with-request-status';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+} from './admin-reports-route';
+import { MS_PER_DAY, groupingNoun } from './usage-format';
 
 /** One object because both go out on one request; bound separately, a change would fire twice. */
 export interface UsageReportQuery {
@@ -59,7 +59,7 @@ const initialState: ReportsState = {
  * `withOffsetPagination` (a numbered window over rows in hand), and no event handlers (nothing in
  * the app mutates usage).
  */
-export const ReportsStore = signalStore(
+export const AdminReportsStore = signalStore(
   withState(initialState),
   withRequestStatus(),
   withProps(() => ({

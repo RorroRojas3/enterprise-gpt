@@ -7,22 +7,22 @@ import {
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PendingAttachmentsStore } from '@core/composer/pending-attachments-store';
+import { PendingPromptStore } from '@core/composer/pending-prompt-store';
 import { ToastStore } from '@core/notifications/toast-store';
-import { COMPOSER_UPLOADS, ComposerUploads } from '@state/documents/composer-uploads.token';
-import { PendingAttachmentsStore } from '@state/pending-attachments-store';
-import { PendingPromptStore } from '@state/pending-prompt-store';
+import { COMPOSER_UPLOADS, ComposerUploads } from '@core/uploads/composer-uploads-token';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { conversationFixture } from '@testing/conversations';
 import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
-import { ProjectComposerHost } from './project-composer-host-store';
+import { ProjectComposerHostStore } from './project-composer-host-store';
 import { ProjectStore } from './project-store';
 
 const CREATE_URL = `${TEST_API_BASE_URL}/api/conversations`;
 const PROJECT_ID = '11111111-5555-4666-8777-888888888888';
 
-describe('ProjectComposerHost', () => {
+describe('ProjectComposerHostStore', () => {
   let backend: HttpTestingController;
-  let host: InstanceType<typeof ProjectComposerHost>;
+  let host: InstanceType<typeof ProjectComposerHostStore>;
   let pending: InstanceType<typeof PendingPromptStore>;
   let navigate: ReturnType<typeof vi.fn>;
   let projectId: string | null;
@@ -35,19 +35,19 @@ describe('ProjectComposerHost', () => {
 
     TestBed.configureTestingModule({
       providers: [
-        // A stub: the real store drags in `DocumentUploadClient`, `TokenService` and MSAL.
+        // A stub: the real store drags in `DocumentUploadClient`, `AccessTokenClient` and MSAL.
         { provide: COMPOSER_UPLOADS, useValue: uploads as unknown as ComposerUploads },
         provideTestAppConfig(),
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: Router, useValue: { navigate } },
         { provide: ProjectStore, useValue: { projectId: () => projectId } },
-        ProjectComposerHost,
+        ProjectComposerHostStore,
       ],
     });
 
     backend = TestBed.inject(HttpTestingController);
-    host = TestBed.inject(ProjectComposerHost);
+    host = TestBed.inject(ProjectComposerHostStore);
     pending = TestBed.inject(PendingPromptStore);
   });
 

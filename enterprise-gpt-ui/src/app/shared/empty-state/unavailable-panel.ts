@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { Ridgeline } from '@shared/components/ridgeline/ridgeline';
+import { Ridgeline } from '@shared/brand/ridgeline';
 
 let nextId = 0;
 

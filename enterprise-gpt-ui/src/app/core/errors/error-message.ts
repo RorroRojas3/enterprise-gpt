@@ -1,5 +1,5 @@
-import { EXPORT_FORMAT_LABELS } from '@shared/models/api/conversation-export.model';
-import { formatBytes } from '@shared/utils/format/bytes';
+import { EXPORT_FORMAT_LABELS } from '@core/api/conversation-export.model';
+import { formatBytes } from '@shared/formatting/bytes';
 import { AppError, AppErrorKind } from './app-error';
 
 /**

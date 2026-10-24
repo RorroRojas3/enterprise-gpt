@@ -3,7 +3,7 @@ import {
   PREFERENCE_KEYS,
   readPreference,
   writePreference,
-} from '@shared/utils/storage/local-preferences';
+} from '@core/preferences/local-preferences';
 
 /** What the user chose. `system` defers to `prefers-color-scheme`. */
 export type ThemePreference = 'light' | 'dark' | 'system';
@@ -26,7 +26,7 @@ function readStoredPreference(): ThemePreference {
  * `index.html` with the same stored value so the handover changes nothing on screen.
  */
 @Injectable({ providedIn: 'root' })
-export class ThemeService {
+export class Theme {
   private readonly document = inject(DOCUMENT);
   private readonly destroyRef = inject(DestroyRef);
   private readonly systemDark = signal(false);

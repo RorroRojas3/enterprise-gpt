@@ -12,24 +12,24 @@ import {
   withState,
 } from '@ngrx/signals';
 import { Observable, Subject, Subscription, of, take, takeUntil } from 'rxjs';
-import { JOB_STATE, UploadTarget } from '@shared/models/api/document.model';
+import { JOB_STATE, UploadTarget } from '@core/api/document.model';
+import { DocumentDownloadStore } from '@core/documents/document-download-store';
+import { AppError } from '@core/errors/app-error';
+import { injectSignedOut } from '@core/events/session-events';
+import { ToastStore } from '@core/notifications/toast-store';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
 import {
   Attachment,
   AttachmentRemoveAction,
   AttachmentState,
-} from '@shared/models/attachment.model';
-import { subStatusOf } from '@shared/utils/documents/upload-schedule';
-import { formatBytes } from '@shared/utils/format/bytes';
-import { describeUploadRejection } from '@core/documents/upload-rejection';
-import { AppError } from '@core/errors/app-error';
-import { injectSignedOut } from '@core/events/session-events';
-import { ToastStore } from '@core/notifications/toast-store';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
-import { DocumentUploadClient } from '@services/documents/document-upload-client';
-import { UploadCancelClient } from '@services/documents/upload-cancel-client';
-import { UploadStatusClient } from '@services/documents/upload-status-client';
-import { DocumentDownloadStore } from '@state/document-download-store';
-import { SupportedExtensionsStore, extensionOf } from '@state/supported-extensions-store';
+} from '@shared/files/attachment.model';
+import { formatBytes } from '@shared/formatting/bytes';
+import { DocumentUploadClient } from './document-upload-client';
+import { SupportedExtensionsStore, extensionOf } from './supported-extensions-store';
+import { UploadCancelClient } from './upload-cancel-client';
+import { describeUploadRejection } from './upload-rejection';
+import { subStatusOf } from './upload-schedule';
+import { UploadStatusClient } from './upload-status-client';
 
 /**
  * `attachment` is what the chip renders; the rest is plumbing. Replaced on every transition,

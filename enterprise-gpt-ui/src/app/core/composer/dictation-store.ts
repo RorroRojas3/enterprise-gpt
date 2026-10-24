@@ -12,7 +12,7 @@ import {
   SPEECH_RECOGNITION,
   SpeechRecognitionLike,
   SpeechRecognitionResultEventLike,
-} from './speech-recognition.token';
+} from './speech-recognition-token';
 
 interface DictationState {
   readonly recording: boolean;

@@ -8,18 +8,14 @@ import {
 } from '@angular/router';
 import { IPublicClientApplication, RedirectRequest } from '@azure/msal-browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthService } from '@core/auth/auth-service';
 import { provideTestAppConfig } from '@testing/app-config';
 import { fakeAccount, provideFakeMsal, signedInMsal, signedOutMsal } from '@testing/msal';
 import { provideFakeNavigation } from '@testing/navigation';
-import { authGuard } from './auth.guard';
+import { Auth } from './auth';
+import { authGuard } from './auth-guard';
 
 describe('authGuard', () => {
-  function run(
-    instance: IPublicClientApplication,
-    url = '/chat',
-    before?: (auth: AuthService) => void,
-  ) {
+  function run(instance: IPublicClientApplication, url = '/chat', before?: (auth: Auth) => void) {
     TestBed.configureTestingModule({
       providers: [
         provideTestAppConfig(),
@@ -29,7 +25,7 @@ describe('authGuard', () => {
       ],
     });
 
-    before?.(TestBed.inject(AuthService));
+    before?.(TestBed.inject(Auth));
 
     const state = { url } as RouterStateSnapshot;
 

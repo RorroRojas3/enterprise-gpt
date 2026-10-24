@@ -2,9 +2,9 @@ import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MarkdownComponent } from 'ngx-markdown';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ThemeService } from '@core/theme/theme-service';
+import { Theme } from '@core/theme/theme';
 import { provideTestAppConfig } from '@testing/app-config';
-import { DiagramRenderer, LazyRendererLoader, MathRenderer } from './lazy-renderer-loader-service';
+import { DiagramRenderer, LazyRendererLoader, MathRenderer } from './lazy-renderer-loader';
 import { MarkdownExtras } from './markdown-extras';
 import { provideChatMarkdown } from './markdown-providers';
 
@@ -157,7 +157,7 @@ describe('MarkdownExtras', () => {
       expect(render).toHaveBeenCalledOnce();
 
       // An SVG bakes its colours in, so unlike a code block it cannot re-tint.
-      TestBed.inject(ThemeService).set('dark');
+      TestBed.inject(Theme).set('dark');
       await fixture.whenStable();
       await Promise.resolve();
       await fixture.whenStable();

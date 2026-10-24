@@ -1,23 +1,20 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { MarkdownComponent } from 'ngx-markdown';
-import {
-  AssistantActivity,
-  AssistantStatusSnapshot,
-} from '@shared/models/andes/assistant-ui.contract';
-import { MessageAttachmentDto, MessageFeedbackRating } from '@shared/models/api/conversation.model';
+import { AssistantActivity, AssistantStatusSnapshot } from '@core/api/assistant-ui-contract';
+import { MessageAttachmentDto, MessageFeedbackRating } from '@core/api/conversation.model';
+import { BrandLogo } from '@shared/brand/brand-logo';
 import {
   EmailSegment,
   detectEmailDraft,
   splitEmailSegments,
-} from '@shared/utils/email/email-draft';
+} from '@features/chat/email/email-draft';
+import { MarkdownExtras } from '@features/chat/markdown/markdown-extras';
 import {
   StreamSplit,
   splitStreamingMarkdown,
   stripFenceInfo,
-} from '@shared/utils/markdown/streaming-split';
-import { TurnTimeline } from '@shared/utils/stream/turn-timeline';
-import { BrandLogo } from '@shared/components/brand-logo/brand-logo';
-import { MarkdownExtras } from '@components/chat/markdown/markdown-extras';
+} from '@features/chat/markdown/streaming-split';
+import { TurnTimeline } from '@features/chat/stream/turn-timeline';
 import { ActivityCard } from './activity-card';
 import { EmailCard } from './email-card';
 import { EmailOpenMenu } from './email-open-menu';

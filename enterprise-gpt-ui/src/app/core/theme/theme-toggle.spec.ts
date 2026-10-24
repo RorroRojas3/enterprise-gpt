@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PREFERENCE_KEYS } from '@shared/utils/storage/local-preferences';
+import { PREFERENCE_KEYS } from '@core/preferences/local-preferences';
 import { PREFERS_DARK, resetMediaQueries, setMediaQuery } from '@testing/media-query';
 import { iconOf } from '@testing/overlays';
 import { ThemeToggle } from './theme-toggle';

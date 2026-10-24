@@ -1,8 +1,8 @@
 import { Routes } from '@angular/router';
-import { ProjectConversationsStore } from '@state/projects/project-conversations-store';
-import { ProjectDocumentsStore } from '@state/projects/project-documents-store';
-import { ProjectStore } from '@state/projects/project-store';
-import { unsavedInstructionsGuard } from './unsaved-instructions.guard';
+import { ProjectConversationsStore } from '@core/projects/project-conversations-store';
+import { ProjectDocumentsStore } from './project-documents-store';
+import { ProjectStore } from './project-store';
+import { unsavedInstructionsGuard } from './unsaved-instructions-guard';
 
 /**
  * Tabs are real routes, not a local index, so the open panel survives a refresh and can be linked,

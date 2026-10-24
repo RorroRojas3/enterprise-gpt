@@ -3,11 +3,11 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastStore } from '@core/notifications/toast-store';
-import { McpServerActionsStore } from '@state/mcp-server-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpServerFixture } from '@testing/catalog';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { DeactivateMcpServerDialog } from './deactivate-mcp-server-dialog';
+import { McpServerActionsStore } from './mcp-server-actions-store';
 
 const MCPS_URL = `${TEST_API_BASE_URL}/api/mcps`;
 

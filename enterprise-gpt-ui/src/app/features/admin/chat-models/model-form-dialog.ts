@@ -8,6 +8,9 @@ import {
   untracked,
 } from '@angular/core';
 import { FormField, disabled, form, maxLength, required, validate } from '@angular/forms/signals';
+import { serverMessagesFor, unmatchedServerMessages } from '@core/errors/server-messages';
+import { Modal } from '@shared/dialog/modal';
+import { ModelActionsStore } from './model-actions-store';
 import {
   MODEL_FIELD_LENGTHS,
   ModelFormValue,
@@ -15,10 +18,7 @@ import {
   priceError,
   toModelFormValue,
   tokenCountError,
-} from '@shared/utils/catalog/model-form';
-import { serverMessagesFor, unmatchedServerMessages } from '@core/errors/server-messages';
-import { ModelActionsStore } from '@state/model-actions-store';
-import { Modal } from '@shared/components/modal/modal';
+} from './model-form';
 
 /**
  * Binds every field the PUT echoes, prices included, since an omitted one would be cleared.

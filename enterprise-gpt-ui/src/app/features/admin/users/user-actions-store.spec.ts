@@ -10,7 +10,7 @@ import { patchState } from '@ngrx/signals';
 import { Dispatcher, Events } from '@ngrx/signals/events';
 import { unprotected } from '@ngrx/signals/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserDto } from '@shared/models/api/user.model';
+import { UserDto } from '@core/api/user.model';
 import { adminEvents } from '@core/events/admin-events';
 import { sessionEvents } from '@core/events/session-events';
 import { ToastStore } from '@core/notifications/toast-store';

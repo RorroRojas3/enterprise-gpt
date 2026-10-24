@@ -21,19 +21,18 @@ import {
   within,
 } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CHAT_ROLE, ConversationDetailDto } from '@shared/models/api/conversation.model';
-import { TokenService } from '@core/auth/token-service';
+import { CHAT_ROLE, ConversationDetailDto } from '@core/api/conversation.model';
+import { AccessTokenClient } from '@core/auth/access-token-client';
 import { McpCatalogStore } from '@core/catalog/mcp-catalog-store';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
+import { TurnSettingsStore } from '@core/composer/turn-settings-store';
+import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { conversationEvents } from '@core/events/conversation-events';
 import { turnEvents } from '@core/events/turn-events';
+import { ShellChrome } from '@core/layout/shell-chrome';
 import { CONVERSATION_ID_PARAM, chatMatcher } from '@core/navigation/chat-matcher';
-import { ShellChrome } from '@core/ui/shell-chrome-service';
-import { STREAM_FETCH } from '@services/conversations/stream-fetch.token';
-import { ConversationActionsStore } from '@state/conversation-actions-store';
-import { UploadStore } from '@state/documents/upload-store';
-import { TurnSettingsStore } from '@state/turn-settings-store';
+import { UploadStore } from '@core/uploads/upload-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpFixture, modelFixture } from '@testing/catalog';
 import {
@@ -48,6 +47,7 @@ import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { streamingResponse } from '@testing/stream-frames';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
 import { Chat } from './chat';
+import { STREAM_FETCH } from './stream-fetch-token';
 
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
 const MODELS_URL = `${TEST_API_BASE_URL}/api/models`;
@@ -119,7 +119,10 @@ describe('Chat', () => {
         provideHttpClientTesting(),
         { provide: STREAM_FETCH, useValue: streamFetch },
         provideFakeUploadXhr(uploadXhr),
-        { provide: TokenService, useValue: { getToken: vi.fn().mockResolvedValue('token-1') } },
+        {
+          provide: AccessTokenClient,
+          useValue: { getToken: vi.fn().mockResolvedValue('token-1') },
+        },
         provideRouter(
           [
             { matcher: chatMatcher, component: Chat },

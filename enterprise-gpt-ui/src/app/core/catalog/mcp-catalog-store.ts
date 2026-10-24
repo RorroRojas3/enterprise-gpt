@@ -12,20 +12,20 @@ import {
 } from '@ngrx/signals';
 import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { firstValueFrom, takeUntil, tap } from 'rxjs';
-import { McpCredentialStatusDto, McpDto } from '@shared/models/api/mcp.model';
-import { toAppError } from '@core/errors/to-app-error';
-import { adminEvents } from '@core/events/admin-events';
-import { mcpEvents } from '@core/events/mcp-events';
-import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
+import { ApiUrl } from '@core/api/api-url';
+import { McpCredentialStatusDto, McpDto } from '@core/api/mcp.model';
 import {
   setError,
   setFulfilled,
   setIdle,
   setPending,
   withRequestStatus,
-} from '@core/state/with-request-status';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+} from '@core/api/with-request-status';
+import { toAppError } from '@core/errors/to-app-error';
+import { adminEvents } from '@core/events/admin-events';
+import { mcpEvents } from '@core/events/mcp-events';
+import { injectSignedOut } from '@core/events/session-events';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
 
 interface McpCatalogState {
   readonly servers: readonly McpDto[];

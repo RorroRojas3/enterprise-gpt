@@ -1,8 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ToastStore } from '@core/notifications/toast-store';
 import { ToastRegion } from './toast-region';
+import { ToastStore } from './toast-store';
 
 describe('ToastRegion', () => {
   // Real timers: the zoneless scheduler settles through setTimeout, so faking it stalls

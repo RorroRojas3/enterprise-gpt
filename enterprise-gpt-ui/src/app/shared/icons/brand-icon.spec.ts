@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { BrandIconName } from '@shared/utils/icons/brand-icon-names';
 import { BrandIcon } from './brand-icon';
+import { BrandIconName } from './brand-icon-names';
 
 describe('BrandIcon', () => {
   let fixture: ComponentFixture<BrandIcon>;

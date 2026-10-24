@@ -32,27 +32,27 @@ import {
   takeUntil,
   tap,
 } from 'rxjs';
-import { PaginatedResponseDto } from '@shared/models/api/paginated-response.model';
-import { ProjectSummaryDto } from '@shared/models/api/project.model';
-import { PROJECT_LOAD_CEILING, PROJECT_PAGE_SIZE } from '@shared/utils/projects/project-load';
-import { toProjectSummary } from '@shared/utils/projects/project-summary';
-import { toAppError } from '@core/errors/to-app-error';
-import { projectEvents } from '@core/events/project-events';
-import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
+import { ApiUrl } from '@core/api/api-url';
+import { PaginatedResponseDto } from '@core/api/paginated-response.model';
+import { ProjectSummaryDto } from '@core/api/project.model';
 import {
   OffsetPaginationState,
   setFirstPage,
   setPage,
   withOffsetPagination,
-} from '@core/state/with-offset-pagination';
+} from '@core/api/with-offset-pagination';
 import {
   setError,
   setFulfilled,
   setPending,
   withRequestStatus,
-} from '@core/state/with-request-status';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+} from '@core/api/with-request-status';
+import { toAppError } from '@core/errors/to-app-error';
+import { projectEvents } from '@core/events/project-events';
+import { injectSignedOut } from '@core/events/session-events';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
+import { PROJECT_LOAD_CEILING, PROJECT_PAGE_SIZE } from './project-load';
+import { toProjectSummary } from './project-summary';
 
 interface ProjectLookupState {
   /** Whether {@link ProjectLookupStore.ensureLoaded} has released the drain; see `onInit`. */

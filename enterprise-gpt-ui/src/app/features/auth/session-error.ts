@@ -10,11 +10,11 @@ import {
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
+import { ErrorPanel } from '@core/errors/error-panel';
 import { CHAT_ROUTE } from '@core/navigation/route-paths';
 import { SessionStore } from '@core/session/session-store';
-import { BrandLogo } from '@shared/components/brand-logo/brand-logo';
-import { ErrorPanel } from '@shared/components/error-panel/error-panel';
-import { AuthPage } from '@components/auth/auth-page';
+import { BrandLogo } from '@shared/brand/brand-logo';
+import { AuthPage } from './auth-page';
 
 /**
  * Unguarded: it renders precisely when `sessionGuard` cannot pass. `ErrorPanel` words the failure

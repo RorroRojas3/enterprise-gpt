@@ -14,30 +14,30 @@ import {
   viewChild,
 } from '@angular/core';
 import { ActivatedRoute, Params, Router } from '@angular/router';
-import { ProjectSummaryDto } from '@shared/models/api/project.model';
-import { formatRelativeTime } from '@shared/utils/format/relative-time';
+import { ProjectSummaryDto } from '@core/api/project.model';
+import { canRetry } from '@core/errors/error-message';
+import { ErrorPanel } from '@core/errors/error-panel';
+import { PROJECTS_ROUTE } from '@core/navigation/route-paths';
+import { ProjectActionsStore } from '@core/projects/project-actions-store';
+import { ProjectCard } from '@shared/cards/project-card';
+import { EmptyState } from '@shared/empty-state/empty-state';
+import { formatRelativeTime } from '@shared/formatting/relative-time';
+import { Icon } from '@shared/icons/icon';
+import { Skeleton } from '@shared/loading/skeleton';
+import { Menu } from '@shared/menu/menu';
+import { MenuItem } from '@shared/menu/menu-item';
+import { MenuSeparator } from '@shared/menu/menu-separator';
+import { shouldReplaceHistory } from '@shared/navigation/search-history';
+import { SearchInput } from '@shared/search/search-input';
+import { ProjectListStore } from './project-list-store';
 import {
   DEFAULT_PROJECT_SORT,
   NAME_PARAM,
   PROJECT_SORTS,
   SORT_PARAM,
-  shouldReplaceHistory,
   sortKey,
   toProjectSort,
-} from '@shared/utils/navigation/projects-route';
-import { canRetry } from '@core/errors/error-message';
-import { PROJECTS_ROUTE } from '@core/navigation/route-paths';
-import { ProjectActionsStore } from '@state/project-actions-store';
-import { ProjectListStore } from '@state/projects/project-list-store';
-import { EmptyState } from '@shared/components/empty-state/empty-state';
-import { ErrorPanel } from '@shared/components/error-panel/error-panel';
-import { Icon } from '@shared/components/icon/icon';
-import { Menu } from '@shared/components/menu/menu';
-import { SearchInput } from '@shared/components/search-input/search-input';
-import { Skeleton } from '@shared/components/skeleton/skeleton';
-import { MenuItem } from '@shared/directives/menu-item';
-import { MenuSeparator } from '@shared/directives/menu-separator';
-import { ProjectCard } from '@components/projects/project-card';
+} from './projects-route';
 
 /** How many skeleton cards stand in for the grid while the first page loads. */
 const SKELETON_CARDS = 6;

@@ -5,17 +5,17 @@ import { patchState, signalStore, withMethods, withProps, withState } from '@ngr
 import { Dispatcher } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { exhaustMap, mergeMap, switchMap, takeUntil } from 'rxjs';
-import { ProjectDto, ProjectSummaryDto, ProjectWriteBody } from '@shared/models/api/project.model';
-import { ProjectChanges, toProjectBody } from '@shared/utils/projects/project-update';
+import { ApiUrl } from '@core/api/api-url';
+import { ProjectDto, ProjectSummaryDto, ProjectWriteBody } from '@core/api/project.model';
 import { ValidationAppError } from '@core/errors/app-error';
 import { traceLine } from '@core/errors/error-message';
 import { toAppError } from '@core/errors/to-app-error';
 import { projectEvents } from '@core/events/project-events';
 import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
 import { ToastStore } from '@core/notifications/toast-store';
-import { projectNameMessages } from '@core/projects/duplicate-name';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
+import { projectNameMessages } from './duplicate-name';
+import { ProjectChanges, toProjectBody } from './project-update';
 
 export type ProjectFormMode = 'create' | 'edit';
 

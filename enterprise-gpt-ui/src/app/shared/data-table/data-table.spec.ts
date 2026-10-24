@@ -2,8 +2,6 @@ import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { getByLabelText, getByRole, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TableColumn } from '@shared/models/table-column.model';
-import { TableCell } from '@shared/directives/table-cell';
 import {
   NARROW_VIEWPORT,
   TABLET_VIEWPORT_QUERY,
@@ -11,6 +9,8 @@ import {
   setMediaQuery,
 } from '@testing/media-query';
 import { DataTable } from './data-table';
+import { TableCell } from './table-cell';
+import { TableColumn } from './table-column.model';
 
 interface Row {
   readonly id: string;
