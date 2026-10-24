@@ -7,13 +7,13 @@ import {
 import { TestBed } from '@angular/core/testing';
 import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ProjectSummaryDto } from '@shared/models/api/project.model';
-import { PROJECT_LOAD_CEILING, PROJECT_PAGE_SIZE } from '@shared/utils/projects/project-load';
+import { ProjectSummaryDto } from '@core/api/project.model';
 import { projectEvents } from '@core/events/project-events';
 import { sessionEvents } from '@core/events/session-events';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { FRAMEWORK_PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { projectDetailFixture, projectFixture, projectPage } from '@testing/projects';
+import { PROJECT_LOAD_CEILING, PROJECT_PAGE_SIZE } from './project-load';
 import { ProjectLookupStore } from './project-lookup-store';
 
 const PROJECTS_URL = `${TEST_API_BASE_URL}/api/projects`;

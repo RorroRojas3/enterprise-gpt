@@ -5,46 +5,62 @@ NgRx Signals for state, Bootstrap 5.3 with SCSS for styling.
 
 ## Layers
 
-`src/app/` is grouped by *kind* first and by *feature* second, so a feature such as `chat` has
-`pages/chat/`, `components/chat/` and `state/chat/`. Dependencies run one way, and ESLint enforces
-it:
+`src/app/` is feature-first, the Andes `angular-ui-architecture` layout: a folder is named for what
+it is about, never for the kind of code in it. A feature such as `chat` keeps its route target,
+components, stores and pure functions together in `features/chat/`. Dependencies run one way, and
+ESLint enforces it:
 
 ```
-pages -> components/<feature> -> shared/{components,directives,pipes} -> state -> services -> core -> shared/utils -> shared/models
+features -> core | shared        core -> shared        shared -> shared (+ *.model.ts)
 ```
 
-Importing across features (`components/a` to `components/b`, `pages/a` to `pages/b`) is banned too.
+Features never import each other, `core` never imports a feature, and a `*.model.ts` imports only
+other models.
 
-| Layer | Holds | May not import |
+| Folder | Holds | May not import |
 | --- | --- | --- |
-| `shared/models/` | Wire DTO types (`api/*.model.ts`) and the vendored streaming contract (`andes/`). Zero Angular or NgRx imports. | everything else in `app/` |
-| `shared/utils/<topic>/` | Framework-free pure functions: the SSE codec, turn reducers, formatters, and the `-route.ts` contracts a store reads. Zero Angular or NgRx imports, so it tests in Node with no `TestBed`. | everything but `shared/models` |
-| `core/` | App-wide singletons and policy: auth, config, errors, events, HTTP, navigation, the signal-store features, cross-feature tokens, and the root stores that guards, interceptors and core services inject. | `services`, `state`, `shared/{components,directives,pipes}`, `components`, `pages` |
-| `services/<domain>/` | Transports: the conversation stream client and the upload clients, each with its test-seam token beside it. | `state`, `shared/{components,directives,pipes}`, `components`, `pages` |
-| `state/` | Root stores flat; stores provided on a page or route in `state/<feature>/`. | `shared/{components,directives,pipes}`, `components`, `pages` |
-| `shared/{components,directives,pipes}/` | Presentational, reusable, feature-agnostic building blocks. May inject root stores from `state/`. | `state/<feature>/`, `components`, `pages` |
-| `components/<feature>/` | What one feature renders. `components/composer` is a pageless feature that the chat and project pages both compose. | `pages`, and any other feature |
-| `pages/<feature>/` | Route targets, `*.routes.ts` tables, guards and resolvers. Only the auth pages are eager. | other features |
+| `shared/<theme>/` | Presentational components, directives and pure functions grouped by purpose: `dialog/`, `menu/`, `data-table/`, `icons/`, `formatting/`, `layout/` and so on. Kit primitives stay here even when only one feature renders them. | `core` and `features`, except `*.model.ts` |
+| `core/<topic>/` | App-wide singletons and policy (`auth`, `api`, `config`, `errors`, `events`, `navigation`, `session`, ...), the root stores more than one feature injects, and the stateful widgets several features render. | `features` |
+| `features/<feature>/` | Everything one feature owns, flat: route targets, `*.routes.ts` tables, its guard and `-route.ts` URL contract, components, page- or route-provided stores, and the root stores only it uses. Sub-areas get a folder as they grow (`chat/{markdown,transcript,stream,email}`, `admin/{users,chat-models,mcps,reports}`, `shell/{sidebar,conversation-actions,project-actions}`). | any other feature |
+| `src/testing/` | Test-only providers and fixtures. | n/a, specs only |
 
-The table reads innermost first, so each layer imports only from the rows above it.
+Three `core/` topics need a note, because they hold more than singletons:
 
-A root store stays in `core/` when a guard, an interceptor or a core service injects it, because
-`core` may not import `state`. Those are `SessionStore`, `ModelCatalogStore`, `McpCatalogStore`,
-`ConversationListStore`, `ProjectLookupStore` and `ToastStore`. Every other root store lives in
-`state/`.
+- `core/api/` holds the wire DTOs (`*.model.ts`), the vendored Andes streaming contract
+  (`assistant-ui-contract.ts`), `ApiUrl`, `retryInterceptor` and the request-state store features.
+- `core/composer/` and `core/uploads/` hold the stateful widgets that the chat and project screens
+  both render, each with its own instance: the composer, its menus, `COMPOSER_HOST` and the
+  turn-settings and pending-handoff stores; `UploadStore`, `COMPOSER_UPLOADS` and the upload clients.
+- A component that injects a store or non-model core code lives in the topic it serves:
+  `error-panel` in `errors/`, `project-picker` in `projects/`, the toast region in `notifications/`,
+  the theme toggle in `theme/`.
 
-`eslint-layer-bans.mjs` generates the bans. `layerBans()` emits one `no-restricted-imports` block per
-layer and per feature folder. `layerZones()` restates the app-path bans as
-`import-x/no-restricted-paths` zones, because `no-restricted-imports` never sees a dynamic
-`import()`. `eslint-plugin-import-x` also runs `no-cycle` and `no-relative-parent-imports`, and
-`banForms` rejects `FormsModule` and `ReactiveFormsModule` everywhere. Specs are exempt from all of
-these except the forms ban. Prettier sorts imports bottom-up through the same layers.
+Three components that the dev-only `/ui-kit` gallery shows from `features/` (`badges/permission-badge`,
+`badges/kind-badge`, `cards/project-card`) live in `shared/`, so that route obeys the feature ban.
 
-Path aliases are `@pages/*`, `@components/*`, `@state/*`, `@services/*`, `@core/*`, `@shared/*` and
-`@testing/*`. Imports cross folders through the alias, never `../`. Components follow the v21
-convention — `foo.ts` / `foo.html` / `foo.scss`, no `.component` suffix — while every other kind
-carries one (`-store`, `-client`, `-service`, `.guard`, `.interceptor`, `.resolver`, `.routes`,
-`-route`, `.token`, `.model`). There are no barrel `index.ts` files.
+The SSE codec and turn reducers in `features/chat/stream/` are held framework-free by an
+`import-x/no-restricted-paths` zone, so they test in Node with no `TestBed`. Other pure functions
+stay Angular-free by convention, since no folder marks them.
+
+`eslint-layer-bans.mjs` generates the bans. `layerBans()` emits one `no-restricted-imports` block each
+for `shared`, `core` and every folder under `features/`, each with a `*.model.ts` twin.
+`layerZones()` restates the feature bans as `import-x/no-restricted-paths` zones, because
+`no-restricted-imports` never sees a dynamic `import()`. `eslint-plugin-import-x` also runs `no-cycle`
+and `no-relative-parent-imports`, and `banForms` rejects `FormsModule` and `ReactiveFormsModule`
+everywhere. Specs are exempt from all of these except the forms ban. Prettier sorts imports Angular,
+third-party, `@core`, `@shared`, `@features`, `@testing`, then relative.
+
+Path aliases are `@core/*`, `@features/*`, `@shared/*` and `@testing/*`. An import that crosses a
+top-level folder or reaches a parent folder uses the alias; same-folder and child imports stay
+relative (`./`). `src/testing/` imports `../app/...` instead, because `setup-dom.ts` and
+`media-query.ts` load as a Vite setup file outside the alias map and the other helpers follow suit.
+
+File names are the Angular CLI defaults, and `angular.json` pins no naming option. Components,
+directives and services carry no suffix (`auth.ts` holds `Auth`, `theme.ts` holds `Theme`). Guards,
+interceptors and tokens take a dash suffix (`auth-guard.ts`, `retry-interceptor.ts`,
+`app-config-token.ts`). Stores are `-store`, store features `with-*`, transports `-client`, URL
+contracts `-route`. A dot appears only in `.spec.ts`, `.a11y.spec.ts`, `.routes.ts`, `.config.ts` and
+`.model.ts`. There are no barrel `index.ts` files and no re-exports.
 
 ## Bootstrap
 
@@ -72,7 +88,7 @@ routed component to render, otherwise an empty app shell paints over the startup
 | --- | --- |
 | `provideRouter(..., withEnabledBlockingInitialNavigation())` | Without it the app shell paints behind the startup card while `authGuard` is still deciding. |
 | `provideHttpClient(withFetch(), withInterceptors([retryInterceptor, authInterceptor]))` | Order is load-bearing: retry is outermost, so each retried attempt re-enters auth and carries a fresh token. `withFetch` makes `HttpClient` and the raw-fetch stream transport share network semantics. |
-| `provideAppInitializer(() => inject(AuthService))` | Eager and load-bearing — its constructor subscribes this tab to another tab's sign-out. |
+| `provideAppInitializer(() => inject(Auth))` | Eager and load-bearing — its constructor subscribes this tab to another tab's sign-out. |
 | `providePreventDropNavigation()` | A stray file drop would otherwise navigate away mid-stream. |
 
 ## Routing
@@ -145,8 +161,11 @@ The rule to preserve is which libraries stay off the initial graph: the markdown
 `@microsoft/applicationinsights-web` are reached only through `await import(...)` behind DI tokens
 and `config.json` flags, and sit in lazy chunks of their own. `check-initial-chunk.mjs` fails the
 build if a static import from `main.ts` reaches any of them, and names the import path that did it.
-It also fails if any `pages/`, `components/` or `state/<feature>/` file other than the eager auth
-pages reaches the initial graph, which keeps the signed-in screens in lazy chunks.
+It also fails if any `features/` file other than the eager auth pages reaches the initial graph, which
+keeps the signed-in screens in lazy chunks. So do the pieces outside `features/` that only lazy
+features render: `core/composer/`, `core/uploads/`, `ProjectConversationsStore`
+(`core/projects/project-conversations-store.ts`), and the shared `permission-badge`, `kind-badge` and
+`project-card`.
 
 Re-baseline the budget only when a dependency genuinely has to be initial — check first whether it
 does.

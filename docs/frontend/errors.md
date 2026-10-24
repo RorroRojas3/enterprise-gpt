@@ -73,8 +73,9 @@ here. The two files are a pair.
 | `enterprise-gpt-ui/src/app/core/errors/to-app-error.ts` | The total entry point |
 | `enterprise-gpt-ui/src/app/core/errors/problem-types.ts` | The mirror of the server catalog |
 | `enterprise-gpt-ui/src/app/core/errors/camel-case.ts` | .NET's camel-casing algorithm |
-| `enterprise-gpt-ui/src/app/core/http/interceptors/retry.interceptor.ts` | GET-only retry with jitter |
-| `enterprise-gpt-ui/src/app/core/auth/` | `authErrorDecision` and the bearer interceptor |
+| `enterprise-gpt-ui/src/app/core/api/retry-interceptor.ts` | GET-only retry with jitter |
+| `enterprise-gpt-ui/src/app/core/errors/retry-policy.ts` | `authErrorDecision` |
+| `enterprise-gpt-ui/src/app/core/auth/auth-interceptor.ts` | The bearer interceptor |
 | `enterprise-gpt-ui/src/app/core/errors/to-app-error.spec.ts` | Arm selection across every input shape |
 
 ## Related

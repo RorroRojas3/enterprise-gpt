@@ -21,22 +21,22 @@ import {
 import { Events, withEventHandlers } from '@ngrx/signals/events';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { Subject, exhaustMap, filter, merge, pipe, switchMap, takeUntil, tap } from 'rxjs';
-import { ConversationDto } from '@shared/models/api/conversation.model';
-import { PaginatedResponseDto } from '@shared/models/api/paginated-response.model';
-import { toAppError } from '@core/errors/to-app-error';
-import { projectEvents } from '@core/events/project-events';
-import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
-import { ToastStore } from '@core/notifications/toast-store';
-import { setFirstPage, setPage, withOffsetPagination } from '@core/state/with-offset-pagination';
-import { addPendingId, removePendingId, withPendingIds } from '@core/state/with-pending-ids';
+import { ApiUrl } from '@core/api/api-url';
+import { ConversationDto } from '@core/api/conversation.model';
+import { PaginatedResponseDto } from '@core/api/paginated-response.model';
+import { setFirstPage, setPage, withOffsetPagination } from '@core/api/with-offset-pagination';
+import { addPendingId, removePendingId, withPendingIds } from '@core/api/with-pending-ids';
 import {
   setError,
   setFulfilled,
   setPending,
   withRequestStatus,
-} from '@core/state/with-request-status';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+} from '@core/api/with-request-status';
+import { toAppError } from '@core/errors/to-app-error';
+import { projectEvents } from '@core/events/project-events';
+import { injectSignedOut } from '@core/events/session-events';
+import { ToastStore } from '@core/notifications/toast-store';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
 
 /** Within the server's 1–100 clamp, and high enough that most users never reach "Load more". */
 export const SIDEBAR_PAGE_SIZE = 50;

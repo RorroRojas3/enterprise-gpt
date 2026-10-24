@@ -1,6 +1,6 @@
 import { Provider } from '@angular/core';
 import { vi } from 'vitest';
-import { HardNavigation } from '../app/core/navigation/hard-navigation-service';
+import { HardNavigation } from '../app/core/navigation/hard-navigation';
 
 /** A {@link HardNavigation} whose two methods are spies rather than real navigations. */
 export type FakeNavigation = {

@@ -23,11 +23,8 @@
     // Relative forms are required because `baseUrl` is deliberately unset: setting
     // it would also make every bare specifier resolve against the project root.
     "paths": {
-      "@pages/*": ["./src/app/pages/*"],
-      "@components/*": ["./src/app/components/*"],
-      "@state/*": ["./src/app/state/*"],
-      "@services/*": ["./src/app/services/*"],
       "@core/*": ["./src/app/core/*"],
+      "@features/*": ["./src/app/features/*"],
       "@shared/*": ["./src/app/shared/*"],
       "@testing/*": ["./src/testing/*"]
     }

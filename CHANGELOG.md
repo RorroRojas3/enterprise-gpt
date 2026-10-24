@@ -28,20 +28,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contrast, the admin MCP and model tables drop columns at narrow desktop widths instead of
   crowding, and the project pages scroll again. Component stylesheets shrank from about 7,100 lines
   to about 900, and the production size budgets rose to fit.
-- The Angular client in `enterprise-gpt-ui/` now follows the Andes `angular-ui-architecture` kind-first
-  layout; behaviour is unchanged. `src/app/` is grouped by kind, then by feature: `pages/<feature>`,
-  `components/<feature>`, `state/` (root stores flat, page- and route-provided stores in
-  `state/<feature>/`), `services/<domain>`, `core/<topic>` and `shared/{components,directives,pipes,models,utils}`.
-  The old `domain/` split into `shared/models` (wire DTOs and the vendored streaming contract) and
-  `shared/utils` (pure functions), and brand SVGs moved to `src/icons/brand/`. Path aliases are now
-  `@pages`, `@components`, `@state`, `@services`, `@core`, `@shared` and `@testing`; `@domain` and
-  `@features` are gone. Non-component files carry a kind suffix (`-store`, `-service`, `.token`,
-  `.model`, `-route` and so on), so several files were renamed. Dependencies run one way
-  (`pages` to `components` to `shared` presentational code to `state` to `services` to `core` to
-  `shared/utils` to `shared/models`), and `npm run lint` now enforces it, including across features,
-  for dynamic `import()`, and for import cycles and `../` imports; Prettier sorts imports in the same
-  order. `check-initial-chunk.mjs` also fails the build if a lazy page, component or feature store
-  reaches the initial bundle. Rebase any open UI branch onto the new paths and aliases.
+- The Angular client in `enterprise-gpt-ui/` now follows the Andes `angular-ui-architecture`
+  feature-first layout; behaviour is unchanged. `src/app/` is grouped by purpose, not by kind of code:
+  `features/<feature>/` holds everything one screen area owns (route targets, components, its stores
+  and pure functions), `core/<topic>/` holds app-wide singletons and the code several features share
+  (including `core/api/` for the wire DTOs, the vendored streaming contract and the request-state
+  store features, and `core/composer/` and `core/uploads/` for the composer and upload widgets), and
+  `shared/<theme>/` holds presentational building blocks. The old `domain/` folder is gone, and brand
+  SVGs moved to `src/icons/brand/`. Path aliases are now `@core`, `@features`, `@shared` and
+  `@testing`; `@pages`, `@components`, `@state`, `@services` and `@domain` are gone. Files are renamed
+  to the Angular CLI's default names: the `-service` suffix is dropped and guards, interceptors and
+  tokens take a dash suffix (`auth-guard.ts`, `retry-interceptor.ts`, `app-config-token.ts`), so
+  `AuthService` is now `Auth`, `TokenService` is `AccessTokenClient`, `ThemeService` is `Theme`,
+  `ReportsStore` is `AdminReportsStore` and `ProjectComposerHost` is `ProjectComposerHostStore`.
+  Dependencies run one way (`features` to `core` or `shared`, `core` to `shared`), and `npm run lint`
+  now enforces it, including between features, for dynamic `import()`, and for import cycles and
+  `../` imports; Prettier sorts imports in the same order. `check-initial-chunk.mjs` also fails the
+  build if lazy feature code, or the composer, uploads and shared cards that only lazy features
+  render, reach the initial bundle. Rebase any open UI branch onto the new paths and aliases.
 - Document summaries (`document_summarize`) are now detailed records instead of short gists: length
   scales with the source, every part of it must be covered, and light markdown structure (headings,
   bullets) is used where the source itself has it. A cross-document digest stays deliberately brief

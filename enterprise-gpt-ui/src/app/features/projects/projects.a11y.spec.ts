@@ -1,0 +1,197 @@
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideLocationMocks } from '@angular/common/testing';
+import { TestBed } from '@angular/core/testing';
+import { provideRouter, withComponentInputBinding } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { getByRole } from '@testing-library/dom';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Conversations } from '@features/conversations/conversations';
+import {
+  THEMES,
+  VIEWPORTS,
+  applyTheme,
+  atViewport,
+  clearTheme,
+  expectNoSeriousViolations,
+  expectScrollsToItsLastRow,
+  mountLikeShell,
+} from '@testing/a11y';
+import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { conversationFixture, conversationPage } from '@testing/conversations';
+import { projectFixture, projectPage } from '@testing/projects';
+import { PROJECT_LIST_PAGE_SIZE } from './project-list-store';
+import { Projects } from './projects';
+import { ProjectsLayout } from './projects-layout';
+
+/**
+ * Both library screens are rendered with rows, not empty, so most of the shared kit (`DataTable`,
+ * paginator, bulk bar, `ProjectCard`, kebabs) is in the audit.
+ */
+
+const PROJECTS_URL = `${TEST_API_BASE_URL}/api/projects`;
+const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
+
+describe('library accessibility', () => {
+  let backend: HttpTestingController;
+  let harness: RouterTestingHarness;
+  let attached: HTMLElement | null = null;
+
+  beforeEach(async () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideTestAppConfig(),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter(
+          [
+            // Through the layout, as in the app: it is what hands the grid a height to scroll in.
+            {
+              path: 'projects',
+              component: ProjectsLayout,
+              children: [{ path: '', component: Projects }],
+            },
+            { path: 'conversations', component: Conversations },
+          ],
+          withComponentInputBinding(),
+        ),
+        provideLocationMocks(),
+      ],
+    });
+
+    backend = TestBed.inject(HttpTestingController);
+    harness = await RouterTestingHarness.create();
+  });
+
+  afterEach(() => {
+    attached?.remove();
+    attached = null;
+    clearTheme();
+    backend.verify();
+  });
+
+  async function open(url: string, theme: 'light' | 'dark'): Promise<HTMLElement> {
+    applyTheme(theme);
+    await harness.navigateByUrl(url);
+
+    const element = harness.routeNativeElement as HTMLElement;
+    document.body.append(element);
+    attached = element;
+    return element;
+  }
+
+  for (const theme of THEMES) {
+    it(`finds nothing serious on the projects grid in the ${theme} theme`, async () => {
+      const element = await open('/projects', theme);
+
+      backend
+        .expectOne((request) => request.url === PROJECTS_URL)
+        .flush(
+          projectPage([
+            projectFixture({ name: 'Data Platform Migration' }),
+            projectFixture({ name: 'Helios' }),
+          ]),
+        );
+      await harness.fixture.whenStable();
+
+      await expectNoSeriousViolations(element, `/projects (${theme})`);
+    });
+
+    it(`finds nothing serious on the conversation library in the ${theme} theme`, async () => {
+      const element = await open('/conversations', theme);
+
+      backend
+        .expectOne((request) => request.url === SEARCH_URL)
+        .flush(
+          conversationPage([
+            conversationFixture({ name: 'Helios 2.4 release status' }),
+            conversationFixture({ name: 'Migration plan' }),
+          ]),
+        );
+      await harness.fixture.whenStable();
+
+      await expectNoSeriousViolations(element, `/conversations (${theme})`);
+    });
+
+    it(`finds nothing serious with the Load more control present in the ${theme} theme`, async () => {
+      const element = await open('/projects', theme);
+
+      backend
+        .expectOne((request) => request.url === PROJECTS_URL)
+        .flush(
+          projectPage(
+            Array.from({ length: PROJECT_LIST_PAGE_SIZE }, (_, index) =>
+              projectFixture({ name: `Project ${index}` }),
+            ),
+            { totalCount: 312, pageSize: PROJECT_LIST_PAGE_SIZE },
+          ),
+        );
+      await harness.fixture.whenStable();
+
+      expect(getByRole(element, 'button', { name: 'Load more' })).toBeTruthy();
+
+      await expectNoSeriousViolations(element, `/projects with Load more (${theme})`);
+    });
+
+    it(`finds nothing serious with the Load more control busy in the ${theme} theme`, async () => {
+      const element = await open('/projects', theme);
+
+      backend
+        .expectOne((request) => request.url === PROJECTS_URL)
+        .flush(
+          projectPage(
+            Array.from({ length: PROJECT_LIST_PAGE_SIZE }, (_, index) =>
+              projectFixture({ name: `Project ${index}` }),
+            ),
+            { totalCount: 312, pageSize: PROJECT_LIST_PAGE_SIZE },
+          ),
+        );
+      await harness.fixture.whenStable();
+
+      getByRole(element, 'button', { name: 'Load more' }).click();
+      await harness.fixture.whenStable();
+
+      // `aria-disabled`, never `disabled`, which would drop focus mid-press.
+      const busy = getByRole(element, 'button', { name: 'Loading…' });
+      expect(busy.getAttribute('aria-disabled')).toBe('true');
+
+      await expectNoSeriousViolations(element, `/projects loading more (${theme})`);
+
+      backend
+        .expectOne((request) => request.url === PROJECTS_URL)
+        .flush(
+          projectPage([], {
+            totalCount: 312,
+            pageSize: PROJECT_LIST_PAGE_SIZE,
+            skip: PROJECT_LIST_PAGE_SIZE,
+          }),
+        );
+      await harness.fixture.whenStable();
+    });
+  }
+
+  // Last, so the audits above run at the default desktop width.
+  for (const viewport of Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[]) {
+    it(`scrolls the projects grid to its last card at the ${viewport} width`, async () => {
+      await atViewport(viewport);
+      applyTheme('light');
+      await harness.navigateByUrl('/projects');
+
+      const layout = harness.routeNativeElement as HTMLElement;
+      attached = mountLikeShell(layout);
+      backend
+        .expectOne((request) => request.url === PROJECTS_URL)
+        .flush(
+          projectPage(
+            Array.from({ length: 24 }, (_, index) => projectFixture({ name: `Project ${index}` })),
+          ),
+        );
+      await harness.fixture.whenStable();
+
+      const grid = layout.querySelector<HTMLElement>('app-projects')!;
+      const cards = grid.querySelectorAll<HTMLElement>('app-project-card');
+      expectScrollsToItsLastRow(grid, cards[cards.length - 1]!, `/projects (${viewport})`);
+    });
+  }
+});

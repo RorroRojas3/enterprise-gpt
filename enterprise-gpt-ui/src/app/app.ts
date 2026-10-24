@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { AuthService } from '@core/auth/auth-service';
+import { Auth } from '@core/auth/auth';
+import { ToastRegion } from '@core/notifications/toast-region';
 import { ToastStore } from '@core/notifications/toast-store';
-import { SigningOut } from '@shared/components/signing-out/signing-out';
-import { ToastRegion } from '@shared/components/toast-region/toast-region';
+import { SigningOut } from '@core/session/signing-out';
 
 @Component({
   selector: 'app-root',
@@ -25,6 +25,6 @@ import { ToastRegion } from '@shared/components/toast-region/toast-region';
   `,
 })
 export class App {
-  protected readonly auth = inject(AuthService);
+  protected readonly auth = inject(Auth);
   protected readonly toasts = inject(ToastStore);
 }

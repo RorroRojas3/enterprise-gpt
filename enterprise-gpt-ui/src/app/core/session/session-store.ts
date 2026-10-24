@@ -11,19 +11,19 @@ import {
   withState,
 } from '@ngrx/signals';
 import { firstValueFrom, takeUntil } from 'rxjs';
-import { PERMISSION_ID } from '@shared/models/api/permission-ids.model';
-import { UserDto } from '@shared/models/api/user.model';
-import { toAppError } from '@core/errors/to-app-error';
-import { injectSignedOut } from '@core/events/session-events';
-import { ApiUrl } from '@core/http/api-url-service';
+import { ApiUrl } from '@core/api/api-url';
+import { PERMISSION_ID } from '@core/api/permission-ids.model';
+import { UserDto } from '@core/api/user.model';
 import {
   setError,
   setFulfilled,
   setIdle,
   setPending,
   withRequestStatus,
-} from '@core/state/with-request-status';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+} from '@core/api/with-request-status';
+import { toAppError } from '@core/errors/to-app-error';
+import { injectSignedOut } from '@core/events/session-events';
+import { withResetOnSignOut } from './with-reset-on-sign-out';
 
 interface SessionState {
   readonly user: UserDto | null;

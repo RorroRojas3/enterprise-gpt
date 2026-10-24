@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { AuthService } from '@core/auth/auth-service';
+import { Auth } from '@core/auth/auth';
 import { SessionStore } from '@core/session/session-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
@@ -65,7 +65,7 @@ describe('App', () => {
     // Asserted before any await: a render between the latch and the reset would paint a
     // signed-in shell over a cleared SessionStore.
     await session();
-    const auth = TestBed.inject(AuthService);
+    const auth = TestBed.inject(Auth);
 
     expect(TestBed.inject(SessionStore).user()).not.toBeNull();
 
@@ -81,7 +81,7 @@ describe('App', () => {
 
     expect(host.querySelector('router-outlet')).not.toBeNull();
 
-    void TestBed.inject(AuthService).signOut();
+    void TestBed.inject(Auth).signOut();
     await fixture.whenStable();
 
     expect(host.querySelector('router-outlet')).toBeNull();
@@ -110,7 +110,7 @@ describe('App', () => {
 
     expect(host.querySelector('app-toast-region')).not.toBeNull();
 
-    void TestBed.inject(AuthService).signOut();
+    void TestBed.inject(Auth).signOut();
     await fixture.whenStable();
 
     expect(host.querySelector('app-toast-region')).not.toBeNull();
@@ -121,7 +121,7 @@ describe('App', () => {
     // this, focus lands on <body> and a screen reader is told nothing at all.
     const fixture = await render();
 
-    void TestBed.inject(AuthService).signOut();
+    void TestBed.inject(Auth).signOut();
     await fixture.whenStable();
 
     expect(document.activeElement).toBe((fixture.nativeElement as HTMLElement).querySelector('h1'));

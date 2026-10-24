@@ -10,9 +10,9 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router } from '@angular/router';
 import type { IConfig, IConfiguration, ITelemetryItem } from '@microsoft/applicationinsights-web';
 import { filter } from 'rxjs';
-import { AuthService } from '@core/auth/auth-service';
+import { Auth } from '@core/auth/auth';
 import { TelemetryConfig } from '@core/config/app-config';
-import { APP_CONFIG } from '@core/config/app-config.token';
+import { APP_CONFIG } from '@core/config/app-config-token';
 
 /** The Application Insights tag that surfaces as `user_AuthenticatedId`. */
 const AUTHENTICATED_USER_TAG = 'ai.user.authUserId';
@@ -59,7 +59,7 @@ export function provideBrowserTelemetry(): EnvironmentProviders {
     }
 
     const load = inject(TELEMETRY_LOADER);
-    const auth = inject(AuthService);
+    const auth = inject(Auth);
     const destroyRef = inject(DestroyRef);
     const document = inject(DOCUMENT);
     const navigations = inject(Router).events.pipe(

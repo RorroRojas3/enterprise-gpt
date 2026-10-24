@@ -79,7 +79,7 @@ admin screens it coordinates with stay lazy.
 | `enterprise-gpt-api/Enterprise.Gpt.Entity/ChatModels/Model.cs` | The row |
 | `enterprise-gpt-api/Enterprise.Gpt.Repository/Sql/Configurations/ChatModels/ModelConfiguration.cs` | The store-default pairing |
 | `enterprise-gpt-ui/src/app/core/catalog/model-catalog-store.ts` | User-facing catalog |
-| `enterprise-gpt-ui/src/app/state/admin/admin-models-store.ts` | The admin grid |
+| `enterprise-gpt-ui/src/app/features/admin/chat-models/admin-models-store.ts` | The admin grid |
 | `enterprise-gpt-api/test/Enterprise.Gpt.Unit.Test/Service/ChatModels/ModelServiceTests.cs` | Default demotion and validation |
 
 ## Related

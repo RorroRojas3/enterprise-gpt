@@ -1,0 +1,20 @@
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { Icon } from '@shared/icons/icon';
+
+/**
+ * `managedBy` marks a grant that cannot be revoked here; the reason is spelled out for assistive
+ * technology, since the padlock is decoration.
+ */
+@Component({
+  selector: 'app-permission-badge',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [Icon],
+  // The name is unbounded, so the pill must shrink rather than overflow its grid track.
+  host: { class: 'd-inline-flex min-w-0 mw-100' },
+  templateUrl: './permission-badge.html',
+  styleUrl: './permission-badge.scss',
+})
+export class PermissionBadge {
+  readonly name = input.required<string>();
+  readonly managedBy = input<string | null>(null);
+}

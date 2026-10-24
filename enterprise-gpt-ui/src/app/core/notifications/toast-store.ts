@@ -12,7 +12,7 @@ import {
 import { AppError } from '@core/errors/app-error';
 import { shouldNotify, traceLine, userMessage } from '@core/errors/error-message';
 import { injectSignedOut } from '@core/events/session-events';
-import { withResetOnSignOut } from '@core/state/with-reset-on-sign-out';
+import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
 import { AUTO_DISMISS_MS, Toast, ToastTone } from './toast.model';
 
 interface ToastState {
@@ -33,7 +33,7 @@ export interface ToastInput {
   readonly dismissAfterMs?: number;
 }
 
-/** In `core/`: core stores and services inject it, and `core/` may not import `state/`. */
+/** In `core/`: core stores and services inject it, and `core/` may not import a feature. */
 export const ToastStore = signalStore(
   { providedIn: 'root' },
   withState(initialState),

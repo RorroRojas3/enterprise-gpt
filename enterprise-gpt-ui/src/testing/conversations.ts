@@ -3,8 +3,8 @@ import {
   ConversationDetailDto,
   ConversationDto,
   ConversationMessageDto,
-} from '../app/shared/models/api/conversation.model';
-import { PaginatedResponseDto } from '../app/shared/models/api/paginated-response.model';
+} from '../app/core/api/conversation.model';
+import { PaginatedResponseDto } from '../app/core/api/paginated-response.model';
 
 let sequence = 0;
 let messageSequence = 0;

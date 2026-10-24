@@ -87,44 +87,47 @@ where the bundle itself never loads and no application code runs at all. To see 
 
 ## Layout
 
-`src/app/` is grouped by **kind** first and by **feature** second, as the Andes
-`angular-ui-architecture` skill defines it. A feature such as `chat` has `pages/chat/`,
-`components/chat/` and `state/chat/`. Dependencies run one way only:
+`src/app/` is **feature-first**, as the Andes `angular-ui-architecture` skill defines it: a folder is
+named for what it is about, never for the kind of code in it. A feature such as `chat` keeps its route
+target, components, stores and pure functions together in `features/chat/`. Dependencies run one way
+only:
 
 ```text
-pages → components/<feature> → shared/{components,directives,pipes} → state → services → core → shared/utils → shared/models
+features → core | shared        core → shared        shared → shared (+ *.model.ts)
 ```
 
 `npm run lint` enforces this direction through generated `no-restricted-imports` blocks and
-`import-x/no-restricted-paths` zones, which also cover dynamic `import()` (`eslint-layer-bans.mjs`). Importing across features (`components/a` → `components/b`,
-`pages/a` → `pages/b`) is banned too. `shared/utils` and `shared/models` import nothing from
-Angular or NgRx, so the stream codec and the activity fold stay testable in Node with no `TestBed`.
+`import-x/no-restricted-paths` zones, which also cover dynamic `import()` (`eslint-layer-bans.mjs`).
+Features never import each other, `core` never imports a feature, and a `*.model.ts` imports only
+other models, so the wire types test in Node with no `TestBed`. The SSE codec and turn reducers in
+`features/chat/stream/` are held framework-free by a zone of their own.
 
-| Path                  | Holds                                                                                                                                                                                                                                 |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/app/pages/`      | Route destinations and route tables. Every page is lazy except the auth pages. `pages/admin` is guarded with `canMatch`, so its chunk is never fetched by a non-administrator.                                                        |
-| `src/app/components/` | Components that one feature renders, one folder per feature. `components/composer` is a pageless feature that the chat and project pages both compose.                                                                                |
-| `src/app/state/`      | Root stores sit flat in `state/`. Stores provided on a page or route live in `state/<feature>/`.                                                                                                                                      |
-| `src/app/services/`   | Streaming and upload transports, grouped by domain.                                                                                                                                                                                   |
-| `src/app/core/`       | App-wide singletons and policy: runtime config, error normalization, HTTP, auth, session, navigation, theme, cross-store events, the composable signal-store features, and the stores that guards or core services inject.            |
-| `src/app/shared/`     | `components/`, `directives/` and `pipes/` hold reusable building blocks. `models/` holds wire DTOs and the vendored streaming contract. `utils/` holds framework-free pure functions.                                                 |
-| `src/styles/`         | Global Sass partials (`angular.json` puts this directory on the load path). Components read tokens as `var(--…)` and must **not** `@use 'tokens'`, `@use 'theme'` or `@use 'typography'`, which emit `:root` and `@font-face` blocks. |
-| `src/icons/brand/`    | Brand-mark SVGs that `npm run assets:icons` folds into the sprite.                                                                                                                                                                    |
-| `src/testing/`        | Test-only providers and shared fixtures. Excluded from `tsconfig.app.json`.                                                                                                                                                           |
+| Path                                              | Holds                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/app/features/`                               | One folder per feature (`admin`, `auth`, `chat`, `conversations`, `documents`, `projects`, `shell`, `ui-kit`): route targets, `*.routes.ts` tables, components, page- or route-provided stores, and the root stores only that feature uses. Every feature is lazy except the auth pages. `features/admin` is guarded with `canMatch`, so its chunk is never fetched by a non-administrator. |
+| `src/app/core/`                                   | App-wide singletons and policy, one folder per topic: `api/` (wire DTOs, the vendored contract, `ApiUrl`, `retryInterceptor`, the request-state store features), `auth`, `config`, `errors`, `events`, `session`, `navigation`, `theme`, and the root stores more than one feature injects.                                                                                                 |
+| `src/app/core/composer/`, `src/app/core/uploads/` | The stateful widgets the chat and project screens both render, each with its own instance: the composer, its menus and handoff stores; the upload store and clients.                                                                                                                                                                                                                        |
+| `src/app/shared/`                                 | Presentational components, directives and pure functions grouped by purpose (`dialog/`, `menu/`, `data-table/`, `icons/`, `formatting/`, `layout/`, ...). Kit primitives stay here even when only one feature renders them.                                                                                                                                                                 |
+| `src/styles/`                                     | Global Sass partials (`angular.json` puts this directory on the load path). Components read tokens as `var(--…)` and must **not** `@use 'tokens'`, `@use 'theme'` or `@use 'typography'`, which emit `:root` and `@font-face` blocks.                                                                                                                                                       |
+| `src/icons/brand/`                                | Brand-mark SVGs that `npm run assets:icons` folds into the sprite.                                                                                                                                                                                                                                                                                                                          |
+| `src/testing/`                                    | Test-only providers and shared fixtures. Excluded from `tsconfig.app.json`.                                                                                                                                                                                                                                                                                                                 |
 
-Path aliases `@pages/*`, `@components/*`, `@state/*`, `@services/*`, `@core/*`, `@shared/*` and
-`@testing/*` are configured in `tsconfig.json`. Imports cross folders through the alias, never
-through `../`. Prettier sorts imports in the same bottom-up order as the graph.
+Path aliases `@core/*`, `@features/*`, `@shared/*` and `@testing/*` are configured in `tsconfig.json`.
+An import that crosses a top-level folder or reaches a parent folder uses the alias; same-folder and
+child imports stay relative (`./`). `src/testing/` imports `../app/...` instead, because the Vite
+setup file runs outside the alias map. Prettier sorts imports Angular → third-party → `@core` →
+`@shared` → `@features` → `@testing` → relative.
 
-Component files carry no suffix (`foo.ts` / `foo.html` / `foo.scss`). Every other kind does: `-store`,
-`-client`, `-service`, `.guard`, `.interceptor`, `.resolver`, `.routes`, `-route`, `.token`,
-`.model`. Pure functions under `shared/utils` are the exception. The schematics in `angular.json`
-produce the dot forms. A service has no separator option, so name it with the suffix:
-`ng g s services/<domain>/<name>-service`.
+File names are the Angular CLI defaults: `angular.json` pins no naming option. Components, directives
+and services carry no suffix (`auth.ts` holds `Auth`). Guards, interceptors and tokens take a dash
+suffix (`auth-guard.ts`, `retry-interceptor.ts`, `app-config-token.ts`). Stores are `-store`, store
+features `with-*`, transports `-client`, URL contracts `-route`. A dot appears only in `.spec.ts`,
+`.a11y.spec.ts`, `.routes.ts`, `.config.ts` and `.model.ts`, so `ng g s core/<topic>/<name>` and
+`ng g c features/<feature>/<name>` produce the right names unaided.
 
 ## Vendored contract
 
-[`src/app/shared/models/andes/assistant-ui.contract.ts`](src/app/shared/models/andes/assistant-ui.contract.ts)
+[`src/app/core/api/assistant-ui-contract.ts`](src/app/core/api/assistant-ui-contract.ts)
 is copied **byte for byte** from the `Andes.Extensions.AI.UI` NuGet package — the same package the API
 serialises the chat stream with. It is the one file in this repository that must never be edited by
 hand. Its header carries the package id, version and source path, followed by an
@@ -162,7 +165,7 @@ comparison against an LF-only package file impossible.
 `public/fonts` and `public/icons` are gitignored and rebuilt by `prestart`, `prebuild` and `pretest`,
 so a fresh clone never has to think about them. The fonts are the twelve `woff2` faces this app uses,
 copied out of `@fontsource`; the icons are one SVG sprite built from the checked-in manifest at
-`src/app/shared/utils/icons/icon-names.ts`. Adding an icon means editing that manifest **and** re-running
+`src/app/shared/icons/icon-names.ts`. Adding an icon means editing that manifest **and** re-running
 `npm run assets:icons` — the name is otherwise typed but absent from the sprite, and renders blank.
 
 `public/brand` is different on purpose: its output is **committed**, about 55 kB of images that

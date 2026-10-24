@@ -4,9 +4,9 @@ import { NavigationEnd, Router } from '@angular/router';
 import type { IConfig, IConfiguration, ITelemetryItem } from '@microsoft/applicationinsights-web';
 import { Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthService } from '@core/auth/auth-service';
+import { Auth } from '@core/auth/auth';
 import { AppConfig } from '@core/config/app-config';
-import { APP_CONFIG } from '@core/config/app-config.token';
+import { APP_CONFIG } from '@core/config/app-config-token';
 import devConfig from '../../../../public/config.json';
 import {
   BrowserTelemetry,
@@ -73,7 +73,7 @@ describe('provideBrowserTelemetry', () => {
         { provide: APP_CONFIG, useValue: appConfig },
         { provide: TELEMETRY_LOADER, useValue: loader },
         {
-          provide: AuthService,
+          provide: Auth,
           useValue: {
             get account() {
               return account;

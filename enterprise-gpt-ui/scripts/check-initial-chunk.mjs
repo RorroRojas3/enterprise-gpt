@@ -16,13 +16,13 @@ const FORBIDDEN = [
   {
     label: 'diagrams',
     match: /(^|\/)node_modules\/(mermaid|@mermaid-js\/[^/]+)\//,
-    roots: ['src/app/pages/chat/chat.ts'],
+    roots: ['src/app/features/chat/chat.ts'],
     expect: true,
   },
   {
     label: 'math',
     match: /(^|\/)node_modules\/(katex|mathjax|mathjax-full)\//,
-    roots: ['src/app/pages/chat/chat.ts'],
+    roots: ['src/app/features/chat/chat.ts'],
     expect: true,
   },
   // Provided at `Chat` so it stays behind the lazy route: the initial graph has ~11 kB of
@@ -33,12 +33,14 @@ const FORBIDDEN = [
   },
   // Non-administrators must never download the admin chunk; `canMatch` keeps it off the wire
   // only while nothing eagerly reachable imports it statically.
-  { label: 'admin area', match: /(^|\/)src\/app\/(pages|components|state)\/admin\// },
-  // Pages, their components and page-scoped stores load with their route. The auth pages are
-  // the listed eager exceptions: the sign-in callback and the failure routes.
+  { label: 'admin area', match: /(^|\/)src\/app\/features\/admin\// },
+  // Features load with their route; the auth pages are the listed eager exceptions (the sign-in
+  // callback and the failure routes). The core widgets and the shared components that only lazy
+  // features render ride with them.
   {
     label: 'feature code',
-    match: /(^|\/)src\/app\/(pages\/(?!auth\/)|components\/(?!auth\/)|state\/[^/]+\/)/,
+    match:
+      /(^|\/)src\/app\/(features\/(?!auth\/)|core\/(composer|uploads)\/|core\/projects\/project-conversations-store\.ts|shared\/(badges\/(permission|kind)-badge|cards\/project-card)\.)/,
   },
   // A ~600 kB devDependency reached only from `*.a11y.spec.ts`; the budgets measure the build,
   // not the test target, so nothing else would catch it shipping to every user.

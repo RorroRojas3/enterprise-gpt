@@ -1,6 +1,6 @@
 import { type } from '@ngrx/signals';
 import { eventGroup } from '@ngrx/signals/events';
-import { UserDto } from '@shared/models/api/user.model';
+import { UserDto } from '@core/api/user.model';
 
 /**
  * Server-confirmed admin changes. Events, because the root `UserActionsStore` cannot inject the
