@@ -1,5 +1,10 @@
 import { TestBed } from '@angular/core/testing';
-import { InteractionRequiredAuthError, SilentRequest } from '@azure/msal-browser';
+import {
+  BrowserAuthError,
+  BrowserAuthErrorCodes,
+  InteractionRequiredAuthError,
+  SilentRequest,
+} from '@azure/msal-browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { provideTestAppConfig, testAppConfig } from '@testing/app-config';
 import {
@@ -9,6 +14,7 @@ import {
   signedInMsal,
   signedOutMsal,
 } from '@testing/msal';
+import { armUnloadPrompt, wouldPromptOnUnload } from '@testing/unload-prompt';
 import { AccessTokenClient, InteractiveSignInRequiredError } from './access-token-client';
 
 const CORRELATION_ID = '00000000-0000-0000-0000-000000000000';
@@ -94,6 +100,44 @@ describe('AccessTokenClient', () => {
 
     await expect(tokens.getToken()).rejects.toBeInstanceOf(InteractiveSignInRequiredError);
     expect(acquireTokenRedirect).toHaveBeenCalledTimes(1);
+  });
+
+  it('redirects for interaction without a leave prompt that would strand its lock', async () => {
+    let prompted: boolean | null = null;
+    const tokens = service(
+      signedInMsal({
+        acquireTokenSilent: () =>
+          Promise.reject(new InteractionRequiredAuthError('interaction_required', CORRELATION_ID)),
+        acquireTokenRedirect: () => {
+          prompted = wouldPromptOnUnload();
+          return Promise.resolve();
+        },
+      }),
+    );
+    armUnloadPrompt();
+
+    await expect(tokens.getToken()).rejects.toBeInstanceOf(InteractiveSignInRequiredError);
+
+    expect(prompted).toBe(false);
+  });
+
+  it('keeps the guard down when another redirect already holds the lock', async () => {
+    const tokens = service(
+      signedInMsal({
+        acquireTokenSilent: () =>
+          Promise.reject(new InteractionRequiredAuthError('interaction_required', CORRELATION_ID)),
+        acquireTokenRedirect: () =>
+          Promise.reject(
+            new BrowserAuthError(BrowserAuthErrorCodes.interactionInProgress, CORRELATION_ID),
+          ),
+      }),
+    );
+    armUnloadPrompt();
+
+    await expect(tokens.getToken()).rejects.toBeInstanceOf(InteractiveSignInRequiredError);
+
+    // The page is still leaving for the other redirect; a prompt now would strand its lock.
+    expect(wouldPromptOnUnload()).toBe(false);
   });
 
   it('rejects without redirecting when nobody is signed in', async () => {

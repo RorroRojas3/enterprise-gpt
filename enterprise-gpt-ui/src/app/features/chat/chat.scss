@@ -1,41 +1,4 @@
-@use 'breakpoints' as bp;
-
 // `--toast-top` in _kit.scss is derived from this height; change them together.
 .chat__header {
   height: 52px;
-}
-
-// No scroll anchoring: the browser's would fight the pinning directive.
-.chat__body {
-  overflow-anchor: none;
-}
-
-// Safe-area insets are added, not substituted: `viewport-fit=cover` puts both edges under the
-// rounded corners in landscape.
-.chat__gutter {
-  padding-inline: calc(1.5rem + var(--safe-left)) calc(1.5rem + var(--safe-right));
-}
-
-.chat__composer {
-  padding-bottom: calc(1rem + var(--safe-bottom));
-}
-
-@include bp.mobile {
-  .chat__gutter {
-    padding-inline: calc(1rem + var(--safe-left)) calc(1rem + var(--safe-right));
-  }
-
-  .chat__composer {
-    padding-inline: calc(0.75rem + var(--safe-left)) calc(0.75rem + var(--safe-right));
-  }
-}
-
-// Anchored to the composer, not the page, so the gap holds as the textarea grows.
-.chat__jump {
-  bottom: calc(100% + 14px);
-  z-index: 10;
-
-  &--pulsing {
-    animation: ringpulse 1.8s ease-out infinite;
-  }
 }

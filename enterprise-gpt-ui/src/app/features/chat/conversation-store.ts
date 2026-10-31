@@ -27,7 +27,6 @@ import { toAppError } from '@core/errors/to-app-error';
 import { conversationEvents } from '@core/events/conversation-events';
 import { projectEvents } from '@core/events/project-events';
 import { injectSignedOut } from '@core/events/session-events';
-import { turnEvents } from '@core/events/turn-events';
 import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
 
 interface ConversationState {
@@ -145,33 +144,6 @@ export const ConversationStore = signalStore(
       ),
     );
 
-    /**
-     * Unlike {@link open}, never clears the detail or goes pending, which would blank the header.
-     * Failures are swallowed: what is on screen is still true.
-     */
-    const refreshDetail = rxMethod<string>(
-      pipe(
-        switchMap((id) => {
-          const url = detailUrl(id);
-
-          return store._http.get<ConversationDetailDto>(url).pipe(
-            takeUntil(store._signedOut$),
-            tapResponse({
-              next: (conversation) => {
-                // Unguarded: the sidebar gets the name even if the user has moved on.
-                store._list.refreshRow(conversation);
-                if (store.conversationId() === conversation.id) {
-                  patchState(store, { conversation });
-                }
-              },
-              // Swallowed in `tapResponse`: an escaping throw would kill the rxMethod for good.
-              error: () => {},
-            }),
-          );
-        }),
-      ),
-    );
-
     return {
       /** Points the screen at a conversation, or at the empty state when null. */
       open,
@@ -180,9 +152,6 @@ export const ConversationStore = signalStore(
       retry(): void {
         open(store.conversationId());
       },
-
-      /** @internal Exposed for the event handler below; not part of the screen's API. */
-      _refreshDetail: refreshDetail,
     };
   }),
   withEventHandlers((store, events = inject(Events)) => [
@@ -205,16 +174,6 @@ export const ConversationStore = signalStore(
         const current = store.conversation();
         if (current !== null && current.projectId === projectId) {
           patchState(store, { conversation: { ...current, projectId: null } });
-        }
-      }),
-    ),
-
-    // The server names a conversation after its first turn without saying so on the stream;
-    // later turns cannot change the name.
-    events.on(turnEvents.completed).pipe(
-      tap(({ payload }) => {
-        if (payload.wasFirstTurn && payload.conversationId === store.conversationId()) {
-          store._refreshDetail(payload.conversationId);
         }
       }),
     ),

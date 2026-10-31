@@ -25,6 +25,7 @@ import { ToastStore } from '@core/notifications/toast-store';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
+import { connectActivity } from '@testing/conversation-activity';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
@@ -292,6 +293,20 @@ describe('Conversations', () => {
 
       const link = getByRole(element(), 'link', { name: 'Quarterly review' });
       expect(link.getAttribute('href')).toBe(`/chat/${conversation.id}`);
+    });
+
+    it('marks a conversation that is generating, and follows it as it finishes', async () => {
+      const conversation = conversationFixture({ name: 'Quarterly review' });
+      const { running } = connectActivity({ running: [conversation.id] });
+      await open('/conversations', [conversation]);
+
+      const link = getByRole(element(), 'link', { name: /^Generating answer\s+Quarterly review$/ });
+      expect(link.querySelector('.spinner-border')).not.toBeNull();
+
+      running.set(new Set());
+      await harness.fixture.whenStable();
+      expect(getByRole(element(), 'link', { name: 'Quarterly review' })).toBe(link);
+      expect(link.querySelector('app-activity-indicator')).toBeNull();
     });
 
     it('names each row’s model, and says so honestly when it has none', async () => {

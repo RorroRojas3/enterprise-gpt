@@ -9,6 +9,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { MessageFeedbackRating } from '@core/api/conversation.model';
@@ -183,9 +184,11 @@ export class Transcript {
 
     // Retrying destroys the pressed button, so when the turn fails again the new Retry takes
     // focus back. Only while focus is nowhere: a notice never steals it from somewhere real.
+    // A notice already standing when the conversation is reopened is not new.
+    const standing = untracked(this.turn.turnError);
     effect(() => {
       const card = this.errorCard();
-      if (card === undefined || !this.errorRetryable()) {
+      if (card === undefined || !this.errorRetryable() || this.turn.turnError() === standing) {
         return;
       }
 

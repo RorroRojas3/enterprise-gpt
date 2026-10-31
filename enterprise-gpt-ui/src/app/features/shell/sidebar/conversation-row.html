@@ -19,9 +19,21 @@
     @if (conversation().isFavorite) {
       <app-icon class="text-primary small" name="bi-star-fill" label="Favourite" />
     }
+
+    <!-- Inside the link, so its hidden label joins the row's accessible name. -->
+    @if (activity(); as activity) {
+      <app-activity-indicator [activity]="activity" />
+    }
   </a>
 
   <app-menu class="reveal-target me-1" [label]="'Actions for ' + conversation().name">
+    @if (activity() === 'running') {
+      <button appMenuItem type="button" (click)="stopResponse()">
+        <app-icon name="bi-stop-circle" />
+        Stop response
+      </button>
+      <hr appMenuSeparator />
+    }
     <!--
       aria-disabled: native disabled breaks the panel's roving focus. The store's begin* guards
       make the click a no-op while pending.

@@ -16,6 +16,7 @@ import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { SessionStore } from '@core/session/session-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
+import { connectActivity } from '@testing/conversation-activity';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { PREFERS_DARK, resetMediaQueries, setMediaQuery } from '@testing/media-query';
@@ -735,6 +736,26 @@ describe('Shell', () => {
       for (const control of controls) {
         expect(control.getAttribute('aria-label')).toBeTruthy();
       }
+    });
+
+    it('carries the conversations’ activity on the strip’s Chat entry, in its name', async () => {
+      const fixture = await render();
+      await loadConversations(fixture);
+      const element = host(fixture);
+      collapseButton(element).click();
+      await fixture.whenStable();
+
+      const { runningCount } = connectActivity({ running: ['a'] });
+      await fixture.whenStable();
+
+      const chat = getByRole(element, 'link', { name: 'Chat — 1 generating' });
+      expect(chat.querySelector('.spinner-border')).not.toBeNull();
+
+      runningCount.set(0);
+      await fixture.whenStable();
+      expect(
+        getByRole(element, 'link', { name: 'Chat' }).querySelector('.spinner-border'),
+      ).toBeNull();
     });
 
     it('expands and puts the caret in the field when the strip’s search is used', async () => {

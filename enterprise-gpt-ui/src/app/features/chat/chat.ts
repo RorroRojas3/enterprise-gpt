@@ -1,4 +1,4 @@
-import { NgTemplateOutlet } from '@angular/common';
+import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -8,27 +8,20 @@ import {
   TemplateRef,
   afterNextRender,
   computed,
-  effect,
   inject,
   input,
   signal,
-  untracked,
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { Events } from '@ngrx/signals/events';
-import { Composer } from '@core/composer/composer';
-import { provideComposerHost } from '@core/composer/composer-host-token';
 import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
 import { ConversationDownloadMenu } from '@core/conversations/conversation-download-menu';
-import { canRetry } from '@core/errors/error-message';
-import { ErrorPanel } from '@core/errors/error-panel';
+import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { conversationEvents } from '@core/events/conversation-events';
 import { ShellChrome } from '@core/layout/shell-chrome';
 import { ProjectPicker } from '@core/projects/project-picker';
-import { provideSharedComposerUploads } from '@core/uploads/composer-uploads-token';
-import { UploadStore } from '@core/uploads/upload-store';
 import { Icon } from '@shared/icons/icon';
 import { MOBILE_VIEWPORT } from '@shared/layout/breakpoints';
 import { injectMediaQuery } from '@shared/layout/media-query';
@@ -36,42 +29,29 @@ import { Skeleton } from '@shared/loading/skeleton';
 import { Menu } from '@shared/menu/menu';
 import { MenuItem } from '@shared/menu/menu-item';
 import { MenuSeparator } from '@shared/menu/menu-separator';
-import { ChatEmptyState } from './chat-empty-state';
+import { conversationOf, exportTargetOf } from './chat-composer-host';
+import { ChatSessionView } from './chat-session-view';
+import { ChatSessions } from './chat-sessions';
 import { ConversationStore } from './conversation-store';
 import { provideChatMarkdown } from './markdown/markdown-providers';
-import { TranscriptPinning } from './transcript-pinning';
-import { Transcript } from './transcript/transcript';
-import { TurnStore } from './turn-store';
 
 /** One route serves `/chat` and `/chat/{id}`, so switching conversations never remounts this. */
 @Component({
   selector: 'app-chat',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    ChatEmptyState,
-    Composer,
     ConversationDownloadMenu,
-    ErrorPanel,
     Icon,
     Menu,
     MenuItem,
     MenuSeparator,
+    NgComponentOutlet,
     NgTemplateOutlet,
     ProjectPicker,
     Skeleton,
-    Transcript,
-    TranscriptPinning,
   ],
   // Markdown is provided here so ngx-markdown, marked and Prism ride the lazy chat chunk.
-  // `provideComposerHost` streams in place here; the project screen's host navigates instead.
-  providers: [
-    ConversationStore,
-    UploadStore,
-    provideSharedComposerUploads(),
-    TurnStore,
-    provideComposerHost(TurnStore),
-    provideChatMarkdown(),
-  ],
+  providers: [ConversationStore, provideChatMarkdown()],
   templateUrl: './chat.html',
   styleUrl: './chat.scss',
   host: { class: 'd-flex flex-column flex-fill min-h-0' },
@@ -82,8 +62,26 @@ export class Chat {
 
   protected readonly conversation = inject(ConversationStore);
   protected readonly actions = inject(ConversationActionsStore);
-  protected readonly turn = inject(TurnStore);
-  private readonly uploads = inject(UploadStore);
+  protected readonly sessions = inject(ChatSessions);
+  private readonly list = inject(ConversationListStore);
+
+  protected readonly sessionView = ChatSessionView;
+
+  /** The header's download menu; the composer's own copy lives on its host. */
+  protected readonly exportTarget = computed(() => {
+    const turn = this.sessions.active()?.turn;
+
+    return turn === undefined
+      ? null
+      : exportTargetOf(
+          conversationOf(
+            turn.boundConversationId(),
+            this.list.entityMap(),
+            this.conversation.conversation(),
+          ),
+          turn.entries().length > 0,
+        );
+  });
 
   /**
    * The star and kebab, rendered in the header at desktop and in the shell-owned navbar (via
@@ -105,21 +103,12 @@ export class Chat {
   protected readonly pickerOpen = signal(false);
   protected readonly pickerAnchor = signal<HTMLElement | null>(null);
 
-  /** A 404 (missing or someone else's) never succeeds on retry, so the panel offers none. */
-  protected readonly canRetry = canRetry;
-
   constructor() {
-    // Called here so the reactive method binds to this component, not the root injector.
+    // Called here so the reactive methods bind to this component, not the root injector. The id
+    // the first-prompt create already bound finds its own session, so nothing is read back.
     this.conversation.open(this.conversationId);
-    // The id the first-prompt create already bound passes through as a no-op, so a
-    // conversation whose first turn is still streaming is not read back.
-    this.turn.bindRoute(this.conversationId);
-
-    // Changing conversation drops the chips. The first-prompt create also binds the id
-    // synchronously, so a deferred upload starts without waiting for change detection.
-    this.uploads.bindConversation(this.conversationId);
-    // Attaching states intent and Send is the instruction; `TurnStore` posts them at send time.
-    this.uploads.deferUploadsUntilSend();
+    this.sessions.activate(this.conversationId);
+    inject(DestroyRef).onDestroy(() => this.sessions.deactivate());
 
     const router = inject(Router);
     const document = inject(DOCUMENT);
@@ -149,25 +138,6 @@ export class Chat {
           );
         });
       });
-
-    // A ready chip would make every later prompt look attached; retrieval reaches it anyway.
-    // Waits for the turn so a chip is not pulled from under the note explaining Send's wait.
-    effect(() => {
-      if (this.turn.inFlight()) {
-        return;
-      }
-
-      const settled = this.uploads.attachments().filter((row) => row.state.kind === 'ready');
-      if (settled.length === 0) {
-        return;
-      }
-
-      untracked(() => {
-        for (const row of settled) {
-          this.uploads.remove(row.id);
-        }
-      });
-    });
 
     // Optional so specs can mount this without a shell. Published once, as the TemplateRef
     // never changes; cleared on destroy so the kebab does not appear over the next screen.

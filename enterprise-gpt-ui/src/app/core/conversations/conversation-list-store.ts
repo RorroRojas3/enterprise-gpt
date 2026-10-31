@@ -77,7 +77,7 @@ export interface RemovedRow {
  * Strips a `ConversationDetailDto`, which `ConversationStore` passes in, to list fields so no
  * row carries `mcpServerIds`.
  */
-function listFields(conversation: ConversationDto): ConversationDto {
+export function listFields(conversation: ConversationDto): ConversationDto {
   const { id, projectId, modelId, name, isFavorite, dateCreated, dateModified } = conversation;
 
   return { id, projectId, modelId, name, isFavorite, dateCreated, dateModified };

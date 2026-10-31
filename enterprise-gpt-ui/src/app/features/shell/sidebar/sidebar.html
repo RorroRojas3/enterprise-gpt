@@ -38,16 +38,28 @@
 
     <ul class="list-unstyled d-flex flex-column gap-2 mb-0">
       @for (item of navItems(); track item.link) {
+        <!-- The strip lists no conversations, so Chat carries their activity at its corner. -->
+        @let isChat = item.link === chatRoute;
+        @let name = isChat ? item.label + activity.summarySuffix() : item.label;
         <li>
+          <!-- Named explicitly: the tooltip names its host once and never renames it. -->
           <a
-            class="btn btn-ghost btn-icon btn-icon-lg"
+            class="btn btn-ghost btn-icon btn-icon-lg position-relative"
             [routerLink]="item.link"
             routerLinkActive="active"
             [ariaCurrentWhenActive]="true"
-            [appTooltip]="item.label"
+            [attr.aria-label]="name"
+            [appTooltip]="name"
             appTooltipPlacement="right"
           >
             <app-icon [name]="item.icon" />
+            @if (isChat && activity.summary(); as summary) {
+              <app-activity-indicator
+                class="position-absolute top-0 start-100 translate-middle"
+                [activity]="summary"
+                [labelled]="false"
+              />
+            }
           </a>
         </li>
       }

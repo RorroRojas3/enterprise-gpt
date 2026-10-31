@@ -7,13 +7,17 @@ export interface TurnCompleted {
   readonly wasFirstTurn: boolean;
 }
 
-/**
- * Published only on a `Finished` frame: the server saves no answer or name for a stopped,
- * cut-off or failed turn. Events, because the root list store cannot see the route's `TurnStore`.
- */
+export interface TurnInterrupted {
+  readonly conversationId: string;
+}
+
+/** Events, because root stores cannot see a chat session's `TurnStore`. */
 export const turnEvents = eventGroup({
   source: 'Turn',
   events: {
+    /** Only on `Finished`: the server saves nothing for a stopped, cut-off or failed turn. */
     completed: type<TurnCompleted>(),
+    /** A cut-off or a failure, never a Stop. */
+    interrupted: type<TurnInterrupted>(),
   },
 });

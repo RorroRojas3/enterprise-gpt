@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { Auth } from '@core/auth/auth';
 import { ToastRegion } from '@core/notifications/toast-region';
-import { ToastStore } from '@core/notifications/toast-store';
 import { SigningOut } from '@core/session/signing-out';
 
 @Component({
@@ -19,12 +18,9 @@ import { SigningOut } from '@core/session/signing-out';
     } @else {
       <router-outlet />
     }
-    <!-- The region reports which toast's Retry was used; the store owns what that
-         means, so the handler travels with the toast rather than with this shell. -->
-    <app-toast-region (retried)="toasts.retry($event)" />
+    <app-toast-region />
   `,
 })
 export class App {
   protected readonly auth = inject(Auth);
-  protected readonly toasts = inject(ToastStore);
 }

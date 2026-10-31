@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { ToastItem } from './toast-item';
 import { ToastStore } from './toast-store';
 
@@ -14,7 +14,4 @@ import { ToastStore } from './toast-store';
 })
 export class ToastRegion {
   protected readonly store = inject(ToastStore);
-
-  /** The toast id whose retry affordance was used. */
-  readonly retried = output<string>();
 }

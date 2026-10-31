@@ -11,6 +11,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { ConversationActivityStore } from '@core/conversations/conversation-activity-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { canRetry } from '@core/errors/error-message';
 import { ErrorPanel } from '@core/errors/error-panel';
@@ -23,6 +24,7 @@ import {
 } from '@core/navigation/route-paths';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { SessionStore } from '@core/session/session-store';
+import { ActivityIndicator } from '@shared/badges/activity-indicator';
 import { BrandLogo } from '@shared/brand/brand-logo';
 import { Ridgeline } from '@shared/brand/ridgeline';
 import { EmptyState } from '@shared/empty-state/empty-state';
@@ -59,6 +61,7 @@ const SKELETON_ROWS = 6;
   selector: 'app-sidebar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ActivityIndicator,
     BrandLogo,
     ConversationRow,
     EmptyState,
@@ -102,6 +105,7 @@ export class Sidebar {
   readonly searchRequested = output<void>();
 
   protected readonly conversations = inject(ConversationListStore);
+  protected readonly activity = inject(ConversationActivityStore);
   protected readonly projects = inject(ProjectLookupStore);
   protected readonly collapsed = computed(() => this.mode() === 'strip');
 

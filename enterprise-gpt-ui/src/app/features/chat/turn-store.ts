@@ -1,13 +1,13 @@
 import { HttpClient } from '@angular/common/http';
-import { computed, inject } from '@angular/core';
+import { computed, effect, inject, untracked } from '@angular/core';
 import { Router } from '@angular/router';
 import { tapResponse } from '@ngrx/operators';
 import {
   PartialStateUpdater,
   patchState,
-  signalMethod,
   signalStore,
   withComputed,
+  withHooks,
   withMethods,
   withProps,
   withState,
@@ -45,25 +45,21 @@ import {
   MessageAttachmentDto,
   MessageFeedbackRating,
 } from '@core/api/conversation.model';
-import {
-  addPendingId,
-  clearPendingIds,
-  removePendingId,
-  withPendingIds,
-} from '@core/api/with-pending-ids';
-import { ComposerExportTarget, ComposerProjectTarget } from '@core/composer/composer-host-token';
+import { addPendingId, removePendingId, withPendingIds } from '@core/api/with-pending-ids';
 import { PendingAttachmentsStore } from '@core/composer/pending-attachments-store';
 import { PendingPromptStore } from '@core/composer/pending-prompt-store';
 import { TurnSelection, TurnSettingsStore } from '@core/composer/turn-settings-store';
+import { ConversationActivityStore } from '@core/conversations/conversation-activity-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { AppError } from '@core/errors/app-error';
 import { toAppError } from '@core/errors/to-app-error';
 import { injectSignedOut } from '@core/events/session-events';
 import { turnEvents } from '@core/events/turn-events';
+import { CHAT_ROUTE } from '@core/navigation/route-paths';
 import { ToastStore } from '@core/notifications/toast-store';
 import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
 import { UploadStore } from '@core/uploads/upload-store';
-import { ConversationStore } from './conversation-store';
+import { CHAT_SESSION } from './chat-session-token';
 import { ConversationStreamClient } from './conversation-stream-client';
 import {
   ReasoningTiming,
@@ -139,10 +135,7 @@ export interface TurnErrorNotice {
 export type TurnPhase = 'idle' | 'creating' | 'awaitingFirst' | 'streaming' | 'stopping';
 
 interface TurnState {
-  /**
-   * Written from the 201 before navigating, so `bindRoute` can tell the URL catching up with our
-   * own create from a real route change.
-   */
+  /** Set from the 201 before navigating, so the URL catching up finds this session by it. */
   readonly boundConversationId: string | null;
   readonly phase: TurnPhase;
   readonly entries: readonly TranscriptEntry[];
@@ -166,6 +159,7 @@ interface TurnState {
    * still propagates.
    */
   readonly composerSeed: { readonly text: string } | null;
+  readonly draft: string;
 }
 
 const initialState: TurnState = {
@@ -182,6 +176,7 @@ const initialState: TurnState = {
   historyPending: false,
   historyError: null,
   composerSeed: null,
+  draft: '',
 };
 
 /**
@@ -250,6 +245,11 @@ function applyBatch(
       phase: state.phase === 'awaitingFirst' && hasContent ? 'streaming' : state.phase,
     };
   };
+}
+
+/** A stream is open and the user has not pressed Stop. */
+function isLive(phase: TurnPhase): boolean {
+  return phase === 'awaitingFirst' || phase === 'streaming';
 }
 
 /** Clears the live turn without touching the transcript, ready for the next send. */
@@ -477,8 +477,8 @@ function settleFromComplete(command: TurnRetry): PartialStateUpdater<TurnState> 
 }
 
 /**
- * Provided by `Chat`, so leaving `/chat` unsubscribes the stream and aborts the fetch; there is no
- * stop endpoint. The activity timeline is session-local: the stream is never persisted.
+ * One per chat session, bound to one conversation for life; destroying the session aborts the fetch
+ * (there is no stop endpoint). The activity timeline is session-local: it is never persisted.
  */
 export const TurnStore = signalStore(
   withState(initialState),
@@ -492,27 +492,22 @@ export const TurnStore = signalStore(
     _dispatcher: inject(Dispatcher),
     _settings: inject(TurnSettingsStore),
     _list: inject(ConversationListStore),
-    /** For `projectTarget`'s fallback. No cycle: `ConversationStore` injects only root stores. */
-    _detail: inject(ConversationStore),
     /** One-way: the upload store is told its conversation, so injecting this back would cycle. */
     _uploads: inject(UploadStore),
     /** A conversation created elsewhere hands its first prompt over here, cleared on read. */
     _pending: inject(PendingPromptStore),
     _attachments: inject(PendingAttachmentsStore),
     _toasts: inject(ToastStore),
+    _activity: inject(ConversationActivityStore),
+    _session: inject(CHAT_SESSION),
     _signedOut$: injectSignedOut(),
     /**
-     * A prop, not state: it is not renderable. Stop and route changes abort through it; the stream
-     * client handles sign-out and unsubscribe itself.
+     * A prop, not state: it is not renderable. Stop aborts through it; the stream client handles
+     * sign-out and unsubscribe itself.
      */
     _turnAbort: { current: null as AbortController | null },
     /** Cancels the create `POST`, which accepts no `AbortSignal` of its own. */
     _stop$: new Subject<void>(),
-    /**
-     * Not `_stop$`, which is the user's Stop. Without it, a route change would orphan a rating
-     * request whose id is no longer pending, letting a second one race it.
-     */
-    _rateCancel$: new Subject<void>(),
     /** Waiting on the upload gate with no stream open; Stop settles it like `creating`. */
     _awaitingUploads: { value: false },
   })),
@@ -533,38 +528,6 @@ export const TurnStore = signalStore(
     return {
       inFlight,
       answerComplete,
-      /**
-       * List copy first, as `moveRow` patches it optimistically; the detail covers rows the
-       * sidebar never held. Null while neither is in hand, since `toUpdateBody` echoes `projectId`.
-       */
-      projectTarget: computed<ComposerProjectTarget | null>(() => {
-        const id = store.boundConversationId();
-        if (id === null) {
-          return null;
-        }
-
-        const conversation = store._list.entityMap()[id] ?? store._detail.conversation();
-
-        return conversation === undefined || conversation === null
-          ? null
-          : { kind: 'conversation', conversation };
-      }),
-      /**
-       * Tests `entries`, not `hasContent`, which is also true for pending history and pre-stream
-       * notices. The name follows `projectTarget`'s list-then-detail precedence.
-       */
-      exportTarget: computed<ComposerExportTarget | null>(() => {
-        const id = store.boundConversationId();
-        if (id === null || store.entries().length === 0) {
-          return null;
-        }
-
-        const conversation = store._list.entityMap()[id] ?? store._detail.conversation();
-
-        return conversation === undefined || conversation === null
-          ? null
-          : { id, name: conversation.name };
-      }),
       /** The ridgeline between request-accepted and something to read. */
       showThinking: computed(
         () =>
@@ -667,21 +630,28 @@ export const TurnStore = signalStore(
                 tap((created) => {
                   // Before navigating, so the header's list-fallback name renders at once.
                   store._list.prependNewest(created);
-                  // Not via the route: the upload gate below needs this id now. The route
-                  // binding repeats it a pass later as a no-op.
+                  // The upload gate below needs this id now.
                   store._uploads.bindConversation(created.id);
-                  // Before navigating: `bindRoute` recognises the incoming id as ours by this.
+                  // Before navigating, so the URL catching up finds this session by it.
                   patchState(store, { boundConversationId: created.id, phase: 'awaitingFirst' });
-                  // Not `Location.replaceState`, which leaves the router at `/chat`: that breaks
-                  // routerLinkActive and makes "New conversation" a same-URL no-op.
-                  void store._router.navigateByUrl(`/chat/${created.id}`, { replaceUrl: true });
+                  // Only from bare `/chat` while nothing else navigates: a user who left stays put.
+                  // Not `Location.replaceState`, which leaves the router at `/chat`.
+                  if (
+                    store._session.isActive() &&
+                    store._router.currentNavigation() === null &&
+                    store._router.url.split(/[?#]/)[0] === CHAT_ROUTE
+                  ) {
+                    void store._router.navigateByUrl(`/chat/${created.id}`, { replaceUrl: true });
+                  }
                 }),
                 map((created) => created.id),
                 catchError((cause: unknown) => {
-                  patchState(
-                    store,
-                    settleCreateFailed(command, toAppError(cause, { url: createUrl })),
-                  );
+                  const error = toAppError(cause, { url: createUrl });
+                  patchState(store, settleCreateFailed(command, error));
+                  // The reseeded composer is out of sight, so the failure must be said aloud.
+                  if (!store._session.isActive()) {
+                    store._toasts.fromError(error);
+                  }
                   // EMPTY keeps the rxMethod alive: the next send must work.
                   return EMPTY;
                 }),
@@ -718,11 +688,19 @@ export const TurnStore = signalStore(
                   // Monotonic, so a wall-clock step cannot render a negative duration.
                   next: (batch) => patchState(store, applyBatch(batch, performance.now())),
                   // The client's contract: every error it emits is an AppError.
-                  error: (error: AppError) => patchState(store, settleFromError(command, error)),
+                  error: (error: AppError) => {
+                    // Read before the settle: only a live phase means nobody asked for this.
+                    const interrupted = error.kind !== 'aborted' && isLive(store.phase());
+                    patchState(store, settleFromError(command, error));
+                    if (interrupted) {
+                      store._dispatcher.dispatch(turnEvents.interrupted({ conversationId }));
+                    }
+                  },
                   complete: () => {
                     // Read before the settle appends this turn. An unread history is not
                     // an empty one, so a history error never counts as a first turn.
                     const completed = store.snapshot().phase === 'Completed';
+                    const cutOff = !completed && isLive(store.phase());
                     const wasFirstTurn =
                       store.historyError() === null &&
                       !store.entries().some((entry) => entry.kind === 'assistant');
@@ -735,6 +713,8 @@ export const TurnStore = signalStore(
                       store._dispatcher.dispatch(
                         turnEvents.completed({ conversationId, wasFirstTurn }),
                       );
+                    } else if (cutOff) {
+                      store._dispatcher.dispatch(turnEvents.interrupted({ conversationId }));
                     }
                   },
                 }),
@@ -763,7 +743,7 @@ export const TurnStore = signalStore(
 
         // A set, not a toggle: a retried or duplicated request cannot flip the value.
         return store._http.post<void>(url, { rating }).pipe(
-          takeUntil(merge(store._signedOut$, store._rateCancel$)),
+          takeUntil(store._signedOut$),
           tapResponse({
             next: () =>
               // Re-asserted: a no-op normally, the repair if a history reload landed in between.
@@ -778,12 +758,28 @@ export const TurnStore = signalStore(
       }),
     );
 
+    /** At the cap a turn would hold a connection too many. The composer disables Send first. */
+    function refusedAtCapacity(): boolean {
+      if (!store._activity.atCapacity()) {
+        return false;
+      }
+
+      // Keyed: each refused Retry would otherwise stack another warning.
+      store._toasts.show({
+        key: 'turn-capacity',
+        tone: 'warning',
+        title: 'Too many answers generating',
+        detail: `Up to ${store._activity.maxConcurrentTurns} can generate at once. Try again once one finishes.`,
+      });
+      return true;
+    }
+
     return {
       /** Creates the conversation first when none is bound. No turn is sent without a model. */
       send(prompt: string): void {
         const selection = store._settings.streamSelection();
         const text = prompt.trim();
-        if (selection === null || text === '') {
+        if (selection === null || text === '' || refusedAtCapacity()) {
           return;
         }
 
@@ -792,7 +788,9 @@ export const TurnStore = signalStore(
 
       /** Re-sends a cut-off or failed turn with its own prompt and selection. */
       retryTurn(retry: TurnRetry): void {
-        run(retry);
+        if (!refusedAtCapacity()) {
+          run(retry);
+        }
       },
 
       /**
@@ -834,7 +832,7 @@ export const TurnStore = signalStore(
           return;
         }
 
-        if (phase === 'awaitingFirst' || phase === 'streaming') {
+        if (isLive(phase)) {
           patchState(store, { phase: 'stopping' });
           store._turnAbort.current?.abort();
         }
@@ -864,52 +862,22 @@ export const TurnStore = signalStore(
         patchState(store, { composerSeed: null });
       },
 
+      setDraft(draft: string): void {
+        patchState(store, { draft });
+      },
+
       /** Discards live entries: any turn taken while history was broken is in the response. */
       retryHistory(): void {
         loadHistory({ id: store.boundConversationId(), keepLive: false });
       },
 
-      /**
-       * A conversation change resets everything. The equality guard keeps the first prompt's
-       * `replaceUrl` from destroying its own turn, as the 201 already set the bound id.
-       */
-      bindRoute: signalMethod<string | undefined>((incoming) => {
-        const id = incoming ?? null;
-
-        // A route event during `creating` is foreign: the store navigates only after the 201
-        // moves the phase on. Uncancelled, that 201 would clobber the new binding.
-        const foreignCreate = store.phase() === 'creating';
-        if (foreignCreate) {
-          store._stop$.next();
-        }
-
-        if (id === store.boundConversationId()) {
-          if (foreignCreate) {
-            // Same-URL corner: the create was cancelled but no reset follows,
-            // so settle exactly as Stop-during-create does.
-            patchState(store, (state) => ({
-              ...clearLiveTurn(),
-              composerSeed: { text: state.pendingUserText ?? '' },
-            }));
-          }
-          return;
-        }
-
-        store._turnAbort.current?.abort();
-        // Also ends an upload-gate wait, which the abort cannot reach before a stream opens and
-        // which would hold `exhaustMap`'s slot.
-        store._stop$.next();
-        store._turnAbort.current = null;
-        // Cancelled, not forgotten, or a returning reader could race an orphaned rating. The
-        // explicit clear is needed because `initialState` carries no pendingIds key.
-        store._rateCancel$.next();
-        patchState(store, () => ({ ...initialState, boundConversationId: id }), clearPendingIds());
-        // After the reset, so the first prompt's `replaceUrl` (returned early above) never reads
-        // back a conversation whose first turn is not persisted yet.
+      /** Called once by `ChatSessions`; null for a new conversation. */
+      init(id: string | null): void {
+        patchState(store, { boundConversationId: id });
         loadHistory({ id, keepLive: true });
 
-        // Files handed over from the project screen, claimed in the gate's own call stack (a pass
-        // later would miss it). Bind first, or the target change clears the chips just added.
+        // Files handed over from the project screen. Bind first, or the target change clears the
+        // chips just added.
         const handedOver = id === null ? [] : store._attachments.claim(id);
         if (id !== null && handedOver.length > 0) {
           store._uploads.bindConversation(id);
@@ -920,21 +888,42 @@ export const TurnStore = signalStore(
           store._attachments.clear();
         }
 
-        // Claimed after the reset so the send lands on this binding; single-shot, so a refresh
-        // never sends it twice.
+        // Single-shot, so a refresh never sends it twice.
         const pending = id === null ? null : store._pending.claim(id);
         const pendingText = pending?.trim() ?? '';
         if (pendingText !== '') {
           const selection = store._settings.streamSelection();
-          if (selection === null) {
-            // No model yet: the prompt goes to the composer rather than being dropped.
+          if (selection === null || store._activity.atCapacity()) {
+            // No model yet, or no room: the prompt goes to the composer rather than being dropped.
             patchState(store, seedComposer(pendingText));
           } else {
             run({ prompt: pendingText, selection });
           }
         }
-      }),
+      },
     };
+  }),
+  withHooks({
+    onInit(store) {
+      // A ready chip would make every later prompt look attached; retrieval reaches it anyway.
+      // Waits for the turn so a chip is not pulled from under the note explaining Send's wait.
+      effect(() => {
+        if (store.inFlight()) {
+          return;
+        }
+
+        const settled = store._uploads.attachments().filter((row) => row.state.kind === 'ready');
+        if (settled.length === 0) {
+          return;
+        }
+
+        untracked(() => {
+          for (const row of settled) {
+            store._uploads.remove(row.id);
+          }
+        });
+      });
+    },
   }),
   // Last, as the feature requires.
   withResetOnSignOut(),

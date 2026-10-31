@@ -326,8 +326,8 @@ export const UploadStore = signalStore(
         onRetry: rejection.retryable ? () => retryUpload(id) : undefined,
       });
 
-      // Withdrawn with its chip: error toasts never self-dismiss and `ToastStore` is
-      // root-scoped, so an orphaned toast's Retry would silently do nothing.
+      // Withdrawn with its chip: `ToastStore` is root-scoped, so an orphaned toast's Retry would
+      // silently do nothing.
       dismissToastFor(id);
       store._fileToasts.set(id, toastId);
     }

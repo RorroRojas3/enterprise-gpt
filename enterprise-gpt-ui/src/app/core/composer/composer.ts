@@ -11,6 +11,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
+import { ConversationActivityStore } from '@core/conversations/conversation-activity-store';
 import { ConversationDownloadMenu } from '@core/conversations/conversation-download-menu';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { ProjectPicker } from '@core/projects/project-picker';
@@ -57,6 +58,7 @@ export class Composer {
   protected readonly extensions = inject(SupportedExtensionsStore);
   protected readonly session = inject(SessionStore);
   protected readonly dictation = inject(DictationStore);
+  private readonly activity = inject(ConversationActivityStore);
 
   private readonly promptBox = viewChild<ElementRef<HTMLTextAreaElement>>('promptBox');
   private readonly actionButton = viewChild<ElementRef<HTMLButtonElement>>('actionButton');
@@ -83,13 +85,20 @@ export class Composer {
     );
   });
 
+  /** This conversation's own turn shows Stop, not the cap note. */
+  private readonly atCapacity = computed(() => this.activity.atCapacity() && !this.turn.inFlight());
+
   /** One field with no validation rules — a plain signal, not a form. */
-  protected readonly prompt = signal('');
+  protected readonly prompt = this.turn.draft;
 
   /** One warning at a time, ranked by how much not knowing it would cost the user. */
   protected readonly note = computed<string | null>(() => {
     if (this.models.error() !== null && this.settings.selectedModel() === null) {
       return 'The model catalog failed to load — sending is disabled. Retry from the model menu.';
+    }
+
+    if (this.atCapacity()) {
+      return `${this.activity.maxConcurrentTurns} answers are already generating — send once one finishes.`;
     }
 
     if (this.settings.restoredModelUnavailable()) {
@@ -151,7 +160,8 @@ export class Composer {
     () =>
       this.settings.streamSelection() === null ||
       this.prompt().trim() === '' ||
-      this.uploads.blocksSend(),
+      this.uploads.blocksSend() ||
+      this.atCapacity(),
   );
 
   /** For the focus fixup below; effects have no previous-value memory of their own. */
@@ -173,7 +183,7 @@ export class Composer {
     effect(() => {
       const seed = this.turn.composerSeed();
       if (seed !== null) {
-        this.prompt.set(seed.text);
+        this.turn.setDraft(seed.text);
         this.turn.consumeComposerSeed();
         this.promptBox()?.nativeElement.focus();
       }
@@ -183,9 +193,8 @@ export class Composer {
     effect(() => {
       const spoken = this.dictation.spoken();
       if (spoken !== null) {
-        this.prompt.update((existing) =>
-          existing === '' ? spoken.text : `${existing.trimEnd()} ${spoken.text}`,
-        );
+        const existing = untracked(this.prompt);
+        this.turn.setDraft(existing === '' ? spoken.text : `${existing.trimEnd()} ${spoken.text}`);
         this.dictation.consumeSpoken();
       }
     });
@@ -211,7 +220,7 @@ export class Composer {
   }
 
   protected onPromptInput(event: Event): void {
-    this.prompt.set((event.target as HTMLTextAreaElement).value);
+    this.turn.setDraft((event.target as HTMLTextAreaElement).value);
   }
 
   protected openFilePicker(): void {
@@ -256,6 +265,6 @@ export class Composer {
     }
 
     this.turn.send(this.prompt());
-    this.prompt.set('');
+    this.turn.setDraft('');
   }
 }

@@ -12,13 +12,15 @@ import {
 } from '@core/api/conversation.model';
 import { AccessTokenClient } from '@core/auth/access-token-client';
 import { PendingAttachmentsStore } from '@core/composer/pending-attachments-store';
+import { PendingPromptStore } from '@core/composer/pending-prompt-store';
 import { TurnSelection, TurnSettingsStore } from '@core/composer/turn-settings-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
 import { sessionEvents } from '@core/events/session-events';
-import { TurnCompleted, turnEvents } from '@core/events/turn-events';
+import { TurnCompleted, TurnInterrupted, turnEvents } from '@core/events/turn-events';
 import { ToastStore } from '@core/notifications/toast-store';
 import { UploadStore } from '@core/uploads/upload-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { connectActivity } from '@testing/conversation-activity';
 import { conversationFixture, messageFixture } from '@testing/conversations';
 import { FRAMEWORK_PROBLEM_FIXTURES, PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import {
@@ -30,6 +32,7 @@ import {
   streamingResponse,
 } from '@testing/stream-frames';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
+import { CHAT_SESSION } from './chat-session-token';
 import { ConversationStore } from './conversation-store';
 import { STREAM_BATCH_WINDOW_MS } from './conversation-stream-client';
 import { STREAM_FETCH } from './stream-fetch-token';
@@ -49,6 +52,10 @@ describe('TurnStore', () => {
   let getToken: ReturnType<typeof vi.fn>;
   let selection: TurnSelection | null;
   let uploadXhr: FakeUploadXhrQueue;
+  /** Whether `Chat` shows this store's session. */
+  let active: boolean;
+  let currentNavigation: object | null;
+  let routerUrl: string;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -56,6 +63,8 @@ describe('TurnStore', () => {
   });
 
   afterEach(() => {
+    // The activity store reads a first turn's generated name; that request is its concern.
+    backend.match((request) => /\/api\/conversations\/[^/]+$/.test(request.url));
     backend.verify();
     vi.useRealTimers();
   });
@@ -66,6 +75,9 @@ describe('TurnStore', () => {
     navigateByUrl = vi.fn().mockResolvedValue(true);
     applyConversationSettings = vi.fn();
     getToken = vi.fn().mockResolvedValue('token-1');
+    active = true;
+    currentNavigation = null;
+    routerUrl = '/chat';
 
     TestBed.configureTestingModule({
       providers: [
@@ -74,7 +86,17 @@ describe('TurnStore', () => {
         provideHttpClientTesting(),
         { provide: STREAM_FETCH, useValue: fetchMock },
         { provide: AccessTokenClient, useValue: { getToken } },
-        { provide: Router, useValue: { navigateByUrl } },
+        {
+          provide: Router,
+          useValue: {
+            navigateByUrl,
+            currentNavigation: () => currentNavigation,
+            get url() {
+              return routerUrl;
+            },
+          },
+        },
+        { provide: CHAT_SESSION, useValue: { isActive: () => active } },
         {
           provide: TurnSettingsStore,
           useValue: {
@@ -119,7 +141,7 @@ describe('TurnStore', () => {
 
   /** Binds an existing conversation and opens a live stream for it. */
   async function startBoundTurn(handle = streamingResponse()): Promise<StreamingResponseHandle> {
-    store.bindRoute(CONVERSATION_ID);
+    store.init(CONVERSATION_ID);
     flushHistory(CONVERSATION_ID);
     respondWithStream(handle);
     store.send('What is the weather?');
@@ -137,7 +159,7 @@ describe('TurnStore', () => {
 
     it('holds the stream until every attachment has settled', async () => {
       setup();
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID);
       attachPending();
       respondWithStream(streamingResponse());
@@ -159,7 +181,7 @@ describe('TurnStore', () => {
       const handed = new File(['x'], 'notes.txt', { type: 'text/plain' });
       TestBed.inject(PendingAttachmentsStore).hold(CONVERSATION_ID, [handed]);
 
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID);
       respondWithStream(streamingResponse());
       await settle();
@@ -186,7 +208,7 @@ describe('TurnStore', () => {
         new File(['x'], 'notes.txt', { type: 'text/plain' }),
       ]);
 
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID);
       await settle();
 
@@ -195,7 +217,7 @@ describe('TurnStore', () => {
 
     it('costs a turn with no attachments nothing', async () => {
       setup();
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID);
       respondWithStream(streamingResponse());
 
@@ -207,7 +229,7 @@ describe('TurnStore', () => {
 
     it('lets Stop out of the wait rather than stranding the turn in it', async () => {
       setup();
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID);
       attachPending();
       respondWithStream(streamingResponse());
@@ -234,7 +256,7 @@ describe('TurnStore', () => {
 
     it('settles cleanly when the composer stops the turn and cancels the uploads', async () => {
       setup();
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID);
       attachPending();
       respondWithStream(streamingResponse());
@@ -252,32 +274,6 @@ describe('TurnStore', () => {
       expect(store.phase()).toBe('idle');
       expect(store.composerSeed()?.text).toBe('What does this say?');
       expect(TestBed.inject(UploadStore).attachments()).toHaveLength(0);
-    });
-
-    it('does not swallow the next send after a route change abandons the wait', async () => {
-      setup();
-      store.bindRoute(CONVERSATION_ID);
-      flushHistory(CONVERSATION_ID);
-      attachPending();
-      respondWithStream(streamingResponse());
-
-      store.send('What does this say?');
-      await settle();
-      expect(fetchMock).not.toHaveBeenCalled();
-
-      // Both bindings move together, as `Chat` drives them from the same input.
-      const other = '2b3c4d5e-6f70-4812-9a3b-4c5d6e7f8091';
-      store.bindRoute(other);
-      TestBed.inject(UploadStore).bindConversation(other);
-      flushHistory(other);
-      await settle();
-
-      store.send('A fresh prompt');
-      await settle();
-
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe(`${TEST_API_BASE_URL}/api/conversations/${other}/stream`);
     });
   });
 
@@ -313,25 +309,6 @@ describe('TurnStore', () => {
       });
     });
 
-    it('does not reset the live turn when the route input catches up with the created id', async () => {
-      setup();
-      const created = conversationFixture();
-      const handle = streamingResponse();
-      respondWithStream(handle);
-
-      store.send('First prompt');
-      backend.expectOne(CREATE_URL).flush(created);
-      await settle();
-      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Hello' })));
-      await settle(STREAM_BATCH_WINDOW_MS);
-
-      // withComponentInputBinding delivers the id the replaceUrl navigation set.
-      store.bindRoute(created.id);
-
-      expect(store.phase()).toBe('streaming');
-      expect(store.snapshot().text).toBe('Hello');
-    });
-
     it('keeps the prompt when creation fails, as a composer seed beside the notice', async () => {
       setup();
       respondWithStream(streamingResponse());
@@ -355,46 +332,62 @@ describe('TurnStore', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
-    it('cancels the create when the route moves before the 201 lands', async () => {
+    it('finishes a create the user left behind, streaming without taking them back', async () => {
       setup();
-      const other = conversationFixture();
+      const created = conversationFixture();
+      respondWithStream(streamingResponse());
       store.send('First prompt');
       const create = backend.expectOne(CREATE_URL);
 
       // The user opened another conversation from the sidebar mid-create.
-      store.bindRoute(other.id);
-      flushHistory(other.id);
+      active = false;
+      create.flush(created);
       await settle();
 
-      expect(create.cancelled).toBe(true);
-      expect(store.phase()).toBe('idle');
-      expect(store.boundConversationId()).toBe(other.id);
       expect(navigateByUrl).not.toHaveBeenCalled();
-      expect(fetchMock).not.toHaveBeenCalled();
-
-      // The next send targets the newly opened conversation directly.
-      respondWithStream(streamingResponse());
-      store.send('Again');
-      await settle();
-      backend.expectNone(CREATE_URL);
+      expect(store.boundConversationId()).toBe(created.id);
+      expect(list.entityMap()[created.id]).toBeDefined();
       const [url] = fetchMock.mock.calls[0] as [string];
-      expect(url).toBe(`${TEST_API_BASE_URL}/api/conversations/${other.id}/stream`);
+      expect(url).toBe(`${TEST_API_BASE_URL}/api/conversations/${created.id}/stream`);
     });
 
-    it('settles like Stop when a same-URL route event lands mid-create', async () => {
+    it('leaves the URL alone when a navigation is already under way', async () => {
+      setup();
+      respondWithStream(streamingResponse());
+      store.send('First prompt');
+
+      currentNavigation = {};
+      backend.expectOne(CREATE_URL).flush(conversationFixture());
+      await settle();
+
+      expect(navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    it('leaves the URL alone once the user has already landed somewhere else', async () => {
+      setup();
+      respondWithStream(streamingResponse());
+      store.send('First prompt');
+
+      // The navigation finished, but the session has not heard yet.
+      routerUrl = '/chat/2b3c4d5e-6f70-4812-9a3b-4c5d6e7f8091';
+      backend.expectOne(CREATE_URL).flush(conversationFixture());
+      await settle();
+
+      expect(navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    it('raises a toast when a create the user left behind fails', async () => {
       setup();
       store.send('First prompt');
       const create = backend.expectOne(CREATE_URL);
 
-      // "New conversation" delivering the bare route again while the create flies.
-      store.bindRoute(undefined);
+      active = false;
+      create.flush({ title: 'Boom' }, { status: 500, statusText: 'Internal Server Error' });
       await settle();
 
-      expect(create.cancelled).toBe(true);
-      expect(store.phase()).toBe('idle');
-      expect(store.stoppedTurn()).toBeNull();
+      // The reseeded composer is out of sight; the toast is the only word of it.
+      expect(TestBed.inject(ToastStore).toasts()).toHaveLength(1);
       expect(store.composerSeed()?.text).toBe('First prompt');
-      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('cancels the create and resets when the user signs out mid-create', async () => {
@@ -436,7 +429,7 @@ describe('TurnStore', () => {
 
     it('refuses to send with no resolvable model or an empty prompt', async () => {
       setup({ selection: null });
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID);
 
       store.send('A prompt');
@@ -623,28 +616,11 @@ describe('TurnStore', () => {
       expect(store.entries()).toEqual([]);
       expect(store.snapshot().text).toBeUndefined();
     });
-
-    it('clears the stopped card when the route moves to another conversation', async () => {
-      setup();
-      const handle = await startBoundTurn();
-      handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Partial' })));
-      await settle(STREAM_BATCH_WINDOW_MS);
-      store.stop();
-      await settle(STREAM_BATCH_WINDOW_MS);
-      expect(store.stoppedTurn()).not.toBeNull();
-
-      const other = conversationFixture();
-      store.bindRoute(other.id);
-      flushHistory(other.id);
-
-      expect(store.stoppedTurn()).toBeNull();
-      expect(store.entries()).toEqual([]);
-    });
   });
 
   describe('pre-stream failures', () => {
     async function failWith(problem: object, status: number): Promise<void> {
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID);
       fetchMock.mockResolvedValue(problemResponse(problem, status).response);
       store.send('What is the weather?');
@@ -753,7 +729,7 @@ describe('TurnStore', () => {
 
     it('reports a conversation that already holds stored messages as not the first', async () => {
       setup();
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID, [
         messageFixture({ text: 'What is the weather?', role: CHAT_ROLE.user }),
         messageFixture({ text: 'It was sunny.', role: CHAT_ROLE.assistant }),
@@ -771,7 +747,7 @@ describe('TurnStore', () => {
 
     it('claims nothing about being first when the stored transcript could not be read', async () => {
       setup();
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       backend
         .expectOne(messagesUrl(CONVERSATION_ID))
         .flush({ title: 'Boom' }, { status: 500, statusText: 'Internal Server Error' });
@@ -825,6 +801,106 @@ describe('TurnStore', () => {
 
       // The abandoned attempt left a `cutOff` entry, not an `assistant` one.
       expect(seen).toEqual([{ conversationId: CONVERSATION_ID, wasFirstTurn: true }]);
+    });
+  });
+
+  describe('the concurrent-turn cap', () => {
+    function fillTheCap(): void {
+      connectActivity({ runningCount: 4 });
+    }
+
+    it('refuses a retry at the cap, saying why', async () => {
+      setup();
+      store.init(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      fillTheCap();
+
+      store.retryTurn({ prompt: 'What is the weather?', selection: SELECTION });
+      await settle();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(TestBed.inject(ToastStore).toasts()[0]?.title).toBe('Too many answers generating');
+    });
+
+    it('keeps one warning however often Retry is refused', async () => {
+      setup();
+      store.init(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      fillTheCap();
+      const retry = { prompt: 'What is the weather?', selection: SELECTION };
+
+      store.retryTurn(retry);
+      store.retryTurn(retry);
+      await settle();
+
+      const warnings = TestBed.inject(ToastStore).toasts();
+      expect(warnings).toHaveLength(1);
+    });
+
+    it('holds a handed-over prompt in the composer rather than send it at the cap', () => {
+      setup();
+      fillTheCap();
+      TestBed.inject(PendingPromptStore).hold(CONVERSATION_ID, 'From the project screen');
+
+      store.init(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(store.composerSeed()?.text).toBe('From the project screen');
+    });
+  });
+
+  describe('announcing an interrupted turn', () => {
+    function interruptions(): TurnInterrupted[] {
+      const seen: TurnInterrupted[] = [];
+      TestBed.inject(Events)
+        .on(turnEvents.interrupted)
+        .subscribe(({ payload }) => seen.push(payload));
+      return seen;
+    }
+
+    it('reports a body that ended without Finished', async () => {
+      setup();
+      const seen = interruptions();
+
+      const cutOff = await startBoundTurn();
+      cutOff.enqueue(frame(assistantEvent('TextDelta', { text: 'Half an ans' })));
+      cutOff.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      expect(seen).toEqual([{ conversationId: CONVERSATION_ID }]);
+    });
+
+    it('reports a failure before the first frame', async () => {
+      setup();
+      const seen = interruptions();
+      store.init(CONVERSATION_ID);
+      flushHistory(CONVERSATION_ID);
+      fetchMock.mockResolvedValue(problemResponse(PROBLEM_FIXTURES.conversationBusy, 409).response);
+
+      store.send('What is the weather?');
+      await settle();
+
+      expect(seen).toEqual([{ conversationId: CONVERSATION_ID }]);
+    });
+
+    it('stays silent for a completed turn and for one the user stopped', async () => {
+      setup();
+      const seen = interruptions();
+
+      const finished = await startBoundTurn();
+      finished.enqueue(fullTurnEvents().map(frame).join(''));
+      finished.close();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      const stopped = streamingResponse();
+      respondWithStream(stopped);
+      store.send('Again');
+      await settle();
+      store.stop();
+      await settle(STREAM_BATCH_WINDOW_MS);
+
+      expect(seen).toEqual([]);
     });
   });
 
@@ -902,7 +978,7 @@ describe('TurnStore', () => {
 
     it('replays a generated file from the stored transcript', () => {
       setup();
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID, [
         messageFixture({ text: 'Make me a sheet', role: CHAT_ROLE.user }),
         messageFixture({ text: 'Done.', role: CHAT_ROLE.assistant, attachments: [SPREADSHEET] }),
@@ -914,7 +990,7 @@ describe('TurnStore', () => {
 
     it('replays a message that carried no attachments field at all', () => {
       setup();
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID, [
         messageFixture({ text: 'Older answer', role: CHAT_ROLE.assistant, attachments: undefined }),
       ]);
@@ -932,7 +1008,7 @@ describe('TurnStore', () => {
 
     it('renders the stored messages as transcript entries when a conversation is opened', () => {
       setup();
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       expect(store.historyPending()).toBe(true);
       expect(store.hasContent()).toBe(true);
 
@@ -949,7 +1025,7 @@ describe('TurnStore', () => {
 
     it('skips roles the transcript does not render', () => {
       setup();
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID, [
         messageFixture({ text: 'You are a helpful assistant.', role: CHAT_ROLE.system }),
         messageFixture({ text: 'Ask the weather tool.', role: CHAT_ROLE.tool }),
@@ -962,7 +1038,7 @@ describe('TurnStore', () => {
 
     it('replaces a longer local history with a shorter refetch rather than merging', () => {
       setup();
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID, HISTORY);
       expect(store.entries()).toHaveLength(2);
 
@@ -976,7 +1052,7 @@ describe('TurnStore', () => {
 
     it('keeps a turn taken during the read, and orders it after the replayed history', async () => {
       setup();
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       const pending = backend.expectOne(messagesUrl(CONVERSATION_ID));
 
       const handle = streamingResponse();
@@ -999,23 +1075,9 @@ describe('TurnStore', () => {
       ).toBe(true);
     });
 
-    it('cancels the read for a conversation the user leaves before it answers', () => {
-      setup();
-      const other = conversationFixture();
-      store.bindRoute(CONVERSATION_ID);
-      const stale = backend.expectOne(messagesUrl(CONVERSATION_ID));
-
-      store.bindRoute(other.id);
-
-      // Cancelled, not merely ignored on arrival.
-      expect(stale.cancelled).toBe(true);
-      flushHistory(other.id, HISTORY.slice(0, 1));
-      expect(store.entries()).toHaveLength(1);
-    });
-
     it('surfaces a failed read without disabling the turn surface', async () => {
       setup();
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       backend
         .expectOne(messagesUrl(CONVERSATION_ID))
         .flush({ title: 'Boom' }, { status: 500, statusText: 'Internal Server Error' });
@@ -1035,7 +1097,7 @@ describe('TurnStore', () => {
 
     it('does not render a turn twice when a retry brings back the turn itself', async () => {
       setup();
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       backend
         .expectOne(messagesUrl(CONVERSATION_ID))
         .flush({ title: 'Boom' }, { status: 500, statusText: 'Internal Server Error' });
@@ -1065,7 +1127,7 @@ describe('TurnStore', () => {
 
     it('reads nothing back on the empty chat route', () => {
       setup();
-      store.bindRoute(undefined);
+      store.init(null);
 
       backend.expectNone(messagesUrl(CONVERSATION_ID));
       expect(store.historyPending()).toBe(false);
@@ -1186,7 +1248,6 @@ describe('TurnStore', () => {
   describe('rating an answer', () => {
     const MESSAGE_ID = 'aaaaaaaa-1111-4222-8333-444444444444';
     const SECOND_MESSAGE_ID = 'bbbbbbbb-1111-4222-8333-444444444444';
-    const OTHER_CONVERSATION_ID = 'cccccccc-1111-4222-8333-444444444444';
 
     function feedbackUrl(messageId = MESSAGE_ID): string {
       return `${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages/${messageId}/feedback`;
@@ -1195,7 +1256,7 @@ describe('TurnStore', () => {
     /** Opens a conversation holding one rateable answer, optionally already rated. */
     function openRatedConversation(rating: MessageFeedbackRating | null = null): void {
       setup();
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID, [
         messageFixture({ text: 'What is the weather?', role: CHAT_ROLE.user }),
         messageFixture({
@@ -1343,21 +1404,6 @@ describe('TurnStore', () => {
       expect(entry?.kind === 'assistant' ? entry.messageId : 'unset').toBeNull();
     });
 
-    it('cancels a rating in flight when the conversation changes', () => {
-      openRatedConversation();
-
-      store.rateMessage(MESSAGE_ID, MESSAGE_FEEDBACK_RATING.up);
-      const request = backend.expectOne(feedbackUrl());
-
-      store.bindRoute(OTHER_CONVERSATION_ID);
-      backend
-        .expectOne(`${TEST_API_BASE_URL}/api/conversations/${OTHER_CONVERSATION_ID}/messages`)
-        .flush({ id: OTHER_CONVERSATION_ID, name: 'Elsewhere', messages: [] });
-
-      expect(request.cancelled).toBe(true);
-      expect(store.isRowPending(MESSAGE_ID)).toBe(false);
-    });
-
     it('cancels a rating in flight when the user signs out', () => {
       openRatedConversation();
 
@@ -1373,7 +1419,7 @@ describe('TurnStore', () => {
 
     it('rates two answers concurrently, each resolving on its own request', () => {
       setup();
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       flushHistory(CONVERSATION_ID, [
         messageFixture({ id: MESSAGE_ID, text: 'First.', role: CHAT_ROLE.assistant }),
         messageFixture({ id: SECOND_MESSAGE_ID, text: 'Second.', role: CHAT_ROLE.assistant }),
@@ -1418,46 +1464,6 @@ describe('TurnStore', () => {
       request.flush(null, { status: 204, statusText: 'No Content' });
 
       expect(assistantEntry().rating).toBe(MESSAGE_FEEDBACK_RATING.up);
-    });
-  });
-
-  describe('the download target', () => {
-    it('is null before a conversation is bound', () => {
-      setup();
-
-      expect(store.exportTarget()).toBeNull();
-    });
-
-    it('is null for a conversation whose transcript is empty', () => {
-      setup();
-      store.bindRoute(CONVERSATION_ID);
-      flushHistory(CONVERSATION_ID);
-
-      expect(store.hasContent()).toBe(false);
-      expect(store.exportTarget()).toBeNull();
-    });
-
-    it('names the conversation once its transcript has been replayed', () => {
-      setup();
-      TestBed.inject(ConversationListStore).prependNewest(
-        conversationFixture({ id: CONVERSATION_ID, name: 'Helios release' }),
-      );
-      store.bindRoute(CONVERSATION_ID);
-      flushHistory(CONVERSATION_ID, [
-        messageFixture({ text: 'What does retrieval do?', role: CHAT_ROLE.user }),
-        messageFixture({ text: 'It runs a tool call.', role: CHAT_ROLE.assistant }),
-      ]);
-
-      expect(store.exportTarget()).toEqual({ id: CONVERSATION_ID, name: 'Helios release' });
-    });
-
-    /** A conversation the 50-row sidebar never held still has to name itself. */
-    it('is null while neither the list nor the detail copy has landed', () => {
-      setup();
-      store.bindRoute(CONVERSATION_ID);
-      flushHistory(CONVERSATION_ID, [messageFixture({ text: 'Hello', role: CHAT_ROLE.user })]);
-
-      expect(store.exportTarget()).toBeNull();
     });
   });
 });

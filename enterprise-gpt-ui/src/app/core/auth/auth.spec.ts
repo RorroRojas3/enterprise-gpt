@@ -19,6 +19,7 @@ import {
   signedOutMsal,
 } from '@testing/msal';
 import { FakeNavigation, provideFakeNavigation } from '@testing/navigation';
+import { armUnloadPrompt, wouldPromptOnUnload } from '@testing/unload-prompt';
 import { Auth } from './auth';
 
 describe('Auth', () => {
@@ -146,6 +147,23 @@ describe('Auth', () => {
     expect(loginRedirect.mock.calls[0]?.[0].scopes).toEqual(testAppConfig().auth.apiScopes);
   });
 
+  it('leaves for Entra without a prompt the user could cancel mid-redirect', async () => {
+    let prompted: boolean | null = null;
+    const auth = service(
+      signedOutMsal({
+        loginRedirect: () => {
+          prompted = wouldPromptOnUnload();
+          return Promise.resolve();
+        },
+      }),
+    );
+    armUnloadPrompt();
+
+    await auth.signIn('/chat');
+
+    expect(prompted).toBe(false);
+  });
+
   it('carries the requested route across the trip to Entra', async () => {
     const auth = service(signedOutMsal({ loginRedirect: () => Promise.resolve() }));
 
@@ -189,6 +207,23 @@ describe('Auth', () => {
 
       expect(seen).toHaveBeenCalledOnce();
       expect(auth.isSigningOut()).toBe(true);
+    });
+
+    it('leaves for Entra without a prompt, even with an answer still streaming', () => {
+      let prompted: boolean | null = null;
+      const auth = service(
+        signedInMsal({
+          logoutRedirect: () => {
+            prompted = wouldPromptOnUnload();
+            return leavesThePage();
+          },
+        }),
+      );
+      armUnloadPrompt();
+
+      void auth.signOut();
+
+      expect(prompted).toBe(false);
     });
 
     it('logs out the account that was active before the cache was cleared', () => {

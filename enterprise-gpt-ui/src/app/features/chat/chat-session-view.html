@@ -1,0 +1,58 @@
+<!-- Where the jump-to-latest control hands focus when it removes itself, not <body>. -->
+<div
+  class="chat__body d-flex flex-column flex-fill min-h-0 overflow-y-auto overscroll-contain focus-inset"
+  tabindex="-1"
+  [appTranscriptPinning]="bottomSentinel"
+  [pinningContent]="pinnedContent"
+  #pinning="appTranscriptPinning"
+>
+  <!-- One stable wrapper for the pinning directive to measure; the scroll box never resizes. -->
+  <div class="d-flex flex-column flex-grow-1 flex-shrink-0" #pinnedContent>
+    @if (conversation.error(); as error) {
+      <!-- The API does not tell missing from someone else's on a 404, and neither does this. -->
+      <app-error-panel
+        class="m-auto p-4"
+        [error]="error"
+        [canRetry]="canRetry(error)"
+        heading="This conversation couldn’t be opened"
+        (retried)="conversation.retry()"
+      />
+    } @else if (turn.hasContent()) {
+      <!-- Shares the composer's column, so the answer and its input share an edge. -->
+      <div class="chat__gutter">
+        <app-transcript class="mw-prose mx-auto" />
+      </div>
+    } @else {
+      <app-chat-empty-state
+        [asPageHeading]="!conversation.isOpen()"
+        (suggested)="turn.seedComposer($event)"
+      />
+    }
+  </div>
+
+  <!-- Outside the branches, so a body swap never leaves the observer on a detached node. -->
+  <div class="flex-shrink-0" #bottomSentinel aria-hidden="true"></div>
+</div>
+
+<!-- Not under a conversation that failed to open: sending would have no target. -->
+@if (!conversation.error()) {
+  <div class="chat__gutter chat__composer position-relative flex-shrink-0">
+    <!-- The ring is a wrapper: `ringpulse` animates box-shadow over the button's own shadow. -->
+    @if (pinning.showJump()) {
+      <div
+        class="chat__jump position-absolute start-50 translate-middle-x rounded-circle"
+        [class.chat__jump--pulsing]="pinning.pulsing()"
+      >
+        <button
+          class="btn btn-icon btn-icon-lg rounded-circle border bg-surface shadow text-primary"
+          type="button"
+          aria-label="Jump to latest message"
+          (click)="pinning.jumpToLatest()"
+        >
+          <app-icon name="bi-arrow-down" />
+        </button>
+      </div>
+    }
+    <app-composer class="mw-prose mx-auto" />
+  </div>
+}

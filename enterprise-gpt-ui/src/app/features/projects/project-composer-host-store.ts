@@ -36,6 +36,7 @@ interface ProjectComposerState {
   readonly creating: boolean;
   /** A one-shot text handed back to the composer when a send could not proceed. */
   readonly composerSeed: { readonly text: string } | null;
+  readonly draft: string;
 }
 
 /**
@@ -44,7 +45,7 @@ interface ProjectComposerState {
  * that POST, and failures are toasts because there is no transcript here.
  */
 export const ProjectComposerHostStore = signalStore(
-  withState<ProjectComposerState>({ creating: false, composerSeed: null }),
+  withState<ProjectComposerState>({ creating: false, composerSeed: null, draft: '' }),
   withProps(() => ({
     _http: inject(HttpClient),
     _api: inject(ApiUrl),
@@ -152,6 +153,10 @@ export const ProjectComposerHostStore = signalStore(
       /** The composer acknowledges a seed it has applied. */
       consumeComposerSeed(): void {
         patchState(store, { composerSeed: null });
+      },
+
+      setDraft(draft: string): void {
+        patchState(store, { draft });
       },
     };
   }),

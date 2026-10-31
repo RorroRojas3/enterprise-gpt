@@ -9,6 +9,7 @@ export interface AppConfig {
   readonly features: FeatureFlags;
   /** Absent switches browser telemetry off; nothing is loaded and nothing is sent. */
   readonly telemetry?: TelemetryConfig;
+  readonly chat?: ChatConfig;
 }
 
 /**
@@ -35,6 +36,14 @@ export interface TelemetryConfig {
    * open ingestion is acceptable, separate from the API's.
    */
   readonly connectionString: string;
+}
+
+/** Each streaming turn holds one of the browser's six HTTP/1.1 connections per host. */
+const MAX_CONCURRENT_TURNS_LIMIT = 6;
+export const DEFAULT_MAX_CONCURRENT_TURNS = 4;
+
+export interface ChatConfig {
+  readonly maxConcurrentTurns?: number;
 }
 
 /** Deployment switches for capabilities that are chunked out of the initial bundle. */
@@ -98,6 +107,22 @@ export function assertAppConfig(value: unknown): asserts value is AppConfig {
     const telemetry = requireRecord(root['telemetry'], 'telemetry');
     assertNonEmptyString(telemetry['connectionString'], 'telemetry.connectionString');
   }
+
+  if (root['chat'] !== undefined) {
+    const chat = requireRecord(root['chat'], 'chat');
+    const cap = chat['maxConcurrentTurns'];
+    if (
+      cap !== undefined &&
+      (typeof cap !== 'number' ||
+        !Number.isInteger(cap) ||
+        cap < 1 ||
+        cap > MAX_CONCURRENT_TURNS_LIMIT)
+    ) {
+      throw new AppConfigError(
+        `"chat.maxConcurrentTurns" must be a whole number from 1 to ${MAX_CONCURRENT_TURNS_LIMIT}.`,
+      );
+    }
+  }
 }
 
 /** Returns a frozen copy with no trailing slash on `apiBaseUrl`, so paths join without `//`. */
@@ -108,6 +133,7 @@ export function normalizeAppConfig(config: AppConfig): AppConfig {
     auth: Object.freeze({ ...config.auth, apiScopes: Object.freeze([...config.auth.apiScopes]) }),
     features: Object.freeze({ ...config.features }),
     ...(config.telemetry ? { telemetry: Object.freeze({ ...config.telemetry }) } : {}),
+    ...(config.chat ? { chat: Object.freeze({ ...config.chat }) } : {}),
   });
 }
 

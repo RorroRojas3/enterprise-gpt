@@ -32,7 +32,6 @@ import { conversationEvents } from '@core/events/conversation-events';
 import { turnEvents } from '@core/events/turn-events';
 import { ShellChrome } from '@core/layout/shell-chrome';
 import { CONVERSATION_ID_PARAM, chatMatcher } from '@core/navigation/chat-matcher';
-import { UploadStore } from '@core/uploads/upload-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpFixture, modelFixture } from '@testing/catalog';
 import {
@@ -47,6 +46,7 @@ import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { streamingResponse } from '@testing/stream-frames';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
 import { Chat } from './chat';
+import { ChatSessions } from './chat-sessions';
 import { STREAM_FETCH } from './stream-fetch-token';
 
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
@@ -193,7 +193,7 @@ describe('Chat', () => {
       .flush(conversationDetailFixture({ ...conversation }));
     await harness.fixture.whenStable();
 
-    const uploads = harness.routeDebugElement!.injector.get(UploadStore);
+    const uploads = TestBed.inject(ChatSessions).active()!.uploads;
     uploads.attach([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
     // Files wait for a send; this stands in for one.
     uploads.startPending();

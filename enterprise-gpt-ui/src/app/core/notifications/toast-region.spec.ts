@@ -52,16 +52,14 @@ describe('ToastRegion', () => {
     expect(getByRole(host, 'button', { name: 'Dismiss: Upload failed' })).toBeTruthy();
   });
 
-  it('renders a draining indicator only for toasts that dismiss themselves', async () => {
+  it('renders a draining indicator on every toast, as every toast dismisses itself', async () => {
     const { fixture, host, store } = await render();
 
     store.success('Saved');
     store.show({ tone: 'error', title: 'Failed' });
     await fixture.whenStable();
 
-    const drains = host.querySelectorAll('.toast__drain');
-    expect(drains).toHaveLength(1);
-    expect(host.querySelector('[role="status"] .toast__drain')).not.toBeNull();
+    expect(host.querySelectorAll('.toast__drain')).toHaveLength(2);
   });
 
   it('removes a toast from the DOM when its dismiss control is used', async () => {

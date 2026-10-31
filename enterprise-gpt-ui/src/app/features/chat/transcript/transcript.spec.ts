@@ -16,6 +16,7 @@ import { CHAT_ROLE } from '@core/api/conversation.model';
 import { AccessTokenClient } from '@core/auth/access-token-client';
 import { TurnSelection, TurnSettingsStore } from '@core/composer/turn-settings-store';
 import { UploadStore } from '@core/uploads/upload-store';
+import { CHAT_SESSION } from '@features/chat/chat-session-token';
 import { ConversationStore } from '@features/chat/conversation-store';
 import { STREAM_BATCH_WINDOW_MS } from '@features/chat/conversation-stream-client';
 import { provideChatMarkdown } from '@features/chat/markdown/markdown-providers';
@@ -80,6 +81,7 @@ describe('Transcript', () => {
         UploadStore,
         ConversationStore,
         TurnStore,
+        { provide: CHAT_SESSION, useValue: { isActive: () => true } },
         // The transcript renders markdown, so it needs the sanitized pipeline the chat
         // route provides.
         provideChatMarkdown(),
@@ -119,7 +121,7 @@ describe('Transcript', () => {
       handle.abortOn(init?.signal);
       return Promise.resolve(handle.response);
     });
-    store.bindRoute(CONVERSATION_ID);
+    store.init(CONVERSATION_ID);
     // Opening a conversation reads its stored messages; the read must be answered or the
     // region stays aria-busy for the rest of the test.
     backend
@@ -638,7 +640,7 @@ describe('Transcript', () => {
     });
 
     it('renders no region for replayed history, which never stored one', async () => {
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       backend
         .expectOne(`${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages`)
         .flush({
@@ -665,7 +667,7 @@ describe('Transcript', () => {
 
     /** Opens a conversation holding one rateable answer, optionally already rated. */
     async function openWithStoredAnswer(rating: 'Up' | 'Down' | null = null): Promise<void> {
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       backend
         .expectOne(`${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages`)
         .flush({
@@ -999,7 +1001,7 @@ describe('Transcript', () => {
 
     async function failWith(problem: object, status: number): Promise<void> {
       fetchMock.mockResolvedValue(problemResponse(problem, status).response);
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       backend
         .expectOne(`${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages`)
         .flush({ id: CONVERSATION_ID, name: 'Conversation', messages: [] });

@@ -25,34 +25,19 @@ describe('ToastStore', () => {
     vi.useRealTimers();
   });
 
-  it('auto-dismisses a success toast at exactly five seconds', () => {
-    const store = TestBed.inject(ToastStore);
-    store.success('Conversation deleted');
+  it.each(['success', 'info', 'warning', 'error'] as const)(
+    'dismisses a %s toast at exactly three seconds',
+    (tone) => {
+      const store = TestBed.inject(ToastStore);
+      store.show({ tone, title: 'Something happened' });
 
-    vi.advanceTimersByTime(4999);
-    expect(store.toasts()).toHaveLength(1);
+      vi.advanceTimersByTime(2999);
+      expect(store.toasts()).toHaveLength(1);
 
-    vi.advanceTimersByTime(1);
-    expect(store.toasts()).toHaveLength(0);
-  });
-
-  it('keeps an error toast until it is dismissed — the whole point of the split', () => {
-    const store = TestBed.inject(ToastStore);
-    store.show({ tone: 'error', title: 'Upload failed' });
-
-    vi.advanceTimersByTime(60_000);
-
-    expect(store.toasts()).toHaveLength(1);
-  });
-
-  it('keeps a warning toast too', () => {
-    const store = TestBed.inject(ToastStore);
-    store.warning('Sorting is unavailable past the ceiling');
-
-    vi.advanceTimersByTime(60_000);
-
-    expect(store.toasts()).toHaveLength(1);
-  });
+      vi.advanceTimersByTime(1);
+      expect(store.toasts()).toHaveLength(0);
+    },
+  );
 
   it('clears the timer when a toast is dismissed early', () => {
     const store = TestBed.inject(ToastStore);
@@ -95,7 +80,7 @@ describe('ToastStore', () => {
     expect(toast?.tone).toBe('error');
     expect(toast?.title).toBe('That item no longer exists, or you do not have access to it.');
     expect(toast?.traceLine).toBe('Trace ID: 4c19-e8d2-90ab-114f');
-    expect(toast?.retryLabel).toBe('Retry');
+    expect(toast?.actionLabel).toBe('Retry');
   });
 
   it('renders no Retry affordance without an action behind it', () => {
@@ -104,7 +89,7 @@ describe('ToastStore', () => {
     store.show({ tone: 'error', title: 'Failed', retryLabel: 'Retry' });
 
     // A label with no handler would render a control that does nothing when pressed.
-    expect(store.toasts()[0]?.retryLabel).toBeNull();
+    expect(store.toasts()[0]?.actionLabel).toBeNull();
   });
 
   it('runs the retry and dismisses the toast that offered it', () => {
@@ -112,7 +97,7 @@ describe('ToastStore', () => {
     const onRetry = vi.fn();
 
     const id = store.show({ tone: 'error', title: 'Failed', onRetry });
-    store.retry(id);
+    store.runAction(id);
 
     expect(onRetry).toHaveBeenCalledTimes(1);
     // Dismissed first, so a handler that raises its own toast does not stack under
@@ -126,9 +111,42 @@ describe('ToastStore', () => {
 
     const id = store.show({ tone: 'error', title: 'Failed', onRetry });
     store.dismiss(id);
-    store.retry(id);
+    store.runAction(id);
 
     expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it('renders an action in place of Retry, and runs it after dismissing', () => {
+    const store = TestBed.inject(ToastStore);
+    const run = vi.fn();
+    const onRetry = vi.fn();
+
+    const id = store.show({
+      tone: 'info',
+      title: 'Answer ready',
+      action: { label: 'Open', run },
+      onRetry,
+    });
+    expect(store.toasts()[0]?.actionLabel).toBe('Open');
+
+    store.runAction(id);
+
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(onRetry).not.toHaveBeenCalled();
+    expect(store.toasts()).toHaveLength(0);
+  });
+
+  it('replaces a live toast with the same key rather than stacking it', () => {
+    const store = TestBed.inject(ToastStore);
+
+    store.show({ tone: 'warning', title: 'First', key: 'cap' });
+    store.show({ tone: 'warning', title: 'Second', key: 'cap' });
+    store.show({ tone: 'warning', title: 'Unkeyed' });
+
+    expect(store.toasts().map((toast) => toast.title)).toEqual(['Second', 'Unkeyed']);
+
+    store.dismissKey('cap');
+    expect(store.toasts().map((toast) => toast.title)).toEqual(['Unkeyed']);
   });
 
   it('says so honestly when the failure carried no trace id', () => {
