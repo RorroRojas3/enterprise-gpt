@@ -4,7 +4,9 @@ Reference for engineers working on this codebase: what each part of the applicat
 built, and the constraints that are not obvious from the source.
 
 **New here?** Read [architecture/overview.md](architecture/overview.md), then the two structure docs
-for whichever side you are working on, then the subsystem you are touching.
+for whichever side you are working on, then the subsystem you are touching. On the client, follow
+[architecture/frontend.md](architecture/frontend.md) with [frontend/codebase-map.md](frontend/codebase-map.md)
+and [frontend/workflows.md](frontend/workflows.md).
 
 ## Architecture
 
@@ -54,6 +56,8 @@ for whichever side you are working on, then the subsystem you are touching.
 
 | Doc | Covers |
 | --- | --- |
+| [codebase-map.md](frontend/codebase-map.md) | Where everything lives, and how screens, stores, injection seams, events and API calls connect |
+| [workflows.md](frontend/workflows.md) | The main user journeys traced through components, stores and endpoints; how-to recipes |
 | [state.md](frontend/state.md) | Signal-store conventions, the five composable features, cross-store events, conversation activity |
 | [errors.md](frontend/errors.md) | `AppError` normalization, retry policy, the refresh decision |
 | [design-system.md](frontend/design-system.md) | Tokens, theming, typography, icons, accessibility contracts |

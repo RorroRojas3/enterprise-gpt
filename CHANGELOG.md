@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Two engineer docs for the Angular client: `docs/frontend/codebase-map.md` (where everything lives,
+  and how screens, stores, injection seams, events and API calls connect) and
+  `docs/frontend/workflows.md` (the main user journeys traced through the code, plus how-to recipes).
 - Several conversations can now stream at once. Switching conversations, or leaving the chat screen,
   no longer cancels the answer that is generating (before, the abort cancelled the turn on the server,
   so it was billed but never saved): each conversation keeps its own turn, unsent text and attachment

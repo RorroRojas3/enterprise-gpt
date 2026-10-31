@@ -89,6 +89,7 @@ routed component to render, otherwise an empty app shell paints over the startup
 | `provideRouter(..., withEnabledBlockingInitialNavigation())` | Without it the app shell paints behind the startup card while `authGuard` is still deciding. |
 | `provideHttpClient(withFetch(), withInterceptors([retryInterceptor, authInterceptor]))` | Order is load-bearing: retry is outermost, so each retried attempt re-enters auth and carries a fresh token. `withFetch` makes `HttpClient` and the raw-fetch stream transport share network semantics. |
 | `provideAppInitializer(() => inject(Auth))` | Eager and load-bearing — its constructor subscribes this tab to another tab's sign-out. |
+| `provideAppInitializer(() => inject(Theme))`, `provideBrowserTelemetry()` | Also eager: the theme applies before first paint, and telemetry (when configured) starts with the app. |
 | `providePreventDropNavigation()` | A stray file drop would otherwise navigate away mid-stream. |
 
 ## Routing
@@ -97,6 +98,7 @@ routed component to render, otherwise an empty app shell paints over the startup
 
 | Path | Loads | Guard |
 | --- | --- | --- |
+| `''` (exact) | Redirects to `chat` | none |
 | `auth`, `login-failed`, `session-error`, `signed-out` | Eager auth screens | none — `auth` *is* the redirect URI |
 | `ui-kit` | Lazy | `canMatch: isDevMode()` |
 | `''` | children | `canActivate: [authGuard]` |
@@ -106,6 +108,10 @@ routed component to render, otherwise an empty app shell paints over the startup
 | `chat`, `chat/{id}` | Lazy `Chat`, matched by `chatMatcher` | inherits |
 | `conversations`, `projects`, `documents` | Lazy | inherits |
 | `admin` | Lazy | `canMatch: [adminCanMatch]` |
+| `**` | Redirects to `chat` | none |
+
+Feature route tables (`projects.routes.ts`, `project-detail.routes.ts`, `admin.routes.ts`) are in
+[../frontend/codebase-map.md](../frontend/codebase-map.md#routes).
 
 Two structural rules:
 
@@ -197,5 +203,7 @@ does.
 ## Related
 
 - [overview.md](overview.md)
+- [../frontend/codebase-map.md](../frontend/codebase-map.md) — what lives where, and how it is wired
+- [../frontend/workflows.md](../frontend/workflows.md) — the main journeys traced through the code
 - [../frontend/state.md](../frontend/state.md)
 - [../frontend/errors.md](../frontend/errors.md)
