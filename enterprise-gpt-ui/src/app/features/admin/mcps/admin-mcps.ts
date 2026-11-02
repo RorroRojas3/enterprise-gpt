@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, viewChild } from '@angular/core';
+import { recoverFocusOn } from '@core/a11y/recover-focus';
 import { McpServerDto } from '@core/api/mcp.model';
 import { isMcpServerRetired } from '@core/catalog/mcp-server';
 import { canRetry } from '@core/errors/error-message';
@@ -105,6 +106,8 @@ export class AdminMcps {
   protected readonly rowLabel = (server: McpServerDto): string => server.name;
 
   constructor() {
+    // A row retired from its kebab loses the kebab, which holds focus by then.
+    recoverFocusOn(this.servers.results);
     this.servers.load();
 
     // The root-scoped actions store outlives this route, so a dialog left open on a previous

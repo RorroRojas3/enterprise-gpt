@@ -167,6 +167,11 @@ describe('Transcript', () => {
   /** A settled activity's duration, set apart in mono. */
   const DURATION = /^\d+\.\ds$/;
 
+  /** The transcript's own wrapper, not an answer's region, which sets `aria-busy` too. */
+  function busyRegion(): Element | null {
+    return host.querySelector(':scope > [aria-busy="true"]');
+  }
+
   describe('the activity timeline', () => {
     it('renders cards and text in exact arrival order, nested work included', async () => {
       await streamFullTurn();
@@ -873,11 +878,19 @@ describe('Transcript', () => {
       await streamFullTurn();
 
       expect(host.querySelector('.assistant-turn__md')?.textContent?.trim()).toBe('Hello, world.');
-      expect(host.getAttribute('aria-busy')).toBeNull();
+      expect(busyRegion()).toBeNull();
       expect(host.querySelector('app-turn-notice-card')).toBeNull();
       expect(cardNames()).toEqual(['Get forecast', 'Forecast Agent', 'Search Documents']);
       expect(cards().map(ownState)).toContain('bi-exclamation-triangle-fill');
     });
+  });
+
+  it('keeps its live regions outside what it marks busy', async () => {
+    await startTurn();
+
+    expect(busyRegion()).not.toBeNull();
+    expect(host.querySelectorAll(':scope > [role="status"]')).toHaveLength(2);
+    expect(host.querySelector('[aria-busy="true"] [role="status"]')).toBeNull();
   });
 
   describe('watching the answer arrive', () => {
@@ -889,7 +902,7 @@ describe('Transcript', () => {
       const handle = await startTurn();
 
       expect(host.querySelector('app-ridgeline')).not.toBeNull();
-      expect(host.getAttribute('aria-busy')).toBe('true');
+      expect(busyRegion()).not.toBeNull();
       // The optimistic user bubble is already on screen.
       expect(host.querySelector('.transcript__bubble')?.textContent).toBe('What is the weather?');
 
@@ -905,7 +918,7 @@ describe('Transcript', () => {
     it('drops aria-busy and the caret once the turn settles', async () => {
       await streamFullTurn();
 
-      expect(host.getAttribute('aria-busy')).toBeNull();
+      expect(busyRegion()).toBeNull();
       expect(host.querySelector('.assistant-turn__md--caret')).toBeNull();
     });
 
@@ -961,18 +974,18 @@ describe('Transcript', () => {
       const handle = await startTurn();
       handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Hello.' })));
       await settle(STREAM_BATCH_WINDOW_MS);
-      expect(host.getAttribute('aria-busy')).toBe('true');
+      expect(busyRegion()).not.toBeNull();
 
       handle.enqueue(frame(assistantEvent('Finished')));
       await settle(STREAM_BATCH_WINDOW_MS);
 
       // The body is still open but the answer is complete, which is when the region is released.
-      expect(host.getAttribute('aria-busy')).toBeNull();
+      expect(busyRegion()).toBeNull();
       expect(host.querySelector('app-assistant-turn')).not.toBeNull();
 
       handle.close();
       await settle(STREAM_BATCH_WINDOW_MS);
-      expect(host.getAttribute('aria-busy')).toBeNull();
+      expect(busyRegion()).toBeNull();
     });
 
     it('renders a cut-off turn as the warning card above the partial answer', async () => {

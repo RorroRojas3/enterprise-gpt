@@ -25,7 +25,7 @@
   data-row-anchor
   [attr.aria-label]="'Download ' + document().name"
   [attr.aria-busy]="isDownloading()"
-  [disabled]="isDownloading()"
+  [attr.aria-disabled]="isDownloading() ? 'true' : null"
   (click)="download()"
 >
   @if (isDownloading()) {

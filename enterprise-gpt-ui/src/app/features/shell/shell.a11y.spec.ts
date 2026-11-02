@@ -254,6 +254,45 @@ describe('application frame accessibility', () => {
     });
   });
 
+  /** Real `<dialog>` and `inert`: jsdom's polyfill cannot tell these orderings apart. */
+  describe('leaving an overlay by a link', () => {
+    async function followLink(element: HTMLElement): Promise<void> {
+      await userEvent.click(getByRole(element, 'link', { name: 'Documents' }));
+      await TestBed.inject(ApplicationRef).whenStable();
+    }
+
+    it('ends on main after the drawer has handed focus back to the hamburger', async () => {
+      await atViewport('mobile');
+      const element = await renderShell('light');
+      // A real tap on an attached host: the hamburger must be what the drawer captures, and
+      // moving an open modal would take it out of the top layer.
+      await userEvent.click(getByRole(element, 'button', { name: /^Open navigation/ }));
+      await TestBed.inject(ApplicationRef).whenStable();
+      const drawer = document.querySelector('dialog[open]')!;
+      const closed = new Promise((resolve) =>
+        drawer.addEventListener('close', resolve, { once: true }),
+      );
+
+      await followLink(element);
+      // Queued well after the render, and the focus it restores is what must lose.
+      await closed;
+      await settle();
+
+      expect(document.querySelector('dialog[open]')).toBeNull();
+      expect(document.activeElement).toBe(element.querySelector('#main-content'));
+    });
+
+    it('ends on main once the tablet overlay has stopped making it inert', async () => {
+      await atViewport('tablet');
+      const element = await renderShell('light', { openSidebar: true });
+
+      await followLink(element);
+
+      expect(element.querySelector('.shell__backdrop')).toBeNull();
+      expect(document.activeElement).toBe(element.querySelector('#main-content'));
+    });
+  });
+
   it('renders one navigation landmark, whatever the width', async () => {
     // Re-checks `shell-responsive.spec.ts`'s invariant with real media queries.
     await atViewport('mobile');

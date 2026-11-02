@@ -97,8 +97,8 @@ describe('UserFooter', () => {
     await fixture.whenStable();
 
     expect(auth.isSigningOut()).toBe(true);
-    // Latched in the DOM too, so there is nothing to press a second time.
-    expect(button.disabled).toBe(true);
+    // Latched for assistive technology too; the button stays, so focus does not fall.
+    expect(button.getAttribute('aria-disabled')).toBe('true');
 
     button.click();
 

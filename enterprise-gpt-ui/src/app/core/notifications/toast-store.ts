@@ -13,7 +13,13 @@ import { AppError } from '@core/errors/app-error';
 import { shouldNotify, traceLine, userMessage } from '@core/errors/error-message';
 import { injectSignedOut } from '@core/events/session-events';
 import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
-import { AUTO_DISMISS_MS, Toast, ToastTone } from './toast.model';
+import {
+  AUTO_DISMISS_MS,
+  MAX_PERSISTENT_TOASTS,
+  Toast,
+  ToastTone,
+  isPersistent,
+} from './toast.model';
 
 interface ToastState {
   readonly toasts: readonly Toast[];
@@ -84,6 +90,19 @@ export const ToastStore = signalStore(
       }
     }
 
+    /** Action toasts go first: the sidebar mark or upload chip still carries what they said. */
+    function evictOverCap(): void {
+      const persistent = store.toasts().filter((toast) => toast.persistent);
+      if (persistent.length < MAX_PERSISTENT_TOASTS) {
+        return;
+      }
+
+      const oldest = persistent.find((toast) => toast.actionLabel !== null) ?? persistent[0];
+      if (oldest !== undefined) {
+        dismiss(oldest.id);
+      }
+    }
+
     function show(input: ToastInput): string {
       const id = `toast-${store._sequence.value++}`;
       // A label with no handler renders nothing, so a dead Retry cannot ship.
@@ -99,6 +118,7 @@ export const ToastStore = signalStore(
         traceLine: input.traceLine ?? null,
         actionLabel: action?.label ?? null,
         key: input.key ?? null,
+        persistent: isPersistent(input.tone, action !== null),
       };
 
       if (toast.key !== null) {
@@ -108,12 +128,16 @@ export const ToastStore = signalStore(
         store._actions.set(id, action.run);
       }
 
-      patchState(store, ({ toasts }) => ({ toasts: [...toasts, toast] }));
+      if (toast.persistent) {
+        evictOverCap();
+      } else {
+        store._timers.set(
+          id,
+          setTimeout(() => dismiss(id), AUTO_DISMISS_MS),
+        );
+      }
 
-      store._timers.set(
-        id,
-        setTimeout(() => dismiss(id), AUTO_DISMISS_MS),
-      );
+      patchState(store, ({ toasts }) => ({ toasts: [...toasts, toast] }));
 
       return id;
     }
@@ -151,11 +175,16 @@ export const ToastStore = signalStore(
         if (!shouldNotify(error)) {
           return null;
         }
+
+        const title = userMessage(error);
+
         return show({
           tone: 'error',
-          title: userMessage(error),
+          title,
           traceLine: traceLine(error),
           onRetry,
+          // Keyed so an outage replaces rather than stacks; a Retry's closure must not be lost.
+          key: onRetry === undefined ? `error:${title}` : undefined,
         });
       },
 

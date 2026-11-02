@@ -95,7 +95,7 @@ describe('Documents', () => {
 
   /** One chevron per group header. */
   function groupToggles(): HTMLButtonElement[] {
-    return queryAllByRole<HTMLButtonElement>(element(), 'button', { name: /^(Collapse|Expand) / });
+    return queryAllByRole<HTMLButtonElement>(element(), 'button', { name: /^Documents in / });
   }
 
   /** The count the toolbar draws; aria-hidden, so it has no role to be found by. */
@@ -222,7 +222,7 @@ describe('Documents', () => {
       `${TEST_API_BASE_URL}/api/documents/conversations/${doc.conversationId}/${doc.id}`,
     );
     expect(request.request.method).toBe('GET');
-    expect(button.disabled).toBe(true);
+    expect(button.getAttribute('aria-disabled')).toBe('true');
     expect(button.getAttribute('aria-busy')).toBe('true');
 
     request.flush({
@@ -788,15 +788,16 @@ describe('Documents', () => {
       await open('/documents', twoConversations());
       expect(element().querySelectorAll('app-document-row')).toHaveLength(2);
 
-      const chevron = getByRole(element(), 'button', { name: 'Collapse Alpha' });
+      const chevron = getByRole(element(), 'button', { name: 'Documents in Alpha' });
       expect(chevron.getAttribute('aria-expanded')).toBe('true');
       expect(chevron.getAttribute('aria-controls')).not.toBeNull();
 
       chevron.click();
       await harness.fixture.whenStable();
 
+      // The state alone: a name that flipped too would read "Collapse Alpha, expanded".
       expect(chevron.getAttribute('aria-expanded')).toBe('false');
-      expect(chevron.getAttribute('aria-label')).toBe('Expand Alpha');
+      expect(chevron.getAttribute('aria-label')).toBe('Documents in Alpha');
       expect(element().querySelectorAll('app-document-row')).toHaveLength(1);
       expect(groupToggles()).toHaveLength(2);
 

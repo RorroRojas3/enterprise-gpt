@@ -13,6 +13,8 @@ import { McpCredentialStore } from '@core/catalog/mcp-credential-store';
 import { traceLine, userMessage } from '@core/errors/error-message';
 import { serverMessagesFor } from '@core/errors/server-messages';
 import { Modal } from '@shared/dialog/modal';
+import { FieldErrorState, FieldErrors } from '@shared/forms/field-errors';
+import { InvalidField } from '@shared/forms/invalid-field';
 import { apiKeyError } from './mcp-credential-form';
 
 /**
@@ -22,7 +24,7 @@ import { apiKeyError } from './mcp-credential-form';
 @Component({
   selector: 'app-mcp-credential-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, Modal],
+  imports: [FieldErrors, FormField, InvalidField, Modal],
   templateUrl: './mcp-credential-dialog.html',
 })
 export class McpCredentialDialog {
@@ -94,11 +96,10 @@ export class McpCredentialDialog {
 
   protected readonly canSubmit = computed(() => !this.f().invalid() && !this.credentials.busy());
 
-  /**
-   * Only `busy` disables Save: a press is what reveals messages hidden behind `touched`, so a
-   * disabled button would be a dead end.
-   */
-  protected readonly submitDisabled = computed(() => this.credentials.busy());
+  protected readonly errorState = computed<FieldErrorState>(() => ({
+    show: this.showErrors(),
+    messages: this.errors(),
+  }));
 
   /** For what the field cannot carry: a 403, a network drop, an unmodelled validation key. */
   protected readonly failure = computed(() => {

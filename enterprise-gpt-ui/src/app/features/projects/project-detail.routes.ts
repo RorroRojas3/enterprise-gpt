@@ -21,14 +21,17 @@ const routes: Routes = [
         path: 'instructions',
         canDeactivate: [unsavedInstructionsGuard],
         loadComponent: () => import('./instructions-panel').then((m) => m.InstructionsPanel),
+        title: 'Project instructions — Enterprise GPT',
       },
       {
         path: 'files',
         loadComponent: () => import('./project-files').then((m) => m.ProjectFiles),
+        title: 'Project files — Enterprise GPT',
       },
       {
         path: 'conversations',
         loadComponent: () => import('./project-conversations').then((m) => m.ProjectConversations),
+        title: 'Project conversations — Enterprise GPT',
       },
     ],
   },

@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { recoverFocusOn } from '@core/a11y/recover-focus';
 import { ToastItem } from './toast-item';
 import { ToastStore } from './toast-store';
 
@@ -14,4 +15,9 @@ import { ToastStore } from './toast-store';
 })
 export class ToastRegion {
   protected readonly store = inject(ToastStore);
+
+  constructor() {
+    // On the list, not the buttons: replacement, the cap and the timer remove toasts too.
+    recoverFocusOn(this.store.toasts);
+  }
 }

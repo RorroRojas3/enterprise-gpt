@@ -109,12 +109,11 @@ describe('McpCredentialDialog', () => {
     await type('ghp_token_with a space');
     await blur();
 
-    expect(host().querySelector('#mcp-key-errors')?.textContent).toContain(
+    expect(host().querySelector('#mcp-key-input-errors')?.textContent).toContain(
       'Remove the spaces or line breaks',
     );
 
-    // Enabled but inert: pressing it reveals the message and sends nothing.
-    expect(submitButton().disabled).toBe(false);
+    // Inert: pressing it sends nothing.
     submitButton().click();
     await fixture.whenStable();
     backend.expectNone(() => true);
@@ -126,7 +125,7 @@ describe('McpCredentialDialog', () => {
     submitButton().click();
     await fixture.whenStable();
 
-    expect(host().querySelector('#mcp-key-errors')?.textContent).toContain(
+    expect(host().querySelector('#mcp-key-input-errors')?.textContent).toContain(
       'Paste the token to continue.',
     );
     backend.expectNone(() => true);
@@ -164,13 +163,13 @@ describe('McpCredentialDialog', () => {
     );
     await fixture.whenStable();
 
-    expect(host().querySelector('#mcp-key-errors')?.textContent).toContain(
+    expect(host().querySelector('#mcp-key-input-errors')?.textContent).toContain(
       'That token is not valid for this server.',
     );
 
     await type('github_pat_another');
 
-    expect(host().querySelector('#mcp-key-errors')).toBeNull();
+    expect(host().querySelector('#mcp-key-input-errors')).toBeNull();
   });
 
   it('reports a failure the field cannot carry in its own panel', async () => {

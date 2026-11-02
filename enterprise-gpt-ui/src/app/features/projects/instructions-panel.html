@@ -12,19 +12,13 @@
 } @else if (project.project()) {
   <div class="d-flex flex-column gap-2 mw-prose">
     <label class="visually-hidden" for="project-instructions">Standing instructions</label>
-    <!--
-      A native `maxlength`: one field with one rule does not earn a form, and it stops over-long
-      input instead of reporting it. The counter carries the limit for anyone pasting.
-    -->
+    <!-- No literal maxlength (NG8022): [formField] derives it from the schema's rule. -->
     <textarea
       id="project-instructions"
       class="form-control rounded-4"
       rows="7"
-      [attr.maxlength]="maxLength"
-      [value]="draft()"
-      [disabled]="saving()"
       aria-describedby="project-instructions-help project-instructions-counter"
-      (input)="onDraftInput($event)"
+      [formField]="f.instructions"
     ></textarea>
 
     <!-- Wraps: the help line and two buttons do not fit a 360px viewport in one row. -->
@@ -38,7 +32,7 @@
       <button
         class="btn btn-outline-secondary btn-sm"
         type="button"
-        [disabled]="!isDirty() || saving()"
+        [attr.aria-disabled]="canRevert() ? null : 'true'"
         (click)="revert()"
       >
         Cancel
@@ -47,7 +41,7 @@
       <button
         class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2"
         type="button"
-        [disabled]="!canSave()"
+        [attr.aria-disabled]="canSave() ? null : 'true'"
         (click)="save()"
       >
         @if (saving()) {

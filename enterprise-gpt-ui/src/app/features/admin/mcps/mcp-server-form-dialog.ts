@@ -18,6 +18,9 @@ import {
 } from '@angular/forms/signals';
 import { serverMessagesFor, unmatchedServerMessages } from '@core/errors/server-messages';
 import { Modal } from '@shared/dialog/modal';
+import { FieldErrorState, FieldErrors } from '@shared/forms/field-errors';
+import { InvalidField } from '@shared/forms/invalid-field';
+import { notBlank } from '@shared/forms/not-blank';
 import { BrandIcon } from '@shared/icons/brand-icon';
 import { MCP_ICON_OPTIONS, mcpBrandIcon } from '@shared/icons/mcp-icon';
 import { McpServerActionsStore } from './mcp-server-actions-store';
@@ -42,7 +45,7 @@ import {
 @Component({
   selector: 'app-mcp-server-form-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [BrandIcon, FormField, Modal],
+  imports: [BrandIcon, FieldErrors, FormField, InvalidField, Modal],
   templateUrl: './mcp-server-form-dialog.html',
 })
 export class McpServerFormDialog {
@@ -59,10 +62,12 @@ export class McpServerFormDialog {
     disabled(path, () => this.actions.formBusy());
 
     required(path.name, { message: 'A server name is required.' });
+    notBlank(path.name, 'A server name is required.');
     maxLength(path.name, MCP_SERVER_FIELD_LENGTHS.name, {
       message: `Names are limited to ${MCP_SERVER_FIELD_LENGTHS.name} characters.`,
     });
     required(path.description, { message: 'A description is required.' });
+    notBlank(path.description, 'A description is required.');
     maxLength(path.description, MCP_SERVER_FIELD_LENGTHS.description, {
       message: `Descriptions are limited to ${MCP_SERVER_FIELD_LENGTHS.description} characters.`,
     });
@@ -146,13 +151,23 @@ export class McpServerFormDialog {
       : `This server uses an authentication type this version doesn’t support (${value}). Choose one of the options above to save it.`;
   });
 
+  protected readonly authTypeErrors = computed<FieldErrorState>(() => {
+    const field = this.fieldErrors().authType;
+    const unsupported = this.unsupportedAuthType();
+
+    return {
+      show: field.show || unsupported !== null,
+      messages: [...(field.show ? field.messages : []), ...(unsupported ? [unsupported] : [])],
+    };
+  });
+
   /**
    * A computed, not a method, which exhaustive no-changes checks would see as a fresh array.
    * Server errors show without `touched`, since no interaction predicts them.
    */
   protected readonly fieldErrors = computed(() => {
     const fromServer = this.actions.formError() !== null;
-    const result = {} as Record<FieldName, FieldErrors>;
+    const result = {} as Record<FieldName, FieldErrorState>;
 
     for (const field of SERVER_FIELDS) {
       const state = this.f[field]();
@@ -236,11 +251,6 @@ const SERVER_FIELDS = [
 ] as const;
 
 type FieldName = (typeof SERVER_FIELDS)[number];
-
-interface FieldErrors {
-  readonly show: boolean;
-  readonly messages: readonly string[];
-}
 
 function clientError(message: string | null): { kind: string; message: string } | null {
   return message === null ? null : { kind: 'format', message };

@@ -174,7 +174,8 @@ describe('ModelFormDialog', () => {
     expect(errors()).toContain('Must be a whole number of tokens.');
     // Still in the field, which `type="number"` would have discarded.
     expect(field('model-form-context').value).toBe('400000.5');
-    expect(submitButton().disabled).toBe(true);
+    submitButton().click();
+    await fixture.whenStable();
   });
 
   it('refuses a negative price, and accepts a zero one', async () => {
@@ -188,7 +189,6 @@ describe('ModelFormDialog', () => {
     // Zero is a real price, which is why blank cannot be normalised to it.
     await type('model-form-input-price', '0');
     expect(errors()).not.toContain('A price cannot be negative.');
-    expect(submitButton().disabled).toBe(false);
   });
 
   it('sends a blank price as null, never as zero', async () => {
@@ -279,12 +279,15 @@ describe('ModelFormDialog', () => {
     expect(host().textContent).toContain(
       'A model hidden from the model picker cannot be the default model.',
     );
-    expect(submitButton().disabled).toBe(true);
+    submitButton().click();
+    await fixture.whenStable();
+    backend.expectNone(() => true);
 
     // Turning it back on clears the refusal rather than needing the other switch touched.
     await check('model-form-selectable', true);
-    expect(submitButton().disabled).toBe(false);
-    backend.expectNone(() => true);
+    expect(host().textContent).not.toContain(
+      'A model hidden from the model picker cannot be the default model.',
+    );
   });
 
   it('seeds an unpriced model as blank fields rather than zeros', async () => {
@@ -362,7 +365,6 @@ describe('ModelFormDialog', () => {
     // `retryInterceptor` does not retry a POST, so the reader must keep what they typed.
     expect(field('model-form-name').value).toBe('Claude Sonnet 4.5');
     expect(field('model-form-description').value).toBe('A description worth not retyping.');
-    expect(submitButton().disabled).toBe(false);
   });
 
   it('shows a message keyed to a toggle, which no field here can render', async () => {
@@ -421,11 +423,34 @@ describe('ModelFormDialog', () => {
     expect(options).toContain('Anthropic');
   });
 
-  it('keeps Save disabled until the required fields are filled', async () => {
+  it.each([
+    ['model-form-name', 'A display name is required.'],
+    ['model-form-deployment', 'A deployment name is required.'],
+    ['model-form-description', 'A description is required.'],
+  ])('says why when %s holds only spaces, rather than doing nothing', async (id, message) => {
     await openCreate();
-    expect(submitButton().disabled).toBe(true);
-
     await fill();
-    expect(submitButton().disabled).toBe(false);
+    await type(id, '   ');
+
+    submitButton().click();
+    await fixture.whenStable();
+
+    expect(errors()).toContain(message);
+    backend.expectNone(() => true);
+  });
+
+  it('names every missing field on Save rather than sending an empty form', async () => {
+    await openCreate();
+
+    submitButton().click();
+    await fixture.whenStable();
+
+    expect(errors()).toContain('Choose a provider.');
+    expect(errors()).toContain('A display name is required.');
+    expect(field('model-form-name').getAttribute('aria-invalid')).toBe('true');
+    expect(field('model-form-name').getAttribute('aria-describedby')).toBe(
+      'model-form-name-errors',
+    );
+    backend.expectNone(() => true);
   });
 });

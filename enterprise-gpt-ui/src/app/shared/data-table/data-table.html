@@ -1,11 +1,7 @@
 <div class="d-empty-none mb-2"><ng-content select="[tableNotice]" /></div>
 
 @if (loading()) {
-  <div
-    class="vstack gap-3 p-3 border rounded-4 bg-surface"
-    [attr.aria-busy]="true"
-    [attr.aria-label]="'Loading ' + label()"
-  >
+  <div class="vstack gap-3 p-3 border rounded-4 bg-surface" aria-hidden="true">
     @for (placeholder of skeletonPlaceholders(); track $index) {
       <app-skeleton variant="text" height="18px" />
     }
@@ -176,7 +172,7 @@
 }
 
 <p class="visually-hidden" [id]="summaryId" aria-live="polite">
-  {{ loading() ? '' : resultSummary() }}
+  {{ loading() ? 'Loading ' + label() : resultSummary() }}
 </p>
 
 <div class="table-footer d-empty-none mt-3"><ng-content select="[tableFooter]" /></div>

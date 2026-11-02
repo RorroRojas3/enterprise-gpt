@@ -5,9 +5,11 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { Dispatcher } from '@ngrx/signals/events';
 import { getAllByRole, getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MCP_AUTH_TYPE, McpServerDto } from '@core/api/mcp.model';
+import { adminEvents } from '@core/events/admin-events';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpServerFixture } from '@testing/catalog';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
@@ -226,6 +228,23 @@ describe('AdminMcps', () => {
     // destroy the form they are filling in.
     expect(element().querySelectorAll('app-mcp-server-form-dialog')).toHaveLength(1);
     expect(element().querySelectorAll('app-deactivate-mcp-server-dialog')).toHaveLength(1);
+  });
+
+  it('moves focus to the main content when deactivating a row removes its kebab', async () => {
+    const live = mcpServerFixture({ name: 'SAP Ledger' });
+    await open([live]);
+    const main = document.body.appendChild(document.createElement('main'));
+    main.id = 'main-content';
+    main.tabIndex = -1;
+    getByRole(element(), 'button', { name: 'Actions for SAP Ledger' }).focus();
+
+    TestBed.inject(Dispatcher).dispatch(adminEvents.mcpCatalogChanged());
+    await harness.fixture.whenStable();
+    backend.expectOne(MCPS_URL).flush([{ ...live, dateDeactivated: '2026-10-31T00:00:00+00:00' }]);
+    await harness.fixture.whenStable();
+
+    expect(document.activeElement).toBe(main);
+    main.remove();
   });
 
   it('does not reopen a dialog left standing when the tab is revisited', async () => {

@@ -5,8 +5,10 @@ import {
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Dispatcher } from '@ngrx/signals/events';
 import { getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { projectEvents } from '@core/events/project-events';
 import { ProjectActionsStore } from '@core/projects/project-actions-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
@@ -64,6 +66,10 @@ describe('InstructionsPanel', () => {
 
   function field(): HTMLTextAreaElement {
     return getByRole<HTMLTextAreaElement>(host(), 'textbox', { name: 'Standing instructions' });
+  }
+
+  function button(name: string): HTMLButtonElement {
+    return getByRole<HTMLButtonElement>(host(), 'button', { name });
   }
 
   function confirmation(): HTMLDialogElement {
@@ -152,6 +158,64 @@ describe('InstructionsPanel', () => {
 
     await expect(decision).resolves.toBe(false);
     expect(field().value).toBe('Half-typed');
+  });
+
+  it('keeps an unsaved edit when a favourite replaces the project object', async () => {
+    await edit('Half-typed');
+
+    TestBed.inject(Dispatcher).dispatch(
+      projectEvents.favorited({ id: PROJECT.id, isFavorite: true }),
+    );
+    await fixture.whenStable();
+
+    expect(field().value).toBe('Half-typed');
+  });
+
+  it('keeps an unsaved edit when a rename echoes the same instructions', async () => {
+    await edit('Half-typed');
+
+    TestBed.inject(Dispatcher).dispatch(projectEvents.updated({ ...PROJECT, name: 'Helios 2' }));
+    await fixture.whenStable();
+
+    expect(field().value).toBe('Half-typed');
+  });
+
+  it('treats trailing whitespace as no change, since the save trims it', async () => {
+    await edit('Cite Jira keys.  ');
+
+    expect(button('Save').getAttribute('aria-disabled')).toBe('true');
+    expect(button('Cancel').getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('keeps focus on Save and the field read-only through the round trip', async () => {
+    document.body.append(host());
+    await edit('New rules.');
+    const save = button('Save');
+    save.focus();
+
+    save.click();
+    await fixture.whenStable();
+
+    expect(document.activeElement).toBe(save);
+    expect(field().readOnly).toBe(true);
+    expect(field().disabled).toBe(false);
+    expect(save.getAttribute('aria-disabled')).toBe('true');
+
+    expectSave().flush({ ...PROJECT, instructions: 'New rules.' });
+    await fixture.whenStable();
+
+    expect(document.activeElement).toBe(save);
+    expect(field().readOnly).toBe(false);
+    host().remove();
+  });
+
+  it('does nothing when an inert Save or Cancel is pressed', async () => {
+    button('Save').click();
+    button('Cancel').click();
+    await fixture.whenStable();
+
+    backend.expectNone((request) => request.method === 'PUT');
+    expect(field().value).toBe('Cite Jira keys.');
   });
 
   it('reverts without leaving the panel when Cancel is pressed', async () => {

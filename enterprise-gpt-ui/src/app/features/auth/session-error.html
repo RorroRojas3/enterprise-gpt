@@ -6,8 +6,8 @@
       [error]="sessionError"
       heading="We couldn’t start Enterprise GPT"
       [headingLevel]="1"
-      [canRetry]="canRetry()"
-      retryLabel="Retry"
+      [canRetry]="true"
+      [retryLabel]="retryLabel()"
       (retried)="retry()"
     />
   }

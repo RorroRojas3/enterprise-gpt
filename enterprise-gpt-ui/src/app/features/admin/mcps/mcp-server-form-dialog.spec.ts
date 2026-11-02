@@ -199,8 +199,7 @@ describe('McpServerFormDialog', () => {
 
     expect(host().querySelector('#mcp-form-scope')).toBeNull();
     // A hidden field contributes nothing to its parent's validity, so the reader can
-    // never reach a disabled Save explained only by a control that is not on screen.
-    expect(submitButton().disabled).toBe(false);
+    // never be refused by a control that is not on screen.
 
     const request = await submit();
     expect(request.request.body).toMatchObject({ authType: 1, scope: null });
@@ -209,14 +208,17 @@ describe('McpServerFormDialog', () => {
   });
 
   it('explains an auth type the wire would not take, without waiting to be touched', async () => {
-    // The select has no matching option, and Save is disabled, so the message cannot wait
-    // for an interaction the disabled button prevents.
+    // The select has no matching option, so the message cannot wait for an interaction.
     await openEdit(mcpServerFixture({ authType: 99 }));
 
     expect((field('mcp-form-auth') as HTMLSelectElement).selectedIndex).toBe(-1);
-    expect(submitButton().disabled).toBe(true);
     expect(errors().join(' ')).toContain('this version doesn’t support (99)');
     expect(field('mcp-form-auth').classList).toContain('is-invalid');
+    expect(field('mcp-form-auth').getAttribute('aria-invalid')).toBe('true');
+
+    submitButton().click();
+    await fixture.whenStable();
+    backend.expectNone(() => true);
   });
 
   it('recovers once a supported auth type is chosen', async () => {
@@ -224,7 +226,6 @@ describe('McpServerFormDialog', () => {
     await choose('mcp-form-auth', NONE);
 
     expect(errors()).toEqual([]);
-    expect(submitButton().disabled).toBe(false);
 
     const request = await submit();
     expect(request.request.body).toMatchObject({ authType: 1 });
@@ -275,7 +276,6 @@ describe('McpServerFormDialog', () => {
     // one place the value could be normalised to '' behind the reader's back.
     expect(field('mcp-form-icon').value).toBe('');
     expect(host().querySelector('#mcp-form-icon-note')?.textContent).toContain('future-brand');
-    expect(submitButton().disabled).toBe(false);
 
     const request = await submit();
     expect((request.request.body as McpServerWriteBody).iconKey).toBe('future-brand');
@@ -302,9 +302,25 @@ describe('McpServerFormDialog', () => {
     await blur('mcp-form-url');
 
     // The server would refuse this too; the point is that it never has to.
-    // `backend.verify()` proves the request never went out, and Save is disabled behind it.
+    // `backend.verify()` proves pressing Save sends nothing.
     expect(errors()).toContain('Enter a full URL beginning with http:// or https://.');
-    expect(submitButton().disabled).toBe(true);
+    submitButton().click();
+    await fixture.whenStable();
+  });
+
+  it.each([
+    ['mcp-form-name', 'A server name is required.'],
+    ['mcp-form-description', 'A description is required.'],
+  ])('says why when %s holds only spaces, rather than doing nothing', async (id, message) => {
+    await openCreate();
+    await fill();
+    await type(id, '   ');
+
+    submitButton().click();
+    await fixture.whenStable();
+
+    expect(errors()).toContain(message);
+    backend.expectNone(() => true);
   });
 
   it('requires a scope on the Entra ID arm', async () => {
@@ -315,7 +331,8 @@ describe('McpServerFormDialog', () => {
 
     // The other direction of the same server rule — required here, refused for None.
     expect(errors()).toContain('A scope is required for an Entra ID server.');
-    expect(submitButton().disabled).toBe(true);
+    submitButton().click();
+    await fixture.whenStable();
   });
 
   it('seeds an edit from the row, without fetching it first', async () => {
@@ -345,11 +362,12 @@ describe('McpServerFormDialog', () => {
     await blur('mcp-form-headers');
 
     // The API refuses this name too; the point is that it never has to. `backend.verify()`
-    // proves the request never went out, and Save is disabled behind it.
+    // proves pressing Save sends nothing.
     expect(errors()).toContain(
       'The “Authorization” header is set by the API and cannot be configured here.',
     );
-    expect(submitButton().disabled).toBe(true);
+    submitButton().click();
+    await fixture.whenStable();
   });
 
   it('seeds stored headers as Name: value lines and echoes them on the PUT', async () => {

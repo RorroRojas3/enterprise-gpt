@@ -54,4 +54,11 @@
     transition-delay: 0s !important;
     scroll-behavior: auto !important;
   }
+
+  // Not frozen: a still spinner reads as a hung page. Bootstrap's own reduced-motion pace.
+  .spinner-border,
+  .spinner-grow {
+    animation-duration: 1.5s !important;
+    animation-iteration-count: infinite !important;
+  }
 }

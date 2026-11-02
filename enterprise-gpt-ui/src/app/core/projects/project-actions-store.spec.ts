@@ -91,7 +91,7 @@ describe('ProjectActionsStore', () => {
       TestBed.tick();
 
       expect(store.formMode()).toBe('create');
-      expect(store.formRejectedName()).toBe('RFP Responses');
+      expect(store.formRejected()?.name).toBe('RFP Responses');
       expect(projectNameMessages(store.formError())).toEqual([DUPLICATE_NAME_MESSAGE]);
       expect(toasts.toasts()).toEqual([]);
     });

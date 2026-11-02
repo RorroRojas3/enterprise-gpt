@@ -69,6 +69,19 @@ describe('ProjectConversationsStore', () => {
     flush();
   }
 
+  it('clears the rows as soon as the route moves to another project', () => {
+    load([conversationFixture()], 12);
+
+    projectId.set('bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee');
+    flush();
+
+    expect(store.entities()).toEqual([]);
+    expect(store.totalCount()).toBe(0);
+    expect(store.isFirstLoad()).toBe(true);
+
+    expectSearch().flush(conversationPage([]));
+  });
+
   it('issues one filtered request, with no drain and no ceiling', () => {
     bind();
 

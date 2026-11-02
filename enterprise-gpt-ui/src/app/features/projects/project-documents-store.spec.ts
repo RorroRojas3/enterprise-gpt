@@ -62,6 +62,36 @@ describe('ProjectDocumentsStore', () => {
     expect(store.count()).toBe(2);
   });
 
+  it('clears the rows as soon as the route moves to another project', () => {
+    bind();
+    expectList().flush([projectDocumentFixture()]);
+    TestBed.tick();
+
+    const other = '22222222-5555-4666-8777-888888888888';
+    projectId.set(other);
+    TestBed.tick();
+
+    expect(store.documents()).toEqual([]);
+    expect(store.isFirstLoad()).toBe(true);
+
+    backend.expectOne(`${TEST_API_BASE_URL}/api/projects/${other}/documents`).flush([]);
+  });
+
+  it('keeps the rows on screen while the same project is read again', () => {
+    bind();
+    const rows = [projectDocumentFixture()];
+    expectList().flush(rows);
+    TestBed.tick();
+
+    store.refresh();
+    TestBed.tick();
+
+    expect(store.documents()).toEqual(rows);
+    expect(store.isFirstLoad()).toBe(false);
+
+    expectList().flush(rows);
+  });
+
   it('removes a row at once and puts it back at its index on a failure', () => {
     bind();
     const first = projectDocumentFixture();

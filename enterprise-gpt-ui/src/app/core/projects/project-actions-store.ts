@@ -43,10 +43,10 @@ interface ProjectActionsState {
   /** The validation problem the server returned for the last attempt. */
   readonly formError: ValidationAppError | null;
   /**
-   * The name the server rejected; {@link formError} shows only while the field still holds it,
-   * since Signal Forms has no `setErrors`.
+   * What the server rejected; {@link formError} shows only while a field still holds it, since
+   * Signal Forms has no `setErrors`.
    */
-  readonly formRejectedName: string | null;
+  readonly formRejected: ProjectWriteBody | null;
   /** The project the delete confirmation names. Null keeps it closed. */
   readonly deleteTarget: ProjectSummaryDto | null;
   /** Ids whose own request is in flight, so one card's kebab disables and not forty. */
@@ -59,7 +59,7 @@ const initialState: ProjectActionsState = {
   formLoading: false,
   formBusy: false,
   formError: null,
-  formRejectedName: null,
+  formRejected: null,
   deleteTarget: null,
   pendingIds: new Set<string>(),
 };
@@ -99,12 +99,12 @@ export const ProjectActionsStore = signalStore(
       patchState(store, { pendingIds: next });
     }
 
-    function rejectForm(cause: unknown, url: string, name: string): void {
+    function rejectForm(cause: unknown, url: string, body: ProjectWriteBody): void {
       const error = toAppError(cause, { url });
 
       // After a cancel there is no field to render under, so it falls through to a toast.
       if (error.kind === 'validation-error' && store.formMode() !== null) {
-        patchState(store, { formError: error, formRejectedName: name });
+        patchState(store, { formError: error, formRejected: body });
 
         return;
       }
@@ -128,7 +128,7 @@ export const ProjectActionsStore = signalStore(
       // exhaustMap: a second submit in flight is a double-click, not a second project. Closes
       // the race under `formBusy`.
       exhaustMap((body) => {
-        patchState(store, { formBusy: true, formError: null, formRejectedName: null });
+        patchState(store, { formBusy: true, formError: null, formRejected: null });
         const url = store._api.build('projects');
 
         return store._http.post<ProjectDto>(url, body).pipe(
@@ -142,7 +142,7 @@ export const ProjectActionsStore = signalStore(
               // holding the row it is navigating to.
               store._afterCreate.current?.(created);
             },
-            error: (cause: unknown) => rejectForm(cause, url, body.name),
+            error: (cause: unknown) => rejectForm(cause, url, body),
             // The only path that always releases the flag, so `cancelForm()` leaves it alone.
             finalize: () => {
               patchState(store, { formBusy: false });
@@ -155,7 +155,7 @@ export const ProjectActionsStore = signalStore(
 
     const _update = rxMethod<{ target: ProjectDto; body: ProjectWriteBody }>(
       exhaustMap(({ target, body }) => {
-        patchState(store, { formBusy: true, formError: null, formRejectedName: null });
+        patchState(store, { formBusy: true, formError: null, formRejected: null });
         setPending(target.id, true);
         const url = store._api.build(`projects/${ApiUrl.segment(target.id)}`);
 
@@ -167,7 +167,7 @@ export const ProjectActionsStore = signalStore(
               store._dispatcher.dispatch(projectEvents.updated(updated));
               patchState(store, { formMode: null, formTarget: null });
             },
-            error: (cause: unknown) => rejectForm(cause, url, body.name),
+            error: (cause: unknown) => rejectForm(cause, url, body),
             finalize: () => {
               setPending(target.id, false);
               patchState(store, { formBusy: false });
@@ -185,7 +185,7 @@ export const ProjectActionsStore = signalStore(
           formTarget: null,
           formLoading: true,
           formError: null,
-          formRejectedName: null,
+          formRejected: null,
         });
         const url = store._api.build(`projects/${ApiUrl.segment(summary.id)}`);
 
@@ -265,7 +265,7 @@ export const ProjectActionsStore = signalStore(
           formTarget: null,
           formLoading: false,
           formError: null,
-          formRejectedName: null,
+          formRejected: null,
         });
       },
 
@@ -293,7 +293,7 @@ export const ProjectActionsStore = signalStore(
           formTarget: project,
           formLoading: false,
           formError: null,
-          formRejectedName: null,
+          formRejected: null,
         });
       },
 
@@ -305,7 +305,7 @@ export const ProjectActionsStore = signalStore(
           formTarget: null,
           formLoading: false,
           formError: null,
-          formRejectedName: null,
+          formRejected: null,
         });
       },
 

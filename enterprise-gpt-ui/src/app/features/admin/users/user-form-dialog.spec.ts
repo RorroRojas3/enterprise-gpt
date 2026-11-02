@@ -109,20 +109,16 @@ describe('UserFormDialog', () => {
     expect(host().textContent).toContain('managed by its MCP server');
   });
 
-  it('refuses to submit an address the schema rejects, and says why once it is left', async () => {
+  it('refuses to submit an address the schema rejects, and says why on the press', async () => {
     await open();
     await type('not-an-email');
 
-    // Submit is disabled while invalid, so the message appears on leaving the field instead.
     submitButton().click();
     await fixture.whenStable();
+
     backend.expectNone((request) => request.method === 'POST');
-    expect(submitButton().disabled).toBe(true);
-
-    emailField().dispatchEvent(new Event('blur'));
-    await fixture.whenStable();
-
     expect(errors()).toContain('Enter a valid email address.');
+    expect(emailField().getAttribute('aria-invalid')).toBe('true');
   });
 
   it('sends the trimmed address with the checked permissions', async () => {

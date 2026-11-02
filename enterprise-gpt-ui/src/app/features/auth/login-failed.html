@@ -19,7 +19,7 @@
   <button
     class="btn btn-primary d-inline-flex align-items-center gap-2 px-4"
     type="button"
-    [disabled]="retrying()"
+    [attr.aria-disabled]="retrying() ? 'true' : null"
     (click)="retry()"
   >
     @if (retrying()) {

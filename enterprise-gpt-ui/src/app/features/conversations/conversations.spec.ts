@@ -10,13 +10,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import {
-  getAllByRole,
-  getByRole,
-  getByText,
-  queryByLabelText,
-  queryByRole,
-} from '@testing-library/dom';
+import { getAllByRole, getByRole, getByText, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ModelDto } from '@core/api/chat-model.model';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
@@ -116,7 +110,7 @@ describe('Conversations', () => {
   }
 
   function skeleton(): HTMLElement | null {
-    return queryByLabelText(element(), 'Loading Conversations');
+    return element().querySelector('[aria-hidden="true"] app-skeleton');
   }
 
   function expectSearch(): TestRequest {
@@ -324,7 +318,7 @@ describe('Conversations', () => {
 
     it('shows a skeleton for the first load, and never for a refinement', async () => {
       await harness.navigateByUrl('/conversations', Conversations);
-      expect(skeleton()?.getAttribute('aria-busy')).toBe('true');
+      expect(skeleton()).not.toBeNull();
 
       expectSearch().flush(conversationPage([conversationFixture()]));
       await harness.fixture.whenStable();

@@ -10,6 +10,9 @@ import {
 import { FormField, disabled, form, maxLength, required, validate } from '@angular/forms/signals';
 import { serverMessagesFor, unmatchedServerMessages } from '@core/errors/server-messages';
 import { Modal } from '@shared/dialog/modal';
+import { FieldErrorState, FieldErrors } from '@shared/forms/field-errors';
+import { InvalidField } from '@shared/forms/invalid-field';
+import { notBlank } from '@shared/forms/not-blank';
 import { ModelActionsStore } from './model-actions-store';
 import {
   MODEL_FIELD_LENGTHS,
@@ -28,7 +31,7 @@ import {
 @Component({
   selector: 'app-model-form-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, Modal],
+  imports: [FieldErrors, FormField, InvalidField, Modal],
   templateUrl: './model-form-dialog.html',
 })
 export class ModelFormDialog {
@@ -45,14 +48,17 @@ export class ModelFormDialog {
 
     required(path.providerId, { message: 'Choose a provider.' });
     required(path.name, { message: 'A display name is required.' });
+    notBlank(path.name, 'A display name is required.');
     maxLength(path.name, MODEL_FIELD_LENGTHS.name, {
       message: `Names are limited to ${MODEL_FIELD_LENGTHS.name} characters.`,
     });
     required(path.deploymentName, { message: 'A deployment name is required.' });
+    notBlank(path.deploymentName, 'A deployment name is required.');
     maxLength(path.deploymentName, MODEL_FIELD_LENGTHS.deploymentName, {
       message: `Deployment names are limited to ${MODEL_FIELD_LENGTHS.deploymentName} characters.`,
     });
     required(path.description, { message: 'A description is required.' });
+    notBlank(path.description, 'A description is required.');
     maxLength(path.description, MODEL_FIELD_LENGTHS.description, {
       message: `Descriptions are limited to ${MODEL_FIELD_LENGTHS.description} characters.`,
     });
@@ -113,7 +119,7 @@ export class ModelFormDialog {
    */
   protected readonly fieldErrors = computed(() => {
     const fromServer = this.actions.formError() !== null || this.actions.formNotFound() !== null;
-    const result = {} as Record<FieldName, FieldErrors>;
+    const result = {} as Record<FieldName, FieldErrorState>;
 
     for (const field of SERVER_FIELDS) {
       const state = this.f[field]();
@@ -128,6 +134,22 @@ export class ModelFormDialog {
     }
 
     return result;
+  });
+
+  protected readonly providerErrors = computed<FieldErrorState>(() => {
+    const field = this.fieldErrors().providerId;
+    const notFound = this.providerNotFound();
+
+    return {
+      show: field.show || !!notFound,
+      messages: [...(field.show ? field.messages : []), ...(notFound ? [notFound] : [])],
+    };
+  });
+
+  protected readonly defaultErrors = computed<FieldErrorState>(() => {
+    const conflict = this.defaultConflict();
+
+    return { show: conflict !== null, messages: conflict === null ? [] : [conflict] };
   });
 
   /**
@@ -195,11 +217,6 @@ const SERVER_FIELDS = [
 ] as const;
 
 type FieldName = (typeof SERVER_FIELDS)[number];
-
-interface FieldErrors {
-  readonly show: boolean;
-  readonly messages: readonly string[];
-}
 
 /** Worded for the reader, and matching what both server validators say. */
 const DEFAULT_CONFLICT_MESSAGE =

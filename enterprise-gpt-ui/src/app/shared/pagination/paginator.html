@@ -35,7 +35,7 @@
       </button>
     </li>
 
-    @for (entry of entries(); track $index) {
+    @for (entry of entries(); track entry === gap ? 'gap-' + $index : entry) {
       @if (entry === gap) {
         <li class="page-item disabled" aria-hidden="true"><span class="page-link">…</span></li>
       } @else {

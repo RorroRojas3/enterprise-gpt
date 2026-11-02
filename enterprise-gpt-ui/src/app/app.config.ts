@@ -10,12 +10,14 @@ import {
   provideRouter,
   withComponentInputBinding,
   withEnabledBlockingInitialNavigation,
+  withNavigationErrorHandler,
 } from '@angular/router';
 import { retryInterceptor } from '@core/api/retry-interceptor';
 import { Auth } from '@core/auth/auth';
 import { authInterceptor } from '@core/auth/auth-interceptor';
 import { provideStartupShellHandoff } from '@core/config/startup-shell-handoff';
 import { providePreventDropNavigation } from '@core/dnd/prevent-drop-navigation';
+import { notifyNavigationFailure } from '@core/navigation/navigation-failure';
 import { provideBrowserTelemetry } from '@core/telemetry/browser-telemetry';
 import { Theme } from '@core/theme/theme';
 import { routes } from './app.routes';
@@ -27,7 +29,12 @@ export const appConfig: ApplicationConfig = {
     provideBrowserGlobalErrorListeners(),
     // Without blocking, bootstrap resolves while `authGuard` decides and an empty shell paints
     // behind the startup card.
-    provideRouter(routes, withComponentInputBinding(), withEnabledBlockingInitialNavigation()),
+    provideRouter(
+      routes,
+      withComponentInputBinding(),
+      withEnabledBlockingInitialNavigation(),
+      withNavigationErrorHandler(notifyNavigationFailure),
+    ),
     provideStartupShellHandoff(),
     // For every user, upload grant or not: a file dropped outside a drop target would navigate
     // to it, replacing the app mid-turn.

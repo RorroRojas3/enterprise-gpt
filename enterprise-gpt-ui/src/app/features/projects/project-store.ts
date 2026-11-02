@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
 import { tapResponse } from '@ngrx/operators';
 import {
+  PartialStateUpdater,
   patchState,
   signalStore,
   withComputed,
@@ -33,10 +34,19 @@ interface ProjectState {
   readonly deleted: boolean;
 }
 
+/** Route providers outlive a `:projectId` change, so a different id must clear the last project. */
+function boundTo(projectId: string): PartialStateUpdater<ProjectState> {
+  return (state) => ({
+    projectId,
+    deleted: false,
+    project: state.projectId === projectId ? state.project : null,
+  });
+}
+
 /**
  * The only source of `instructions`, which the listing omits, and the full representation every
- * write here echoes back. Route-scoped, so another project's screen starts empty;
- * `takeUntil(signedOut$)` because `withResetOnSignOut` clears state but cancels nothing.
+ * write here echoes back. `takeUntil(signedOut$)` because `withResetOnSignOut` clears state but
+ * cancels nothing.
  */
 export const ProjectStore = signalStore(
   withState<ProjectState>({ projectId: null, project: null, deleted: false }),
@@ -57,7 +67,7 @@ export const ProjectStore = signalStore(
     const _load = rxMethod<string | null>(
       pipe(
         filter((projectId): projectId is string => projectId !== null),
-        tap((projectId) => patchState(store, { projectId, deleted: false }, setPending())),
+        tap((projectId) => patchState(store, boundTo(projectId), setPending())),
         switchMap((projectId) => {
           const url = store._api.build(`projects/${ApiUrl.segment(projectId)}`);
 

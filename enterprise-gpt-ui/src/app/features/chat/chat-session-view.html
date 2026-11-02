@@ -1,7 +1,10 @@
-<!-- Where the jump-to-latest control hands focus when it removes itself, not <body>. -->
+<!-- In the tab order, so an answer with nothing focusable in it can still be scrolled. Also where
+     the jump-to-latest control hands focus when it removes itself. -->
 <div
   class="chat__body d-flex flex-column flex-fill min-h-0 overflow-y-auto overscroll-contain focus-inset"
-  tabindex="-1"
+  tabindex="0"
+  role="region"
+  aria-label="Conversation"
   [appTranscriptPinning]="bottomSentinel"
   [pinningContent]="pinnedContent"
   #pinning="appTranscriptPinning"

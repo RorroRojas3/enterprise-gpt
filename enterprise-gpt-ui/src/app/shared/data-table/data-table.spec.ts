@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { getByLabelText, getByRole, queryByRole } from '@testing-library/dom';
+import { getByRole, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   NARROW_VIEWPORT,
@@ -192,8 +192,10 @@ describe('DataTable', () => {
     component.loading.set(true);
     await fixture.whenStable();
 
-    expect(getByLabelText(host, 'Loading Conversations').getAttribute('aria-busy')).toBe('true');
-    expect(host.querySelectorAll('app-skeleton').length).toBeGreaterThan(0);
+    expect(host.querySelector('[aria-live="polite"]')?.textContent).toContain(
+      'Loading Conversations',
+    );
+    expect(host.querySelectorAll('[aria-hidden="true"] app-skeleton').length).toBeGreaterThan(0);
     expect(host.querySelector('[role="table"]')).toBeNull();
   });
 

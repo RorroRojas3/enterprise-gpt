@@ -1,109 +1,112 @@
-@if (turn.historyPending()) {
-  <!-- The host's aria-busy covers the wait, which is why the skeleton is aria-hidden. -->
-  <div class="d-flex flex-column gap-3">
-    <app-skeleton [lines]="2" width="60%" />
-    <app-skeleton [lines]="4" />
-  </div>
-}
+<div class="d-flex flex-column gap-3 py-3" [attr.aria-busy]="busy() ? 'true' : null">
+  @if (turn.historyPending()) {
+    <!-- This wrapper's aria-busy covers the wait, which is why the skeleton is aria-hidden. -->
+    <div class="d-flex flex-column gap-3">
+      <app-skeleton [lines]="2" width="60%" />
+      <app-skeleton [lines]="4" />
+    </div>
+  }
 
-@if (turn.historyError(); as historyError) {
-  <!-- The composer stays live beneath this: failing to read history does not block a new turn. -->
-  <app-error-panel
-    [error]="historyError"
-    [canRetry]="canRetry(historyError)"
-    heading="Earlier messages couldn't load"
-    (retried)="turn.retryHistory()"
-  />
-}
+  @if (turn.historyError(); as historyError) {
+    <!-- The composer stays live beneath this: failing to read history does not block a new turn. -->
+    <app-error-panel
+      [error]="historyError"
+      [canRetry]="canRetry(historyError)"
+      heading="Earlier messages couldn't load"
+      (retried)="turn.retryHistory()"
+    />
+  }
 
-@for (entry of turn.entries(); track entry.id) {
-  @switch (entry.kind) {
-    @case ('user') {
-      <div class="transcript__user-row d-flex flex-column align-items-end gap-2">
-        <div class="transcript__bubble">{{ entry.text }}</div>
-        <!-- Only the settled prompt gets one: the optimistic bubble below is mid-turn. -->
-        <div class="transcript__user-footer d-flex align-items-center text-body-secondary">
-          <app-message-copy [text]="entry.text" subject="prompt" />
+  @for (entry of turn.entries(); track entry.id) {
+    @switch (entry.kind) {
+      @case ('user') {
+        <div class="transcript__user-row d-flex flex-column align-items-end gap-2">
+          <div class="transcript__bubble">{{ entry.text }}</div>
+          <!-- Only the settled prompt gets one: the optimistic bubble below is mid-turn. -->
+          <div class="transcript__user-footer d-flex align-items-center text-body-secondary">
+            <app-message-copy [text]="entry.text" subject="prompt" />
+          </div>
         </div>
-      </div>
-    }
-    @case ('assistant') {
-      <!-- Only this arm can be rated: a cut-off turn was never sent a `Finished`, so it holds
+      }
+      @case ('assistant') {
+        <!-- Only this arm can be rated: a cut-off turn was never sent a `Finished`, so it holds
            no message id. -->
-      <app-assistant-turn
-        [snapshot]="entry.snapshot"
-        [timeline]="entry.timeline"
-        [reasoningText]="entry.reasoningText"
-        [reasoningSeconds]="entry.reasoningSeconds"
-        [messageId]="entry.messageId"
-        [rating]="entry.rating"
-        [ratingPending]="isRatingPending(entry.messageId)"
-        [attachments]="entry.attachments"
-        [conversationId]="turn.boundConversationId()"
-        (rated)="rateMessage(entry.messageId, $event)"
-      />
-    }
-    @case ('cutOff') {
-      <!-- The warning precedes the partial answer: "the answer below may be incomplete". -->
-      <app-turn-notice-card
-        [notice]="cutOffNotice"
-        [retryable]="true"
-        (retried)="turn.retryTurn(entry.retry)"
-      />
-      <app-assistant-turn
-        [snapshot]="entry.snapshot"
-        [timeline]="entry.timeline"
-        [reasoningText]="entry.reasoningText"
-        [reasoningSeconds]="entry.reasoningSeconds"
-      />
+        <app-assistant-turn
+          [snapshot]="entry.snapshot"
+          [timeline]="entry.timeline"
+          [reasoningText]="entry.reasoningText"
+          [reasoningSeconds]="entry.reasoningSeconds"
+          [messageId]="entry.messageId"
+          [rating]="entry.rating"
+          [ratingPending]="isRatingPending(entry.messageId)"
+          [attachments]="entry.attachments"
+          [conversationId]="turn.boundConversationId()"
+          (rated)="rateMessage(entry.messageId, $event)"
+        />
+      }
+      @case ('cutOff') {
+        <!-- The warning precedes the partial answer: "the answer below may be incomplete". -->
+        <app-turn-notice-card
+          [notice]="cutOffNotice"
+          [retryable]="true"
+          (retried)="turn.retryTurn(entry.retry)"
+        />
+        <app-assistant-turn
+          [snapshot]="entry.snapshot"
+          [timeline]="entry.timeline"
+          [reasoningText]="entry.reasoningText"
+          [reasoningSeconds]="entry.reasoningSeconds"
+        />
+      }
     }
   }
-}
 
-@if (turn.pendingUserText(); as pending) {
-  <div class="transcript__user-row d-flex flex-column align-items-end gap-2">
-    <div class="transcript__bubble">{{ pending }}</div>
-    <!-- Empty, not a Copy control: it holds the row at its settled height, so nothing shifts
+  @if (turn.pendingUserText(); as pending) {
+    <div class="transcript__user-row d-flex flex-column align-items-end gap-2">
+      <div class="transcript__bubble">{{ pending }}</div>
+      <!-- Empty, not a Copy control: it holds the row at its settled height, so nothing shifts
          when the answer lands. -->
-    <div class="transcript__user-footer d-flex align-items-center text-body-secondary"></div>
-  </div>
-}
-
-@if (turn.showThinking()) {
-  <!-- The gap before the first activity or text is a ridgeline, never a fabricated status. -->
-  <div class="d-flex gap-3">
-    <!-- The same avatar assistant-turn draws; duplicated because the thinking row exists before
-         any turn component does. -->
-    <div class="avatar-circle border transcript__avatar">
-      <app-brand-logo variant="mark" style="width: 20px" />
+      <div class="transcript__user-footer d-flex align-items-center text-body-secondary"></div>
     </div>
-    <app-ridgeline class="pt-2" variant="thinking" />
-  </div>
-}
+  }
 
-@if (turn.showLiveTurn()) {
-  <app-assistant-turn
-    [snapshot]="turn.snapshot()"
-    [timeline]="turn.timeline()"
-    [reasoningText]="turn.liveReasoningText()"
-    [reasoningSeconds]="turn.liveReasoningSeconds()"
-    [streaming]="true"
-  />
-}
+  @if (turn.showThinking()) {
+    <!-- The gap before the first activity or text is a ridgeline, never a fabricated status. -->
+    <div class="d-flex gap-3">
+      <!-- The same avatar assistant-turn draws; duplicated because the thinking row exists before
+         any turn component does. -->
+      <div class="avatar-circle border transcript__avatar">
+        <app-brand-logo variant="mark" style="width: 20px" />
+      </div>
+      <app-ridgeline class="pt-2" variant="thinking" />
+    </div>
+  }
 
-@if (errorNotice(); as notice) {
-  <app-turn-notice-card
-    #errorCard
-    [notice]="notice"
-    [retryable]="errorRetryable()"
-    (retried)="retryNotice()"
-  />
-}
+  @if (turn.showLiveTurn()) {
+    <app-assistant-turn
+      [snapshot]="turn.snapshot()"
+      [timeline]="turn.timeline()"
+      [reasoningText]="turn.liveReasoningText()"
+      [reasoningSeconds]="turn.liveReasoningSeconds()"
+      [streaming]="true"
+    />
+  }
 
-@if (turn.stoppedTurn(); as stopped) {
-  <app-stopped-card [text]="stopped.text" (retried)="turn.restoreStoppedToComposer()" />
-}
+  @if (errorNotice(); as notice) {
+    <app-turn-notice-card
+      #errorCard
+      [notice]="notice"
+      [retryable]="errorRetryable()"
+      (retried)="retryNotice()"
+    />
+  }
 
+  @if (turn.stoppedTurn(); as stopped) {
+    <app-stopped-card [text]="stopped.text" (retried)="turn.restoreStoppedToComposer()" />
+  }
+</div>
+
+<!-- Outside the busy wrapper, which assistive technology may hold live updates behind. -->
 <!-- Exists from first render; only its content changes when a turn ends
      abnormally, so the announcement is reliable. -->
 <p class="visually-hidden" role="status">{{ announcement() }}</p>

@@ -38,6 +38,10 @@ export class SignedOut {
   }
 
   protected async signIn(): Promise<void> {
+    if (this.signingIn()) {
+      return;
+    }
+
     this.signingIn.set(true);
 
     try {

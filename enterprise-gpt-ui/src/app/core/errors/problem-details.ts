@@ -93,6 +93,8 @@ export type AnyProblemDetails =
   | ExportRendererNotConfiguredProblemDetails
   | ProblemDetails;
 
+const STRING_MEMBERS: ReadonlySet<string> = new Set(['title', 'detail', 'instance', 'traceId']);
+
 /**
  * Null for anything that is not a problem body: an HTML error page, an empty body, or
  * `HttpClient`'s `{ error, text }` wrapper for an unparseable one.
@@ -107,7 +109,12 @@ export function parseProblemDetails(value: unknown): AnyProblemDetails | null {
     return null;
   }
 
-  return candidate as unknown as AnyProblemDetails;
+  // A gateway can answer in this shape too, and a mistyped member must not reach a `.trim()`.
+  return Object.fromEntries(
+    Object.entries(candidate).filter(
+      ([key, member]) => !STRING_MEMBERS.has(key) || member === null || typeof member === 'string',
+    ),
+  ) as unknown as AnyProblemDetails;
 }
 
 /** Reads a string extension member by its wire name; null when absent or mistyped. */

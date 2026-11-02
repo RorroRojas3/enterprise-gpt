@@ -4,7 +4,7 @@ import { McpServerActionsStore } from './mcp-server-actions-store';
 
 /**
  * Confirms on the store rather than emitting: the delete is soft and the row stays, so there is
- * no optimistic removal, undo or focus fallback for the screen to handle.
+ * no optimistic removal or undo, and `AdminMcps` recovers focus from its kebab.
  */
 @Component({
   selector: 'app-deactivate-mcp-server-dialog',

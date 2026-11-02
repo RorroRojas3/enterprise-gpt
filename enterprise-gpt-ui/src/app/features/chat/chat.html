@@ -9,14 +9,14 @@
   @if (conversation.current(); as current) {
     <!--
       No aria-pressed: the label already says the direction, and both would announce
-      "Unfavourite …, pressed". Native [disabled] is fine outside a roving-focus menu.
+      "Unfavourite …, pressed".
     -->
     <button
       class="btn btn-ghost btn-icon btn-icon-sm touch-target"
       type="button"
       [class.text-primary]="conversation.isFavorite()"
       [attr.aria-label]="(conversation.isFavorite() ? 'Unfavourite ' : 'Favourite ') + current.name"
-      [disabled]="conversation.actionPending()"
+      [attr.aria-disabled]="conversation.actionPending() ? 'true' : null"
       (click)="actions.toggleFavorite(current)"
     >
       <app-icon [name]="conversation.isFavorite() ? 'bi-star-fill' : 'bi-star'" />
@@ -95,8 +95,11 @@
     <h1 class="fs-6 fw-semibold text-truncate min-w-0 mb-0" [class.visually-hidden]="isNarrow()">
       @if (conversation.name(); as name) {
         {{ name }}
+      } @else if (conversation.error()) {
+        <span class="visually-hidden">Conversation unavailable</span>
       } @else {
         <app-skeleton variant="text" width="200px" height="15px" />
+        <span class="visually-hidden">Loading conversation</span>
       }
     </h1>
 

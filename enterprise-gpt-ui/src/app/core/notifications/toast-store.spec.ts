@@ -1,6 +1,8 @@
 import { TestBed } from '@angular/core/testing';
+import { Dispatcher } from '@ngrx/signals/events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppError } from '@core/errors/app-error';
+import { sessionEvents } from '@core/events/session-events';
 import { ToastStore } from './toast-store';
 
 function appError(overrides: Partial<AppError> = {}): AppError {
@@ -25,19 +27,113 @@ describe('ToastStore', () => {
     vi.useRealTimers();
   });
 
-  it.each(['success', 'info', 'warning', 'error'] as const)(
-    'dismisses a %s toast at exactly three seconds',
-    (tone) => {
-      const store = TestBed.inject(ToastStore);
-      store.show({ tone, title: 'Something happened' });
+  it.each(['success', 'info'] as const)('dismisses a %s toast at exactly three seconds', (tone) => {
+    const store = TestBed.inject(ToastStore);
+    store.show({ tone, title: 'Something happened' });
 
-      vi.advanceTimersByTime(2999);
-      expect(store.toasts()).toHaveLength(1);
+    vi.advanceTimersByTime(2999);
+    expect(store.toasts()).toHaveLength(1);
 
-      vi.advanceTimersByTime(1);
-      expect(store.toasts()).toHaveLength(0);
-    },
-  );
+    vi.advanceTimersByTime(1);
+    expect(store.toasts()).toHaveLength(0);
+  });
+
+  it.each(['warning', 'error'] as const)('keeps a %s toast until it is dismissed', (tone) => {
+    const store = TestBed.inject(ToastStore);
+    const id = store.show({ tone, title: 'Something happened' });
+
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(60_000);
+    expect(store.toasts()).toHaveLength(1);
+
+    store.dismiss(id);
+    expect(store.toasts()).toHaveLength(0);
+  });
+
+  it('keeps a toast of any tone that carries an action', () => {
+    const store = TestBed.inject(ToastStore);
+    store.show({ tone: 'info', title: 'Answer ready', action: { label: 'Open', run: vi.fn() } });
+
+    vi.advanceTimersByTime(60_000);
+
+    expect(store.toasts()).toHaveLength(1);
+    expect(store.toasts()[0]?.persistent).toBe(true);
+  });
+
+  it('evicts the oldest action toast first once the persistent cap is reached', () => {
+    const store = TestBed.inject(ToastStore);
+    store.show({ tone: 'error', title: 'Plain' });
+    store.show({ tone: 'info', title: 'First action', action: { label: 'Open', run: vi.fn() } });
+    for (const title of ['Three', 'Four', 'Five']) {
+      store.show({ tone: 'warning', title });
+    }
+
+    store.show({ tone: 'warning', title: 'Six' });
+
+    expect(store.toasts().map((toast) => toast.title)).toEqual([
+      'Plain',
+      'Three',
+      'Four',
+      'Five',
+      'Six',
+    ]);
+  });
+
+  it('evicts the oldest persistent toast when none carries an action', () => {
+    const store = TestBed.inject(ToastStore);
+    for (const title of ['One', 'Two', 'Three', 'Four', 'Five', 'Six']) {
+      store.show({ tone: 'error', title });
+    }
+
+    expect(store.toasts().map((toast) => toast.title)).toEqual([
+      'Two',
+      'Three',
+      'Four',
+      'Five',
+      'Six',
+    ]);
+  });
+
+  it('leaves timed toasts out of the persistent cap', () => {
+    const store = TestBed.inject(ToastStore);
+    for (const title of ['One', 'Two', 'Three', 'Four', 'Five']) {
+      store.show({ tone: 'error', title });
+    }
+
+    store.success('Saved');
+
+    expect(store.toasts()).toHaveLength(6);
+  });
+
+  it('leaves nothing of a persistent toast behind on sign-out', () => {
+    const store = TestBed.inject(ToastStore);
+    const onRetry = vi.fn();
+    const id = store.show({ tone: 'error', title: 'Failed', traceLine: 'Trace ID: 1', onRetry });
+
+    TestBed.inject(Dispatcher).dispatch(sessionEvents.signedOut());
+    store.runAction(id);
+
+    expect(store.toasts()).toHaveLength(0);
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it('replaces an identical error rather than stacking it during an outage', () => {
+    const store = TestBed.inject(ToastStore);
+
+    store.fromError(appError());
+    store.fromError(appError());
+
+    expect(store.toasts()).toHaveLength(1);
+  });
+
+  it('stacks errors that offer a retry, since replacing one would lose its closure', () => {
+    const store = TestBed.inject(ToastStore);
+
+    store.fromError(appError(), vi.fn());
+    store.fromError(appError(), vi.fn());
+
+    expect(store.toasts()).toHaveLength(2);
+  });
 
   it('clears the timer when a toast is dismissed early', () => {
     const store = TestBed.inject(ToastStore);

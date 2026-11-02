@@ -148,6 +148,10 @@ const CONTRAST_PAIRS = [
   // SC 1.4.11: the Copy control's focus ring and the streaming caret are --bs-info on code.
   { background: 'code-head', foregrounds: ['bs-info'], minimum: NON_TEXT_MINIMUM },
   { background: 'code-bg', foregrounds: ['bs-info'], minimum: NON_TEXT_MINIMUM },
+  // SC 1.4.11: a form control's edge is what identifies it, on every surface controls sit on.
+  { background: 'surface', foregrounds: ['control-border'], minimum: NON_TEXT_MINIMUM },
+  { background: 'bs-body-bg', foregrounds: ['control-border'], minimum: NON_TEXT_MINIMUM },
+  { background: 'bs-tertiary-bg', foregrounds: ['control-border'], minimum: NON_TEXT_MINIMUM },
   // Usage dashboard marks (SC 1.4.11) on the card and the bar track. The line takes --bs-primary
   // because it is the daily series' only presentation; bars two to ten keep an unmeasured
   // --bs-info fill because each carries its value as text.
@@ -341,6 +345,9 @@ const FOCUS_RING = 'focus-ring';
 /** Why a surface the ring could land on is not measured against it. */
 const FOCUS_SURFACE_EXCLUSIONS = {
   bubble: 'no focusable content on it; the message footer sits below the bubble',
+  'bs-btn-bg':
+    "Bootstrap's per-button variable, not a palette colour: an inert button repaints its own " +
+    'resting fill, which the ring offset already clears',
   'bs-primary':
     'the ring is offset, so it sits on the page behind a filled control (button, pill, checked ' +
     'box, skip link), not on the fill; the avatar it fills is not focusable',

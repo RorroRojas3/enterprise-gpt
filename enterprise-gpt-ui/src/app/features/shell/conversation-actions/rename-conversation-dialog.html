@@ -15,10 +15,9 @@
       type="text"
       data-modal-autofocus
       [formField]="f.name"
-      [class.is-invalid]="showErrors()"
-      [attr.aria-describedby]="
-        'rename-conversation-counter' + (showErrorRegion() ? ' rename-conversation-errors' : '')
-      "
+      [appInvalidField]="showErrors()"
+      [fieldErrorsShown]="showErrorRegion()"
+      fieldNote="rename-conversation-counter"
     />
 
     <!-- One row, so the counter survives the invalid state beside the errors. -->
@@ -30,7 +29,7 @@
         -->
         <div
           class="invalid-feedback d-block min-w-0 mt-0"
-          id="rename-conversation-errors"
+          id="rename-conversation-name-errors"
           role="alert"
         >
           @if (showErrors()) {
@@ -68,7 +67,7 @@
     class="btn btn-primary"
     type="submit"
     form="rename-conversation-form"
-    [disabled]="!canSubmit()"
+    [attr.aria-disabled]="actions.renameBusy() ? 'true' : null"
   >
     Rename
   </button>

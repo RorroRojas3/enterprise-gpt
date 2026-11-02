@@ -11,6 +11,8 @@ import { FormField, form, maxLength, required, validate } from '@angular/forms/s
 import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
 import { serverMessagesFor, unmatchedServerMessages } from '@core/errors/server-messages';
 import { Modal } from '@shared/dialog/modal';
+import { InvalidField } from '@shared/forms/invalid-field';
+import { notBlank } from '@shared/forms/not-blank';
 
 /** The server's `MaximumLength` on a conversation name; the counter and cap read it. */
 const NAME_MAX_LENGTH = 256;
@@ -23,7 +25,7 @@ const NAME_MAX_LENGTH = 256;
 @Component({
   selector: 'app-rename-conversation-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, Modal],
+  imports: [FormField, InvalidField, Modal],
   templateUrl: './rename-conversation-dialog.html',
 })
 export class RenameConversationDialog {
@@ -35,6 +37,7 @@ export class RenameConversationDialog {
 
   protected readonly f = form(this.model, (path) => {
     required(path.name, { message: 'A name is required.' });
+    notBlank(path.name, 'A name is required.');
     maxLength(path.name, NAME_MAX_LENGTH, {
       message: `Names are limited to ${NAME_MAX_LENGTH} characters.`,
     });

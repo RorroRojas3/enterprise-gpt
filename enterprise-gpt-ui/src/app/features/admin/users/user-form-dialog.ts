@@ -18,6 +18,8 @@ import {
 } from '@angular/forms/signals';
 import { serverMessagesFor, unmatchedServerMessages } from '@core/errors/server-messages';
 import { Modal } from '@shared/dialog/modal';
+import { FieldErrorState, FieldErrors } from '@shared/forms/field-errors';
+import { InvalidField } from '@shared/forms/invalid-field';
 import { PermissionChecklist } from './permission-checklist';
 import { UserActionsStore } from './user-actions-store';
 
@@ -31,7 +33,7 @@ const EMAIL_MAX_LENGTH = 512;
 @Component({
   selector: 'app-user-form-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, Modal, PermissionChecklist],
+  imports: [FieldErrors, FormField, InvalidField, Modal, PermissionChecklist],
   templateUrl: './user-form-dialog.html',
 })
 export class UserFormDialog {
@@ -92,6 +94,11 @@ export class UserFormDialog {
   protected readonly showErrorRegion = computed(
     () => this.showEmailErrors() || this.unmatched().length > 0,
   );
+
+  protected readonly emailRegion = computed<FieldErrorState>(() => ({
+    show: this.showErrorRegion(),
+    messages: [...(this.showEmailErrors() ? this.emailErrors() : []), ...this.unmatched()],
+  }));
 
   /** A field, not a template arrow: exhaustive no-changes checks see a new closure each pass. */
   protected readonly retryPermissions = (): void => this.actions.retryPermissions();

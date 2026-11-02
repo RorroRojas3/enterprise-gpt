@@ -43,6 +43,10 @@ export class LoginFailed implements OnInit {
   }
 
   protected async retry(): Promise<void> {
+    if (this.retrying()) {
+      return;
+    }
+
     // MSAL's lock has no release API and this page's memoized handshake already ran, so after
     // a failed redirect only a fresh document can try again.
     if (this.retryFailed()) {

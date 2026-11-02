@@ -12,10 +12,19 @@ export interface Toast {
   /** Renders the toast's one button when set. */
   readonly actionLabel: string | null;
   readonly key: string | null;
+  /** Stays until dismissed: it has to be read or acted on, which three seconds does not allow. */
+  readonly persistent: boolean;
 }
 
-/** Every toast dismisses itself after this long, whatever its tone. */
+/** How long a toast that is not {@link Toast.persistent} stays. */
 export const AUTO_DISMISS_MS = 3000;
+
+/** Past this the oldest persistent toast gives way, so a run of failures cannot fill the screen. */
+export const MAX_PERSISTENT_TOASTS = 5;
+
+export function isPersistent(tone: ToastTone, hasAction: boolean): boolean {
+  return tone === 'error' || tone === 'warning' || hasAction;
+}
 
 /** The sprite glyph each tone renders. */
 export const TOAST_ICONS = {

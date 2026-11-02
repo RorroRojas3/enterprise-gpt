@@ -703,13 +703,14 @@ describe('Shell', () => {
       expect(element.classList.contains('shell--collapsed')).toBe(true);
     });
 
-    it('reports its state to assistive technology on the control that changes it', async () => {
+    it('names the direction once, in the name of the control that changes it', async () => {
       const fixture = await render();
       await loadConversations(fixture);
       const element = host(fixture);
 
       const collapse = collapseButton(element);
-      expect(collapse.getAttribute('aria-expanded')).toBe('true');
+      // No aria-expanded: "Collapse sidebar, expanded" says the same thing twice.
+      expect(collapse.hasAttribute('aria-expanded')).toBe(false);
       // No aria-controls: the id is on the <nav> containing the toggle, so it would name the
       // element the user is already in.
       expect(collapse.hasAttribute('aria-controls')).toBe(false);
@@ -718,7 +719,7 @@ describe('Shell', () => {
       await fixture.whenStable();
 
       const expand = getByRole(element, 'button', { name: 'Expand sidebar' });
-      expect(expand.getAttribute('aria-expanded')).toBe('false');
+      expect(expand.hasAttribute('aria-expanded')).toBe(false);
     });
 
     it('names every icon-only control in the strip', async () => {

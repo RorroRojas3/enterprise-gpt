@@ -18,6 +18,7 @@ describe('HardNavigation', () => {
         {
           provide: DOCUMENT,
           useValue: {
+            baseURI: 'https://app.example/gpt/',
             defaultView: { location, addEventListener: vi.fn(), removeEventListener: vi.fn() },
           },
         },
@@ -29,7 +30,7 @@ describe('HardNavigation', () => {
   it('stands the leave guard down before it replaces the document', () => {
     TestBed.inject(HardNavigation).assign('/signed-out');
 
-    expect(location.assign).toHaveBeenCalledWith('/signed-out');
+    expect(location.assign).toHaveBeenCalledWith('https://app.example/gpt/signed-out');
     expect(suspend.mock.invocationCallOrder[0]).toBeLessThan(
       location.assign.mock.invocationCallOrder[0]!,
     );

@@ -3,6 +3,11 @@
   border-left: 4px solid var(--toast-accent);
 }
 
+// `.btn-sm` with no padding falls just under the 24px target size.
+.toast__action {
+  min-block-size: 1.5rem;
+}
+
 .toast__drain {
   position: absolute;
   inset-inline-start: 0;
