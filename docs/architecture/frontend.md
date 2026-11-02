@@ -80,13 +80,17 @@ There is no `environments/` directory and no `fileReplacements`. `public/config.
 committed development copy and is replaced per environment.
 
 The startup shell is not removed in `main.ts`; `provideStartupShellHandoff()` waits for the first
-routed component to render, otherwise an empty app shell paints over the startup card.
+navigation to settle and acts in the render after it, otherwise an empty app shell paints over the
+startup card. A successful or skipped navigation removes the card. A failed one turns it into the
+fatal shell, and a cancelled one leaves it up, since a redirect follows
+([workflows.md](../frontend/workflows.md#1-app-start-and-sign-in)).
 
 ### Providers worth knowing
 
 | Provider | Why it is written the way it is |
 | --- | --- |
 | `provideRouter(..., withEnabledBlockingInitialNavigation())` | Without it the app shell paints behind the startup card while `authGuard` is still deciding. |
+| `provideRouter(..., withNavigationErrorHandler(notifyNavigationFailure))` | Without it a lazy chunk a new deployment replaced fails the navigation in silence. The handler raises a toast with Reload. |
 | `provideHttpClient(withFetch(), withInterceptors([retryInterceptor, authInterceptor]))` | Order is load-bearing: retry is outermost, so each retried attempt re-enters auth and carries a fresh token. `withFetch` makes `HttpClient` and the raw-fetch stream transport share network semantics. |
 | `provideAppInitializer(() => inject(Auth))` | Eager and load-bearing — its constructor subscribes this tab to another tab's sign-out. |
 | `provideAppInitializer(() => inject(Theme))`, `provideBrowserTelemetry()` | Also eager: the theme applies before first paint, and telemetry (when configured) starts with the app. |

@@ -99,7 +99,16 @@ the project detail trio provided on the route (`ProjectConversationsStore` is al
 expanded sidebar project), the four admin screen stores, the composer's dictation store, and the
 project screen's two `UploadStore` instances.
 
-Two scoping choices worth knowing:
+Scoping choices worth knowing:
+
+- **A route-provided store outlives a change of route parameter.** Angular reuses the route, and so
+  its providers, when only `:projectId` changes. `ProjectStore`, `ProjectDocumentsStore` and
+  `ProjectConversationsStore` therefore clear their data when they are bound to an id other than the
+  one they hold, so the previous project never shows under the new one while its request is in
+  flight. Binding the same id again keeps its rows: that is a refresh or a retry, and wiping them
+  would flash an empty list. `switchMap` already cancels the old request; the clear covers what it
+  cannot, the state the old response left behind. A new route-provided store that binds an id needs
+  the same.
 
 - `UiStore` deliberately does **not** reset on sign-out. Sidebar width and pinned projects are
   device-local preferences, not the signed-in user's data.
@@ -149,13 +158,38 @@ and the store reads those signals.
 - **`atCapacity`** is `runningCount >= maxConcurrentTurns`; see
   [../conversations/turn-lifecycle.md](../conversations/turn-lifecycle.md#concurrency).
 
+### Toasts
+
 `ToastStore` takes an optional `action: { label, run }` on `ToastInput` and renders at most one
 button for it; `onRetry` stays as shorthand for an action labelled Retry, and `action` wins if both
 are given. The stored `Toast` carries `actionLabel`; each item emits `actioned`, which the region
 passes to `runAction(id)`, and that dismisses the toast before it calls the handler, so a toast the
 handler raises does not stack under the one just used. A `key` replaces a live toast with the same
-key, and `dismissKey(key)` clears it. Every toast dismisses itself after `AUTO_DISMISS_MS` (three
-seconds), whatever its tone.
+key, and `dismissKey(key)` clears it.
+
+**Lifetime.** A toast is `persistent` when its tone is `error` or `warning`, or when it carries an
+action (`isPersistent`): it has to be read or acted on, which three seconds does not allow. A
+persistent toast stays until the reader dismisses it, uses its action, or its key is replaced. Success
+and info toasts without an action dismiss themselves after `AUTO_DISMISS_MS` (three seconds), and only
+those render the drain bar.
+
+**Cap.** At most `MAX_PERSISTENT_TOASTS` (5) persistent toasts stay at once, so a run of failures
+cannot fill the screen. Adding one past the cap evicts the oldest action toast first, because the
+sidebar mark or upload chip still carries what it said, and otherwise the oldest persistent toast.
+Timed toasts do not count towards it.
+
+**Repeats.** `fromError` without a retry is keyed `error:<title>`, so the same failure repeated during
+an outage replaces its toast rather than stacking. With a retry it is unkeyed, since replacing it
+would discard the closure the Retry button runs.
+
+**Focus.** When the toast holding focus leaves the list by any route (dismiss, action, replacement,
+the cap, the timer, sign-out), `ToastRegion` returns focus to `#main-content` through
+`recoverFocusOn(this.store.toasts)` (`core/a11y/recover-focus.ts`). It watches the list rather than
+each button, since every one of those routes changes the list. It is an effect, which runs before the
+template updates, the last moment focus is still inside the toast that is about to go; it then acts
+after the render, and only if the removal left focus on `<body>` or a detached element, so a reader
+who has already moved on is not interrupted. `AdminModels` and `AdminMcps` use the same helper on
+their result lists.
 
 ## Key files
 
@@ -166,6 +200,10 @@ seconds), whatever its tone.
 | `enterprise-gpt-ui/src/app/core/conversations/conversation-list-store.ts` | The reference list store |
 | `enterprise-gpt-ui/src/app/core/events/` | The six event groups |
 | `enterprise-gpt-ui/src/app/core/conversations/conversation-activity-store.ts` | Running and unseen endings, the cap, the "Answer ready" toast |
+| `enterprise-gpt-ui/src/app/core/notifications/toast.model.ts` | `AUTO_DISMISS_MS`, `MAX_PERSISTENT_TOASTS` and `isPersistent` |
+| `enterprise-gpt-ui/src/app/core/notifications/toast-store.ts` | Lifetime, the persistent cap, keyed replacement |
+| `enterprise-gpt-ui/src/app/core/a11y/recover-focus.ts` | `recoverFocusOn`: returns focus to `#main-content` when a removal drops it |
+| `enterprise-gpt-ui/src/app/core/projects/project-actions-store.ts` | Project writes; `formRejected` is the rejected body, so server errors render at the field they name |
 | `enterprise-gpt-ui/src/app/features/chat/chat-sessions.ts` | The registry that owns each conversation's turn and upload stores |
 | `enterprise-gpt-ui/src/app/core/session/session-store.ts` | Identity and permissions |
 | `enterprise-gpt-ui/src/app/features/` | Each feature's own stores, beside the screens that provide them |

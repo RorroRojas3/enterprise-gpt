@@ -55,7 +55,7 @@ features render. `core/` imports no feature.
 
 | Topic | Owns | Main files | Consumed by |
 | --- | --- | --- | --- |
-| `a11y/` | One-shot focus move after first render | `focus-on-render.ts` (`focusOnRender`) | Auth pages, `SigningOut` |
+| `a11y/` | Focus moves | `focus-on-render.ts` (`focusOnRender`, one shot after first render), `recover-focus.ts` (`recoverFocusOn(source)`, an effect that returns focus to `#main-content` when a change to `source` removes the focused control) | Auth pages, `SigningOut`; `ToastRegion`, `AdminModels`, `AdminMcps` |
 | `api/` | Wire DTOs, URL building, transport policy, request-state store features | `api-url.ts` (`ApiUrl.build/segment/owns`), `retry-interceptor.ts` (`retryInterceptor`, `skipRetry`), `assistant-ui-contract.ts` (vendored stream contract and `foldAssistantEvents`), `*.model.ts` (`conversation`, `project`, `document`, `user`, `chat-model`, `mcp`, `provider`, `usage-report`, `conversation-export`, `paginated-response`, `permission-ids`), `with-request-status.ts`, `with-offset-pagination.ts`, `with-pending-ids.ts`, `with-client-query.ts` | Every store and client |
 | `auth/` | MSAL handshake, tokens, guards, interceptor | `auth.ts` (`Auth`: handshake, `signIn`, `signOut`, cross-tab sign-out), `access-token-client.ts` (`AccessTokenClient`), `auth-interceptor.ts`, `auth-guard.ts`, `session-guard.ts`, `admin-guard.ts` (`adminCanMatch`), `msal-instance-token.ts` (`MSAL_INSTANCE`, `buildMsalConfig`) | `app.config.ts`, `app.routes.ts`, stream and upload clients, `App` |
 | `catalog/` | What the signed-in user may pick: models, MCP servers, their credentials | `model-catalog-store.ts`, `mcp-catalog-store.ts`, `mcp-credential-store.ts`, `provider-meta.ts`, `mcp-server.ts` (`needsUserApiKey`, `isMcpServerRetired`) | Composer menus, `TurnSettingsStore`, `SessionBootstrap`, shell `McpCredentialDialog`, admin |
@@ -68,7 +68,7 @@ features render. `core/` imports no feature.
 | `events/` | The six `eventGroup`s | `session-events.ts` (also `injectSignedOut`, `injectSignedOutAbort`), `conversation-events.ts`, `project-events.ts`, `turn-events.ts`, `mcp-events.ts`, `admin-events.ts` | See [Event bus](#event-bus) |
 | `icons/` | Inline SVG sprite loader | `load-icon-sprite.ts` | `main.ts` |
 | `layout/` | Shell-to-screen slot for the mobile navbar | `shell-chrome.ts` (`ShellChrome`) | `Shell` provides; `Chat`, `AdminLayout` publish; `MobileNavbar` reads |
-| `navigation/` | Route constants, matcher, document-level navigation | `route-paths.ts` (`CHAT_ROUTE`, `ADMIN_ROUTE`, ...), `chat-matcher.ts` (`chatMatcher`, `CONVERSATION_ID_PARAM`), `hard-navigation.ts`, `unload-prompt.ts` (`UnloadPrompt`) | Guards, `Auth`, `ChatSessions`, route files |
+| `navigation/` | Route constants, matcher, document-level navigation | `route-paths.ts` (`CHAT_ROUTE`, `ADMIN_ROUTE`, ...), `chat-matcher.ts` (`chatMatcher`, `CONVERSATION_ID_PARAM`), `hard-navigation.ts` (`assign` resolves against `document.baseURI`), `unload-prompt.ts` (`UnloadPrompt`), `page-changes.ts` (`injectPageChanges`), `navigation-failure.ts` (`notifyNavigationFailure`) | Guards, `Auth`, `ChatSessions`, route files, `Shell` |
 | `notifications/` | Toasts | `toast-store.ts`, `toast-region.ts`, `toast-item.ts`, `toast.model.ts` | `App` mounts the region; most action stores raise toasts |
 | `preferences/` | The only `localStorage` call site | `local-preferences.ts` (`PREFERENCE_KEYS`: `theme`, `sidebar`) | `Theme`, `UiStore` |
 | `projects/` | Project lookup, mutations, per-project conversation list | `project-lookup-store.ts`, `project-actions-store.ts`, `project-conversations-store.ts`, `project-picker.ts`, `project-update.ts` (`toProjectBody`), `project-summary.ts`, `project-load.ts`, `duplicate-name.ts` | Sidebar, `Composer`, `Chat`, `Projects`, project detail, shell dialogs |
@@ -120,7 +120,7 @@ except `*.model.ts`.
 | `file-drop/` | Drop target and overlay | `file-drop-target.ts`, `drop-overlay.ts` |
 | `files/` | Attachment chip and file glyph | `attachment-chip.ts`, `attachment.model.ts`, `file-glyph.ts` |
 | `formatting/` | Pure formatters | `bytes.ts`, `relative-time.ts` |
-| `forms/` | Form controls | `switch.ts` |
+| `forms/` | Form controls and the field-error contract | `switch.ts`, `field-errors.ts` (`FieldErrors`, `FieldErrorState`), `invalid-field.ts` (`InvalidField`), `not-blank.ts` (`notBlank`) |
 | `icons/` | Sprite icons | `icon.ts`, `icon-names.ts`, `brand-icon.ts`, `mcp-icon.ts` |
 | `layout/` | Breakpoints and media queries | `breakpoints.ts`, `media-query.ts` (`injectMediaQuery`) |
 | `loading/` | Skeleton placeholder | `skeleton.ts` |
@@ -165,7 +165,7 @@ paths are relative to `api/`.
 | --- | --- | --- | --- | --- |
 | `SessionStore` | `core/session/session-store.ts` | `user` and permissions; `isAdministrator`, `canUploadFiles` | `POST users/me` | `SessionBootstrap`, `adminCanMatch`, sidebar, user footer, `Composer`, `SessionError`, admin users, project files |
 | `UiStore` | `features/shell/ui-store.ts` | `sidebarCollapsed`, persisted in `localStorage` | none | `Shell` |
-| `ToastStore` | `core/notifications/toast-store.ts` | Live toasts, timers, keyed replacement | none | `ToastRegion` and most action stores |
+| `ToastStore` | `core/notifications/toast-store.ts` | Live toasts, timers for the timed ones, the persistent cap, keyed replacement | none | `ToastRegion` and most action stores |
 | `ModelCatalogStore` | `core/catalog/model-catalog-store.ts` | Models the user may pick (`withEntities`, memoized load) | `GET models` | `SessionBootstrap`, `TurnSettingsStore`, `Composer`, `ModelMenu`, `Conversations` |
 | `McpCatalogStore` | `core/catalog/mcp-catalog-store.ts` | MCP servers the user may use, credential status | `GET mcps` | `SessionBootstrap`, `TurnSettingsStore`, `ToolsMenu` |
 | `McpCredentialStore` | `core/catalog/mcp-credential-store.ts` | Per-server save/remove in flight | `PUT mcps/{id}/credential`, `DELETE mcps/{id}/credential` | `ToolsMenu`, `McpCredentialDialog` |
@@ -192,9 +192,9 @@ paths are relative to `api/`.
 | `ConversationLibraryStore` | `features/conversations/conversation-library-store.ts` | `Conversations` | Searchable, paginated library | `GET conversations/search` | `Conversations` |
 | `DocumentLibraryStore` | `features/documents/document-library-store.ts` | `Documents` | Document rows, grouped or flat | `GET documents` | `Documents` |
 | `ProjectListStore` | `features/projects/project-list-store.ts` | `Projects` | Project grid | `GET projects` | `Projects` |
-| `ProjectStore` | `features/projects/project-store.ts` | `project-detail.routes.ts` | One project's detail, `deleted` flag | `GET projects/{id}` | `ProjectDetail`, tabs, `ProjectComposerHostStore` |
-| `ProjectDocumentsStore` | `features/projects/project-documents-store.ts` | `project-detail.routes.ts` | A project's files | `GET projects/{id}/documents`, `DELETE projects/{id}/documents/{documentId}` | `ProjectDetail`, `ProjectFiles` |
-| `ProjectConversationsStore` | `core/projects/project-conversations-store.ts` | `project-detail.routes.ts`; also each `SidebarProjectConversations` | A project's conversations | `GET conversations/search?projectId=` | `ProjectDetail`, `ProjectConversations`, sidebar |
+| `ProjectStore` | `features/projects/project-store.ts` | `project-detail.routes.ts` | One project's detail, `deleted` flag; cleared when bound to a different id | `GET projects/{id}` | `ProjectDetail`, tabs, `ProjectComposerHostStore` |
+| `ProjectDocumentsStore` | `features/projects/project-documents-store.ts` | `project-detail.routes.ts` | A project's files; cleared when bound to a different id | `GET projects/{id}/documents`, `DELETE projects/{id}/documents/{documentId}` | `ProjectDetail`, `ProjectFiles` |
+| `ProjectConversationsStore` | `core/projects/project-conversations-store.ts` | `project-detail.routes.ts`; also each `SidebarProjectConversations` | A project's conversations; cleared when bound to a different id | `GET conversations/search?projectId=` | `ProjectDetail`, `ProjectConversations`, sidebar |
 | `ProjectComposerHostStore` | `features/projects/project-composer-host-store.ts` | `ProjectDetail` | Draft and create-in-flight; implements `ComposerHost` | `POST conversations` | `Composer`, through `COMPOSER_HOST` only |
 | `UploadStore` (project) | `core/uploads/upload-store.ts` | `ProjectDetail` | Files-tab transfers, bound to the project | via upload clients | `ProjectDetail`, `ProjectFiles` |
 | `DictationStore` | `core/composer/dictation-store.ts` | `Composer` | Speech-recognition state | none | `Composer` |

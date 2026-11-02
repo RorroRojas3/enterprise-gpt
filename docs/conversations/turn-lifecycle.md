@@ -250,7 +250,7 @@ At the cap:
 
 - The composer disables Send and says why. A conversation whose own turn is the one running shows
   Stop instead, never the note.
-- **Retry** is refused with a timed warning toast, one at a time.
+- **Retry** is refused with a keyed warning toast, one at a time. It stays until dismissed.
 - A prompt **handed over** from the project screen is not sent; it is kept in the composer.
 
 Freeing a slot lifts all three at once. The cap is a client courtesy, not a server limit.

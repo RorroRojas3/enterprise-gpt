@@ -89,6 +89,46 @@ shows for a focus the browser marks `:focus-visible`, so that restored focus can
 the new chevron for a keyboard user without leaving it stuck open for a pointer user who never
 hovered the control focus landed on.
 
+Neither chevron carries `aria-expanded`: its name already states the direction ("Expand sidebar",
+"Collapse sidebar"), and a state on top of it would be announced twice.
+
+## Changing page
+
+A client-side navigation gives a keyboard or screen-reader user no cue that anything happened: the
+old page is gone, but focus stays where it was and no page load is announced. The shell supplies the
+cue, and closes whichever sidebar overlay the navigation came from.
+
+`injectPageChanges()` (`core/navigation/page-changes.ts`) turns router events into two signals:
+
+| Event | Meaning |
+| --- | --- |
+| `page` | The path changed |
+| `same` | A link to the URL the reader is already on (the router's ignored same-URL navigation) |
+
+Everything else is silent, because the page is updating itself rather than being left. A query-only
+navigation keeps the same path. A programmatic `replaceUrl` is the URL catching up to a conversation
+the reader is already in. Back and Forward are the exception: the router marks them `replaceUrl`
+too, so the navigation trigger (`popstate`) is what keeps them counted as `page`.
+
+`Shell` reacts to both events by closing the mobile drawer and the tablet overlay: both are modal in
+effect, so a navigation while one is up came from inside it. On `same` that is all. On `page` it also
+settles the reader on the new page:
+
+1. **Announce.** It writes the document title into a persistent `role="status"` region
+   (`pageAnnouncement`). The region sits outside `<main>`, which can be `inert` and whose content is
+   what changed. The routed screens supply the title; the project tabs (`instructions`, `files`,
+   `conversations`) have static route titles for this reason.
+2. **Focus `<main>`.** It focuses `#main-content` unless a `dialog[open]` exists or focus is already
+   inside `<main>`, so the composer, a project tab or a page that placed focus itself keeps it.
+
+The focus move waits until the closing overlay has finished with focus:
+
+- **Mobile.** The shell waits for the drawer's `(closed)` output. The native dialog `close` event is
+  queued, and `Offcanvas` restores focus to the hamburger inside it, which would overwrite a move
+  made earlier.
+- **Tablet and desktop.** The shell waits for `afterNextRender`, by which point `inert` has lifted
+  from `<main>` and the element can take focus.
+
 ## Activity indicators
 
 Because a turn keeps streaming after the user leaves its conversation, the shell has to show which
@@ -123,6 +163,9 @@ inside the app never prompts, because the sessions survive it.
   `Auth.signOut` and `AccessTokenClient` all wrap their redirects in `leaving()`. If the redirect
   rejects, the page stayed and the guard is re-armed; `AccessTokenClient` then suspends again for the
   one rejection that means a redirect is already committed.
+- **`HardNavigation.assign(url)` resolves `url` against `document.baseURI`.** An origin-absolute path
+  such as `/signed-out` would leave a deployment served from a sub-path; resolved against the base
+  href it stays inside it.
 
 ## Overlays
 
@@ -157,6 +200,9 @@ would navigate the browser to that file, discarding an in-flight turn.
 | `enterprise-gpt-ui/src/app/features/admin/admin-columns.ts` | Admin table columns up to the `xxl` edge |
 | `enterprise-gpt-ui/src/styles/_overlays.scss` | The native `<dialog>` bridge for modal and offcanvas |
 | `enterprise-gpt-ui/src/app/features/shell/shell.ts` | Mode derivation and composition |
+| `enterprise-gpt-ui/src/app/core/navigation/page-changes.ts` | `injectPageChanges`: which navigations count as `page` or `same` |
+| `enterprise-gpt-ui/src/app/core/a11y/recover-focus.ts` | `recoverFocusOn`: focus back to `#main-content` when a removal drops it; used by the toast region and the admin model and MCP tables |
+| `enterprise-gpt-ui/src/app/core/navigation/navigation-failure.ts` | The toast a failed later navigation raises, with Reload |
 | `enterprise-gpt-ui/src/app/features/shell/sidebar/sidebar.ts` | The two width branches |
 | `enterprise-gpt-ui/src/app/features/shell/ui-store.ts` | Device-local layout preferences |
 | `enterprise-gpt-ui/src/app/shared/badges/activity-indicator.ts` | The spinner, dot or warning shown on rows and corner marks |
@@ -164,6 +210,7 @@ would navigate the browser to that file, discarding an in-flight turn.
 | `enterprise-gpt-ui/src/app/shared/{menu,dialog,overlay}/` | Menu, modal, offcanvas, the tooltip directive and `anchored-panel` |
 | `enterprise-gpt-ui/src/app/shared/dialog/modal.spec.ts` | Focus restore on close and destroy |
 | `enterprise-gpt-ui/src/app/core/navigation/unload-prompt.spec.ts` | When the listener is attached, suspended and re-armed |
+| `enterprise-gpt-ui/src/app/core/navigation/page-changes.spec.ts` | Which navigations are `page`, `same` or silent |
 
 ## Related
 

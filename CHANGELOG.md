@@ -44,8 +44,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   than provided by `Chat`, and `bindRoute` is replaced by a one-shot `init(id)`. The `ComposerHost`
   contract gains `draft` and `setDraft`. `turnEvents` gains `interrupted` beside `completed`, and the
   first-turn name refresh moved from the chat screen to `ConversationActivityStore`.
-- Every toast now dismisses itself after three seconds, whatever its tone. Error and warning toasts
-  used to stay until dismissed, and success and info toasts lasted five seconds.
+- Success and info toasts now dismiss themselves after three seconds (they used to last five), and
+  only they show the countdown bar. Error toasts, warning toasts and any toast with an action button
+  (Retry, Open) stay until you dismiss them, so a failure or an "Answer ready" cannot vanish unread.
+  At most five of these stay at once: past that, the oldest one with an action goes first, then the
+  oldest of the rest. The same error repeated, such as during an outage, now replaces its toast
+  instead of stacking. When the toast that holds keyboard focus goes away, focus moves to the main
+  content instead of dropping to the top of the page.
+- Navigating inside the app is now announced and keeps keyboard focus sensible. A link to another
+  page closes the mobile drawer or the tablet sidebar overlay, announces the new page's title to
+  screen readers, and moves focus to the main content unless it is already inside it (the composer,
+  say) or a dialog is open. A link to the page you are already on just closes the overlay. Changing only the
+  query string, or the address catching up to a conversation you are already in, does neither. The
+  project Instructions, Files and Conversations tabs now have their own page titles.
 - The Angular client is restyled on full Bootstrap 5.3, with Bootstrap's default type, spacing and
   radius scales, so text and spacing are visibly larger than before. The desktop layout with the
   persistent sidebar now starts at 992px instead of 1024px, and the palette lives under Bootstrap's
@@ -131,6 +142,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stale or misplaced comments were corrected. PRD story ids were also removed from UI test names and
   from the `check-forbidden-apis`, `check-initial-chunk` and `check-icon-names` build-gate messages.
   Only comments, test names and message text changed, so behaviour is unchanged.
+- Forms now explain themselves instead of greying out their submit button. Create, edit, rename,
+  MCP credential and the admin forms stay pressable when a field is invalid: pressing Save or Enter
+  marks every field and shows what is wrong beside it, and only a save in flight dims the button. A
+  name of only spaces is rejected with its own message. The project form now shows a server rejection
+  of the description or instructions beside that field, clearing on the next keystroke, as it already
+  did for the name. For anyone extending the UI: `shared/forms/` gains `FieldErrors`, `InvalidField`
+  and `notBlank`, and `ProjectActionsStore.formRejectedName` is now `formRejected`, the whole
+  rejected body.
+- Form control borders now use a new `control-border` colour that measures at least 3:1 against the
+  page, card and tertiary surfaces in both themes, where the faint divider colour did not;
+  `check:tokens` gates it. Spinners now keep turning under "reduce motion", at Bootstrap's slower
+  1.5 s, since a frozen one looked like a hung page.
 
 ### Removed
 
@@ -168,6 +191,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   elsewhere. Icon-button tooltips (the sidebar chevron, and menu triggers that carry a hint) now
   appear on hover and on keyboard focus, rather than on any focus — so a click that moves focus
   programmatically no longer leaves a flyout behind for the pointer to clear.
+- Moving from one project to another no longer shows the previous project's details, files and
+  conversations until the new ones arrive. The screen shows a skeleton during the switch; a refresh
+  of the same project keeps what it has.
+- Favouriting or renaming a project no longer wipes instructions you have typed but not saved. While
+  the instructions save, the field is read-only instead of disabled and Save and Cancel are dimmed
+  rather than switched off, so keyboard focus stays where it was.
+- Pressing a button that is working, such as Favourite, a document's Download or Save, no longer
+  throws keyboard focus to the top of the page. These buttons now stay focusable and ignore the
+  press, and a dimmed button keeps its resting look on hover. A second press on a document that is
+  already downloading is ignored.
+- A navigation that fails now tells you. If the first page fails to load, the startup card turns
+  into the "application could not be loaded" screen instead of hanging; any later failure, usually
+  a new deployment replacing a page you had open, raises a "That page could not be opened" toast
+  with a Reload button. The hard redirect to the signed-out page also stays inside the app's base
+  path on a sub-path deployment, and an error response with a non-text `title`, `detail`, `instance` or
+  `traceId` no longer breaks the error message built from it.
+- Keyboard focus is no longer lost when the control that held it disappears: a toast that is
+  dismissed, replaced or expires, or a model or MCP server retired from its row menu, returns focus
+  to the main content.
+- Screen-reader and keyboard fixes: the project page has a heading (the project name, which still
+  renames it), the chat heading stays named while a conversation loads or fails, a long answer with
+  nothing focusable in it can be scrolled from the keyboard, the transcript announces its status
+  messages while it is busy, tables announce "Loading" and the paginator keeps focus when its page
+  window slides. Document group toggles keep one name and report open or closed, and the sidebar's
+  collapse and expand buttons no longer announce a state twice.
 
 ### Security
 

@@ -85,6 +85,10 @@ Bottom detection has a tolerance band rather than an exact comparison, because s
 means the scroll position rarely equals the exact bottom. A jump control appears when the reader has
 scrolled away, and following resumes when they return to the bottom.
 
+The scroller is itself a tab stop, a labelled region ("Conversation"), so a keyboard can scroll an
+answer with nothing focusable in it. It is also where focus lands when the jump control removes
+itself. See [design-system.md](design-system.md#names-roles-and-live-regions).
+
 ## Diagrams and math
 
 `mermaid` and `katex` are dependencies, and are in **neither** bundle graph — roughly 1.5 MB and

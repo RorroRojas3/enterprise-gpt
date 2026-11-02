@@ -47,9 +47,17 @@ before it: config, then MSAL, then the router, then a token, then the user. The 
 8. On success, `ensureSession()` starts four loads without awaiting them: `ModelCatalogStore`
    `GET api/models`, `McpCatalogStore` `GET api/mcps`, and the `_started` sentinels of
    `ConversationListStore` and `ProjectLookupStore`, whose `onInit` queries then fire (§2).
-9. The lazy `Shell` and the matched child load. After the first `NavigationEnd`, `NavigationSkipped`
-   or `NavigationError`, `afterNextRender` calls `hideStartupShell()`. `NavigationCancel` does not
-   hide it, since a cancel means a redirect follows.
+9. The lazy `Shell` and the matched child load. The first navigation to settle decides the startup
+   card's fate, in `afterNextRender` so bootstrap still finds `<app-root>`:
+   - `NavigationEnd` or `NavigationSkipped`: `hideStartupShell()`.
+   - `NavigationError`: `showFatalShell` turns the card into the failure screen ("The application
+     could not be loaded"), because there is no screen to hand over to.
+   - `NavigationCancel`: the card stays, since a cancel means a redirect follows.
+
+   A navigation that fails *after* that, typically a lazy chunk a new deployment replaced, reaches
+   `notifyNavigationFailure` (`core/navigation/navigation-failure.ts`), registered with
+   `withNavigationErrorHandler`. It raises an error toast keyed `navigation-failure` with a
+   **Reload** action that calls `HardNavigation.reload()`, since only a reload fetches the new chunk.
 10. `/admin` differs: `adminCanMatch` runs during URL recognition, **before** any `canActivate`, so it
     resolves `Auth.ready()` and `ensureSession()` itself, then returns `/forbidden` for a non-admin
     without fetching the admin chunk.
@@ -293,7 +301,9 @@ until Send. The turn then waits for ingestion, because a stream opened early can
    root service, so the request outlives a screen the cancel often navigates away from.
 7. **Failure.** A refused POST sets the chip `failed` and raises an error toast built by
    `describeUploadRejection`, with **Retry** when `retryable`. The chip carries its own Retry
-   (`uploads.retry(id)`) too: toasts dismiss after three seconds, so the chip is the durable control.
+   (`uploads.retry(id)`) too. The toast persists until dismissed, but it is withdrawn with the chip,
+   and the persistent-toast cap evicts an action toast first, so the chip is the control that
+   always remains.
 
 Deeper background: [ingestion.md](../documents/ingestion.md).
 
@@ -338,7 +348,16 @@ sequenceDiagram
    projects cancels the previous request). Requests: **`GET api/projects/{id}`**, **`GET
    api/projects/{id}/documents`**, **`GET api/conversations/search?projectId=`**. The tab strip counts
    come from these, so they are right from any tab. `project.deleted()` navigates back to `/projects`.
-3. **Standing instructions.** `InstructionsPanel` edits a `linkedSignal` draft. Save calls
+   - **Switching projects clears the data.** A route's providers survive a `:projectId` change, so the
+     three stores would otherwise show the previous project until the new response lands. Each one
+     clears its data when the id it binds to differs from the one it holds, and the detail screen
+     shows its skeleton meanwhile. Binding the *same* id again (a refresh or a retry) keeps its rows.
+3. **Standing instructions.** `InstructionsPanel` edits a Signal Forms model that is a `linkedSignal`
+   over the project's `{ id, instructions }`, compared by value. A favourite or rename replaces the
+   project object without changing either, so it does not reseed the field and an unsaved edit
+   survives; a save the server confirms, or a move to another project, does reseed it. While the save
+   runs the field is `readonly` and Save and Cancel are `aria-disabled`, so focus stays where it was
+   ([design-system.md](design-system.md#pressed-controls)). Save calls
    `ProjectActionsStore.saveInstructions` → **`PUT api/projects/{id}`** (full body through
    `toProjectBody`) → **event** `projectEvents.updated(dto)`, which `ProjectStore` adopts, so the saved
    state settles only once the round trip ends. The `unsavedInstructionsGuard` (`canDeactivate`)
@@ -656,15 +675,25 @@ Forms are Signal Forms (`@angular/forms/signals`). `FormsModule` and `ReactiveFo
 by lint. Copy `features/shell/conversation-actions/rename-conversation-dialog.ts`.
 
 1. Back the form with a `signal({...})` and `form(this.model, (path) => { required(...);
-   maxLength(...); validate(...); })`. Bind with `[formField]="f.name"` on a `novalidate` `<form>`.
+   notBlank(...); maxLength(...); validate(...); })`. Bind with `[formField]="f.name"` on a
+   `novalidate` `<form>`. `notBlank` (`shared/forms/not-blank.ts`) is for a required text field,
+   because `required` accepts spaces and every submit trims.
 2. Server errors are state, not pushed into the form (Signal Forms has no `setErrors`). The store keeps
-   the `ValidationAppError` and the **rejected value**; a `validate` rule returns
-   `serverMessagesFor(error, 'name')` only while the field still holds that value, so the error clears
-   on the next keystroke. Render keys the form does not model with `unmatchedServerMessages`.
+   the `ValidationAppError` and the **whole rejected body** (`ProjectActionsStore.formRejected`); a
+   `validate` rule per field returns `serverMessagesFor(error, 'description')` only while the field
+   still holds the value that was sent, so the error clears on the next keystroke. That covers every
+   field the body carries, not only the name. Render keys the form does not model with
+   `unmatchedServerMessages`.
 3. A dialog that lives as long as the shell reseeds in an `effect` when its target changes:
    `this.model.set(...)` then `this.f().reset()`.
-4. Mark the field touched on submit, since Enter submits without a blur, and show errors on
-   `touched() || serverError !== null`. Mount a dialog shared by more than one feature once in `Shell`.
+4. Render each field with `[appInvalidField]` on the control and `<app-field-errors>` beneath it
+   (`shared/forms/`; contract in [design-system.md](design-system.md#forms)). The control needs an
+   `id`; the error element's id is `<id>-errors`.
+5. Do not disable the submit button on invalid input. Let the press or Enter reach `submit()`, which
+   marks every field touched (Enter submits without a blur) and returns if the form is invalid, so
+   the errors appear. Show them on `touched() || serverError !== null`. Only a request in flight sets
+   `aria-disabled` on the button.
+6. Mount a dialog shared by more than one feature once in `Shell`.
 
 ### Tests
 
