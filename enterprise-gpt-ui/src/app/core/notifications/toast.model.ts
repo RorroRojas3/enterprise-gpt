@@ -9,22 +9,22 @@ export interface Toast {
   readonly detail: string | null;
   /** Pre-formatted by `traceLine()`; rendered in the mono face. */
   readonly traceLine: string | null;
-  /** Renders a retry affordance when set. */
-  readonly retryLabel: string | null;
-  /** Milliseconds until self-dismissal. Zero means it stays until dismissed. */
-  readonly dismissAfterMs: number;
+  /** Renders the toast's one button when set. */
+  readonly actionLabel: string | null;
+  readonly key: string | null;
+  /** Stays until dismissed: it has to be read or acted on, which three seconds does not allow. */
+  readonly persistent: boolean;
 }
 
-/**
- * `satisfies` forces every new tone to decide whether it self-dismisses; an error that disappears
- * before it is read is a defect.
- */
-export const AUTO_DISMISS_MS = {
-  success: 5000,
-  info: 5000,
-  warning: 0,
-  error: 0,
-} as const satisfies Record<ToastTone, number>;
+/** How long a toast that is not {@link Toast.persistent} stays. */
+export const AUTO_DISMISS_MS = 3000;
+
+/** Past this the oldest persistent toast gives way, so a run of failures cannot fill the screen. */
+export const MAX_PERSISTENT_TOASTS = 5;
+
+export function isPersistent(tone: ToastTone, hasAction: boolean): boolean {
+  return tone === 'error' || tone === 'warning' || hasAction;
+}
 
 /** The sprite glyph each tone renders. */
 export const TOAST_ICONS = {

@@ -48,6 +48,9 @@
   <router-outlet />
 </main>
 
+<!-- Outside `<main>`, which can be inert and whose content is what changes. -->
+<p class="visually-hidden" role="status">{{ pageAnnouncement() }}</p>
+
 <!--
   `Offcanvas`, for one set of focus and dismissal semantics. The content is guarded by `@if`,
   since the dialog is always in the DOM and an unguarded sidebar would be a second copy.
@@ -59,6 +62,7 @@
   [bare]="true"
   [open]="mobileDrawerOpen()"
   (openChange)="onDrawerOpenChange($event)"
+  (closed)="onDrawerClosed()"
 >
   @if (mobileDrawerOpen()) {
     <!-- The shell owns this close control, since the overlay it dismisses is the shell's. -->

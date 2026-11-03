@@ -1,9 +1,11 @@
 import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { ConversationActivityStore } from '@core/conversations/conversation-activity-store';
 import { canRetry } from '@core/errors/error-message';
 import { ErrorPanel } from '@core/errors/error-panel';
 import { CHAT_ROUTE } from '@core/navigation/route-paths';
 import { ProjectConversationsStore } from '@core/projects/project-conversations-store';
+import { ActivityIndicator } from '@shared/badges/activity-indicator';
 import { Icon } from '@shared/icons/icon';
 import { Skeleton } from '@shared/loading/skeleton';
 
@@ -17,13 +19,14 @@ const SKELETON_ROWS = 2;
 @Component({
   selector: 'app-sidebar-project-conversations',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ErrorPanel, Icon, RouterLink, RouterLinkActive, Skeleton],
+  imports: [ActivityIndicator, ErrorPanel, Icon, RouterLink, RouterLinkActive, Skeleton],
   providers: [ProjectConversationsStore],
   templateUrl: './sidebar-project-conversations.html',
   host: { class: 'd-block' },
 })
 export class SidebarProjectConversations {
   protected readonly conversations = inject(ProjectConversationsStore);
+  protected readonly activity = inject(ConversationActivityStore);
 
   readonly projectId = input.required<string>();
 

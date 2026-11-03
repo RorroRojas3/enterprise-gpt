@@ -67,7 +67,7 @@
     offcanvasFooter
     class="btn btn-primary"
     type="button"
-    [disabled]="!canSubmit()"
+    [attr.aria-disabled]="canSubmit() ? null : 'true'"
     (click)="submit()"
   >
     @if (actions.formBusy()) {

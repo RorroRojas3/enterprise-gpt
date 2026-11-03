@@ -109,6 +109,15 @@ describe('DocumentDownloadStore', () => {
     backend.expectNone(DOWNLOAD_URL);
   });
 
+  it('ignores a second press on a row whose link is already on the way', () => {
+    store.download(CONVERSATION, DOC_ID, 'q3-report.pdf');
+    store.download(CONVERSATION, DOC_ID, 'q3-report.pdf');
+
+    backend.expectOne(DOWNLOAD_URL).flush(SIGNED);
+
+    expect(clicks).toHaveLength(1);
+  });
+
   it('runs two downloads side by side rather than cancelling the first', () => {
     const second = '00000000-1111-4222-8333-444444444444';
 

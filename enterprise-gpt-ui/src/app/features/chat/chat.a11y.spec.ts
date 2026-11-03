@@ -6,6 +6,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { getAllByRole } from '@testing-library/dom';
+import { userEvent } from '@vitest/browser/context';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CHAT_ROLE, MESSAGE_FEEDBACK_RATING } from '@core/api/conversation.model';
 import { AccessTokenClient } from '@core/auth/access-token-client';
@@ -134,6 +135,35 @@ describe('chat accessibility', () => {
       await loadCatalogues();
 
       await expectNoSeriousViolations(element, `/chat/:id (${theme})`);
+    });
+
+    /**
+     * The worst case for a keyboard reader: more than fits and nothing inside to tab to. Real
+     * keys, because axe counts `tabindex="-1"` as focusable and passes the broken version.
+     */
+    it(`lets a keyboard scroll an overflowing answer with no controls in ${theme}`, async () => {
+      const element = await open('/chat', theme);
+      await loadCatalogues();
+
+      const scroller = element.querySelector<HTMLElement>('[role="region"]')!;
+      // Bounded by hand: the shell that gives it a height is not mounted here.
+      scroller.style.height = '10rem';
+      for (const child of scroller.children) {
+        (child as HTMLElement).hidden = true;
+      }
+      const answer = scroller.appendChild(document.createElement('p'));
+      answer.textContent = 'A long answer with no controls in it.';
+      answer.style.height = '300vh';
+      expect(scroller.scrollHeight).toBeGreaterThan(scroller.clientHeight);
+
+      for (let press = 0; press < 30 && document.activeElement !== scroller; press++) {
+        await userEvent.keyboard('{Tab}');
+      }
+      expect(document.activeElement).toBe(scroller);
+
+      await userEvent.keyboard('{ArrowDown}');
+
+      await vi.waitFor(() => expect(scroller.scrollTop).toBeGreaterThan(0));
     });
 
     /** Audited open: the menu holds a note that is deliberately not a `menuitem`. */

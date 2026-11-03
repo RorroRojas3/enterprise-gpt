@@ -16,11 +16,14 @@ import { provideSharedComposerUploads } from '@core/uploads/composer-uploads-tok
 import { SupportedExtensionsStore } from '@core/uploads/supported-extensions-store';
 import { UploadStore } from '@core/uploads/upload-store';
 import { tabbableWithin } from '@shared/dialog/tabbable';
+import { ChatComposerHost, provideChatComposerHost } from '@features/chat/chat-composer-host';
+import { CHAT_SESSION } from '@features/chat/chat-session-token';
 import { ConversationStore } from '@features/chat/conversation-store';
 import { STREAM_FETCH } from '@features/chat/stream-fetch-token';
 import { TurnStore } from '@features/chat/turn-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpFixture, modelFixture } from '@testing/catalog';
+import { connectActivity } from '@testing/conversation-activity';
 import { conversationFixture } from '@testing/conversations';
 import { dispatchDrag, fileDrag, textFile } from '@testing/drag';
 import { iconOf } from '@testing/overlays';
@@ -30,7 +33,6 @@ import { FakeRecognition } from '@testing/speech';
 import { assistantEvent, frame, streamingResponse } from '@testing/stream-frames';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
 import { Composer } from './composer';
-import { provideComposerHost } from './composer-host-token';
 import { SPEECH_RECOGNITION, SpeechRecognitionLike } from './speech-recognition-token';
 import { TurnSettingsStore } from './turn-settings-store';
 
@@ -71,7 +73,14 @@ describe('Composer', () => {
           provide: AccessTokenClient,
           useValue: { getToken: vi.fn().mockResolvedValue('token-1') },
         },
-        { provide: Router, useValue: { navigateByUrl: vi.fn().mockResolvedValue(true) } },
+        {
+          provide: Router,
+          useValue: {
+            navigateByUrl: vi.fn().mockResolvedValue(true),
+            currentNavigation: () => null,
+            url: '/chat',
+          },
+        },
         { provide: SPEECH_RECOGNITION, useFactory: () => speech },
         provideFakeUploadXhr(uploadXhr),
         UploadStore,
@@ -80,7 +89,8 @@ describe('Composer', () => {
         // to state a stub would have to fake.
         ConversationStore,
         TurnStore,
-        provideComposerHost(TurnStore),
+        { provide: CHAT_SESSION, useValue: { isActive: () => true } },
+        provideChatComposerHost(),
       ],
     });
     backend = TestBed.inject(HttpTestingController);
@@ -231,7 +241,7 @@ describe('Composer', () => {
     await loadModels([modelFixture({ isDefault: true })]);
     await composer.fixture.whenStable();
 
-    expect(TestBed.inject(TurnStore).projectTarget()).toBeNull();
+    expect(TestBed.inject(ChatComposerHost).projectTarget()).toBeNull();
     expect(queryByRole(composer.host, 'button', { name: /^Project:/ })).toBeNull();
   });
 
@@ -241,7 +251,7 @@ describe('Composer', () => {
       TestBed.inject(ConversationListStore).prependNewest(
         conversationFixture({ id: CONVERSATION_ID, name: 'Helios' }),
       );
-      TestBed.inject(TurnStore).bindRoute(CONVERSATION_ID);
+      TestBed.inject(TurnStore).init(CONVERSATION_ID);
       backend
         .expectOne(`${CREATE_URL}/${CONVERSATION_ID}/messages`)
         .flush({ id: CONVERSATION_ID, name: 'Helios', messages });
@@ -314,7 +324,7 @@ describe('Composer', () => {
       TestBed.inject(ConversationListStore).prependNewest(
         conversationFixture({ id: CONVERSATION_ID, name: 'Helios', projectId }),
       );
-      TestBed.inject(TurnStore).bindRoute(CONVERSATION_ID);
+      TestBed.inject(TurnStore).init(CONVERSATION_ID);
       backend.expectOne(`${CREATE_URL}/${CONVERSATION_ID}/messages`).flush([]);
     }
 
@@ -725,7 +735,7 @@ describe('Composer', () => {
       TestBed.inject(ConversationListStore).prependNewest(
         conversationFixture({ id: CONVERSATION_ID }),
       );
-      TestBed.inject(TurnStore).bindRoute(CONVERSATION_ID);
+      TestBed.inject(TurnStore).init(CONVERSATION_ID);
       backend
         .expectOne(`${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages`)
         .flush({ id: CONVERSATION_ID, name: 'Conversation', messages: [] });
@@ -907,7 +917,8 @@ describe('Composer', () => {
     button?.focus();
     button?.click();
     await composer.fixture.whenStable();
-    backend.expectOne(CREATE_URL).flush(conversationFixture());
+    const created = conversationFixture();
+    backend.expectOne(CREATE_URL).flush(created);
     await composer.fixture.whenStable();
 
     handle.enqueue(frame(assistantEvent('Finished')));
@@ -915,6 +926,8 @@ describe('Composer', () => {
     // Real timers here: wait out the transport's ~16ms buffer flush.
     await new Promise((resolve) => setTimeout(resolve, 40));
     await composer.fixture.whenStable();
+    // A first turn: its generated name is read back.
+    backend.expectOne(`${CREATE_URL}/${created.id}`).flush(created);
 
     // Send re-disabled on the empty prompt; a focused-but-disabled button
     // would drop focus to <body>, so the composer hands it to the textarea.
@@ -931,5 +944,32 @@ describe('Composer', () => {
     expect(composer.prompt().value).toBe('Draft a status update');
     expect(TestBed.inject(TurnStore).composerSeed()).toBeNull();
     expect(document.activeElement).toBe(composer.prompt());
+  });
+
+  it('holds Send back while other conversations fill the concurrent-turn cap', async () => {
+    const composer = await render();
+    await loadModels([modelFixture({ isDefault: true })]);
+    const { runningCount } = connectActivity({ runningCount: 4 });
+    await composer.type('One more question');
+
+    expect(composer.send()?.disabled).toBe(true);
+    expect(
+      composer.note('4 answers are already generating — send once one finishes.'),
+    ).not.toBeNull();
+
+    runningCount.set(3);
+    await composer.fixture.whenStable();
+    expect(composer.send()?.disabled).toBe(false);
+  });
+
+  it('keeps unsent text in the host, so a composer created later shows it', async () => {
+    const first = await render();
+    await first.type('Half-written thought');
+    first.fixture.destroy();
+
+    const second = await render();
+
+    expect(TestBed.inject(TurnStore).draft()).toBe('Half-written thought');
+    expect(second.prompt().value).toBe('Half-written thought');
   });
 });

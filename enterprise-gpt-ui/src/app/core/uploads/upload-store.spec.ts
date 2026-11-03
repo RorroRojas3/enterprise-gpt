@@ -213,9 +213,7 @@ describe('UploadStore', () => {
     expect(toast?.title).toBe('big-scan.pdf couldn’t be uploaded');
     expect(toast?.detail).toBe('Files can be up to 50 MB — this one is 212 MB.');
     expect(toast?.traceLine).toContain('4bf92f3577b34da6a3ce929d0e0e4736');
-    expect(toast?.retryLabel).toBe('Retry');
-    // Zero means it stays until dismissed.
-    expect(toast?.dismissAfterMs).toBe(0);
+    expect(toast?.actionLabel).toBe('Retry');
     expect(store.blocksSend()).toBe(false);
   });
 
@@ -226,7 +224,7 @@ describe('UploadStore', () => {
     xhr.last.respond(400, PROBLEM_FIXTURES.uploadTooLarge);
     await settle();
 
-    toasts.retry(toasts.toasts()[0]!.id);
+    toasts.runAction(toasts.toasts()[0]!.id);
     await settle();
 
     expect(xhr.requests).toHaveLength(2);
@@ -245,7 +243,7 @@ describe('UploadStore', () => {
     const toast = toasts.toasts()[0];
     expect(toast?.title).toBe('You can’t upload files');
     expect(toast?.detail).toContain('“Upload File”');
-    expect(toast?.retryLabel).toBeNull();
+    expect(toast?.actionLabel).toBeNull();
   });
 
   it('says nothing when the user cancels their own upload', async () => {

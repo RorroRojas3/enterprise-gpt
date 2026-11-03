@@ -4,7 +4,7 @@ import { ModelActionsStore } from './model-actions-store';
 
 /**
  * Initial focus is on Cancel, so Enter retires nothing. Confirms on the store rather than
- * emitting: the soft-deleted row stays in the table, so its kebab is there to take focus back.
+ * emitting: the soft-deleted row stays in the table, and `AdminModels` recovers focus from its kebab.
  */
 @Component({
   selector: 'app-deactivate-model-dialog',

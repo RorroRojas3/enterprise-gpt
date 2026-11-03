@@ -20,6 +20,7 @@
     <!-- `small` on the list: `.nav-link` takes its font-size from an unset variable, so it inherits. -->
     <ul class="nav nav-pills nav-pills-subtle flex-column gap-1 small">
       @for (conversation of conversations.entities(); track conversation.id) {
+        @let state = activity.activityOf(conversation.id);
         <li class="nav-item">
           <a
             class="nav-link d-flex align-items-center gap-2 py-1 px-2 focus-inset"
@@ -29,7 +30,10 @@
             ariaCurrentWhenActive="page"
           >
             <app-icon class="small" name="bi-chat-left" />
-            <span class="text-truncate">{{ conversation.name }}</span>
+            <span class="text-truncate flex-grow-1">{{ conversation.name }}</span>
+            @if (state) {
+              <app-activity-indicator [activity]="state" />
+            }
           </a>
         </li>
       }

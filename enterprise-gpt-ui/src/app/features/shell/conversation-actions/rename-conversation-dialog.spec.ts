@@ -99,22 +99,27 @@ describe('RenameConversationDialog', () => {
     expect(counter()?.textContent?.replace(/\s+/g, ' ').trim()).toBe('3 / 256');
   });
 
-  it('disables Rename for a whitespace-only name', async () => {
+  it('refuses a whitespace-only name, and says why', async () => {
     await open(conversationFixture());
 
     await type('   ');
+    await submit();
 
-    expect(renameButton().disabled).toBe(true);
+    backend.expectNone(PUT_URL);
+    expect(input().getAttribute('aria-invalid')).toBe('true');
+    expect(
+      fixture.nativeElement.querySelector('#rename-conversation-name-errors')?.textContent,
+    ).toContain('A name is required.');
   });
 
-  it('submits the typed name and disables both buttons while the request is pending', async () => {
+  it('submits the typed name and marks both buttons while the request is pending', async () => {
     const target = conversationFixture({ name: 'Before' });
     await open(target);
 
     await type('After');
     await submit();
 
-    expect(renameButton().disabled).toBe(true);
+    expect(renameButton().getAttribute('aria-disabled')).toBe('true');
     expect(cancelButton().disabled).toBe(true);
     expect(dialog().getAttribute('aria-busy')).toBe('true');
 
@@ -138,7 +143,7 @@ describe('RenameConversationDialog', () => {
     expect(dialog().open).toBe(true);
     expect(input().classList.contains('is-invalid')).toBe(true);
 
-    const errors = fixture.nativeElement.querySelector('#rename-conversation-errors');
+    const errors = fixture.nativeElement.querySelector('#rename-conversation-name-errors');
     expect(errors?.textContent).toContain("'Name' must not be empty.");
     // A key the form does not model still renders, or the rename would fail silently.
     expect(errors?.textContent).toContain("'Context Window Size' must be greater than 0.");

@@ -9,6 +9,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { MessageFeedbackRating } from '@core/api/conversation.model';
@@ -44,12 +45,8 @@ import { TurnNotice, TurnNoticeCard } from './turn-notice-card';
   ],
   templateUrl: './transcript.html',
   styleUrl: './transcript.scss',
-  // Busy while history loads, since the skeleton is aria-hidden. `answerComplete` releases it
-  // when `Finished` arrives, a step before the settle, so the live turn is still mounted.
   host: {
-    class: 'd-flex flex-column gap-3 py-3',
-    '[attr.aria-busy]':
-      "turn.historyPending() || (turn.inFlight() && !turn.answerComplete()) ? 'true' : null",
+    class: 'd-flex flex-column',
     '(click)': 'onClick($event)',
   },
 })
@@ -64,6 +61,14 @@ export class Transcript {
   /** The confirming button's own accessible name, to put back afterwards. */
   private _copiedName: string | null = null;
   private _copiedTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Busy while history loads, since the skeleton is aria-hidden. `answerComplete` releases it when
+   * `Finished` arrives, a step before the settle, so the live turn is still mounted.
+   */
+  protected readonly busy = computed(
+    () => this.turn.historyPending() || (this.turn.inFlight() && !this.turn.answerComplete()),
+  );
 
   /** Its own region: {@link announcement} is emptied for the turn, and copies happen mid-turn. */
   protected readonly copyAnnouncement = signal('');
@@ -183,9 +188,11 @@ export class Transcript {
 
     // Retrying destroys the pressed button, so when the turn fails again the new Retry takes
     // focus back. Only while focus is nowhere: a notice never steals it from somewhere real.
+    // A notice already standing when the conversation is reopened is not new.
+    const standing = untracked(this.turn.turnError);
     effect(() => {
       const card = this.errorCard();
-      if (card === undefined || !this.errorRetryable()) {
+      if (card === undefined || !this.errorRetryable() || this.turn.turnError() === standing) {
         return;
       }
 

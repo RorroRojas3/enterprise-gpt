@@ -6,6 +6,7 @@ import {
   InteractionRequiredAuthError,
 } from '@azure/msal-browser';
 import { APP_CONFIG } from '@core/config/app-config-token';
+import { UnloadPrompt } from '@core/navigation/unload-prompt';
 import { MSAL_INSTANCE } from './msal-instance-token';
 
 /** Raised when a token cannot be produced without leaving the page. */
@@ -24,6 +25,7 @@ export class InteractiveSignInRequiredError extends Error {
 export class AccessTokenClient {
   private readonly _instance = inject(MSAL_INSTANCE);
   private readonly _scopes = [...inject(APP_CONFIG).auth.apiScopes];
+  private readonly _unload = inject(UnloadPrompt);
 
   /**
    * Shared so concurrent callers start one silent acquisition. `forceRefresh` skips it, since
@@ -81,13 +83,17 @@ export class AccessTokenClient {
 
   private async redirectForInteraction(account: AccountInfo): Promise<void> {
     try {
-      await this._instance.acquireTokenRedirect({ scopes: this._scopes, account });
+      await this._unload.leaving(() =>
+        this._instance.acquireTokenRedirect({ scopes: this._scopes, account }),
+      );
     } catch (cause) {
       // A redirect is already committed and the page is leaving, so there is nothing to recover.
+      // `leaving` re-armed the guard on this rejection; the other redirect still needs it down.
       if (
         cause instanceof BrowserAuthError &&
         cause.errorCode === BrowserAuthErrorCodes.interactionInProgress
       ) {
+        this._unload.suspend();
         return;
       }
 

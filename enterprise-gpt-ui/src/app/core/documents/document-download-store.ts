@@ -113,6 +113,10 @@ export const DocumentDownloadStore = signalStore(
     return {
       /** Call from a click, never a render. `fileName` is only for failure copy. */
       download(target: UploadTarget, documentId: string, fileName: string): void {
+        if (store.isRowPending(documentId)) {
+          return;
+        }
+
         _download({ target, documentId, fileName });
       },
     };

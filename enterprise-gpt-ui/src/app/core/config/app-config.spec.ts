@@ -38,6 +38,25 @@ describe('assertAppConfig', () => {
   });
 
   it.each([
+    ['absent', undefined],
+    ['empty', {}],
+    ['at one', { maxConcurrentTurns: 1 }],
+    ['at the HTTP/1.1 connection limit', { maxConcurrentTurns: 6 }],
+  ])('accepts a chat block %s', (_label, chat) => {
+    expect(() => assertAppConfig({ ...validConfig(), chat })).not.toThrow();
+  });
+
+  it.each([
+    ['not an object', 4],
+    ['allowing no turn at all', { maxConcurrentTurns: 0 }],
+    ['above the connection limit', { maxConcurrentTurns: 7 }],
+    ['fractional', { maxConcurrentTurns: 2.5 }],
+    ['quoted', { maxConcurrentTurns: '4' }],
+  ])('rejects a chat block %s', (_label, chat) => {
+    expect(() => assertAppConfig({ ...validConfig(), chat })).toThrow(AppConfigError);
+  });
+
+  it.each([
     ['null', null],
     ['an array', []],
     ['a string', 'x'],

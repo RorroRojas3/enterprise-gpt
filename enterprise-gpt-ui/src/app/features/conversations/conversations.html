@@ -91,13 +91,18 @@
     [selectedIds]="library.selectedIds()"
     (selectedIdsChange)="library.setSelection($event)"
   >
-    <!-- Block, or the truncation is ignored in the mobile card title and a long name overflows. -->
+    <!-- Block, or the truncation is ignored in the mobile card title and a long name overflows.
+         The activity mark leads, so truncation never cuts it. -->
     <ng-template appTableCell="name" [appTableCellFor]="library.entities()" let-row>
+      @let state = activity.activityOf(row.id);
       <a
         class="d-block text-truncate fw-medium link-body-emphasis link-underline-opacity-0 link-underline-opacity-100-hover"
         data-row-anchor
         [routerLink]="[chatRoute, row.id]"
       >
+        @if (state) {
+          <app-activity-indicator class="align-middle me-2" [activity]="state" />
+        }
         {{ row.name }}
       </a>
     </ng-template>

@@ -1,12 +1,19 @@
 <!-- No aria-expanded: it opens a modal <dialog> that inerts this button, not a nearby region. -->
 <button
-  class="btn btn-ghost btn-icon btn-icon-lg"
+  class="btn btn-ghost btn-icon btn-icon-lg position-relative"
   type="button"
-  aria-label="Open navigation"
+  [attr.aria-label]="'Open navigation' + activity.summarySuffix()"
   aria-haspopup="dialog"
   (click)="menuRequested.emit()"
 >
   <app-icon name="bi-list" />
+  @if (activity.summary(); as summary) {
+    <app-activity-indicator
+      class="position-absolute top-0 start-100 translate-middle"
+      [activity]="summary"
+      [labelled]="false"
+    />
+  }
 </button>
 
 <!-- Decorative: the text beside it already names the product. -->

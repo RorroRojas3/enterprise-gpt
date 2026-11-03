@@ -38,6 +38,8 @@ export class UserFooter {
   protected readonly signingOut = this._auth.isSigningOut;
 
   protected signOut(): void {
-    void this._auth.signOut();
+    if (!this.signingOut()) {
+      void this._auth.signOut();
+    }
   }
 }

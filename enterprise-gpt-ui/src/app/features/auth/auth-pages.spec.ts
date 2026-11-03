@@ -297,8 +297,12 @@ describe('SignedOut', () => {
     button.click();
     await fixture.whenStable();
 
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+
+    button.click();
+    await fixture.whenStable();
+
     expect(loginRedirect).toHaveBeenCalledOnce();
-    expect(button.disabled).toBe(true);
   });
 
   it('reloads when the redirect cannot even start, because the lock outlives this page', async () => {

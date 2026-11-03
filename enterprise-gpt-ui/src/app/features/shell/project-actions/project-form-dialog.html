@@ -16,10 +16,9 @@
         type="text"
         data-modal-autofocus
         [formField]="f.name"
-        [class.is-invalid]="showNameErrors()"
-        [attr.aria-describedby]="
-          'project-form-name-counter' + (showNameRegion() ? ' project-form-name-errors' : '')
-        "
+        [appInvalidField]="showNameErrors()"
+        [fieldErrorsShown]="showNameRegion()"
+        fieldNote="project-form-name-counter"
       />
 
       <!-- One row, so the counter survives the invalid state beside the errors. -->
@@ -59,16 +58,9 @@
         type="text"
         placeholder="What is this project for?"
         [formField]="f.description"
-        [class.is-invalid]="showDescriptionErrors()"
-        [attr.aria-describedby]="showDescriptionErrors() ? 'project-form-description-errors' : null"
+        [appInvalidField]="descriptionErrors().show"
       />
-      @if (showDescriptionErrors()) {
-        <div class="invalid-feedback d-block" id="project-form-description-errors" role="alert">
-          @for (message of descriptionErrors(); track $index) {
-            <p class="mb-0">{{ message }}</p>
-          }
-        </div>
-      }
+      <app-field-errors fieldId="project-form-description" [errors]="descriptionErrors()" />
     </div>
 
     <div>
@@ -81,18 +73,9 @@
         rows="3"
         placeholder="Applied to every conversation in this project"
         [formField]="f.instructions"
-        [class.is-invalid]="showInstructionsErrors()"
-        [attr.aria-describedby]="
-          showInstructionsErrors() ? 'project-form-instructions-errors' : null
-        "
+        [appInvalidField]="instructionsErrors().show"
       ></textarea>
-      @if (showInstructionsErrors()) {
-        <div class="invalid-feedback d-block" id="project-form-instructions-errors" role="alert">
-          @for (message of instructionsErrors(); track $index) {
-            <p class="mb-0">{{ message }}</p>
-          }
-        </div>
-      }
+      <app-field-errors fieldId="project-form-instructions" [errors]="instructionsErrors()" />
     </div>
   </form>
 
@@ -112,7 +95,7 @@
     class="btn btn-primary"
     type="submit"
     form="project-form"
-    [disabled]="!canSubmit()"
+    [attr.aria-disabled]="actions.formBusy() || actions.formLoading() ? 'true' : null"
   >
     @if (actions.formBusy()) {
       <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>

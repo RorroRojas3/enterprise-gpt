@@ -15,13 +15,13 @@
         </p>
       }
 
-      @if (toast().retryLabel) {
+      @if (toast().actionLabel) {
         <button
-          class="btn btn-link btn-sm p-0 mt-1 fw-semibold"
+          class="toast__action touch-target btn btn-link btn-sm d-inline-flex align-items-center p-0 mt-1 fw-semibold"
           type="button"
-          (click)="retried.emit(toast().id)"
+          (click)="actioned.emit(toast().id)"
         >
-          {{ toast().retryLabel }}
+          {{ toast().actionLabel }}
         </button>
       }
     </div>
@@ -36,13 +36,13 @@
     ></button>
   </div>
 
-  @if (toast().dismissAfterMs > 0) {
-    <!-- A CSS transition from one property set once, not a timer. Decorative: the dismissal
-         itself is what is announced. -->
+  <!-- A CSS transition from one property set once, not a timer. Decorative: the dismissal
+       itself is what is announced. -->
+  @if (!toast().persistent) {
     <span
       class="toast__drain"
       aria-hidden="true"
-      [style.--toast-duration.ms]="toast().dismissAfterMs"
+      [style.--toast-duration.ms]="dismissAfterMs"
     ></span>
   }
 </div>

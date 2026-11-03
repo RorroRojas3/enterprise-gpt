@@ -29,6 +29,15 @@ function withoutComments(source: string): string {
 }
 
 describe('the reduced-motion contract', () => {
+  it('leaves spinners turning, since a frozen one reads as a hung page', () => {
+    const motion = withoutComments(readFileSync(join(STYLES, '_motion.scss'), 'utf8'));
+    const block = motion.slice(motion.indexOf('@media (prefers-reduced-motion: reduce)'));
+    const spinners = block.slice(block.indexOf('.spinner-border'));
+
+    expect(spinners).toContain('animation-iteration-count: infinite !important');
+    expect(spinners).toContain('animation-duration: 1.5s !important');
+  });
+
   it('suppresses every animation and transition under the preference', () => {
     const motion = withoutComments(readFileSync(join(STYLES, '_motion.scss'), 'utf8'));
     const at = motion.indexOf('@media (prefers-reduced-motion: reduce)');

@@ -4,6 +4,7 @@ import { ErrorPanel } from '@core/errors/error-panel';
 import { ToastStore } from '@core/notifications/toast-store';
 import { ThemeToggle } from '@core/theme/theme-toggle';
 import { AvatarInitials } from '@shared/avatar/avatar-initials';
+import { ActivityIndicator } from '@shared/badges/activity-indicator';
 import { KindBadge } from '@shared/badges/kind-badge';
 import { PermissionBadge } from '@shared/badges/permission-badge';
 import { SourceBadge } from '@shared/badges/source-badge';
@@ -61,6 +62,7 @@ function paneOverlays() {
   selector: 'app-ui-kit',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ActivityIndicator,
     AttachmentChip,
     AvatarInitials,
     BrandIcon,

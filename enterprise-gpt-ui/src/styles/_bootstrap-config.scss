@@ -150,6 +150,8 @@ $tooltip-opacity: 1;
 $btn-link-disabled-color: var(--bs-secondary-color);
 $blockquote-footer-color: var(--bs-secondary-color);
 $input-focus-border-color: var(--bs-info);
+$input-border-color: var(--control-border);
+$form-check-input-border: 1px solid var(--control-border);
 // Tables sit on cards, so they show the card.
 $table-bg: transparent;
 // The six colour variants are fixed colours; `_bootstrap-overrides.scss` regenerates them so they flip.

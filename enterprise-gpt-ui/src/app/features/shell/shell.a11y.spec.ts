@@ -4,10 +4,12 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { ApplicationRef, ChangeDetectionStrategy, Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { Dispatcher } from '@ngrx/signals/events';
 import { getByRole, queryByRole } from '@testing-library/dom';
 import { userEvent } from '@vitest/browser/context';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
+import { turnEvents } from '@core/events/turn-events';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { SessionStore } from '@core/session/session-store';
 import {
@@ -22,6 +24,7 @@ import {
 } from '@testing/a11y';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { settle } from '@testing/async';
+import { connectActivity } from '@testing/conversation-activity';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { provideFakeMsal, signedInMsal } from '@testing/msal';
 import { provideFakeNavigation } from '@testing/navigation';
@@ -42,6 +45,11 @@ const PROJECTS_URL = `${TEST_API_BASE_URL}/api/projects`;
 
 /** The one starred project every render in this file puts in the sidebar. */
 const FAVORITE = projectFixture({ name: 'Data Platform Migration', isFavorite: true });
+
+/** Every render shows each activity mark, so every width and theme audits them. */
+const GENERATING = conversationFixture({ name: 'Helios 2.4 release status' });
+const ANSWERED = conversationFixture({ name: 'Data platform migration plan' });
+const INTERRUPTED = conversationFixture({ name: 'Warehouse sync triage' });
 
 @Component({
   selector: 'app-blank',
@@ -103,12 +111,13 @@ describe('application frame accessibility', () => {
     TestBed.tick();
     backend
       .expectOne((request) => request.url === SEARCH_URL)
-      .flush(
-        conversationPage([
-          conversationFixture({ name: 'Helios 2.4 release status' }),
-          conversationFixture({ name: 'Data platform migration plan' }),
-        ]),
-      );
+      .flush(conversationPage([GENERATING, ANSWERED]));
+    await fixture.whenStable();
+
+    connectActivity({ running: [GENERATING.id] });
+    const dispatcher = TestBed.inject(Dispatcher);
+    dispatcher.dispatch(turnEvents.completed({ conversationId: ANSWERED.id, wasFirstTurn: false }));
+    dispatcher.dispatch(turnEvents.interrupted({ conversationId: INTERRUPTED.id }));
     await fixture.whenStable();
 
     // With a node expanded, or the audit would miss its panel, nested links and `aria-controls`.
@@ -121,7 +130,7 @@ describe('application frame accessibility', () => {
 
     const element = fixture.nativeElement as HTMLElement;
     if (openSidebar) {
-      getByRole(element, 'button', { name: /^(Expand sidebar|Open navigation)$/ }).click();
+      getByRole(element, 'button', { name: /^(Expand sidebar|Open navigation)( —|$)/ }).click();
       await fixture.whenStable();
     }
 
@@ -138,7 +147,7 @@ describe('application frame accessibility', () => {
           (request) =>
             request.url === SEARCH_URL && request.params.get('projectId') === FAVORITE.id,
         )
-        .flush(conversationPage([conversationFixture({ name: 'Warehouse sync triage' })]));
+        .flush(conversationPage([INTERRUPTED]));
       await fixture.whenStable();
     }
 
@@ -180,6 +189,19 @@ describe('application frame accessibility', () => {
       });
     }
   }
+
+  it('puts every activity mark on screen, so the audits above judge them', async () => {
+    await atViewport('desktop');
+    const element = await renderShell('light');
+
+    for (const name of [
+      /^Helios 2.4 release status.*Generating answer/,
+      /^Data platform migration plan.*New answer/,
+      /^Warehouse sync triage.*Response interrupted/,
+    ]) {
+      expect(getByRole(element, 'link', { name })).toBeTruthy();
+    }
+  });
 
   it('names the favourites disclosure and points it at a panel that exists', async () => {
     const element = await renderShell('light');
@@ -229,6 +251,45 @@ describe('application frame accessibility', () => {
 
       expect(document.activeElement).toBe(expand);
       expect(tooltipOf(expand)?.textContent?.trim()).toBe('Expand sidebar');
+    });
+  });
+
+  /** Real `<dialog>` and `inert`: jsdom's polyfill cannot tell these orderings apart. */
+  describe('leaving an overlay by a link', () => {
+    async function followLink(element: HTMLElement): Promise<void> {
+      await userEvent.click(getByRole(element, 'link', { name: 'Documents' }));
+      await TestBed.inject(ApplicationRef).whenStable();
+    }
+
+    it('ends on main after the drawer has handed focus back to the hamburger', async () => {
+      await atViewport('mobile');
+      const element = await renderShell('light');
+      // A real tap on an attached host: the hamburger must be what the drawer captures, and
+      // moving an open modal would take it out of the top layer.
+      await userEvent.click(getByRole(element, 'button', { name: /^Open navigation/ }));
+      await TestBed.inject(ApplicationRef).whenStable();
+      const drawer = document.querySelector('dialog[open]')!;
+      const closed = new Promise((resolve) =>
+        drawer.addEventListener('close', resolve, { once: true }),
+      );
+
+      await followLink(element);
+      // Queued well after the render, and the focus it restores is what must lose.
+      await closed;
+      await settle();
+
+      expect(document.querySelector('dialog[open]')).toBeNull();
+      expect(document.activeElement).toBe(element.querySelector('#main-content'));
+    });
+
+    it('ends on main once the tablet overlay has stopped making it inert', async () => {
+      await atViewport('tablet');
+      const element = await renderShell('light', { openSidebar: true });
+
+      await followLink(element);
+
+      expect(element.querySelector('.shell__backdrop')).toBeNull();
+      expect(document.activeElement).toBe(element.querySelector('#main-content'));
     });
   });
 

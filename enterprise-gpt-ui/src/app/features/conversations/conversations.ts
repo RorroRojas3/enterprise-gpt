@@ -17,11 +17,13 @@ import { ActivatedRoute, Params, Router, RouterLink } from '@angular/router';
 import { ConversationDto } from '@core/api/conversation.model';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
 import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
+import { ConversationActivityStore } from '@core/conversations/conversation-activity-store';
 import { canRetry } from '@core/errors/error-message';
 import { ErrorPanel } from '@core/errors/error-panel';
 import { CHAT_ROUTE } from '@core/navigation/route-paths';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { ProjectPicker } from '@core/projects/project-picker';
+import { ActivityIndicator } from '@shared/badges/activity-indicator';
 import { BulkActionBar } from '@shared/data-table/bulk-action-bar';
 import { DataTable } from '@shared/data-table/data-table';
 import { TableCell } from '@shared/data-table/table-cell';
@@ -54,6 +56,7 @@ import { DeleteConversationsDialog } from './delete-conversations-dialog';
   selector: 'app-conversations',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ActivityIndicator,
     BulkActionBar,
     DataTable,
     DeleteConversationsDialog,
@@ -89,6 +92,7 @@ export class Conversations {
 
   protected readonly library = inject(ConversationLibraryStore);
   protected readonly actions = inject(ConversationActionsStore);
+  protected readonly activity = inject(ConversationActivityStore);
 
   private readonly _models = inject(ModelCatalogStore);
   private readonly _projects = inject(ProjectLookupStore);

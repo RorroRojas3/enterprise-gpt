@@ -8,7 +8,7 @@
       <app-toast-item
         [toast]="toast"
         (dismissed)="store.dismiss($event)"
-        (retried)="retried.emit($event)"
+        (actioned)="store.runAction($event)"
       />
     }
   </div>
@@ -18,7 +18,7 @@
       <app-toast-item
         [toast]="toast"
         (dismissed)="store.dismiss($event)"
-        (retried)="retried.emit($event)"
+        (actioned)="store.runAction($event)"
       />
     }
   </div>

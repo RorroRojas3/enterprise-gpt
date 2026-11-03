@@ -26,6 +26,7 @@ import {
   streamingResponse,
 } from '@testing/stream-frames';
 import { Chat } from './chat';
+import { ChatSessions } from './chat-sessions';
 import { STREAM_BATCH_WINDOW_MS } from './conversation-stream-client';
 import { STREAM_FETCH } from './stream-fetch-token';
 import { TurnStore } from './turn-store';
@@ -91,9 +92,9 @@ describe('transcript pinning', () => {
     return element().querySelector('.chat__jump');
   }
 
-  /** The store is provided by `Chat` itself, so it comes from the route's injector. */
+  /** The session `Chat` is showing owns the store. */
   function turnStore(): InstanceType<typeof TurnStore> {
-    return harness.routeDebugElement!.injector.get(TurnStore);
+    return TestBed.inject(ChatSessions).active()!.turn;
   }
 
   /** Records scroll writes; jsdom would otherwise report a constant zero. */

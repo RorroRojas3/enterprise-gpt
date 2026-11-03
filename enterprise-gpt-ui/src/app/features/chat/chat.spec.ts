@@ -32,7 +32,6 @@ import { conversationEvents } from '@core/events/conversation-events';
 import { turnEvents } from '@core/events/turn-events';
 import { ShellChrome } from '@core/layout/shell-chrome';
 import { CONVERSATION_ID_PARAM, chatMatcher } from '@core/navigation/chat-matcher';
-import { UploadStore } from '@core/uploads/upload-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { mcpFixture, modelFixture } from '@testing/catalog';
 import {
@@ -47,6 +46,7 @@ import { PROBLEM_FIXTURES } from '@testing/problem-fixtures';
 import { streamingResponse } from '@testing/stream-frames';
 import { FakeUploadXhrQueue, provideFakeUploadXhr } from '@testing/upload-xhr';
 import { Chat } from './chat';
+import { ChatSessions } from './chat-sessions';
 import { STREAM_FETCH } from './stream-fetch-token';
 
 const SEARCH_URL = `${TEST_API_BASE_URL}/api/conversations/search`;
@@ -193,7 +193,7 @@ describe('Chat', () => {
       .flush(conversationDetailFixture({ ...conversation }));
     await harness.fixture.whenStable();
 
-    const uploads = harness.routeDebugElement!.injector.get(UploadStore);
+    const uploads = TestBed.inject(ChatSessions).active()!.uploads;
     uploads.attach([new File(['x'], 'notes.txt', { type: 'text/plain' })]);
     // Files wait for a send; this stands in for one.
     uploads.startPending();
@@ -609,7 +609,7 @@ describe('Chat', () => {
     expectStarOn();
   });
 
-  it('disables the header star while the conversation’s own action is in flight', async () => {
+  it('marks the header star while the conversation’s own action is in flight', async () => {
     await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
     backend.expectOne(detailUrl(conversation.id)).flush(conversationDetailFixture(conversation));
     await harness.fixture.whenStable();
@@ -617,8 +617,9 @@ describe('Chat', () => {
     TestBed.inject(ConversationListStore).setRowPending(conversation.id, true);
     await harness.fixture.whenStable();
 
-    // Native disabled, unlike the kebab's items: the star is not in a roving-focus panel.
-    expect(star()?.disabled).toBe(true);
+    // Not native `disabled`: the star holds focus when pressed, and would drop it to <body>.
+    expect(star()?.disabled).toBe(false);
+    expect(star()?.getAttribute('aria-disabled')).toBe('true');
   });
 
   it('fills the star from the detail DTO for a deep link the list never held', async () => {
@@ -667,6 +668,20 @@ describe('Chat', () => {
     await harness.fixture.whenStable();
 
     expect(element().querySelector('app-composer')).toBeNull();
+  });
+
+  it('keeps a named heading, and no skeleton, for a conversation that failed to open', async () => {
+    await harness.navigateByUrl(`/chat/${conversation.id}`, Chat);
+    const heading = () => getByRole(element(), 'heading', { level: 1 });
+    expect(heading().textContent?.trim()).toBe('Loading conversation');
+
+    backend
+      .expectOne(detailUrl(conversation.id))
+      .flush(PROBLEM_FIXTURES.resourceNotFound, { status: 404, statusText: 'Not Found' });
+    await harness.fixture.whenStable();
+
+    expect(heading().textContent?.trim()).toBe('Conversation unavailable');
+    expect(heading().querySelector('app-skeleton')).toBeNull();
   });
 
   it('offers the four suggested prompts on the landing screen only', async () => {
@@ -733,7 +748,7 @@ describe('Chat', () => {
     await harness.fixture.whenStable();
 
     // With the transcript mounted, the separation below cannot pass on absence.
-    const transcript = element().querySelector('app-transcript');
+    const transcript = element().querySelector('app-transcript > [aria-busy]');
     expect(transcript).not.toBeNull();
     expect(transcript?.getAttribute('aria-busy')).toBe('true');
 
@@ -782,7 +797,7 @@ describe('Chat', () => {
 
     expect(element().querySelector('.transcript__bubble')?.textContent).toBe('First prompt');
     expect(element().querySelector('app-ridgeline')).not.toBeNull();
-    expect(element().querySelector('app-transcript')?.getAttribute('aria-busy')).toBe('true');
+    expect(element().querySelector('app-transcript > [aria-busy="true"]')).not.toBeNull();
     expect(suggestions()).toBeNull();
 
     backend.expectOne(detailUrl(created.id)).flush(conversationDetailFixture(created));
@@ -975,7 +990,7 @@ describe('Chat', () => {
       expect(element().querySelector('app-transcript app-skeleton')).not.toBeNull();
       expect(element().querySelector('app-chat-empty-state')).toBeNull();
       // The skeleton is aria-hidden; aria-busy is how assistive tech perceives the wait.
-      expect(element().querySelector('app-transcript')?.getAttribute('aria-busy')).toBe('true');
+      expect(element().querySelector('app-transcript > [aria-busy="true"]')).not.toBeNull();
 
       backend.expectOne(`${detailUrl(conversation.id)}/messages`).flush({
         id: conversation.id,

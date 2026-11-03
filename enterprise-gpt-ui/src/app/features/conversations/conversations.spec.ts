@@ -10,13 +10,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import {
-  getAllByRole,
-  getByRole,
-  getByText,
-  queryByLabelText,
-  queryByRole,
-} from '@testing-library/dom';
+import { getAllByRole, getByRole, getByText, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ModelDto } from '@core/api/chat-model.model';
 import { ModelCatalogStore } from '@core/catalog/model-catalog-store';
@@ -25,6 +19,7 @@ import { ToastStore } from '@core/notifications/toast-store';
 import { ProjectLookupStore } from '@core/projects/project-lookup-store';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
+import { connectActivity } from '@testing/conversation-activity';
 import { conversationFixture, conversationPage } from '@testing/conversations';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
 import { NARROW_VIEWPORT, resetMediaQueries, setMediaQuery } from '@testing/media-query';
@@ -115,7 +110,7 @@ describe('Conversations', () => {
   }
 
   function skeleton(): HTMLElement | null {
-    return queryByLabelText(element(), 'Loading Conversations');
+    return element().querySelector('[aria-hidden="true"] app-skeleton');
   }
 
   function expectSearch(): TestRequest {
@@ -294,6 +289,20 @@ describe('Conversations', () => {
       expect(link.getAttribute('href')).toBe(`/chat/${conversation.id}`);
     });
 
+    it('marks a conversation that is generating, and follows it as it finishes', async () => {
+      const conversation = conversationFixture({ name: 'Quarterly review' });
+      const { running } = connectActivity({ running: [conversation.id] });
+      await open('/conversations', [conversation]);
+
+      const link = getByRole(element(), 'link', { name: /^Generating answer\s+Quarterly review$/ });
+      expect(link.querySelector('.spinner-border')).not.toBeNull();
+
+      running.set(new Set());
+      await harness.fixture.whenStable();
+      expect(getByRole(element(), 'link', { name: 'Quarterly review' })).toBe(link);
+      expect(link.querySelector('app-activity-indicator')).toBeNull();
+    });
+
     it('names each row’s model, and says so honestly when it has none', async () => {
       const model = modelFixture({ name: 'GPT-5' });
       models.set([model]);
@@ -309,7 +318,7 @@ describe('Conversations', () => {
 
     it('shows a skeleton for the first load, and never for a refinement', async () => {
       await harness.navigateByUrl('/conversations', Conversations);
-      expect(skeleton()?.getAttribute('aria-busy')).toBe('true');
+      expect(skeleton()).not.toBeNull();
 
       expectSearch().flush(conversationPage([conversationFixture()]));
       await harness.fixture.whenStable();

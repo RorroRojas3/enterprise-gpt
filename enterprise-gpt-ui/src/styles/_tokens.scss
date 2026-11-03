@@ -12,6 +12,8 @@ $tokens-light: (
   'bs-secondary-bg': #e7eff7,
   'bs-tertiary-bg': #eff4f9,
   'bs-border-color': #dce5ee,
+  // A form control's edge, which identifies it, so unlike a divider it must clear 3:1.
+  'control-border': #7a8da1,
   'bs-link-color': #14324f,
   'bs-link-hover-color': #0b1f33,
   'bs-primary': #14324f,
@@ -68,6 +70,7 @@ $tokens-dark: (
   'bs-secondary-bg': #16354d,
   'bs-tertiary-bg': #17324d,
   'bs-border-color': #1e3a55,
+  'control-border': #6a859f,
   'bs-link-color': #21a8d8,
   'bs-link-hover-color': #63c6e6,
   'bs-primary': #21a8d8,

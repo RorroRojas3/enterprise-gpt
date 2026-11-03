@@ -1,8 +1,13 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ChangeDetectionStrategy, Component, TemplateRef, viewChild } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { getByRole, getByText, queryAllByRole, queryByRole } from '@testing-library/dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ShellChrome } from '@core/layout/shell-chrome';
+import { provideTestAppConfig } from '@testing/app-config';
+import { connectActivity } from '@testing/conversation-activity';
 import { MobileNavbar } from './mobile-navbar';
 
 /** Proves the navbar renders what a screen hands it; the chat and shell specs stop short. */
@@ -25,7 +30,15 @@ describe('MobileNavbar', () => {
 
   beforeEach(() => {
     TestBed.resetTestingModule();
-    TestBed.configureTestingModule({ providers: [ShellChrome] });
+    TestBed.configureTestingModule({
+      providers: [
+        ShellChrome,
+        provideTestAppConfig(),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+      ],
+    });
     chrome = TestBed.inject(ShellChrome);
   });
 
@@ -85,5 +98,20 @@ describe('MobileNavbar', () => {
 
     // The routed screen owns the only <h1>; brand text as a heading would add a second.
     expect(queryAllByRole(fixture.nativeElement as HTMLElement, 'heading')).toHaveLength(0);
+  });
+
+  it('names the hamburger with what the conversations in its drawer are doing', async () => {
+    const fixture = TestBed.createComponent(NavbarHost);
+    await fixture.whenStable();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(getByRole(element, 'button', { name: 'Open navigation' })).toBeTruthy();
+
+    connectActivity({ running: ['a', 'b'] });
+    await fixture.whenStable();
+
+    const menu = getByRole(element, 'button', { name: 'Open navigation — 2 generating' });
+    // The mark is decoration: the name already says it.
+    expect(menu.querySelector('app-activity-indicator .spinner-border')).not.toBeNull();
+    expect(menu.querySelector('app-activity-indicator .visually-hidden')).toBeNull();
   });
 });

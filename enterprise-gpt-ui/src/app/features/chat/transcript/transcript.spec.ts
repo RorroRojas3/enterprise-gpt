@@ -16,6 +16,7 @@ import { CHAT_ROLE } from '@core/api/conversation.model';
 import { AccessTokenClient } from '@core/auth/access-token-client';
 import { TurnSelection, TurnSettingsStore } from '@core/composer/turn-settings-store';
 import { UploadStore } from '@core/uploads/upload-store';
+import { CHAT_SESSION } from '@features/chat/chat-session-token';
 import { ConversationStore } from '@features/chat/conversation-store';
 import { STREAM_BATCH_WINDOW_MS } from '@features/chat/conversation-stream-client';
 import { provideChatMarkdown } from '@features/chat/markdown/markdown-providers';
@@ -80,6 +81,7 @@ describe('Transcript', () => {
         UploadStore,
         ConversationStore,
         TurnStore,
+        { provide: CHAT_SESSION, useValue: { isActive: () => true } },
         // The transcript renders markdown, so it needs the sanitized pipeline the chat
         // route provides.
         provideChatMarkdown(),
@@ -119,7 +121,7 @@ describe('Transcript', () => {
       handle.abortOn(init?.signal);
       return Promise.resolve(handle.response);
     });
-    store.bindRoute(CONVERSATION_ID);
+    store.init(CONVERSATION_ID);
     // Opening a conversation reads its stored messages; the read must be answered or the
     // region stays aria-busy for the rest of the test.
     backend
@@ -164,6 +166,11 @@ describe('Transcript', () => {
 
   /** A settled activity's duration, set apart in mono. */
   const DURATION = /^\d+\.\ds$/;
+
+  /** The transcript's own wrapper, not an answer's region, which sets `aria-busy` too. */
+  function busyRegion(): Element | null {
+    return host.querySelector(':scope > [aria-busy="true"]');
+  }
 
   describe('the activity timeline', () => {
     it('renders cards and text in exact arrival order, nested work included', async () => {
@@ -638,7 +645,7 @@ describe('Transcript', () => {
     });
 
     it('renders no region for replayed history, which never stored one', async () => {
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       backend
         .expectOne(`${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages`)
         .flush({
@@ -665,7 +672,7 @@ describe('Transcript', () => {
 
     /** Opens a conversation holding one rateable answer, optionally already rated. */
     async function openWithStoredAnswer(rating: 'Up' | 'Down' | null = null): Promise<void> {
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       backend
         .expectOne(`${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages`)
         .flush({
@@ -871,11 +878,19 @@ describe('Transcript', () => {
       await streamFullTurn();
 
       expect(host.querySelector('.assistant-turn__md')?.textContent?.trim()).toBe('Hello, world.');
-      expect(host.getAttribute('aria-busy')).toBeNull();
+      expect(busyRegion()).toBeNull();
       expect(host.querySelector('app-turn-notice-card')).toBeNull();
       expect(cardNames()).toEqual(['Get forecast', 'Forecast Agent', 'Search Documents']);
       expect(cards().map(ownState)).toContain('bi-exclamation-triangle-fill');
     });
+  });
+
+  it('keeps its live regions outside what it marks busy', async () => {
+    await startTurn();
+
+    expect(busyRegion()).not.toBeNull();
+    expect(host.querySelectorAll(':scope > [role="status"]')).toHaveLength(2);
+    expect(host.querySelector('[aria-busy="true"] [role="status"]')).toBeNull();
   });
 
   describe('watching the answer arrive', () => {
@@ -887,7 +902,7 @@ describe('Transcript', () => {
       const handle = await startTurn();
 
       expect(host.querySelector('app-ridgeline')).not.toBeNull();
-      expect(host.getAttribute('aria-busy')).toBe('true');
+      expect(busyRegion()).not.toBeNull();
       // The optimistic user bubble is already on screen.
       expect(host.querySelector('.transcript__bubble')?.textContent).toBe('What is the weather?');
 
@@ -903,7 +918,7 @@ describe('Transcript', () => {
     it('drops aria-busy and the caret once the turn settles', async () => {
       await streamFullTurn();
 
-      expect(host.getAttribute('aria-busy')).toBeNull();
+      expect(busyRegion()).toBeNull();
       expect(host.querySelector('.assistant-turn__md--caret')).toBeNull();
     });
 
@@ -959,18 +974,18 @@ describe('Transcript', () => {
       const handle = await startTurn();
       handle.enqueue(frame(assistantEvent('TextDelta', { text: 'Hello.' })));
       await settle(STREAM_BATCH_WINDOW_MS);
-      expect(host.getAttribute('aria-busy')).toBe('true');
+      expect(busyRegion()).not.toBeNull();
 
       handle.enqueue(frame(assistantEvent('Finished')));
       await settle(STREAM_BATCH_WINDOW_MS);
 
       // The body is still open but the answer is complete, which is when the region is released.
-      expect(host.getAttribute('aria-busy')).toBeNull();
+      expect(busyRegion()).toBeNull();
       expect(host.querySelector('app-assistant-turn')).not.toBeNull();
 
       handle.close();
       await settle(STREAM_BATCH_WINDOW_MS);
-      expect(host.getAttribute('aria-busy')).toBeNull();
+      expect(busyRegion()).toBeNull();
     });
 
     it('renders a cut-off turn as the warning card above the partial answer', async () => {
@@ -999,7 +1014,7 @@ describe('Transcript', () => {
 
     async function failWith(problem: object, status: number): Promise<void> {
       fetchMock.mockResolvedValue(problemResponse(problem, status).response);
-      store.bindRoute(CONVERSATION_ID);
+      store.init(CONVERSATION_ID);
       backend
         .expectOne(`${TEST_API_BASE_URL}/api/conversations/${CONVERSATION_ID}/messages`)
         .flush({ id: CONVERSATION_ID, name: 'Conversation', messages: [] });

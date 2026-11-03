@@ -20,9 +20,15 @@ Colours carry **Bootstrap's names** wherever Bootstrap has one: `--bs-body-bg`, 
 `--bs-emphasis-color`, `--bs-secondary-color`, `--bs-secondary-bg`, `--bs-tertiary-bg`,
 `--bs-border-color`, `--bs-link-*`, `--bs-primary` through `--bs-danger`, and the `warning` and
 `danger` subtle and emphasis set. Each theme colour also has a `--{c}-fg`, the label colour on a
-filled control. What remains app-only: `--surface`, `--think-bg`, `--bubble` and `--bubble-fg`,
-`--ring`, `--focus-ring`, `--tooltip-bg` and `--tooltip-fg`, `--code-*`, `--provider-*`, and
-`--show-light` / `--show-dark`.
+filled control. What remains app-only: `--surface`, `--control-border`, `--think-bg`, `--bubble` and
+`--bubble-fg`, `--ring`, `--focus-ring`, `--tooltip-bg` and `--tooltip-fg`, `--code-*`,
+`--provider-*`, and `--show-light` / `--show-dark`.
+
+**`--control-border` is the edge of a form control.** `--bs-border-color` is a divider and measures
+well under 3:1, which is fine for a rule between rows but not for the line that tells a reader where
+an input, select, checkbox or radio is (WCAG 1.4.11). `_bootstrap-config.scss` points
+`$input-border-color` and `$form-check-input-border` at it, so every Bootstrap form control takes
+it. Use it for any new control edge; keep `--bs-border-color` for dividers and cards.
 
 Property names keep their original casing, because custom properties are case-sensitive.
 
@@ -57,8 +63,9 @@ matching nothing and costing bytes in every component. Components read tokens wi
 `scripts/check-tokens.mjs` gates:
 
 - the colours duplicated into `index.html` stay in step with the tokens;
-- the text, code-surface, tooltip and focus-ring pairs (98 in all) clear their WCAG minimum in both
-  themes, including a generated `{c}-fg` on `bs-{c}` pair at 4.5:1 for every theme colour;
+- the text, code-surface, tooltip, focus-ring and control-border pairs (104 in all) clear their WCAG
+  minimum in both themes, including a generated `{c}-fg` on `bs-{c}` pair at 4.5:1 for every theme
+  colour and `control-border` at 3:1 on the card, page and tertiary surfaces;
 - `--bs-primary` flips between themes, the property the filled-control pairs depend on;
 - the two copies of the breakpoint table agree.
 
@@ -154,6 +161,12 @@ template.
   a modal closed by a route change would have its `(close)` binding torn down before the event fired
   and focus would drop to `<body>`. The test shim queues the event as the platform does, so deleting
   the restore fails a spec rather than leaving every spec green.
+- **Recovered.** When removing the focused control would drop focus to `<body>`, a component calls
+  `recoverFocusOn(source)` (`core/a11y/recover-focus.ts`) in its constructor, with the signal whose
+  change removes it: `ToastRegion` on its toast list, `AdminModels` and `AdminMcps` on their rows
+  (a row retired from its kebab takes the kebab with it). Focus returns to `#main-content`, and only
+  if the removal left it on `<body>` or on a detached element. See
+  [state.md](state.md#toasts).
 - **Visible.** `--focus-ring` at 2px with a 2px **offset**, measured against every surface by
   `check:tokens` rather than claimed by a comment.
 
@@ -199,6 +212,63 @@ the card's `:has(.composer__prompt:focus)` ring is its only indicator — an acc
 tied to a class name in a selector. A spec pins it, because a rename would otherwise remove the
 indicator silently with `check:forbidden` still green.
 
+### Pressed controls
+
+A control that can hold focus when pressed uses `aria-disabled="true"` plus a guard in its click
+handler, never native `disabled`. A native-disabled button leaves the tab order, and the browser
+drops focus to `<body>`, so a keyboard user who presses Save or Favourite loses their place for the
+length of the request. The same goes for a text field that is busy: bind it `readonly`, not
+`disabled`.
+
+`.btn[aria-disabled='true']` in `_kit.scss` gives the disabled look and **holds the resting look on
+hover and press**; Bootstrap would otherwise repaint it as live, which reads as "this works". A
+button that is `.active` or `.show` is exempt, because its pressed look is state, not interaction
+(the rating thumb stays `.active` while its rating is sent).
+
+The guard is not optional, since `aria-disabled` stops nothing. Where a repeat press does damage, the
+store holds it too: `DocumentDownloadStore.download()` ignores a second press on a row whose
+download is pending, so the download button keeps `aria-disabled` rather than leaving the tab order.
+
+### Forms
+
+Forms are Signal Forms; the recipe is in [workflows.md](workflows.md#a-form). Three pieces in
+`shared/forms/` make the markup uniform:
+
+| Piece | Role |
+| --- | --- |
+| `FieldErrors` (`app-field-errors`) | Renders a `FieldErrorState` (`{ show, messages }`) as a Bootstrap `.invalid-feedback` with `role="alert"`, because focus does not move on submit. Its id is `<control id>-errors` |
+| `InvalidField` (`[appInvalidField]`) | On the control: `is-invalid`, `aria-invalid="true"`, and `aria-describedby` pointing at `<control id>-errors`. `fieldErrorsShown` describes a region that shows messages the field itself does not fail on; `fieldNote` appends the id of a counter or hint that every focus should read |
+| `notBlank(path, message)` | A rule for a required text field. `required` accepts spaces and every submit trims, so a blank value needs its own message |
+
+The control needs an `id`, since the error id derives from it.
+
+**A submit button does not disable on invalid input.** A disabled button cannot say why, and a
+keyboard user cannot reach it to find out. The press, or Enter in the form, reaches `submit()`, which
+marks every field touched so each shows what is wrong, then stops if the form is invalid. Only a
+request in flight sets `aria-disabled`, per the rule above.
+
+### Names, roles and live regions
+
+- **One `<h1>` per screen.** Project detail's is the project name, which is also the rename button
+  (its label ends "(rename)", visually hidden). The chat `<h1>` stays named while the conversation
+  loads or has failed to ("Loading conversation", "Conversation unavailable", visually hidden)
+  rather than collapsing to an empty heading.
+- **The transcript scroller is a tab stop** (`tabindex="0" role="region" aria-label="Conversation"`),
+  so a keyboard can scroll a long answer that has nothing focusable inside it.
+- **`aria-busy` sits on an inner wrapper in the transcript**, not on the scroller, so the transcript's
+  `role="status"` regions are outside it. Assistive technology may hold back live updates from
+  inside a busy subtree.
+- **`DataTable` loading is announced.** The skeleton is `aria-hidden`; the table's polite live region
+  reads "Loading <label>" and then the result summary. The region exists before the data lands, so
+  the change is announced.
+- **Document group toggles keep one label** and carry open or closed in `aria-expanded`, so the name
+  does not change under a screen reader's cursor.
+- **The sidebar's collapse and expand chevrons have no `aria-expanded`.** Their names already state
+  the direction ("Collapse sidebar", "Expand sidebar"), and both would announce twice. The favourite
+  buttons omit `aria-pressed` for the same reason.
+- **The paginator tracks its entries by page number**, and its gaps by position, so the page button
+  that has focus is kept when the window slides rather than recreated.
+
 ## Colour that flips
 
 Bootstrap compiles its button, `.text-bg-*`, link-hover and table variants as static colours. A loop
@@ -230,6 +300,10 @@ suppresses.
 
 `_motion.scss` is imported **last** so that block wins over everything above it.
 
+**Spinners are the one exception to the reduced-motion floor.** `.spinner-border` and `.spinner-grow`
+keep turning at 1.5 s per cycle, Bootstrap's own reduced-motion pace, because a still spinner reads
+as a hung page. `motion.spec.ts` pins it. Anything else that moves stays suppressed.
+
 ## The kit
 
 **Bootstrap first.** Templates use Bootstrap's components and utilities. The kit adds a class only
@@ -245,7 +319,7 @@ adjusts:
 | `.btn-icon`, `-sm`, `-lg` | Square icon-only buttons; `-sm` is 24px, the floor for axe's target-size rule, and `-lg` is 44px |
 | `.touch-target` | 44px minimum in both dimensions below `md` |
 | `.focus-inset` | Draws the focus ring inside the control |
-| `.btn[aria-disabled]`, `.dropdown-item[aria-disabled]` | Disabled look on a control that stays focusable |
+| `.btn[aria-disabled]`, `.dropdown-item[aria-disabled]` | Disabled look on a control that stays focusable; a button holds it on hover and press unless it is `.active` or `.show`. See [Pressed controls](#pressed-controls) |
 | `.nav-pills-subtle` | Pills whose active state is the secondary background and primary text, not a solid fill |
 | `.list-row` | A row holding a link plus its own controls |
 | `.reveal-host` / `.reveal-target` | Controls shown on hover, focus-within or `.active`, and always shown where hover does not exist |
@@ -274,6 +348,25 @@ behaves. `ui-kit` is a feature, and features never import each other, so the thr
 shows that other features own (`badges/permission-badge`, `badges/kind-badge`, `cards/project-card`)
 live in `shared/`.
 
+### Activity indicator
+
+`ActivityIndicator` (`shared/badges/`) is the one mark for what a conversation is doing that its
+reader has not seen. It is presentational and never interactive, which is what lets it sit inside a
+row's link and extend that link's accessible name.
+
+| `activity` | Draws | Meaning |
+| --- | --- | --- |
+| `running` | Bootstrap's `spinner-border spinner-border-sm text-primary` | A turn is generating |
+| `answer` | A primary `StatusDot` | An answer finished while the reader was elsewhere |
+| `interrupted` | `bi-exclamation-triangle-fill` in `text-warning-emphasis` | The response was cut off or failed |
+
+Colour is never the only channel: the shapes differ, and each carries a visually hidden label
+("Generating answer", "New answer", "Response interrupted") unless `labelled` is false. Turn it off
+where the host control's own `aria-label` already says the same thing, as on the corner marks of the
+strip's Chat link and the mobile hamburger; otherwise the label is read twice. Where each mark appears is in
+[layout-and-navigation.md](layout-and-navigation.md#activity-indicators); the `/ui-kit` gallery shows
+all three under Badges.
+
 ### Overlay primitives
 
 The Angular logic is the app's own; the skin is Bootstrap's CSS. There is no Bootstrap JavaScript,
@@ -295,8 +388,11 @@ Popper or ng-bootstrap, and `check:forbidden` fails an import of any of them.
   The panel is `.dropdown-menu.dropdown-menu-fixed.show`; `MenuItem` hosts as `.dropdown-item` and
   `MenuSeparator` as `.dropdown-divider`. Danger items use `text-danger-emphasis`.
 - **Tooltip.** Renders `.tooltip.show.position-fixed` > `.tooltip-inner`, without an arrow.
-- **Toasts.** `.toast-container` > `.toast.show` > `.toast-body` with a `.btn-close`. The tone edge and
-  the drain bar are bespoke.
+- **Toasts.** `.toast-container` > `.toast.show` > `.toast-body` with a `.btn-close`, and one optional
+  `.btn-link` action button (Retry, Open). The tone edge and the drain bar are bespoke. Success and
+  info toasts dismiss themselves after three seconds (`AUTO_DISMISS_MS`) and are the only ones that
+  render the drain bar; errors, warnings and any toast with an action stay until dismissed, so there
+  is nothing to drain. See [state.md](state.md#toasts).
 - **Project picker.** A `.dropdown-menu` of `.dropdown-item` rows marked `data-picker-row`.
 
 Specs find elements by role and accessible name through `@testing-library/dom`, and
@@ -316,7 +412,10 @@ Specs find elements by role and accessible name through `@testing-library/dom`, 
 | `enterprise-gpt-ui/src/styles/_bootstrap-overrides.scss` | The colour flip loop, dark glyphs and the named focus rules |
 | `enterprise-gpt-ui/src/styles/_kit.scss` | Classes Bootstrap lacks |
 | `enterprise-gpt-ui/src/styles/_motion.scss` | The three app keyframes and the reduced-motion block |
+| `enterprise-gpt-ui/src/app/shared/forms/` | `FieldErrors`, `InvalidField` and `notBlank`: the markup and rule every form field uses |
+| `enterprise-gpt-ui/src/app/core/a11y/recover-focus.ts` | `recoverFocusOn`: focus back to `<main>` when a removal drops it |
 | `enterprise-gpt-ui/src/app/shared/icons/icon-names.ts` | The sprite manifest |
+| `enterprise-gpt-ui/src/app/shared/badges/activity-indicator.ts` | The running, new-answer and interrupted marks |
 | `enterprise-gpt-ui/src/testing/overlays.ts` | Spec helpers for menus, tooltips, dialogs and icons |
 | `enterprise-gpt-ui/scripts/check-tokens.mjs` | Shell parity, contrast, breakpoint parity |
 | `enterprise-gpt-ui/src/styles/motion.spec.ts` | No animation names a keyframe that does not exist |

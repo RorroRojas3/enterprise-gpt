@@ -5,10 +5,12 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { Dispatcher } from '@ngrx/signals/events';
 import { getAllByRole, getAllByText, getByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ModelDto } from '@core/api/chat-model.model';
 import { PROVIDER_ID } from '@core/api/provider.model';
+import { adminEvents } from '@core/events/admin-events';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
 import { modelFixture } from '@testing/catalog';
 import { installDialogPolyfill } from '@testing/dialog-polyfill';
@@ -225,6 +227,25 @@ describe('AdminModels', () => {
     // An empty table would show "no models" as if it were the answer.
     expect(element().querySelector('app-error-panel')).not.toBeNull();
     expect(element().querySelector('app-data-table')).toBeNull();
+  });
+
+  it('moves focus to the main content when retiring a row removes its kebab', async () => {
+    const live = modelFixture({ name: 'GPT-5' });
+    await open([live]);
+    const main = document.body.appendChild(document.createElement('main'));
+    main.id = 'main-content';
+    main.tabIndex = -1;
+    getByRole(element(), 'button', { name: 'Actions for GPT-5' }).focus();
+
+    TestBed.inject(Dispatcher).dispatch(adminEvents.modelCatalogChanged());
+    await harness.fixture.whenStable();
+    backend
+      .expectOne(MODELS_URL)
+      .flush([{ ...live, dateDeactivated: '2026-10-31T00:00:00+00:00' }]);
+    await harness.fixture.whenStable();
+
+    expect(document.activeElement).toBe(main);
+    main.remove();
   });
 
   it('mounts both dialogs once, outside every branch', async () => {

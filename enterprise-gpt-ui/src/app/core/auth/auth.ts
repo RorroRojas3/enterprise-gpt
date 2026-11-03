@@ -9,6 +9,7 @@ import { toAppError } from '@core/errors/to-app-error';
 import { injectSignedOut, sessionEvents } from '@core/events/session-events';
 import { HardNavigation } from '@core/navigation/hard-navigation';
 import { CHAT_ROUTE, SIGNED_OUT_ROUTE } from '@core/navigation/route-paths';
+import { UnloadPrompt } from '@core/navigation/unload-prompt';
 import { SessionChannel } from '@core/session/session-channel';
 import { MSAL_INSTANCE } from './msal-instance-token';
 
@@ -39,6 +40,7 @@ export class Auth {
   private readonly _dispatcher = inject(Dispatcher);
   private readonly _channel = inject(SessionChannel);
   private readonly _navigation = inject(HardNavigation);
+  private readonly _unload = inject(UnloadPrompt);
   private _handshake: Promise<AuthHandshake> | null = null;
 
   private readonly _signingOut = signal(false);
@@ -105,7 +107,7 @@ export class Auth {
   async signIn(returnUrl: string): Promise<void> {
     this.setReturnUrl(returnUrl);
 
-    await this._instance.loginRedirect({ scopes: this._scopes });
+    await this._unload.leaving(() => this._instance.loginRedirect({ scopes: this._scopes }));
   }
 
   /**
@@ -126,7 +128,7 @@ export class Auth {
     this._dispatcher.dispatch(sessionEvents.signedOut(), { scope: 'global' });
 
     try {
-      await this._instance.logoutRedirect({ account });
+      await this._unload.leaving(() => this._instance.logoutRedirect({ account }));
     } catch {
       // The Entra session cookie is still live, so landing on `/chat` would silently
       // re-authenticate. Wipe locally instead: the bare `clearCache()` clears browser storage and

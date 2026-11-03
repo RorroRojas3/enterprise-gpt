@@ -34,6 +34,25 @@ describe('parseProblemDetails', () => {
     expect(parseProblemDetails(value)).toBeNull();
   });
 
+  it('drops mistyped base members, which a gateway can send and `.trim()` would throw on', () => {
+    const parsed = parseProblemDetails({
+      type: 'x',
+      status: 502,
+      title: 1,
+      detail: 5,
+      instance: {},
+      traceId: [],
+    });
+
+    expect(parsed).toEqual({ type: 'x', status: 502 });
+  });
+
+  it('keeps well-typed members, null ones and extensions untouched', () => {
+    const body = { type: 'x', status: 400, title: 'Bad', detail: null, serverName: 'Jira' };
+
+    expect(parseProblemDetails(body)).toEqual(body);
+  });
+
   it('rejects the parse-failure wrapper HttpClient supplies for a non-JSON body', () => {
     expect(
       parseProblemDetails({ error: new SyntaxError('bad'), text: '<html></html>' }),

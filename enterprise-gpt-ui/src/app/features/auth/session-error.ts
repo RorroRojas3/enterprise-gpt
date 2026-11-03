@@ -35,7 +35,7 @@ export class SessionError implements OnInit {
 
   protected readonly error = this._session.error;
   protected readonly retrying = signal(false);
-  protected readonly canRetry = computed(() => !this.retrying());
+  protected readonly retryLabel = computed(() => (this.retrying() ? 'Retrying…' : 'Retry'));
 
   constructor() {
     // Not `focusOnRender`: the panel is inside an `@if`, so its `viewChild.required` would throw
@@ -52,6 +52,10 @@ export class SessionError implements OnInit {
   }
 
   protected async retry(): Promise<void> {
+    if (this.retrying()) {
+      return;
+    }
+
     this.retrying.set(true);
 
     // The store's only retry: retryInterceptor covers GETs alone, so a transient

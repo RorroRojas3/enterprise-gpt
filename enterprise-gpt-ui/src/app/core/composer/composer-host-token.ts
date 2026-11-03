@@ -23,6 +23,9 @@ export interface ComposerHost {
   /** A fresh object per seed, so seeding the same text twice still propagates. */
   readonly composerSeed: Signal<{ readonly text: string } | null>;
 
+  /** The unsent text, held by the host so it outlives the composer. */
+  readonly draft: Signal<string>;
+
   readonly inFlight: Signal<boolean>;
 
   /** Typed as a bare object so the chat components' notice types stay out of `core/`. */
@@ -35,6 +38,7 @@ export interface ComposerHost {
   readonly exportTarget: Signal<ComposerExportTarget | null>;
 
   consumeComposerSeed(): void;
+  setDraft(text: string): void;
   send(prompt: string): void;
   stop(): void;
 }

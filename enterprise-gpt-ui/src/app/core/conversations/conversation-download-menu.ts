@@ -28,7 +28,7 @@ interface DownloadOption {
 }
 
 /**
- * In `shared/` so the composer and the conversation header offer one menu. It stays open while a
+ * In `core/` so the composer and the conversation header offer one menu. It stays open while a
  * format prepares and closes only once the download starts, so after a failure another format
  * is one click away.
  */

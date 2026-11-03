@@ -13,6 +13,7 @@ import {
 } from '@ngrx/signals';
 import {
   addEntities,
+  removeAllEntities,
   removeEntity,
   setAllEntities,
   updateEntity,
@@ -103,6 +104,10 @@ export const ProjectConversationsStore = signalStore(
         filter((projectId): projectId is string => projectId !== null),
         tap((projectId) => {
           store._querySuperseded$.next();
+          // Route providers outlive a `:projectId` change; a refresh of this one keeps its rows.
+          if (projectId !== store.projectId()) {
+            patchState(store, removeAllEntities(), { skip: 0, totalCount: 0 });
+          }
           patchState(store, { projectId, loadingMore: false }, setPending());
         }),
         switchMap((projectId) =>

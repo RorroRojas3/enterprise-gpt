@@ -115,7 +115,9 @@ Deleting an already-deleted project is a 404, not a silent success.
 `ProjectLookupStore` is root-scoped and holds the whole owned-project set, feeding the picker, the
 sidebar favourites and the composer chip. The detail route provides three stores together —
 `ProjectStore`, `ProjectDocumentsStore`, `ProjectConversationsStore` — and its instructions tab
-carries a `canDeactivate` guard for unsaved edits.
+carries a `canDeactivate` guard for unsaved edits. Moving from one project to another reuses those
+stores, so each clears its data when its id changes and the screen shows a skeleton until the new
+project arrives ([../frontend/state.md](../frontend/state.md#the-stores)).
 
 **A file attached through the composer is not a project document.** The detail screen's composer
 exists to start a conversation, so a file dropped there travels with that conversation and becomes

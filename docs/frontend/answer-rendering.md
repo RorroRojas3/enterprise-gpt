@@ -26,10 +26,14 @@ A surface that is not chat provides the same factory on its own route component,
 
 ```ts
 @Component({
-  providers: [ConversationStore, TurnStore, provideChatMarkdown()],
+  providers: [ConversationStore, provideChatMarkdown()],
 })
 export class Chat {}
 ```
+
+`TurnStore` is not in that list: each chat session owns its own, and `Chat` renders the transcript
+through the session's environment injector. The markdown providers still resolve from `Chat`'s
+element chain, because the session view is created inside it.
 
 ## Five rules the build enforces
 
@@ -80,6 +84,10 @@ Following is a `ResizeObserver`, not a signal effect: content grows for reasons 
 Bottom detection has a tolerance band rather than an exact comparison, because sub-pixel layout
 means the scroll position rarely equals the exact bottom. A jump control appears when the reader has
 scrolled away, and following resumes when they return to the bottom.
+
+The scroller is itself a tab stop, a labelled region ("Conversation"), so a keyboard can scroll an
+answer with nothing focusable in it. It is also where focus lands when the jump control removes
+itself. See [design-system.md](design-system.md#names-roles-and-live-regions).
 
 ## Diagrams and math
 

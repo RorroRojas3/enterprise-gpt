@@ -15,7 +15,7 @@
 <button
   class="btn btn-ghost btn-icon"
   type="button"
-  [disabled]="signingOut()"
+  [attr.aria-disabled]="signingOut() ? 'true' : null"
   aria-label="Sign out"
   title="Sign out"
   (click)="signOut()"

@@ -149,8 +149,9 @@ describe('ProjectDetail', () => {
   it('renders the header, the composer and a tab strip carrying both counts', async () => {
     await open('', [conversationFixture(), conversationFixture()]);
 
-    // The name is the rename control, styled as the heading.
-    expect(getByRole(header(), 'button', { name: 'Helios' })).toBeTruthy();
+    // The name is the screen's heading, and the rename control inside it.
+    const heading = getByRole(header(), 'heading', { level: 1 });
+    expect(getByRole(heading, 'button', { name: 'Helios (rename)' })).toBeTruthy();
     // The composer is the shared component; what differs is the host it sends into.
     expect(host().querySelector('app-composer')).not.toBeNull();
 
@@ -314,6 +315,32 @@ describe('ProjectDetail', () => {
       expect(star()?.getAttribute('aria-label')).toBe('Unfavourite Helios');
       expect(host().querySelector<HTMLTextAreaElement>('#project-instructions')?.value).toBe(
         'Cite Jira keys.',
+      );
+    });
+
+    it('never shows the last project under the next one’s URL', async () => {
+      await open();
+      const next = projectDetailFixture({ name: 'Atlas', instructions: 'Keep it short.' });
+
+      const moved = harness.navigateByUrl(`/projects/${next.id}/instructions`);
+      await pump();
+
+      expect(host().querySelector('header')).toBeNull();
+      expect(host().querySelector('#project-instructions')).toBeNull();
+      expect(host().querySelector('[aria-busy="true"]')).not.toBeNull();
+
+      const nextUrl = `${TEST_API_BASE_URL}/api/projects/${next.id}`;
+      backend.expectOne(nextUrl).flush(next);
+      backend.expectOne(`${nextUrl}/documents`).flush([]);
+      backend
+        .expectOne((request) => request.url === CONVERSATIONS_URL)
+        .flush(conversationPage([], { pageSize: 25 }));
+      await moved;
+      await harness.fixture.whenStable();
+
+      expect(header().textContent).toContain('Atlas');
+      expect(host().querySelector<HTMLTextAreaElement>('#project-instructions')?.value).toBe(
+        'Keep it short.',
       );
     });
 

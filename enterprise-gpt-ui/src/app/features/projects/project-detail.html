@@ -2,16 +2,18 @@
 @if (project.project(); as current) {
   <header class="d-flex align-items-start gap-3">
     <div class="d-flex flex-column gap-1 flex-grow-1 min-w-0">
-      <p class="d-flex align-items-center gap-2 mb-0 min-w-0">
+      <div class="d-flex align-items-center gap-2 min-w-0">
         <app-icon class="flex-shrink-0 fs-5 text-primary" name="bi-folder-fill" />
-        <!-- A button that reads as a heading, with no chrome until hovered or focused. -->
-        <button
-          class="btn btn-link p-0 border-0 min-w-0 text-start text-truncate font-display fs-5 fw-bold link-body-emphasis link-underline-opacity-0 link-underline-opacity-100-hover"
-          type="button"
-          (click)="beginEdit()"
-        >
-          {{ current.name }}
-        </button>
+        <!-- The screen's heading, as a button with no chrome until hovered or focused. -->
+        <h1 class="fs-5 mb-0 min-w-0">
+          <button
+            class="btn btn-link d-block mw-100 p-0 border-0 text-start text-truncate font-display fs-5 fw-bold link-body-emphasis link-underline-opacity-0 link-underline-opacity-100-hover"
+            type="button"
+            (click)="beginEdit()"
+          >
+            {{ current.name }} <span class="visually-hidden">(rename)</span>
+          </button>
+        </h1>
         <!-- No `aria-pressed`: the label already carries the direction. -->
         <button
           class="btn btn-ghost btn-icon btn-icon-sm touch-target"
@@ -23,7 +25,7 @@
         >
           <app-icon [name]="current.isFavorite ? 'bi-star-fill' : 'bi-star'" />
         </button>
-      </p>
+      </div>
       @if (current.description) {
         <p class="small text-body-secondary mb-0">{{ current.description }}</p>
       }

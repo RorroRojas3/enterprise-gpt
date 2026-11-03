@@ -54,8 +54,8 @@ First match wins:
 | otherwise | Information |
 
 `ClientAborted` sits at Information on purpose and is checked *before* the status bands: a user
-navigating away mid-stream is ordinary traffic on a chat platform, and warning on it would drown the
-level that is supposed to mean "look at this".
+closing or reloading the tab mid-stream is ordinary traffic on a chat platform, and warning on it
+would drown the level that is supposed to mean "look at this".
 
 The payoff is that severity carries the meaning — filtering the middleware category to Warning gives
 a complete, self-maintaining error log.

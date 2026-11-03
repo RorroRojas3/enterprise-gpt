@@ -163,7 +163,7 @@ export class Documents {
   }
 
   protected groupToggleLabel(group: DocumentGroup): string {
-    return `${this.isExpanded(group.conversationId) ? 'Collapse' : 'Expand'} ${group.conversationName}`;
+    return `Documents in ${group.conversationName}`;
   }
 
   protected groupBodyId(conversationId: string): string {

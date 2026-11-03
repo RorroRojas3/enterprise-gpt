@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { provideLocationMocks } from '@angular/common/testing';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { getByRole, queryByRole } from '@testing-library/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
@@ -310,5 +310,151 @@ describe('Shell responsive layout', () => {
     expect(isExpanded(element)).toBe(false);
     expect(element.querySelector('.shell__backdrop')).toBeNull();
     expectAtMostOneSidebar(element);
+  });
+
+  describe('page changes', () => {
+    function main(element: HTMLElement): HTMLElement {
+      return element.querySelector<HTMLElement>('#main-content')!;
+    }
+
+    function announcement(element: HTMLElement): string {
+      return getByRole(element, 'status').textContent ?? '';
+    }
+
+    async function navigate(fixture: ComponentFixture<Shell>, url: string): Promise<void> {
+      await TestBed.inject(Router).navigateByUrl(url);
+      await fixture.whenStable();
+    }
+
+    beforeEach(() => {
+      TestBed.inject(Router).resetConfig([
+        { path: 'documents', component: Blank, title: 'Documents — Enterprise GPT' },
+        { path: '**', component: Blank },
+      ]);
+    });
+
+    it('closes the drawer on navigation, then moves focus and announces the page', async () => {
+      const fixture = await render();
+      await atWidth(NARROW_VIEWPORT, fixture);
+      const element = attach(fixture);
+
+      hamburger(element).click();
+      await fixture.whenStable();
+      await loadConversations(fixture);
+      expect(element.querySelector('#sidebar-primary')).not.toBeNull();
+
+      await navigate(fixture, '/documents');
+
+      expect(element.querySelector('#sidebar-primary')).toBeNull();
+      expect(document.activeElement).toBe(main(element));
+      expect(announcement(element)).toBe('Documents — Enterprise GPT');
+    });
+
+    it('closes the drawer on a link to the current page, returning to the hamburger', async () => {
+      await TestBed.inject(Router).navigateByUrl('/chat');
+      const fixture = await render();
+      await atWidth(NARROW_VIEWPORT, fixture);
+      const element = attach(fixture);
+
+      const menu = hamburger(element);
+      menu.focus();
+      menu.click();
+      await fixture.whenStable();
+      await loadConversations(fixture);
+
+      await navigate(fixture, '/chat');
+
+      expect(element.querySelector('#sidebar-primary')).toBeNull();
+      expect(document.activeElement).toBe(menu);
+    });
+
+    it('collapses the tablet overlay and focuses main once it is no longer inert', async () => {
+      const fixture = await render();
+      await atWidth(TABLET_VIEWPORT_QUERY, fixture);
+      await loadConversations(fixture);
+      const element = attach(fixture);
+
+      expandButton(element)!.click();
+      await fixture.whenStable();
+      expect(main(element).hasAttribute('inert')).toBe(true);
+
+      await navigate(fixture, '/documents');
+
+      expect(isExpanded(element)).toBe(false);
+      expect(main(element).hasAttribute('inert')).toBe(false);
+      expect(document.activeElement).toBe(main(element));
+    });
+
+    it('hands focus to the strip when the tablet overlay links to the current page', async () => {
+      await TestBed.inject(Router).navigateByUrl('/chat');
+      const fixture = await render();
+      await atWidth(TABLET_VIEWPORT_QUERY, fixture);
+      await loadConversations(fixture);
+      const element = attach(fixture);
+
+      expandButton(element)!.click();
+      await fixture.whenStable();
+
+      await navigate(fixture, '/chat');
+
+      expect(isExpanded(element)).toBe(false);
+      expect(document.activeElement).toBe(expandButton(element));
+    });
+
+    it('moves focus from a sidebar link to main at desktop', async () => {
+      const fixture = await render();
+      await loadConversations(fixture);
+      const element = attach(fixture);
+      getByRole(element, 'link', { name: 'Documents' }).focus();
+
+      await navigate(fixture, '/documents');
+
+      expect(document.activeElement).toBe(main(element));
+    });
+
+    it('leaves focus that is already inside main, and still announces', async () => {
+      const fixture = await render();
+      await loadConversations(fixture);
+      const element = attach(fixture);
+      const field = document.createElement('input');
+      main(element).append(field);
+      field.focus();
+
+      await navigate(fixture, '/documents');
+
+      expect(document.activeElement).toBe(field);
+      expect(announcement(element)).toBe('Documents — Enterprise GPT');
+    });
+
+    it('leaves focus in an open dialog', async () => {
+      const fixture = await render();
+      await loadConversations(fixture);
+      const element = attach(fixture);
+      const dialog = document.createElement('dialog');
+      dialog.toggleAttribute('open', true);
+      const button = dialog.appendChild(document.createElement('button'));
+      element.append(dialog);
+      button.focus();
+
+      await navigate(fixture, '/documents');
+
+      expect(document.activeElement).toBe(button);
+    });
+
+    it('stays out of the way on a query change and a replaced URL', async () => {
+      await TestBed.inject(Router).navigateByUrl('/documents');
+      const fixture = await render();
+      await loadConversations(fixture);
+      const element = attach(fixture);
+      const link = getByRole(element, 'link', { name: 'Conversations' });
+      link.focus();
+
+      await navigate(fixture, '/documents?page=2');
+      await TestBed.inject(Router).navigateByUrl('/chat/abc', { replaceUrl: true });
+      await fixture.whenStable();
+
+      expect(document.activeElement).toBe(link);
+      expect(announcement(element)).toBe('');
+    });
   });
 });

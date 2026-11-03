@@ -48,6 +48,13 @@
 .btn[aria-disabled='true'] {
   opacity: var(--bs-btn-disabled-opacity);
   cursor: default;
+
+  // Not a pressed one, which keeps its look: a thumb is `.active` while its rating is sent.
+  &:not(.active, .show):is(:hover, :active) {
+    border-color: var(--bs-btn-border-color);
+    background-color: var(--bs-btn-bg);
+    color: var(--bs-btn-color);
+  }
 }
 
 .dropdown-item[aria-disabled='true'] {

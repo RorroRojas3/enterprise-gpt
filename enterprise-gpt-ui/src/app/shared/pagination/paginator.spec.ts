@@ -42,6 +42,18 @@ describe('Paginator', () => {
     expect(getAllByRole(host, 'button', { name: /^Page \d+$/ }).length).toBeGreaterThan(0);
   });
 
+  it('keeps focus on the page pressed as the window moves around it', async () => {
+    const { fixture, host } = await render(4);
+    document.body.append(host);
+    getByRole(host, 'button', { name: 'Page 5' }).focus();
+
+    fixture.componentRef.setInput('page', 5);
+    await fixture.whenStable();
+
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Page 5');
+    host.remove();
+  });
+
   it('hides the ellipsis from assistive technology', async () => {
     const { host } = await render(7);
 

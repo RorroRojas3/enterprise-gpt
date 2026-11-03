@@ -41,6 +41,11 @@ character silently fails to match those fields.
 `setErrors`. Server messages surface by the form reading store state, not by anything pushing into
 the form.
 
+**`parseProblemDetails` drops a mistyped `title`, `detail`, `instance` or `traceId`.** A gateway or
+proxy can answer in the problem shape with a number or object in one of those members, and the
+arms downstream call string methods on them. The member is removed (a `null` is kept) rather than
+the whole body rejected, so the status and the other members still classify the error.
+
 **`NOTIFIABLE_KINDS` is `satisfies`-checked**, so adding an arm without deciding whether it deserves
 a toast is a compile error. Cancellations and validation errors deliberately do not toast — one is
 what the user asked for and the other is already rendered beside the field.
@@ -58,6 +63,20 @@ renderer or a provider will answer the same way to every attempt.
 Interceptor order in `app.config.ts` is `[retryInterceptor, authInterceptor]` and is load-bearing:
 retry is outermost, so each retried attempt re-enters auth and carries a fresh token.
 
+## Failures that are not HTTP
+
+A failed *navigation* never passes through `toAppError`; the router reports it, usually because a
+lazy chunk a new deployment replaced no longer exists. Two surfaces cover it, and the first
+navigation is told apart from later ones because only the later ones have a screen to stay on:
+
+- **The first navigation** fails into the fatal shell, the same static screen a bad `config.json`
+  produces, so the reader is not left on the startup card. It is shown in `afterNextRender`,
+  because bootstrap still needs to find `<app-root>`.
+- **A later navigation** raises an error toast keyed `navigation-failure` with a **Reload** action,
+  through `withNavigationErrorHandler(notifyNavigationFailure)`. Only a reload fetches the new
+  chunk. The key makes a second failure replace the toast rather than stack. The sequence is in
+  [workflows.md](workflows.md#1-app-start-and-sign-in).
+
 ## Rendering an error
 
 Every arm carries `traceId`, which surfaces have to render — it is the only thing that ties a user's
@@ -73,6 +92,8 @@ here. The two files are a pair.
 | `enterprise-gpt-ui/src/app/core/errors/to-app-error.ts` | The total entry point |
 | `enterprise-gpt-ui/src/app/core/errors/problem-types.ts` | The mirror of the server catalog |
 | `enterprise-gpt-ui/src/app/core/errors/camel-case.ts` | .NET's camel-casing algorithm |
+| `enterprise-gpt-ui/src/app/core/navigation/navigation-failure.ts` | The toast for a failed later navigation |
+| `enterprise-gpt-ui/src/app/core/config/startup-shell-handoff.ts` | Hides the startup card, or shows the fatal shell, on the first navigation |
 | `enterprise-gpt-ui/src/app/core/api/retry-interceptor.ts` | GET-only retry with jitter |
 | `enterprise-gpt-ui/src/app/core/errors/retry-policy.ts` | `authErrorDecision` |
 | `enterprise-gpt-ui/src/app/core/auth/auth-interceptor.ts` | The bearer interceptor |

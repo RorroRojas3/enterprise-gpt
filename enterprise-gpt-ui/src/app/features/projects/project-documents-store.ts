@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
 import { tapResponse } from '@ngrx/operators';
 import {
+  PartialStateUpdater,
   patchState,
   signalStore,
   withComputed,
@@ -41,6 +42,14 @@ interface ProjectDocumentsState {
   readonly documents: readonly ProjectDocumentDto[];
 }
 
+/** Route providers outlive a `:projectId` change, so a different id must clear the last list. */
+function boundTo(projectId: string): PartialStateUpdater<ProjectDocumentsState> {
+  return (state) => ({
+    projectId,
+    documents: state.projectId === projectId ? state.documents : [],
+  });
+}
+
 /**
  * Uploads live in `UploadStore`: a file in flight is a chip there, a landed one a row here, and
  * this store is told to re-read when one becomes the other.
@@ -69,7 +78,7 @@ export const ProjectDocumentsStore = signalStore(
     const _load = rxMethod<string | null>(
       pipe(
         filter((projectId): projectId is string => projectId !== null),
-        tap((projectId) => patchState(store, { projectId }, setPending())),
+        tap((projectId) => patchState(store, boundTo(projectId), setPending())),
         // switchMap: navigating to another project must not let the previous one's
         // response land in this list.
         switchMap((projectId) =>

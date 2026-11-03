@@ -1,0 +1,14 @@
+@switch (activity()) {
+  @case ('running') {
+    <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+  }
+  @case ('answer') {
+    <app-status-dot tone="primary" label="" [labelHidden]="true" [size]="8" />
+  }
+  @case ('interrupted') {
+    <app-icon class="text-warning-emphasis" name="bi-exclamation-triangle-fill" />
+  }
+}
+@if (labelled()) {
+  <span class="visually-hidden">{{ label() }}</span>
+}

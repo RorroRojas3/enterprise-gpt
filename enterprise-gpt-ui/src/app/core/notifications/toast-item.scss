@@ -3,6 +3,11 @@
   border-left: 4px solid var(--toast-accent);
 }
 
+// `.btn-sm` with no padding falls just under the 24px target size.
+.toast__action {
+  min-block-size: 1.5rem;
+}
+
 .toast__drain {
   position: absolute;
   inset-inline-start: 0;
@@ -13,7 +18,7 @@
   // A transition, not a keyframe, to keep the app's own keyframes few; `@starting-style` gives a
   // freshly inserted bar a state to animate from. Where unsupported, the bar sits empty.
   transform: scaleX(0);
-  transition: transform var(--toast-duration, 5000ms) linear;
+  transition: transform var(--toast-duration) linear;
   background: var(--toast-accent);
   opacity: 0.35;
 

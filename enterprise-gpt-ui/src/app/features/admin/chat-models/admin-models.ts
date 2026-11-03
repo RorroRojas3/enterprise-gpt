@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, viewChild } from '@angular/core';
+import { recoverFocusOn } from '@core/a11y/recover-focus';
 import { ModelDto } from '@core/api/chat-model.model';
 import { ProviderMeta } from '@core/api/provider.model';
 import { providerMeta } from '@core/catalog/provider-meta';
@@ -107,6 +108,8 @@ export class AdminModels {
   protected readonly rowLabel = (model: ModelDto): string => model.name;
 
   constructor() {
+    // A row retired from its kebab loses the kebab, which holds focus by then.
+    recoverFocusOn(this.models.results);
     this.models.load();
 
     // `ModelActionsStore` is root-scoped, so a dialog left open on a past visit would reopen

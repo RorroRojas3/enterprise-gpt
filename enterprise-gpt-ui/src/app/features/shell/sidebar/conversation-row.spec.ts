@@ -2,11 +2,15 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { Dispatcher } from '@ngrx/signals/events';
 import { getByRole, queryByRole } from '@testing-library/dom';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConversationActionsStore } from '@core/conversations/conversation-actions-store';
+import { ConversationActivityStore } from '@core/conversations/conversation-activity-store';
 import { ConversationListStore } from '@core/conversations/conversation-list-store';
+import { turnEvents } from '@core/events/turn-events';
 import { TEST_API_BASE_URL, provideTestAppConfig } from '@testing/app-config';
+import { connectActivity } from '@testing/conversation-activity';
 import { conversationFixture } from '@testing/conversations';
 import { iconOf, menuItems, openMenu } from '@testing/overlays';
 import { ConversationRow } from './conversation-row';
@@ -156,5 +160,59 @@ describe('ConversationRow', () => {
 
     expect(queryByRole(element(), 'dialog')).toBeNull();
     expect(document.activeElement).toBe(trigger);
+  });
+
+  describe('activity', () => {
+    const stop = vi.fn<(conversationId: string) => void>();
+    let running: ReturnType<typeof connectActivity>['running'];
+
+    beforeEach(() => {
+      stop.mockClear();
+      // Where every sidebar row comes from, and where the activity store finds its name.
+      TestBed.inject(ConversationListStore).prependNewest(conversation);
+      ({ running } = connectActivity({ stop }));
+    });
+
+    function link(): HTMLElement {
+      return getByRole(element(), 'link', { name: /^Helios 2.4 release status/ });
+    }
+
+    it('spins inside the link while the conversation generates, saying so in its name', async () => {
+      running.set(new Set([conversation.id]));
+      await fixture.whenStable();
+
+      expect(link().querySelector('.spinner-border')).not.toBeNull();
+      expect(getByRole(element(), 'link', { name: /Generating answer/ })).toBe(link());
+    });
+
+    it('marks an answer that ended out of sight until the conversation is opened', async () => {
+      TestBed.inject(Dispatcher).dispatch(
+        turnEvents.completed({ conversationId: conversation.id, wasFirstTurn: false }),
+      );
+      await fixture.whenStable();
+      expect(getByRole(element(), 'link', { name: /New answer/ })).toBe(link());
+
+      TestBed.inject(ConversationActivityStore).markSeen(conversation.id);
+      await fixture.whenStable();
+      expect(link().textContent).not.toContain('New answer');
+    });
+
+    it('offers Stop response only while generating, and stops without opening it', async () => {
+      expect((await openKebab()).map((item) => item.textContent?.trim())).not.toContain(
+        'Stop response',
+      );
+      kebab().click();
+      await fixture.whenStable();
+
+      running.set(new Set([conversation.id]));
+      await fixture.whenStable();
+      const items = await openKebab();
+      expect(items[0]?.textContent?.trim()).toBe('Stop response');
+      expect(iconOf(items[0]!)).toBe('bi-stop-circle');
+
+      items[0]?.click();
+      await fixture.whenStable();
+      expect(stop).toHaveBeenCalledExactlyOnceWith(conversation.id);
+    });
   });
 });

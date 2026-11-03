@@ -11,5 +11,8 @@
     "diagrams": true,
     "math": true,
     "rawStreamCodec": false
+  },
+  "chat": {
+    "maxConcurrentTurns": 4
   }
 }

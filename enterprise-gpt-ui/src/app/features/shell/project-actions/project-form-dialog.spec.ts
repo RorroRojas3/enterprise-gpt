@@ -119,16 +119,71 @@ describe('ProjectFormDialog', () => {
     expect(nameField().getAttribute('maxlength')).toBe(String(PROJECT_FIELD_LENGTHS.name));
   });
 
-  it('refuses to submit an empty name', async () => {
+  it.each(['', '   '])('refuses to submit a name of %j, and says why', async (name) => {
     actions.beginCreate();
     await fixture.whenStable();
+    await type(nameField(), name);
 
-    const submit = createButton();
-    expect(submit.disabled).toBe(true);
+    createButton().click();
+    await fixture.whenStable();
 
-    await type(nameField(), 'Helios');
-    expect(submit.disabled).toBe(false);
+    backend.expectNone((request) => request.method === 'POST');
+    expect(host().querySelector('#project-form-name-errors')?.textContent).toContain(
+      'A name is required.',
+    );
+    expect(nameField().getAttribute('aria-invalid')).toBe('true');
   });
+
+  it('keeps the pressed button focusable while the save is in flight', async () => {
+    document.body.append(host());
+    actions.beginCreate();
+    await fixture.whenStable();
+    await type(nameField(), 'Helios');
+    const submit = createButton();
+    submit.focus();
+
+    submit.click();
+    await fixture.whenStable();
+
+    expect(submit.disabled).toBe(false);
+    expect(submit.getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(submit);
+
+    backend.expectOne((request) => request.method === 'POST').flush(projectDetailFixture());
+    await fixture.whenStable();
+    host().remove();
+  });
+
+  it.each([
+    ['Description', 'project-form-description', 'Keep it short.'],
+    ['Instructions', 'project-form-instructions', 'Too many rules.'],
+  ])(
+    'renders a server rejection of %s, and clears it on the next keystroke',
+    async (key, id, message) => {
+      actions.beginCreate();
+      await fixture.whenStable();
+      await type(nameField(), 'Helios');
+      const field = host().querySelector<HTMLInputElement>(`#${id}`)!;
+      await type(field, 'Rejected text');
+
+      createButton().click();
+      await fixture.whenStable();
+      backend
+        .expectOne((request) => request.method === 'POST')
+        .flush(
+          { ...PROBLEM_FIXTURES.validationError, errors: { [key]: [message] } },
+          { status: 400, statusText: 'Bad Request' },
+        );
+      await fixture.whenStable();
+
+      expect(host().querySelector(`#${id}-errors`)?.textContent).toContain(message);
+      expect(field.getAttribute('aria-invalid')).toBe('true');
+
+      await type(field, 'Rejected text, reworded');
+
+      expect(host().querySelector(`#${id}-errors`)).toBeNull();
+    },
+  );
 
   it('renders the board’s duplicate-name copy, not the server’s wording', async () => {
     actions.beginCreate();

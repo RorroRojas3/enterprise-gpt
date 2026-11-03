@@ -18,24 +18,11 @@
         placeholder="name@andessoftware.com"
         data-modal-autofocus
         [formField]="f.email"
-        [class.is-invalid]="showEmailErrors()"
-        [attr.aria-describedby]="showErrorRegion() ? 'user-form-email-errors' : null"
+        [appInvalidField]="showEmailErrors()"
+        [fieldErrorsShown]="showErrorRegion()"
       />
 
-      @if (showErrorRegion()) {
-        <!-- role="alert", since focus does not move on submit. track $index: two rules can
-             emit identical text. -->
-        <div class="invalid-feedback d-block" id="user-form-email-errors" role="alert">
-          @if (showEmailErrors()) {
-            @for (message of emailErrors(); track $index) {
-              <p class="mb-0">{{ message }}</p>
-            }
-          }
-          @for (message of unmatched(); track $index) {
-            <p class="mb-0">{{ message }}</p>
-          }
-        </div>
-      }
+      <app-field-errors fieldId="user-form-email" [errors]="emailRegion()" />
     </div>
 
     <div>
@@ -73,7 +60,7 @@
     class="btn btn-primary"
     type="submit"
     form="user-form"
-    [disabled]="!canSubmit()"
+    [attr.aria-disabled]="actions.formBusy() ? 'true' : null"
   >
     @if (actions.formBusy()) {
       <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>

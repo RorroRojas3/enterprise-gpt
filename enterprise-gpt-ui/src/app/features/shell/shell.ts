@@ -2,6 +2,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  DOCUMENT,
   ElementRef,
   Injector,
   afterNextRender,
@@ -11,8 +12,11 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Title } from '@angular/platform-browser';
 import { RouterOutlet } from '@angular/router';
 import { ShellChrome } from '@core/layout/shell-chrome';
+import { PageChange, injectPageChanges } from '@core/navigation/page-changes';
 import { Offcanvas } from '@shared/dialog/offcanvas';
 import { Icon } from '@shared/icons/icon';
 import { MOBILE_VIEWPORT, TABLET_VIEWPORT } from '@shared/layout/breakpoints';
@@ -64,11 +68,16 @@ type ShellMode = 'desktop' | 'tablet' | 'mobile';
 export class Shell {
   private readonly _ui = inject(UiStore);
   private readonly _injector = inject(Injector);
+  private readonly _document = inject(DOCUMENT);
+  private readonly _title = inject(Title);
   private readonly _animated = signal(false);
   private readonly _main = viewChild.required<ElementRef<HTMLElement>>('main');
   // Asks the sidebar to focus its own control: the strip's buttons share their classes, so a
   // document-order query here would silently follow a template reorder.
   private readonly _sidebar = viewChild(Sidebar);
+
+  /** The drawer closed for a page change: its own focus return runs first, then ours. */
+  private _settleOnDrawerClosed = false;
 
   private readonly _isMobile = injectMediaQuery(MOBILE_VIEWPORT);
   private readonly _isTablet = injectMediaQuery(TABLET_VIEWPORT);
@@ -99,6 +108,9 @@ export class Shell {
     source: this.mode,
     computation: () => false,
   });
+
+  /** Written after each page change, for a reader whose focus stayed inside `<main>`. */
+  protected readonly pageAnnouncement = signal('');
 
   protected readonly animated = this._animated.asReadonly();
   protected readonly tabletOverlayOpen = computed(
@@ -167,6 +179,48 @@ export class Shell {
     }
   }
 
+  protected onDrawerClosed(): void {
+    if (this._settleOnDrawerClosed) {
+      this._settleOnDrawerClosed = false;
+      this._settleOnPage();
+    }
+  }
+
+  /** The overlays are modal in effect, so a navigation while one is up came from inside it. */
+  private _onPageChange(change: PageChange): void {
+    const drawerOpen = this.mobileDrawerOpen();
+
+    if (change === 'same') {
+      if (this.tabletOverlayOpen()) {
+        this.dismissOverlay();
+      } else {
+        this._overlayOpen.set(false);
+      }
+
+      return;
+    }
+
+    this._overlayOpen.set(false);
+
+    if (drawerOpen) {
+      this._settleOnDrawerClosed = true;
+    } else {
+      afterNextRender(() => this._settleOnPage(), { injector: this._injector });
+    }
+  }
+
+  /** Focus already in `<main>` stays: the composer, a project tab, or a page that placed it. */
+  private _settleOnPage(): void {
+    this.pageAnnouncement.set(this._title.getTitle());
+
+    const main = this._main().nativeElement;
+    const dialogOpen = this._document.querySelector('dialog[open]') !== null;
+
+    if (!dialogOpen && !main.contains(this._document.activeElement)) {
+      main.focus({ preventScroll: true });
+    }
+  }
+
   /** The panel's chevron is gone once it collapses, so focus moves to the strip's replacement. */
   private _restoreFocusToStrip(): void {
     afterNextRender(() => this._sidebar()?.focusCollapseControl(), {
@@ -178,5 +232,9 @@ export class Shell {
     // No width transition until after the first render, or a restored collapsed preference
     // would animate from 260px to 60px on every load.
     afterNextRender(() => this._animated.set(true));
+
+    injectPageChanges()
+      .pipe(takeUntilDestroyed())
+      .subscribe((change) => this._onPageChange(change));
   }
 }

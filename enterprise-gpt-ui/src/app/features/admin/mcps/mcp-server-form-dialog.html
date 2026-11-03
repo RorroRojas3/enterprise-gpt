@@ -34,20 +34,10 @@
           type="text"
           data-modal-autofocus
           [formField]="f.name"
-          [class.is-invalid]="fieldErrors().name.show"
-          [attr.aria-describedby]="
-            fieldErrors().name.show
-              ? 'mcp-form-name-errors mcp-form-name-note'
-              : 'mcp-form-name-note'
-          "
+          [appInvalidField]="fieldErrors().name.show"
+          fieldNote="mcp-form-name-note"
         />
-        @if (fieldErrors().name.show) {
-          <div class="invalid-feedback d-block" id="mcp-form-name-errors" role="alert">
-            @for (message of fieldErrors().name.messages; track $index) {
-              <p class="mb-0">{{ message }}</p>
-            }
-          </div>
-        }
+        <app-field-errors fieldId="mcp-form-name" [errors]="fieldErrors().name" />
         <!-- Explains why a name can collide with a permission the admin never created. -->
         <p class="form-text mb-0" id="mcp-form-name-note">
           A permission with this name is created alongside the server, and renamed with it.
@@ -62,28 +52,14 @@
           id="mcp-form-auth"
           class="form-select"
           [formField]="f.authType"
-          [class.is-invalid]="fieldErrors().authType.show || !!unsupportedAuthType()"
-          [attr.aria-describedby]="
-            fieldErrors().authType.show || unsupportedAuthType() ? 'mcp-form-auth-errors' : null
-          "
+          [appInvalidField]="authTypeErrors().show"
         >
           @for (option of authTypes; track option.value) {
             <option [value]="option.value">{{ option.label }}</option>
           }
         </select>
-        @if (fieldErrors().authType.show || unsupportedAuthType()) {
-          <div class="invalid-feedback d-block" id="mcp-form-auth-errors" role="alert">
-            @if (fieldErrors().authType.show) {
-              @for (message of fieldErrors().authType.messages; track $index) {
-                <p class="mb-0">{{ message }}</p>
-              }
-            }
-            <!-- A seeded auth type the select has no option for. -->
-            @if (unsupportedAuthType(); as message) {
-              <p class="mb-0">{{ message }}</p>
-            }
-          </div>
-        }
+        <!-- Includes a seeded auth type the select has no option for. -->
+        <app-field-errors fieldId="mcp-form-auth" [errors]="authTypeErrors()" />
       </div>
 
       <div class="col-12 col-sm-6">
@@ -93,8 +69,7 @@
             id="mcp-form-icon"
             class="form-select"
             [formField]="f.iconKey"
-            [class.is-invalid]="fieldErrors().iconKey.show"
-            [attr.aria-describedby]="fieldErrors().iconKey.show ? 'mcp-form-icon-errors' : null"
+            [appInvalidField]="fieldErrors().iconKey.show"
           >
             @for (option of icons; track option.value) {
               <option [value]="option.value">{{ option.label }}</option>
@@ -105,13 +80,7 @@
             <app-brand-icon class="flex-shrink-0 fs-5" [name]="mark" />
           }
         </div>
-        @if (fieldErrors().iconKey.show) {
-          <div class="invalid-feedback d-block" id="mcp-form-icon-errors" role="alert">
-            @for (message of fieldErrors().iconKey.messages; track $index) {
-              <p class="mb-0">{{ message }}</p>
-            }
-          </div>
-        }
+        <app-field-errors fieldId="mcp-form-icon" [errors]="fieldErrors().iconKey" />
         <!-- `role="status"`, not "alert": the key round-trips unchanged and Save stays enabled. -->
         @if (unsupportedIcon(); as message) {
           <p class="form-text mb-0" id="mcp-form-icon-note" role="status">{{ message }}</p>
@@ -125,18 +94,9 @@
           class="form-control"
           type="text"
           [formField]="f.description"
-          [class.is-invalid]="fieldErrors().description.show"
-          [attr.aria-describedby]="
-            fieldErrors().description.show ? 'mcp-form-description-errors' : null
-          "
+          [appInvalidField]="fieldErrors().description.show"
         />
-        @if (fieldErrors().description.show) {
-          <div class="invalid-feedback d-block" id="mcp-form-description-errors" role="alert">
-            @for (message of fieldErrors().description.messages; track $index) {
-              <p class="mb-0">{{ message }}</p>
-            }
-          </div>
-        }
+        <app-field-errors fieldId="mcp-form-description" [errors]="fieldErrors().description" />
       </div>
 
       <div class="col-12">
@@ -149,16 +109,9 @@
           autocomplete="off"
           spellcheck="false"
           [formField]="f.url"
-          [class.is-invalid]="fieldErrors().url.show"
-          [attr.aria-describedby]="fieldErrors().url.show ? 'mcp-form-url-errors' : null"
+          [appInvalidField]="fieldErrors().url.show"
         />
-        @if (fieldErrors().url.show) {
-          <div class="invalid-feedback d-block" id="mcp-form-url-errors" role="alert">
-            @for (message of fieldErrors().url.messages; track $index) {
-              <p class="mb-0">{{ message }}</p>
-            }
-          </div>
-        }
+        <app-field-errors fieldId="mcp-form-url" [errors]="fieldErrors().url" />
       </div>
 
       <!-- Required for Entra ID and refused for None, so it is hidden and cleared on a switch. -->
@@ -172,20 +125,10 @@
             autocomplete="off"
             spellcheck="false"
             [formField]="f.scope"
-            [class.is-invalid]="fieldErrors().scope.show"
-            [attr.aria-describedby]="
-              fieldErrors().scope.show
-                ? 'mcp-form-scope-errors mcp-form-scope-note'
-                : 'mcp-form-scope-note'
-            "
+            [appInvalidField]="fieldErrors().scope.show"
+            fieldNote="mcp-form-scope-note"
           />
-          @if (fieldErrors().scope.show) {
-            <div class="invalid-feedback d-block" id="mcp-form-scope-errors" role="alert">
-              @for (message of fieldErrors().scope.messages; track $index) {
-                <p class="mb-0">{{ message }}</p>
-              }
-            </div>
-          }
+          <app-field-errors fieldId="mcp-form-scope" [errors]="fieldErrors().scope" />
           <p class="form-text mb-0" id="mcp-form-scope-note">
             The delegated scope this API requests on the signed-in user’s behalf, such as
             <span class="font-monospace">api://…/.default</span>. One scope only.
@@ -205,20 +148,10 @@
           autocomplete="off"
           spellcheck="false"
           [formField]="f.headers"
-          [class.is-invalid]="fieldErrors().headers.show"
-          [attr.aria-describedby]="
-            fieldErrors().headers.show
-              ? 'mcp-form-headers-errors mcp-form-headers-note'
-              : 'mcp-form-headers-note'
-          "
+          [appInvalidField]="fieldErrors().headers.show"
+          fieldNote="mcp-form-headers-note"
         ></textarea>
-        @if (fieldErrors().headers.show) {
-          <div class="invalid-feedback d-block" id="mcp-form-headers-errors" role="alert">
-            @for (message of fieldErrors().headers.messages; track $index) {
-              <p class="mb-0">{{ message }}</p>
-            }
-          </div>
-        }
+        <app-field-errors fieldId="mcp-form-headers" [errors]="fieldErrors().headers" />
         <!-- Only the normative sentence is referenced by `aria-describedby`; the rationale
              below would otherwise be read out on every focus. -->
         <p class="form-text mb-0" id="mcp-form-headers-note">
@@ -253,7 +186,7 @@
     class="btn btn-primary"
     type="submit"
     form="mcp-server-form"
-    [disabled]="!canSubmit()"
+    [attr.aria-disabled]="actions.formBusy() ? 'true' : null"
   >
     @if (actions.formBusy()) {
       <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>

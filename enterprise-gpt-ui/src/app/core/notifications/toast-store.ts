@@ -13,13 +13,25 @@ import { AppError } from '@core/errors/app-error';
 import { shouldNotify, traceLine, userMessage } from '@core/errors/error-message';
 import { injectSignedOut } from '@core/events/session-events';
 import { withResetOnSignOut } from '@core/session/with-reset-on-sign-out';
-import { AUTO_DISMISS_MS, Toast, ToastTone } from './toast.model';
+import {
+  AUTO_DISMISS_MS,
+  MAX_PERSISTENT_TOASTS,
+  Toast,
+  ToastTone,
+  isPersistent,
+} from './toast.model';
 
 interface ToastState {
   readonly toasts: readonly Toast[];
 }
 
 const initialState: ToastState = { toasts: [] };
+
+/** A toast's one button. The toast dismisses itself before `run` is called. */
+export interface ToastAction {
+  readonly label: string;
+  readonly run: () => void;
+}
 
 export interface ToastInput {
   readonly tone: ToastTone;
@@ -29,8 +41,10 @@ export interface ToastInput {
   readonly retryLabel?: string | null;
   /** Required for {@link retryLabel} to render. */
   readonly onRetry?: () => void;
-  /** Overrides {@link AUTO_DISMISS_MS} for this toast alone. */
-  readonly dismissAfterMs?: number;
+  /** Wins over {@link onRetry}: a toast has one button. */
+  readonly action?: ToastAction;
+  /** A live toast with the same key is replaced, so a repeated notice never stacks. */
+  readonly key?: string;
 }
 
 /** In `core/`: core stores and services inject it, and `core/` may not import a feature. */
@@ -44,7 +58,7 @@ export const ToastStore = signalStore(
      */
     _timers: new Map<string, ReturnType<typeof setTimeout>>(),
     /** Beside the timers: a function is not state, and nothing renders from it. */
-    _retries: new Map<string, () => void>(),
+    _actions: new Map<string, () => void>(),
     _sequence: { value: 0 },
   })),
   withComputed(({ toasts }) => ({
@@ -65,13 +79,36 @@ export const ToastStore = signalStore(
         clearTimeout(timer);
         store._timers.delete(id);
       }
-      store._retries.delete(id);
+      store._actions.delete(id);
       patchState(store, ({ toasts }) => ({ toasts: toasts.filter((toast) => toast.id !== id) }));
+    }
+
+    function dismissKey(key: string): void {
+      const live = store.toasts().find((toast) => toast.key === key);
+      if (live !== undefined) {
+        dismiss(live.id);
+      }
+    }
+
+    /** Action toasts go first: the sidebar mark or upload chip still carries what they said. */
+    function evictOverCap(): void {
+      const persistent = store.toasts().filter((toast) => toast.persistent);
+      if (persistent.length < MAX_PERSISTENT_TOASTS) {
+        return;
+      }
+
+      const oldest = persistent.find((toast) => toast.actionLabel !== null) ?? persistent[0];
+      if (oldest !== undefined) {
+        dismiss(oldest.id);
+      }
     }
 
     function show(input: ToastInput): string {
       const id = `toast-${store._sequence.value++}`;
-      const dismissAfterMs = input.dismissAfterMs ?? AUTO_DISMISS_MS[input.tone];
+      // A label with no handler renders nothing, so a dead Retry cannot ship.
+      const action: ToastAction | null =
+        input.action ??
+        (input.onRetry ? { label: input.retryLabel ?? 'Retry', run: input.onRetry } : null);
 
       const toast: Toast = {
         id,
@@ -79,23 +116,28 @@ export const ToastStore = signalStore(
         title: input.title,
         detail: input.detail ?? null,
         traceLine: input.traceLine ?? null,
-        // A label with no handler renders nothing, so a dead Retry cannot ship.
-        retryLabel: input.onRetry ? (input.retryLabel ?? 'Retry') : null,
-        dismissAfterMs,
+        actionLabel: action?.label ?? null,
+        key: input.key ?? null,
+        persistent: isPersistent(input.tone, action !== null),
       };
 
-      if (input.onRetry) {
-        store._retries.set(id, input.onRetry);
+      if (toast.key !== null) {
+        dismissKey(toast.key);
+      }
+      if (action !== null) {
+        store._actions.set(id, action.run);
+      }
+
+      if (toast.persistent) {
+        evictOverCap();
+      } else {
+        store._timers.set(
+          id,
+          setTimeout(() => dismiss(id), AUTO_DISMISS_MS),
+        );
       }
 
       patchState(store, ({ toasts }) => ({ toasts: [...toasts, toast] }));
-
-      if (dismissAfterMs > 0) {
-        store._timers.set(
-          id,
-          setTimeout(() => dismiss(id), dismissAfterMs),
-        );
-      }
 
       return id;
     }
@@ -103,10 +145,11 @@ export const ToastStore = signalStore(
     return {
       show,
       dismiss,
+      dismissKey,
 
       /** Dismisses first, so a toast the handler raises does not stack under the failed one. */
-      retry(id: string): void {
-        const handler = store._retries.get(id);
+      runAction(id: string): void {
+        const handler = store._actions.get(id);
         dismiss(id);
         handler?.();
       },
@@ -132,11 +175,16 @@ export const ToastStore = signalStore(
         if (!shouldNotify(error)) {
           return null;
         }
+
+        const title = userMessage(error);
+
         return show({
           tone: 'error',
-          title: userMessage(error),
+          title,
           traceLine: traceLine(error),
           onRetry,
+          // Keyed so an outage replaces rather than stacks; a Retry's closure must not be lost.
+          key: onRetry === undefined ? `error:${title}` : undefined,
         });
       },
 
@@ -145,7 +193,7 @@ export const ToastStore = signalStore(
           clearTimeout(timer);
         }
         store._timers.clear();
-        store._retries.clear();
+        store._actions.clear();
         patchState(store, initialState);
       },
     };
@@ -161,8 +209,8 @@ export const ToastStore = signalStore(
             clearTimeout(timer);
           }
           store._timers.clear();
-          // A retry closure captures the previous user's request.
-          store._retries.clear();
+          // An action closure captures the previous user's request.
+          store._actions.clear();
         });
     },
     onDestroy(store) {
@@ -170,7 +218,7 @@ export const ToastStore = signalStore(
         clearTimeout(timer);
       }
       store._timers.clear();
-      store._retries.clear();
+      store._actions.clear();
     },
   }),
   // Last, as the feature requires.

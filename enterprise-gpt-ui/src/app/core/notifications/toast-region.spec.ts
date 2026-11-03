@@ -52,16 +52,15 @@ describe('ToastRegion', () => {
     expect(getByRole(host, 'button', { name: 'Dismiss: Upload failed' })).toBeTruthy();
   });
 
-  it('renders a draining indicator only for toasts that dismiss themselves', async () => {
+  it('renders a draining indicator only on a toast that dismisses itself', async () => {
     const { fixture, host, store } = await render();
 
     store.success('Saved');
     store.show({ tone: 'error', title: 'Failed' });
     await fixture.whenStable();
 
-    const drains = host.querySelectorAll('.toast__drain');
-    expect(drains).toHaveLength(1);
     expect(host.querySelector('[role="status"] .toast__drain')).not.toBeNull();
+    expect(host.querySelector('[role="alert"] .toast__drain')).toBeNull();
   });
 
   it('removes a toast from the DOM when its dismiss control is used', async () => {
@@ -73,5 +72,99 @@ describe('ToastRegion', () => {
     await fixture.whenStable();
 
     expect(host.querySelector('app-toast-item')).toBeNull();
+  });
+
+  describe('focus', () => {
+    let main: HTMLElement;
+    let attached: HTMLElement;
+
+    beforeEach(() => {
+      main = document.createElement('main');
+      main.id = 'main-content';
+      main.tabIndex = -1;
+      document.body.append(main);
+    });
+
+    afterEach(() => {
+      main.remove();
+      attached.remove();
+    });
+
+    async function renderAttached() {
+      const rendered = await render();
+      attached = rendered.host;
+      document.body.append(attached);
+
+      return rendered;
+    }
+
+    it('moves to the main content when the focused dismiss control leaves', async () => {
+      const { fixture, host, store } = await renderAttached();
+      store.show({ tone: 'error', title: 'Upload failed' });
+      await fixture.whenStable();
+
+      const dismiss = getByRole(host, 'button', { name: 'Dismiss: Upload failed' });
+      dismiss.focus();
+      dismiss.click();
+      await fixture.whenStable();
+
+      expect(document.activeElement).toBe(main);
+    });
+
+    it('moves to the main content when the focused action leaves', async () => {
+      const { fixture, host, store } = await renderAttached();
+      store.show({
+        tone: 'info',
+        title: 'Answer ready',
+        action: { label: 'Open', run: () => undefined },
+      });
+      await fixture.whenStable();
+
+      const action = getByRole(host, 'button', { name: 'Open' });
+      action.focus();
+      action.click();
+      await fixture.whenStable();
+
+      expect(document.activeElement).toBe(main);
+    });
+
+    it('moves to the main content when a focused toast is replaced by its key', async () => {
+      const { fixture, host, store } = await renderAttached();
+      store.show({ tone: 'error', title: 'Upload failed', key: 'upload' });
+      await fixture.whenStable();
+      getByRole(host, 'button', { name: 'Dismiss: Upload failed' }).focus();
+
+      store.show({ tone: 'error', title: 'Upload failed again', key: 'upload' });
+      await fixture.whenStable();
+
+      expect(document.activeElement).toBe(main);
+    });
+
+    it('leaves focus on a toast that stays while another one goes', async () => {
+      const { fixture, host, store } = await renderAttached();
+      store.show({ tone: 'error', title: 'First' });
+      const second = store.show({ tone: 'error', title: 'Second' });
+      await fixture.whenStable();
+      const stays = getByRole(host, 'button', { name: 'Dismiss: First' });
+      stays.focus();
+
+      store.dismiss(second);
+      await fixture.whenStable();
+
+      expect(document.activeElement).toBe(stays);
+    });
+
+    it('leaves focus alone when the reader is elsewhere', async () => {
+      const { fixture, host, store } = await renderAttached();
+      store.show({ tone: 'error', title: 'Upload failed' });
+      await fixture.whenStable();
+      const elsewhere = main.appendChild(document.createElement('button'));
+      elsewhere.focus();
+
+      getByRole(host, 'button', { name: 'Dismiss: Upload failed' }).click();
+      await fixture.whenStable();
+
+      expect(document.activeElement).toBe(elsewhere);
+    });
   });
 });

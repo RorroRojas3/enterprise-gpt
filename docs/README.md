@@ -4,7 +4,9 @@ Reference for engineers working on this codebase: what each part of the applicat
 built, and the constraints that are not obvious from the source.
 
 **New here?** Read [architecture/overview.md](architecture/overview.md), then the two structure docs
-for whichever side you are working on, then the subsystem you are touching.
+for whichever side you are working on, then the subsystem you are touching. On the client, follow
+[architecture/frontend.md](architecture/frontend.md) with [frontend/codebase-map.md](frontend/codebase-map.md)
+and [frontend/workflows.md](frontend/workflows.md).
 
 ## Architecture
 
@@ -20,7 +22,7 @@ for whichever side you are working on, then the subsystem you are touching.
 
 | Doc | Covers |
 | --- | --- |
-| [turn-lifecycle.md](conversations/turn-lifecycle.md) | Send to settled transcript entry, Stop, reopening |
+| [turn-lifecycle.md](conversations/turn-lifecycle.md) | Chat sessions, send to settled transcript entry, Stop, reopening, the concurrent-turn cap |
 | [streaming.md](conversations/streaming.md) | The SSE wire contract and the client that reads it |
 | [transcripts.md](conversations/transcripts.md) | Cosmos storage, token estimation, the context budget |
 | [usage-and-reporting.md](conversations/usage-and-reporting.md) | The append-only audit trail, favourites, the usage report |
@@ -54,11 +56,13 @@ for whichever side you are working on, then the subsystem you are touching.
 
 | Doc | Covers |
 | --- | --- |
-| [state.md](frontend/state.md) | Signal-store conventions, the five composable features, cross-store events |
+| [codebase-map.md](frontend/codebase-map.md) | Where everything lives, and how screens, stores, injection seams, events and API calls connect |
+| [workflows.md](frontend/workflows.md) | The main user journeys traced through components, stores and endpoints; how-to recipes |
+| [state.md](frontend/state.md) | Signal-store conventions, the five composable features, cross-store events, conversation activity |
 | [errors.md](frontend/errors.md) | `AppError` normalization, retry policy, the refresh decision |
 | [design-system.md](frontend/design-system.md) | Tokens, theming, typography, icons, accessibility contracts |
 | [answer-rendering.md](frontend/answer-rendering.md) | The markdown pipeline, streaming split, diagrams and math |
-| [layout-and-navigation.md](frontend/layout-and-navigation.md) | Breakpoints, the three modes, the shell, overlays |
+| [layout-and-navigation.md](frontend/layout-and-navigation.md) | Breakpoints, the three modes, the shell, activity indicators, the leave guard, overlays |
 
 ## Administration
 
